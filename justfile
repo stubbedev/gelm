@@ -23,5 +23,15 @@ build:
 fmt:
     gofmt -w .
 
+# The showcase window: every widget in one toplevel (clicks, drag,
+# tooltips, right-click menu, Tab focus, esc to close).
 demo:
+    go run ./cmd/gelm-hello
+
+# The layer-shell panel: right-anchored widgets with live input.
+panel:
+    go run ./cmd/gelm-panel
+
+# The status bar.
+bar:
     go run ./cmd/gelm-bar
