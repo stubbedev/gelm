@@ -1,15 +1,25 @@
-// Command gelm-bar is the M0 scaffold demo: a top bar anchored across the
-// output, CPU-rasterized into pooled wl_shm ARGB8888 buffers and kept
-// current with damage-tracked repaints driven by frame callbacks.
+// Command gelm-bar is the M1 paint demo: a top bar anchored across the
+// output showing a label, a clock, and a moving second indicator, all
+// CPU-rasterized (rounded rects, gradient, shaped text) into pooled wl_shm
+// ARGB8888 buffers and kept current with damage-tracked repaints driven by
+// frame callbacks.
 package main
 
 import (
-	"encoding/binary"
+	"bytes"
 	"errors"
+	"flag"
 	"fmt"
+	"image"
+	"image/png"
 	"log"
+	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
+	"github.com/go-text/typesetting/font"
+	"github.com/go-text/typesetting/fontscan"
 	"github.com/neurlang/wayland/wl"
 	"github.com/neurlang/wayland/wlclient"
 
@@ -25,15 +35,98 @@ const (
 )
 
 var (
-	bgColor     = uint32(0xFF1E1E2E)
-	accentColor = uint32(0xFF89B4FA)
+	bgColor     = render.RGB(0x1E, 0x1E, 0x2E)
+	accentColor = render.RGB(0x89, 0xB4, 0xFA)
+	textColor   = render.RGB(0xCD, 0xD6, 0xF4)
+	labelColor  = render.RGB(0xBA, 0xB6, 0xC8)
+	pillColor   = render.RGB(0x11, 0x11, 0x1B)
 )
 
 func main() {
-	if err := run(); err != nil {
+	dump := flag.String("dump", "", "render one bar frame to a PNG file instead of mapping on the compositor")
+	flag.Parse()
+	var err error
+	if *dump != "" {
+		err = dumpFrame(*dump)
+	} else {
+		err = run()
+	}
+	if err != nil {
 		log.Fatal(err)
 	}
 }
+
+// dumpFrame renders a single bar frame offscreen and saves it as PNG, for
+// visual checks without a compositor.
+func dumpFrame(path string) error {
+	fontData, err := findSansFont()
+	if err != nil {
+		return err
+	}
+	tf, err := render.LoadFont(fontData)
+	if err != nil {
+		return err
+	}
+	const (
+		w, h, scale = 800, 32, 1
+	)
+	data := make([]byte, render.Stride(w)*h)
+	cv := render.New(data, render.Stride(w), w, h)
+	cv.Clear(cv.Rect(), bgColor)
+	paintElements(cv, cv.Rect(), "09:41", 17, w, h, scale, tf)
+
+	img := image.NewNRGBA(image.Rect(0, 0, w, h))
+	for y := range h {
+		for x := range w {
+			c := render.ColorFromBytes(data[y*render.Stride(w)+x*4 : y*render.Stride(w)+x*4+4])
+			straight := c.Straight()
+			i := img.PixOffset(x, y)
+			img.Pix[i], img.Pix[i+1], img.Pix[i+2], img.Pix[i+3] = straight[0], straight[1], straight[2], straight[3]
+		}
+	}
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
+		return err
+	}
+	return os.WriteFile(path, buf.Bytes(), 0o600)
+}
+
+// findSansFont locates a sans-serif system font without cgo, scanning the
+// fonts fontconfig knows about (including nix store paths).
+func findSansFont() ([]byte, error) {
+	cacheDir, err := os.UserCacheDir()
+	if err != nil {
+		cacheDir = os.TempDir()
+	}
+	fonts, err := fontscan.SystemFonts(quietLogger{}, filepath.Join(cacheDir, "gelm-fontscan"))
+	if err != nil {
+		return nil, fmt.Errorf("gelm-bar: scan fonts: %w", err)
+	}
+	pick := -1
+	for i, f := range fonts {
+		family := strings.ToLower(f.Family)
+		if f.Location.File == "" || f.Aspect.Style != font.StyleNormal || f.Aspect.Weight != font.WeightNormal {
+			continue
+		}
+		if strings.Contains(family, "sans") || strings.Contains(family, "dejavu") || strings.Contains(family, "noto") {
+			pick = i
+			break
+		}
+		if pick < 0 {
+			pick = i
+		}
+	}
+	if pick < 0 {
+		return nil, errors.New("gelm-bar: no usable system font found")
+	}
+	return os.ReadFile(fonts[pick].Location.File)
+}
+
+// quietLogger discards fontscan warnings.
+type quietLogger struct{}
+
+// Printf implements fontscan.Logger.
+func (quietLogger) Printf(string, ...any) {}
 
 func run() error {
 	sess, err := wlsession.Connect()
@@ -41,6 +134,15 @@ func run() error {
 		return err
 	}
 	defer sess.Close()
+
+	fontData, err := findSansFont()
+	if err != nil {
+		return err
+	}
+	typeface, err := render.LoadFont(fontData)
+	if err != nil {
+		return err
+	}
 
 	outputs := sess.Outputs()
 	if len(outputs) == 0 {
@@ -88,6 +190,7 @@ func run() error {
 
 	var frameReady bool
 	lastSecond := -1
+	lastClock := ""
 	lastBufW, lastBufH, lastScale := 0, 0, out.Scale
 	full := true
 
@@ -106,15 +209,18 @@ func run() error {
 			full = true
 		}
 
-		second := time.Now().Second()
-		if !full && second == lastSecond {
-			next := time.Now().Truncate(time.Second).Add(time.Second)
+		now := time.Now()
+		second := now.Second()
+		clock := now.Format("15:04")
+		if !full && second == lastSecond && clock == lastClock {
+			next := now.Truncate(time.Second).Add(time.Second)
 			time.Sleep(time.Until(next))
 			continue
 		}
 
-		dirty := dirtyRects(full, lastSecond, second, bufW, bufH, out.Scale)
+		dirty := dirtyRects(full, lastClock, lastSecond, clock, second, bufW, bufH, out.Scale, typeface)
 		lastSecond = second
+		lastClock = clock
 		full = false
 
 		b, err := pool.Acquire()
@@ -129,8 +235,11 @@ func run() error {
 		}
 		wlclient.BufferAddListener(b.WL, buffer.ReleaseHandler{B: b})
 
-		active := notchRect(second, bufW, bufH, out.Scale)
-		paint(b.Data, b.Stride, dirty, active)
+		cv := render.New(b.Data, b.Stride, b.Width, b.Height)
+		for _, r := range dirty {
+			cv.Clear(r, bgColor)
+			paintElements(cv, r, clock, second, bufW, bufH, out.Scale, typeface)
+		}
 
 		if err := surf.Attach(b.WL, 0, 0); err != nil {
 			return fmt.Errorf("gelm-bar: attach: %w", err)
@@ -170,41 +279,48 @@ func (f frameDone) HandleCallbackDone(wl.CallbackDoneEvent) {
 	*f.ready = true
 }
 
-// dirtyRects returns the regions to repaint: everything on the first or
-// resized frame, otherwise just the old and new notch.
-func dirtyRects(full bool, lastSecond, second, bufW, bufH, scale int) []render.Rect {
-	if full {
-		return []render.Rect{{X: 0, Y: 0, W: bufW, H: bufH}}
-	}
-	old := notchRect(lastSecond, bufW, bufH, scale)
-	new := notchRect(second, bufW, bufH, scale)
-	return append(old.Subtract(new), new.Subtract(old)...)
+// clockRect is the pill region on the right holding the clock text.
+func clockRect(clock string, bufW, bufH, scale int, tf *render.Typeface) render.Rect {
+	clockText := tf.Shape(clock, float64(14*scale))
+	w := int(clockText.Advance()) + 12*scale
+	return render.Rect{X: bufW - w - 8*scale, Y: 0, W: w, H: bufH}
 }
 
 // notchRect is the moving second indicator, in buffer pixels. It clamps to
 // the buffer, so a too-small bar yields an empty rect and nothing repaints.
 func notchRect(second, bufW, bufH, scale int) render.Rect {
 	margin := 8 * scale
-	notchW := 4 * scale
-	pad := 8 * scale
+	notchW := 6 * scale
+	pad := 6 * scale
 	x := margin + second*(bufW-2*margin-notchW)/59
 	r := render.Rect{X: x, Y: pad, W: notchW, H: bufH - 2*pad}
 	return r.Intersect(render.Rect{X: 0, Y: 0, W: bufW, H: bufH})
 }
 
-// paint fills every dirty rect with the background, overlaying the active
-// notch. Data rows are ARGB8888 premultiplied, byte order B, G, R, A.
-func paint(data []byte, stride int, dirty []render.Rect, active render.Rect) {
-	for _, dr := range dirty {
-		for y := dr.Y; y < dr.Y+dr.H; y++ {
-			row := data[y*stride:]
-			for x := dr.X; x < dr.X+dr.W; x++ {
-				c := bgColor
-				if active.Contains(x, y) {
-					c = accentColor
-				}
-				binary.LittleEndian.PutUint32(row[x*4:x*4+4], c)
-			}
-		}
+// dirtyRects returns the regions to repaint: everything on the first or
+// resized frame, otherwise the union of the old and new clock and notch
+// regions.
+func dirtyRects(full bool, lastClock string, lastSecond int, clock string, second, bufW, bufH, scale int, tf *render.Typeface) []render.Rect {
+	if full {
+		return []render.Rect{{X: 0, Y: 0, W: bufW, H: bufH}}
 	}
+	old := render.UnionAll([]render.Rect{clockRect(lastClock, bufW, bufH, scale, tf), notchRect(lastSecond, bufW, bufH, scale)})
+	new := render.UnionAll([]render.Rect{clockRect(clock, bufW, bufH, scale, tf), notchRect(second, bufW, bufH, scale)})
+	return append(old.Subtract(new), new.Subtract(old)...)
+}
+
+// paintElements draws the label, clock pill, and notch, confined to r.
+func paintElements(cv *render.Canvas, r render.Rect, clock string, second, bufW, bufH, scale int, tf *render.Typeface) {
+	prev := cv.PushClip(r)
+	defer cv.PopClip(prev)
+
+	textPx := float64(14 * scale)
+
+	tf.DrawAligned(cv, "gelm", render.Rect{X: 8 * scale, Y: 0, W: bufW / 3, H: bufH}, textPx, labelColor, render.AlignStart)
+
+	pill := clockRect(clock, bufW, bufH, scale, tf)
+	cv.RoundedRect(pill, 6*scale, pillColor)
+	tf.DrawAligned(cv, clock, pill, textPx, textColor, render.AlignCenter)
+
+	cv.LinearGradient(notchRect(second, bufW, bufH, scale), accentColor, pillColor, false)
 }

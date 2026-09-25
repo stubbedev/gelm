@@ -10,21 +10,14 @@ import (
 
 	"github.com/neurlang/wayland/os"
 	"github.com/neurlang/wayland/wl"
+
+	"github.com/stubbedev/gelm/render"
 )
 
 // ErrBusy reports that every buffer in the pool is held by the compositor.
 // The caller skips the frame and retries after the next release event or
 // frame callback.
 var ErrBusy = errors.New("buffer: all pool buffers busy")
-
-// BytesPerPixel is the pixel size of the pool's format, ARGB8888
-// (premultiplied alpha, little endian).
-const BytesPerPixel = 4
-
-// Stride returns the row stride in bytes for a width in buffer pixels.
-func Stride(widthPx int) int {
-	return widthPx * BytesPerPixel
-}
 
 // Buffer is one wl_shm-backed pixel buffer.
 type Buffer struct {
@@ -70,7 +63,7 @@ func NewFile(shm *wl.Shm, bufW, bufH, scale int) (*Buffer, error) {
 	if scale < 1 {
 		return nil, fmt.Errorf("buffer: invalid scale %d", scale)
 	}
-	stride := Stride(bufW)
+	stride := render.Stride(bufW)
 	size := stride * bufH
 	if size > math.MaxInt32 {
 		return nil, fmt.Errorf("buffer: size %d exceeds the wayland int32 range", size)

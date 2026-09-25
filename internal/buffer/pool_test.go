@@ -3,10 +3,12 @@ package buffer
 import (
 	"errors"
 	"testing"
+
+	"github.com/stubbedev/gelm/render"
 )
 
 func newTestBuffer(w, h int) *Buffer {
-	stride := Stride(w)
+	stride := render.Stride(w)
 	return &Buffer{
 		Data:   make([]byte, stride*h),
 		Width:  w,
@@ -118,10 +120,10 @@ func TestResizeDropsAllBuffers(t *testing.T) {
 }
 
 func TestStride(t *testing.T) {
-	if got := Stride(800); got != 3200 {
+	if got := render.Stride(800); got != 3200 {
 		t.Errorf("Stride(800) = %d, want 3200", got)
 	}
-	if got := Stride(0); got != 0 {
+	if got := render.Stride(0); got != 0 {
 		t.Errorf("Stride(0) = %d, want 0", got)
 	}
 }
