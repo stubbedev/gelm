@@ -27,7 +27,13 @@ import (
 	"github.com/stubbedev/gelm/internal/layersurface"
 	"github.com/stubbedev/gelm/internal/wlsession"
 	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/gelm/widget"
 )
+
+// gelmLogoSVG is the demo module icon: a five-point star on a 24x24 grid.
+const gelmLogoSVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+  <path fill="#89b4fa" d="M12 2 L14.35 8.76 L21.51 8.91 L15.80 13.24 L17.88 20.09 L12 16 L6.12 20.09 L8.20 13.24 L2.49 8.91 L9.65 8.76 Z"/>
+</svg>`
 
 const (
 	barHeight    = 32
@@ -70,10 +76,11 @@ func dumpFrame(path string) error {
 	const (
 		w, h, scale = 800, 32, 1
 	)
+	left := buildLeftModule(tf, scale)
 	data := make([]byte, render.Stride(w)*h)
 	cv := render.New(data, render.Stride(w), w, h)
 	cv.Clear(cv.Rect(), bgColor)
-	paintElements(cv, cv.Rect(), "09:41", 17, w, h, scale, tf)
+	paintElements(cv, cv.Rect(), "09:41", 17, w, h, scale, tf, left)
 
 	img := image.NewNRGBA(image.Rect(0, 0, w, h))
 	for y := range h {
@@ -127,6 +134,31 @@ type quietLogger struct{}
 
 // Printf implements fontscan.Logger.
 func (quietLogger) Printf(string, ...any) {}
+
+// buildLeftModule assembles the left bar module: a button holding the
+// logo icon and the gelm label.
+func buildLeftModule(tf *render.Typeface, scale int) *widget.Button {
+	icon, err := render.LoadSVG([]byte(gelmLogoSVG), 16*scale, 16*scale)
+	if err != nil {
+		panic(err)
+	}
+	inner := widget.NewBox(widget.Row, 6*scale, 0)
+	inner.Append(widget.NewIcon(icon), false)
+	inner.Append(widget.NewLabel(tf, "gelm", float64(14*scale), labelColor), false)
+	btn := widget.NewButton(inner, 4*scale, 6*scale)
+	btn.Bg = pillColor
+	btn.BgHover = render.RGB(0x18, 0x18, 0x25)
+	btn.BgPressed = render.RGB(0x0c, 0x0c, 0x14)
+	return btn
+}
+
+// layOutLeftModule measures and places the left module at the bar's left
+// edge, vertically centered.
+func layOutLeftModule(btn *widget.Button, bufW, bufH, scale int) widget.Size {
+	sz := btn.Measure(widget.Constraints{Max: widget.Size{W: bufW, H: bufH}})
+	btn.Arrange(render.Rect{X: 8 * scale, Y: (bufH - sz.H) / 2, W: sz.W, H: sz.H})
+	return sz
+}
 
 func run() error {
 	sess, err := wlsession.Connect()
@@ -189,6 +221,7 @@ func run() error {
 	log.Printf("gelm-bar: mapped at %dx%d, scale %d", w, h, out.Scale)
 
 	var frameReady bool
+	leftBtn := buildLeftModule(typeface, out.Scale)
 	lastSecond := -1
 	lastClock := ""
 	lastBufW, lastBufH, lastScale := 0, 0, out.Scale
@@ -200,6 +233,7 @@ func run() error {
 				return fmt.Errorf("gelm-bar: set buffer scale: %w", err)
 			}
 			lastScale = out.Scale
+			leftBtn = buildLeftModule(typeface, out.Scale)
 			full = true
 		}
 		bufW, bufH := w*out.Scale, h*out.Scale
@@ -238,7 +272,7 @@ func run() error {
 		cv := render.New(b.Data, b.Stride, b.Width, b.Height)
 		for _, r := range dirty {
 			cv.Clear(r, bgColor)
-			paintElements(cv, r, clock, second, bufW, bufH, out.Scale, typeface)
+			paintElements(cv, r, clock, second, bufW, bufH, out.Scale, typeface, leftBtn)
 		}
 
 		if err := surf.Attach(b.WL, 0, 0); err != nil {
@@ -309,15 +343,19 @@ func dirtyRects(full bool, lastClock string, lastSecond int, clock string, secon
 	return append(old.Subtract(new), new.Subtract(old)...)
 }
 
-// paintElements draws the label, clock pill, and notch, confined to r.
-func paintElements(cv *render.Canvas, r render.Rect, clock string, second, bufW, bufH, scale int, tf *render.Typeface) {
+// paintElements draws the left module, clock pill, and notch, confined to
+// r. The left module only changes on resize, so its widget tree is laid
+// out here for every call that could paint it.
+func paintElements(cv *render.Canvas, r render.Rect, clock string, second, bufW, bufH, scale int, tf *render.Typeface, left *widget.Button) {
 	prev := cv.PushClip(r)
 	defer cv.PopClip(prev)
 
+	layOutLeftModule(left, bufW, bufH, scale)
+	if !left.Bounds().Intersect(r).Empty() {
+		left.Paint(cv)
+	}
+
 	textPx := float64(14 * scale)
-
-	tf.DrawAligned(cv, "gelm", render.Rect{X: 8 * scale, Y: 0, W: bufW / 3, H: bufH}, textPx, labelColor, render.AlignStart)
-
 	pill := clockRect(clock, bufW, bufH, scale, tf)
 	cv.RoundedRect(pill, 6*scale, pillColor)
 	tf.DrawAligned(cv, clock, pill, textPx, textColor, render.AlignCenter)

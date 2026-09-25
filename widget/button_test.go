@@ -1,0 +1,112 @@
+package widget
+
+import (
+	"testing"
+
+	"github.com/stubbedev/gelm/render"
+)
+
+func TestButtonMeasure(t *testing.T) {
+	t.Run("pads the child on every side", func(t *testing.T) {
+		b := NewButton(newStub(10, 6), 4, 2)
+		got := b.Measure(Constraints{Max: Size{W: 100, H: 100}})
+		if got != (Size{W: 18, H: 14}) {
+			t.Errorf("button measure = %v, want 18x14", got)
+		}
+	})
+
+	t.Run("clamps to constraints", func(t *testing.T) {
+		b := NewButton(newStub(50, 50), 4, 2)
+		got := b.Measure(Constraints{Max: Size{W: 20, H: 20}})
+		if got != (Size{W: 20, H: 20}) {
+			t.Errorf("button measure = %v, want clamped 20x20", got)
+		}
+	})
+}
+
+func TestButtonArrange(t *testing.T) {
+	child := newStub(10, 6)
+	b := NewButton(child, 4, 2)
+	b.Measure(Constraints{Max: Size{W: 100, H: 100}})
+	b.Arrange(render.Rect{X: 10, Y: 5, W: 30, H: 20})
+
+	if got := b.Bounds(); got != (render.Rect{X: 10, Y: 5, W: 30, H: 20}) {
+		t.Errorf("button bounds = %v, want the arranged rect", got)
+	}
+	if child.rect != (render.Rect{X: 14, Y: 9, W: 22, H: 12}) {
+		t.Errorf("child rect = %v, want inset by padding 4", child.rect)
+	}
+}
+
+func TestButtonPaintStates(t *testing.T) {
+	cvSize := 40
+	stride := render.Stride(cvSize)
+	data := make([]byte, stride*cvSize)
+	newPainted := func(pressed, hovered bool) render.Color {
+		cv := render.New(data, stride, cvSize, cvSize)
+		clear(data)
+		b := NewButton(newStub(0, 0), 0, 0)
+		b.Bg = render.RGB(10, 10, 10)
+		b.BgHover = render.RGB(20, 20, 20)
+		b.BgPressed = render.RGB(30, 30, 30)
+		b.Pressed = pressed
+		b.Hovered = hovered
+		b.Measure(Constraints{Max: Size{W: 100, H: 100}})
+		b.Arrange(render.Rect{X: 0, Y: 0, W: 40, H: 40})
+		b.Paint(cv)
+		return render.ColorFromBytes(data[20*stride+20*4 : 20*stride+20*4+4])
+	}
+
+	t.Run("plain state paints Bg", func(t *testing.T) {
+		if got := newPainted(false, false); got != render.RGB(10, 10, 10) {
+			t.Errorf("plain pixel = %v, want Bg", got)
+		}
+	})
+
+	t.Run("hovered paints BgHover", func(t *testing.T) {
+		if got := newPainted(false, true); got != render.RGB(20, 20, 20) {
+			t.Errorf("hover pixel = %v, want BgHover", got)
+		}
+	})
+
+	t.Run("pressed wins over hovered", func(t *testing.T) {
+		if got := newPainted(true, true); got != render.RGB(30, 30, 30) {
+			t.Errorf("pressed pixel = %v, want BgPressed", got)
+		}
+	})
+}
+
+func TestButtonHitTest(t *testing.T) {
+	b := NewButton(newStub(10, 6), 4, 2)
+	b.Measure(Constraints{Max: Size{W: 100, H: 100}})
+	b.Arrange(render.Rect{X: 10, Y: 5, W: 30, H: 20})
+
+	t.Run("inside returns the button, not its child", func(t *testing.T) {
+		if got := b.HitTest(Point{X: 15, Y: 10}); got != Widget(b) {
+			t.Errorf("hit = %v, want the button", got)
+		}
+	})
+
+	t.Run("outside returns nil", func(t *testing.T) {
+		if got := b.HitTest(Point{X: 0, Y: 0}); got != nil {
+			t.Errorf("hit = %v, want nil", got)
+		}
+	})
+}
+
+func TestButtonClick(t *testing.T) {
+	t.Run("fires OnClick", func(t *testing.T) {
+		fired := false
+		b := NewButton(newStub(1, 1), 0, 0)
+		b.OnClick = func() { fired = true }
+		b.Click()
+		if !fired {
+			t.Error("Click did not fire OnClick")
+		}
+	})
+
+	t.Run("without OnClick it does not panic", func(t *testing.T) {
+		b := NewButton(newStub(1, 1), 0, 0)
+		b.Click()
+	})
+}
