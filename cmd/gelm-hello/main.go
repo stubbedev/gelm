@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"log"
 
+	"github.com/unxed/xkb-go"
+
 	"github.com/stubbedev/gelm/app"
 	"github.com/stubbedev/gelm/internal/sysfont"
 	"github.com/stubbedev/gelm/internal/window"
@@ -86,11 +88,6 @@ func run() error {
 	log.Printf("gelm-hello: mapped at %dx%d", w, h)
 
 	sess.OnWmBasePing = win.Pong
-	sess.OnKey = func(keycode uint32, _ wlsession.Mods) {
-		if keycode == 1 { // KEY_ESC
-			win.Close()
-		}
-	}
 
 	onPress := func(serial uint32, over widget.Widget) {
 		// A press that is not on the counter button starts an
@@ -107,6 +104,11 @@ func run() error {
 		Root:       root,
 		Background: widget.Current().Bg,
 		OnPress:    onPress,
+		OnKey: func(_ *widget.Router, code uint32, _ wlsession.Mods) {
+			if sess.KeySym(code) == xkb.KeyEscape {
+				win.Close()
+			}
+		},
 	}); err != nil && !errors.Is(err, app.ErrClosed) {
 		return err
 	}

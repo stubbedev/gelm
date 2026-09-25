@@ -192,18 +192,5 @@ func run() error {
 		Scale:      out.Scale,
 		Root:       root,
 		Background: bgColor,
-		OnKey: func(r *widget.Router, keycode uint32, mods wlsession.Mods) {
-			if mods&wlsession.ModCtrl != 0 && keycode == 30 { // ctrl+a
-				r.SelectAll()
-				return
-			}
-			ch, action, ok := mapKey(keycode, mods&wlsession.ModShift != 0)
-			switch {
-			case ok && ch != 0:
-				r.Type(ch)
-			case ok:
-				r.KeyAction(action, widget.Mods(mods))
-			}
-		},
 	})
 }

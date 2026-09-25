@@ -8,9 +8,11 @@ import (
 	"errors"
 	"fmt"
 	"time"
+	"unicode/utf8"
 
 	"github.com/neurlang/wayland/wl"
 	"github.com/neurlang/wayland/wlclient"
+	"github.com/unxed/xkb-go"
 
 	"github.com/stubbedev/gelm/internal/buffer"
 	"github.com/stubbedev/gelm/internal/wlsession"
@@ -127,21 +129,23 @@ func Run(cfg Config) error {
 	}
 
 	// Key repeat: the compositor tells us its rate and delay; held keys
-	// re-fire OnKey while waitInput polls.
+	// re-fire the route while waitInput polls.
+	routeKey := func(keycode uint32, mods wlsession.Mods) {
+		routeKey(sess, router, keycode, mods, cfg.OnKey)
+	}
 	rep := newKeyRepeater(sess.RepeatInfo())
 	sess.OnKey = func(keycode uint32, mods wlsession.Mods) {
 		rep.press(keycode, mods)
-		if cfg.OnKey != nil {
-			cfg.OnKey(router, keycode, mods)
-		}
+		routeKey(keycode, mods)
+		request()
 	}
 	sess.OnKeyUp = rep.release
 	pump := func() bool {
 		code, mods, ok := rep.tick()
-		if !ok || cfg.OnKey == nil {
-			return ok
+		if !ok {
+			return false
 		}
-		cfg.OnKey(router, code, mods)
+		routeKey(code, mods)
 		return true
 	}
 
@@ -207,6 +211,66 @@ type frameDone struct {
 // HandleCallbackDone implements wl.CallbackDoneHandler.
 func (f frameDone) HandleCallbackDone(wl.CallbackDoneEvent) {
 	*f.ready = true
+}
+
+// ctrl reports whether ctrl is held.
+func ctrl(m wlsession.Mods) bool { return m&wlsession.ModCtrl != 0 }
+
+// keyTranslator is the keymap-facing slice of the session.
+type keyTranslator interface {
+	KeyUTF8(code uint32) string
+	KeySym(code uint32) xkb.Keysym
+}
+
+// routeKey turns one key press into text or a widget action through the
+// compositor's keymap, then gives the app the raw event for any custom
+// bindings. Alt is never text; ctrl+editing keys still act (but ctrl+a
+// selects all first).
+func routeKey(sess keyTranslator, router *widget.Router, keycode uint32, mods wlsession.Mods, extra func(*widget.Router, uint32, wlsession.Mods)) {
+	sym := sess.KeySym(keycode)
+	isCtrl := ctrl(mods)
+	switch {
+	case isCtrl && (sym == xkb.Keysym('a') || sym == xkb.Keysym('A')):
+		router.SelectAll()
+	case !isCtrl && mods&wlsession.ModAlt == 0:
+		if txt := sess.KeyUTF8(keycode); txt != "" {
+			if r, _ := utf8.DecodeRuneInString(txt); r != utf8.RuneError && r != 0 {
+				router.Type(r)
+			}
+			break
+		}
+		if a, ok := actionForSym(sym); ok {
+			router.KeyAction(a, widget.Mods(mods))
+		}
+	default:
+		if a, ok := actionForSym(sym); ok {
+			router.KeyAction(a, widget.Mods(mods))
+		}
+	}
+	if extra != nil {
+		extra(router, keycode, mods)
+	}
+}
+
+// actionForSym maps editing keysyms to widget actions.
+func actionForSym(sym xkb.Keysym) (widget.KeyAction, bool) {
+	switch sym {
+	case xkb.KeyBackSpace:
+		return widget.KeyBackspace, true
+	case xkb.KeyDelete:
+		return widget.KeyDelete, true
+	case xkb.KeyLeft:
+		return widget.KeyLeft, true
+	case xkb.KeyRight:
+		return widget.KeyRight, true
+	case xkb.KeyHome:
+		return widget.KeyHome, true
+	case xkb.KeyEnd:
+		return widget.KeyEnd, true
+	case xkb.KeyReturn, xkb.KeyKPEnter:
+		return widget.KeyEnter, true
+	}
+	return 0, false
 }
 
 // waitInput polls the connection until more input arrives or the deadline

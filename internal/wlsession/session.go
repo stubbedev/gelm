@@ -4,13 +4,16 @@
 package wlsession
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 
 	"github.com/neurlang/wayland/wl"
 	"github.com/neurlang/wayland/wlclient"
 	"github.com/neurlang/wayland/xdg"
+	"github.com/unxed/xkb-go"
 
 	"github.com/stubbedev/gelm/wlr"
 )
@@ -61,6 +64,8 @@ type Session struct {
 	mods              uint32
 	repeatRate        uint32
 	repeatDelay       uint32
+	xkbKeymap         *xkb.Keymap
+	xkbState          *xkb.State
 
 	// OnPointerMove fires with the pointer position in surface
 	// (logical) coordinates.
@@ -315,10 +320,22 @@ func (s *Session) HandlePointerAxisValue120(wl.PointerAxisValue120Event) {}
 // is consumed and closed, gelm maps evdev keycodes with a built-in US
 // layout instead of parsing xkb.
 func (s *Session) HandleKeyboardKeymap(ev wl.KeyboardKeymapEvent) {
-	if ev.FdError == nil && ev.Fd != 0 {
-		f := os.NewFile(ev.Fd, "wayland-keymap")
-		_ = f.Close()
+	if ev.FdError != nil || ev.Fd == 0 {
+		return
 	}
+	f := os.NewFile(ev.Fd, "wayland-keymap")
+	defer f.Close()
+	data, err := io.ReadAll(f)
+	if err != nil {
+		return
+	}
+	ctx := xkb.NewContext(context.Background(), xkb.ContextNoFlags)
+	km, err := ctx.NewKeymapFromString(data, xkb.KeymapFormatTextV1)
+	if err != nil {
+		return
+	}
+	s.xkbKeymap = km
+	s.xkbState = km.NewState()
 }
 
 // HandleKeyboardEnter implements wl.KeyboardEnterHandler.
@@ -344,6 +361,30 @@ func (s *Session) HandleKeyboardKey(ev wl.KeyboardKeyEvent) {
 // HandleKeyboardModifiers implements wl.KeyboardModifiersHandler.
 func (s *Session) HandleKeyboardModifiers(ev wl.KeyboardModifiersEvent) {
 	s.mods = ev.ModsDepressed
+	if s.xkbState != nil {
+		s.xkbState.UpdateMask(xkb.ModMask(ev.ModsDepressed), xkb.ModMask(ev.ModsLatched),
+			xkb.ModMask(ev.ModsLocked), xkb.Group(ev.Group), xkb.Group(0), xkb.Group(0))
+	}
+}
+
+// KeyUTF8 translates an evdev keycode through the compositor's keymap
+// and returns the text it produces with the current modifiers (shift,
+// AltGr, layout). Empty when no keymap arrived or the key types
+// nothing. Keycodes need the +8 evdev-to-xkb offset.
+func (s *Session) KeyUTF8(code uint32) string {
+	if s.xkbState == nil {
+		return ""
+	}
+	return s.xkbState.KeyGetUTF8(xkb.Keycode(code + 8))
+}
+
+// KeySym translates an evdev keycode to its primary keysym under the
+// current state; KeyNoSymbol when there is no keymap.
+func (s *Session) KeySym(code uint32) xkb.Keysym {
+	if s.xkbState == nil {
+		return xkb.KeyNoSymbol
+	}
+	return s.xkbState.KeyGetOneSym(xkb.Keycode(code + 8))
 }
 
 // Mods returns the currently held modifiers (shift, ctrl, alt).
