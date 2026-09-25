@@ -201,3 +201,68 @@ func TestParentChain(t *testing.T) {
 		}
 	})
 }
+
+func TestFocusTraversal(t *testing.T) {
+	root := NewBox(Column, 4, 0)
+	a := newFocusTarget()
+	b := newFocusTarget()
+	c := newFocusTarget()
+	root.Append(NewBox(Row, 4, 0).Append(NewSpacer(2, 2), false).Append(a, false), false)
+	root.Append(NewScroll(b), false)
+	root.Append(c, false)
+	r := &Router{Root: root}
+
+	t.Run("focus next walks paint order across containers", func(t *testing.T) {
+		r.FocusNext()
+		if r.Focused() != Widget(a) {
+			t.Fatalf("first focus = %v, want the first focusable", r.Focused())
+		}
+		r.FocusNext()
+		if r.Focused() != Widget(b) {
+			t.Errorf("second focus = %v, want b through the scroll", r.Focused())
+		}
+		r.FocusNext()
+		if r.Focused() != Widget(c) {
+			t.Errorf("third focus = %v, want c", r.Focused())
+		}
+	})
+
+	t.Run("focus next wraps around", func(t *testing.T) {
+		r.FocusNext()
+		if r.Focused() != Widget(a) {
+			t.Errorf("focus = %v, want wrapped to a", r.Focused())
+		}
+	})
+
+	t.Run("focus prev steps backwards", func(t *testing.T) {
+		r.FocusPrev()
+		if r.Focused() != Widget(c) {
+			t.Errorf("focus = %v, want c", r.Focused())
+		}
+	})
+
+	t.Run("containers without focusable children are skipped", func(t *testing.T) {
+		r2 := &Router{Root: NewBox(Column, 0, 0)}
+		r2.FocusNext()
+		if r2.Focused() != nil {
+			t.Errorf("focus = %v, want nil with no focusable widgets", r2.Focused())
+		}
+	})
+}
+
+// focusTarget is a minimal KeyActionHandler for traversal tests.
+type focusTarget struct {
+	node
+}
+
+func newFocusTarget() *focusTarget { return &focusTarget{} }
+
+func (f *focusTarget) Measure(con Constraints) Size { return clampSize(Size{W: 8, H: 8}, con) }
+
+func (f *focusTarget) Paint(cv *render.Canvas) {}
+
+func (f *focusTarget) Arrange(r render.Rect) { f.bounds = r }
+
+func (f *focusTarget) HitTest(p Point) Widget { return f.HitLeaf(f, p) }
+
+func (f *focusTarget) KeyAction(a KeyAction, mods Mods) {}

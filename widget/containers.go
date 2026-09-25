@@ -36,6 +36,17 @@ func (s *Stack) Add(name string, w Widget) *Stack {
 	return s
 }
 
+// Children exposes the visible child for focus traversal.
+func (s *Stack) Children() []Widget {
+	if k, ok := s.kids[s.visible]; ok {
+		return []Widget{k}
+	}
+	return nil
+}
+
+// Children exposes the stacked children for focus traversal.
+func (o *Overlay) Children() []Widget { return o.kids }
+
 // Show makes the child under name the visible one. Unknown names are
 // ignored.
 func (s *Stack) Show(name string) {
@@ -164,6 +175,9 @@ type Scroll struct {
 	// ShowBars toggles the painted scrollbar indicators.
 	ShowBars bool
 }
+
+// Children exposes the wrapped child for focus traversal.
+func (s *Scroll) Children() []Widget { return []Widget{s.child} }
 
 // NewScroll wraps child in a scrollable viewport.
 func NewScroll(child Widget) *Scroll {

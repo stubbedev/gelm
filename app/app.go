@@ -185,6 +185,16 @@ func Run(cfg Config) error {
 		cv.Clear(cv.Rect(), cfg.Background)
 		cfg.Root.Paint(cv)
 
+		// Keyboard focus ring around the focused widget.
+		if f := router.Focused(); f != nil {
+			if bs, ok := f.(widget.Boundser); ok {
+				if fb := bs.Bounds(); fb.W > 0 && fb.H > 0 {
+					cv.BorderRect(render.Rect{X: fb.X - 2, Y: fb.Y - 2, W: fb.W + 4, H: fb.H + 4},
+						2, widget.Current().Accent)
+				}
+			}
+		}
+
 		if err := surf.Attach(b.WL, 0, 0); err != nil {
 			return fmt.Errorf("app: attach: %w", err)
 		}
@@ -252,6 +262,12 @@ func routeKey(sess keyTranslator, router *widget.Router, keycode uint32, mods wl
 		pasteSelection(router, clip)
 	case isCtrl && (sym == xkb.Keysym('a') || sym == xkb.Keysym('A')):
 		router.SelectAll()
+	case !isCtrl && mods&wlsession.ModAlt == 0 && sym == xkb.KeyTab:
+		if mods&wlsession.ModShift != 0 {
+			router.FocusPrev()
+		} else {
+			router.FocusNext()
+		}
 	case !isCtrl && mods&wlsession.ModAlt == 0:
 		if txt := sess.KeyUTF8(keycode); txt != "" {
 			if r, _ := utf8.DecodeRuneInString(txt); r != utf8.RuneError && r != 0 {

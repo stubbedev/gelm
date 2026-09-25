@@ -2,6 +2,8 @@ package widget
 
 import (
 	"time"
+
+	"github.com/stubbedev/gelm/render"
 )
 
 // doubleClickWindow is the maximum gap between the clicks of a
@@ -231,3 +233,58 @@ func (r *Router) Hovered() Widget { return r.hover }
 
 // Focused returns the widget receiving keyboard input.
 func (r *Router) Focused() Widget { return r.focus }
+
+// focusWalker visits the tree in paint order for focus traversal.
+func focusWalker(w Widget, fn func(Widget)) {
+	if w == nil {
+		return
+	}
+	fn(w)
+	type childser interface {
+		Children() []Widget
+	}
+	if c, ok := w.(childser); ok {
+		for _, k := range c.Children() {
+			focusWalker(k, fn)
+		}
+	}
+}
+
+// FocusNext moves focus to the next focusable widget in paint order,
+// wrapping around; with no focus it takes the first.
+func (r *Router) FocusNext() { r.focusStep(1) }
+
+// FocusPrev moves focus to the previous focusable widget.
+func (r *Router) FocusPrev() { r.focusStep(-1) }
+
+// focusStep walks the tree collecting focusable widgets and lands on
+// the neighbor of the current focus.
+func (r *Router) focusStep(dir int) {
+	var order []Widget
+	focusWalker(r.Root, func(w Widget) {
+		if _, ok := w.(KeyActionHandler); ok {
+			order = append(order, w)
+		}
+	})
+	if len(order) == 0 {
+		return
+	}
+	idx := 0
+	if r.focus != nil {
+		for i, w := range order {
+			if w == r.focus {
+				idx = (i + dir + len(order)) % len(order)
+				break
+			}
+		}
+	} else if dir < 0 {
+		idx = len(order) - 1
+	}
+	r.focus = order[idx]
+}
+
+// Boundser exposes a widget's arranged rect; the app draws the focus
+// ring around whatever widget.Boundser the router focuses.
+type Boundser interface {
+	Bounds() render.Rect
+}

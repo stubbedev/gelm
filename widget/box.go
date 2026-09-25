@@ -38,6 +38,16 @@ type Box struct {
 	child   []*childEntry
 }
 
+// Children exposes the box's children in append order for focus
+// traversal.
+func (b *Box) Children() []Widget {
+	out := make([]Widget, len(b.child))
+	for i, c := range b.child {
+		out[i] = c.w
+	}
+	return out
+}
+
 // NewBox returns an empty box along axis with the given spacing between
 // children and padding on every side.
 func NewBox(axis Axis, spacing, padding int) *Box {
