@@ -83,3 +83,11 @@ func TestPong(t *testing.T) {
 		w.Pong(3)
 	})
 }
+
+func TestDecorateNilManager(t *testing.T) {
+	t.Run("a nil decoration manager is a silent no-op", func(t *testing.T) {
+		if err := (&Window{}).Decorate(nil); err != nil {
+			t.Errorf("Decorate(nil) = %v, want nil", err)
+		}
+	})
+}

@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 
+	deco "github.com/neurlang/wayland/unstable/xdg-decoration-v1"
 	"github.com/neurlang/wayland/wl"
 	"github.com/neurlang/wayland/wlclient"
 	"github.com/neurlang/wayland/xdg"
@@ -69,6 +70,7 @@ type Session struct {
 	dataDeviceManager *wl.DataDeviceManager
 	dataDevice        *wl.DataDevice
 	keyboardSerial    uint32
+	decorationManager *deco.ZxdgDecorationManagerV1
 
 	// OnPointerMove fires with the pointer position in surface
 	// (logical) coordinates.
@@ -194,6 +196,10 @@ func (s *Session) HandleRegistryGlobal(ev wl.RegistryGlobalEvent) {
 		s.dataDeviceManager = wl.NewDataDeviceManager(ctx)
 		_ = s.registry.Bind(ev.Name, ev.Interface, bindVersion(ev.Version, 3), s.dataDeviceManager)
 		s.ensureDataDevice()
+	case "zxdg_decoration_manager_v1":
+		ctx, _ := wl.GetUserData[wl.Context](s.registry)
+		s.decorationManager = deco.NewZxdgDecorationManagerV1(ctx)
+		_ = s.registry.Bind(ev.Name, ev.Interface, bindVersion(ev.Version, 2), s.decorationManager)
 	}
 }
 
@@ -458,6 +464,13 @@ func (s *Session) DataDevice() *wl.DataDevice { return s.dataDevice }
 // KeyboardSerial returns the serial of the last keyboard enter, needed
 // by selection requests.
 func (s *Session) KeyboardSerial() uint32 { return s.keyboardSerial }
+
+// DecorationManager returns the bound xdg-decoration manager, or nil
+// when the compositor does not provide it; server-side window
+// decorations need it.
+func (s *Session) DecorationManager() *deco.ZxdgDecorationManagerV1 {
+	return s.decorationManager
+}
 
 // Roundtrip issues a display sync and dispatches until it completes.
 // Proxies destroyed mid-queue (a done frame callback, a dismissed

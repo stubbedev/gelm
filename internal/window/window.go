@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 
+	xdeco "github.com/neurlang/wayland/unstable/xdg-decoration-v1"
 	"github.com/neurlang/wayland/wl"
 	"github.com/neurlang/wayland/xdg"
 )
@@ -35,6 +36,8 @@ type Window struct {
 	Toplevel   *xdg.Toplevel
 
 	wmBase     *xdg.WmBase
+	decoration *xdeco.ZxdgToplevelDecorationV1
+
 	closed     bool
 	configured bool
 	width      uint32
@@ -137,3 +140,18 @@ func (w *Window) Size() (int, int) {
 
 // HostSurface returns the underlying wl_surface.
 func (w *Window) HostSurface() *wl.Surface { return w.WLSurface }
+
+// Decorate requests server-side title bars and borders through the
+// xdg-decoration manager. A nil manager (compositor without the
+// global) is a silent no-op: the window simply stays undecorated.
+func (w *Window) Decorate(mgr *xdeco.ZxdgDecorationManagerV1) error {
+	if mgr == nil {
+		return nil
+	}
+	dec, err := mgr.GetToplevelDecoration(w.Toplevel)
+	if err != nil {
+		return err
+	}
+	w.decoration = dec
+	return dec.SetMode(xdeco.ZxdgToplevelDecorationV1ModeServerSide)
+}

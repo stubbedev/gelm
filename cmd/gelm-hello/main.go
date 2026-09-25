@@ -94,6 +94,9 @@ func run() error {
 		return fmt.Errorf("gelm-hello: %w", err)
 	}
 	w, h := win.Size()
+	if err := win.Decorate(sess.DecorationManager()); err != nil {
+		log.Printf("gelm-hello: server decorations unavailable: %v", err)
+	}
 	log.Printf("gelm-hello: mapped at %dx%d", w, h)
 
 	sess.OnWmBasePing = win.Pong
