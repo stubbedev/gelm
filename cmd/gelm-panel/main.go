@@ -258,7 +258,7 @@ func run() error {
 		router.Move(widget.Point{X: int(x) * out.Scale, Y: int(y) * out.Scale})
 		requestRedraw()
 	}
-	sess.OnPointerButton = func(button, state uint32) {
+	sess.OnPointerButton = func(button, state, _ uint32) {
 		p := widget.Point{X: int(pointer.x) * out.Scale, Y: int(pointer.y) * out.Scale}
 		if state == 1 {
 			router.Press(button, p)

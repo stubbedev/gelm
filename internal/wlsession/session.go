@@ -10,6 +10,7 @@ import (
 
 	"github.com/neurlang/wayland/wl"
 	"github.com/neurlang/wayland/wlclient"
+	"github.com/neurlang/wayland/xdg"
 
 	"github.com/stubbedev/gelm/wlr"
 )
@@ -39,6 +40,7 @@ type Session struct {
 	seat              *wl.Seat
 	pointer           *wl.Pointer
 	keyboard          *wl.Keyboard
+	wmBase            *xdg.WmBase
 	compositorVersion uint32
 	outputs           []*Output
 	hasArgb           bool
@@ -50,13 +52,17 @@ type Session struct {
 	// (logical) coordinates.
 	OnPointerMove func(x, y float64)
 	// OnPointerButton fires on button state changes: the wayland button
-	// code and 1 for press, 0 for release.
-	OnPointerButton func(button, state uint32)
+	// code, 1 for press and 0 for release, and the event serial needed
+	// for interactive move and resize requests.
+	OnPointerButton func(button, state, serial uint32)
 	// OnPointerAxis fires with vertical scroll deltas, positive down.
 	OnPointerAxis func(dy float64)
 	// OnKey fires on key presses (never releases) with the evdev
 	// keycode and whether a shift modifier is held.
 	OnKey func(keycode uint32, shift bool)
+	// OnWmBasePing fires when the compositor pings liveness; reply
+	// through Window.Pong.
+	OnWmBasePing func(serial uint32)
 }
 
 // Connect binds the display, waits for the initial registry burst and the
@@ -150,6 +156,12 @@ func (s *Session) HandleRegistryGlobal(ev wl.RegistryGlobalEvent) {
 	case "wl_seat":
 		s.seat = wlclient.RegistryBindSeatInterface(s.registry, ev.Name, bindVersion(ev.Version, 7))
 		wlclient.SeatAddListener(s.seat, s)
+	case "xdg_wm_base":
+		ctx, _ := wl.GetUserData[wl.Context](s.registry)
+		wmBase := xdg.NewShell(ctx)
+		_ = s.registry.Bind(ev.Name, ev.Interface, bindVersion(ev.Version, 5), wmBase)
+		xdg.WmBaseAddListener(wmBase, s)
+		s.wmBase = wmBase
 	}
 }
 
@@ -223,6 +235,14 @@ func (s *Session) HandleSeatCapabilities(ev wl.SeatCapabilitiesEvent) {
 // HandleSeatName implements wl.SeatNameHandler.
 func (s *Session) HandleSeatName(wl.SeatNameEvent) {}
 
+// HandleWmBasePing implements xdg.WmBasePingHandler: the compositor is
+// asking whether the client is alive.
+func (s *Session) HandleWmBasePing(ev xdg.WmBasePingEvent) {
+	if s.OnWmBasePing != nil {
+		s.OnWmBasePing(ev.Serial)
+	}
+}
+
 // HandlePointerEnter implements wl.PointerEnterHandler.
 func (s *Session) HandlePointerEnter(ev wl.PointerEnterEvent) {
 	if s.OnPointerMove != nil {
@@ -243,7 +263,7 @@ func (s *Session) HandlePointerMotion(ev wl.PointerMotionEvent) {
 // HandlePointerButton implements wl.PointerButtonHandler.
 func (s *Session) HandlePointerButton(ev wl.PointerButtonEvent) {
 	if s.OnPointerButton != nil {
-		s.OnPointerButton(ev.Button, ev.State)
+		s.OnPointerButton(ev.Button, ev.State, ev.Serial)
 	}
 }
 
@@ -311,6 +331,13 @@ func (s *Session) LayerShell() *wlr.ZwlrLayerShellV1 { return s.layerShell }
 
 // Outputs returns the bound outputs in registry order.
 func (s *Session) Outputs() []*Output { return s.outputs }
+
+// WmBase returns the bound xdg_wm_base, or nil when the compositor does
+// not provide it; window support needs it.
+func (s *Session) WmBase() *xdg.WmBase { return s.wmBase }
+
+// Seat returns the bound wl_seat, or nil when the compositor has none.
+func (s *Session) Seat() *wl.Seat { return s.seat }
 
 // Roundtrip issues a display sync and dispatches until it completes.
 func (s *Session) Roundtrip() error {
