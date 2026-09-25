@@ -16,6 +16,10 @@ type Entry struct {
 	color       render.Color
 	placeholder string
 
+	// OnChanged fires after the contents change, whatever the
+	// source: typing, editing keys, clipboard, or SetText.
+	OnChanged func(string)
+
 	runes  []rune
 	cursor int
 	anchor int // selection anchor; equals cursor when nothing is selected
@@ -36,6 +40,13 @@ func (e *Entry) Text() string {
 	return string(e.runes)
 }
 
+// changed fires OnChanged after a content change.
+func (e *Entry) changed() {
+	if e.OnChanged != nil {
+		e.OnChanged(e.Text())
+	}
+}
+
 // SelectedText implements SelectedTexter.
 func (e *Entry) SelectedText() (string, bool) {
 	start, end, active := e.Selection()
@@ -47,9 +58,13 @@ func (e *Entry) SelectedText() (string, bool) {
 
 // SetText replaces the contents and moves the cursor to the end.
 func (e *Entry) SetText(s string) {
+	if s == e.Text() {
+		return
+	}
 	e.runes = []rune(s)
 	e.cursor = len(e.runes)
 	e.anchor = e.cursor
+	e.changed()
 }
 
 // Cursor returns the cursor position as a rune index.
@@ -86,6 +101,7 @@ func (e *Entry) Insert(s string) {
 	e.runes = append(e.runes[:e.cursor], append(append([]rune{}, r...), e.runes[e.cursor:]...)...)
 	e.cursor += len(r)
 	e.anchor = e.cursor
+	e.changed()
 }
 
 // Backspace deletes the selection, or the rune before the cursor when
@@ -93,6 +109,7 @@ func (e *Entry) Insert(s string) {
 func (e *Entry) Backspace() {
 	if _, _, active := e.Selection(); active {
 		e.collapse()
+		e.changed()
 		return
 	}
 	if e.cursor == 0 {
@@ -101,6 +118,7 @@ func (e *Entry) Backspace() {
 	e.runes = append(e.runes[:e.cursor-1], e.runes[e.cursor:]...)
 	e.cursor--
 	e.anchor = e.cursor
+	e.changed()
 }
 
 // Delete deletes the selection, or the rune at the cursor when nothing
@@ -108,12 +126,14 @@ func (e *Entry) Backspace() {
 func (e *Entry) Delete() {
 	if _, _, active := e.Selection(); active {
 		e.collapse()
+		e.changed()
 		return
 	}
 	if e.cursor >= len(e.runes) {
 		return
 	}
 	e.runes = append(e.runes[:e.cursor], e.runes[e.cursor+1:]...)
+	e.changed()
 }
 
 // MoveCursor moves the cursor by delta runes, clamped to [0, len]. An
