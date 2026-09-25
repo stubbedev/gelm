@@ -1,29 +1,8 @@
 package main
 
 import (
-	"github.com/neurlang/wayland/wl"
-	"github.com/neurlang/wayland/wlclient"
-
-	"github.com/stubbedev/gelm/internal/buffer"
 	"github.com/stubbedev/gelm/widget"
 )
-
-func wlclientBufferListener(b *buffer.Buffer) {
-	wlclient.BufferAddListener(b.WL, buffer.ReleaseHandler{B: b})
-}
-
-func wlclientCallbackListener(cb *wl.Callback, ready *bool) {
-	wlclient.CallbackAddListener(cb, frameDone{ready: ready})
-}
-
-type frameDone struct {
-	ready *bool
-}
-
-// HandleCallbackDone implements wl.CallbackDoneHandler.
-func (f frameDone) HandleCallbackDone(wl.CallbackDoneEvent) {
-	*f.ready = true
-}
 
 // keyAction maps an evdev keycode to a widget action; ok reports whether
 // the key is mapped at all.

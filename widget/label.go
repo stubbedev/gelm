@@ -49,7 +49,7 @@ func (l *Label) retext() {
 	l.shaped = l.face.Shape(l.text, l.sizePx)
 	l.natural = Size{
 		W: int(l.shaped.Advance() + 0.5),
-		H: int(l.shaped.Ascent() + l.shaped.Descent() + 0.5),
+		H: l.shaped.LineHeight(),
 	}
 }
 

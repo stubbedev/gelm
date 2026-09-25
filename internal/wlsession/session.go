@@ -57,6 +57,8 @@ type Session struct {
 	OnPointerButton func(button, state, serial uint32)
 	// OnPointerAxis fires with vertical scroll deltas, positive down.
 	OnPointerAxis func(dy float64)
+	// OnPointerLeave fires when the pointer leaves the surface.
+	OnPointerLeave func()
 	// OnKey fires on key presses (never releases) with the evdev
 	// keycode and whether a shift modifier is held.
 	OnKey func(keycode uint32, shift bool)
@@ -251,7 +253,11 @@ func (s *Session) HandlePointerEnter(ev wl.PointerEnterEvent) {
 }
 
 // HandlePointerLeave implements wl.PointerLeaveHandler.
-func (s *Session) HandlePointerLeave(wl.PointerLeaveEvent) {}
+func (s *Session) HandlePointerLeave(wl.PointerLeaveEvent) {
+	if s.OnPointerLeave != nil {
+		s.OnPointerLeave()
+	}
+}
 
 // HandlePointerMotion implements wl.PointerMotionHandler.
 func (s *Session) HandlePointerMotion(ev wl.PointerMotionEvent) {

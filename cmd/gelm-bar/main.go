@@ -14,17 +14,14 @@ import (
 	"image/png"
 	"log"
 	"os"
-	"path/filepath"
-	"strings"
 	"time"
 
-	"github.com/go-text/typesetting/font"
-	"github.com/go-text/typesetting/fontscan"
 	"github.com/neurlang/wayland/wl"
 	"github.com/neurlang/wayland/wlclient"
 
 	"github.com/stubbedev/gelm/internal/buffer"
 	"github.com/stubbedev/gelm/internal/layersurface"
+	"github.com/stubbedev/gelm/internal/sysfont"
 	"github.com/stubbedev/gelm/internal/wlsession"
 	"github.com/stubbedev/gelm/render"
 	"github.com/stubbedev/gelm/widget"
@@ -65,11 +62,7 @@ func main() {
 // dumpFrame renders a single bar frame offscreen and saves it as PNG, for
 // visual checks without a compositor.
 func dumpFrame(path string) error {
-	fontData, err := findSansFont()
-	if err != nil {
-		return err
-	}
-	tf, err := render.LoadFont(fontData)
+	tf, err := sysfont.Sans()
 	if err != nil {
 		return err
 	}
@@ -97,43 +90,6 @@ func dumpFrame(path string) error {
 	}
 	return os.WriteFile(path, buf.Bytes(), 0o600)
 }
-
-// findSansFont locates a sans-serif system font without cgo, scanning the
-// fonts fontconfig knows about (including nix store paths).
-func findSansFont() ([]byte, error) {
-	cacheDir, err := os.UserCacheDir()
-	if err != nil {
-		cacheDir = os.TempDir()
-	}
-	fonts, err := fontscan.SystemFonts(quietLogger{}, filepath.Join(cacheDir, "gelm-fontscan"))
-	if err != nil {
-		return nil, fmt.Errorf("gelm-bar: scan fonts: %w", err)
-	}
-	pick := -1
-	for i, f := range fonts {
-		family := strings.ToLower(f.Family)
-		if f.Location.File == "" || f.Aspect.Style != font.StyleNormal || f.Aspect.Weight != font.WeightNormal {
-			continue
-		}
-		if strings.Contains(family, "sans") || strings.Contains(family, "dejavu") || strings.Contains(family, "noto") {
-			pick = i
-			break
-		}
-		if pick < 0 {
-			pick = i
-		}
-	}
-	if pick < 0 {
-		return nil, errors.New("gelm-bar: no usable system font found")
-	}
-	return os.ReadFile(fonts[pick].Location.File)
-}
-
-// quietLogger discards fontscan warnings.
-type quietLogger struct{}
-
-// Printf implements fontscan.Logger.
-func (quietLogger) Printf(string, ...any) {}
 
 // buildLeftModule assembles the left bar module: a button holding the
 // logo icon and the gelm label.
@@ -167,14 +123,11 @@ func run() error {
 	}
 	defer sess.Close()
 
-	fontData, err := findSansFont()
+	tf, err := sysfont.Sans()
 	if err != nil {
 		return err
 	}
-	typeface, err := render.LoadFont(fontData)
-	if err != nil {
-		return err
-	}
+	log.Printf("gelm-bar: font %q", tf.Family())
 
 	outputs := sess.Outputs()
 	if len(outputs) == 0 {
@@ -221,7 +174,7 @@ func run() error {
 	log.Printf("gelm-bar: mapped at %dx%d, scale %d", w, h, out.Scale)
 
 	var frameReady bool
-	leftBtn := buildLeftModule(typeface, out.Scale)
+	leftBtn := buildLeftModule(tf, out.Scale)
 	lastSecond := -1
 	lastClock := ""
 	lastBufW, lastBufH, lastScale := 0, 0, out.Scale
@@ -233,7 +186,7 @@ func run() error {
 				return fmt.Errorf("gelm-bar: set buffer scale: %w", err)
 			}
 			lastScale = out.Scale
-			leftBtn = buildLeftModule(typeface, out.Scale)
+			leftBtn = buildLeftModule(tf, out.Scale)
 			full = true
 		}
 		bufW, bufH := w*out.Scale, h*out.Scale
@@ -252,7 +205,7 @@ func run() error {
 			continue
 		}
 
-		dirty := dirtyRects(full, lastClock, lastSecond, clock, second, bufW, bufH, out.Scale, typeface)
+		dirty := dirtyRects(full, lastClock, lastSecond, clock, second, bufW, bufH, out.Scale, tf)
 		lastSecond = second
 		lastClock = clock
 		full = false
@@ -272,7 +225,7 @@ func run() error {
 		cv := render.New(b.Data, b.Stride, b.Width, b.Height)
 		for _, r := range dirty {
 			cv.Clear(r, bgColor)
-			paintElements(cv, r, clock, second, bufW, bufH, out.Scale, typeface, leftBtn)
+			paintElements(cv, r, clock, second, bufW, bufH, out.Scale, tf, leftBtn)
 		}
 
 		if err := surf.Attach(b.WL, 0, 0); err != nil {

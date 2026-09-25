@@ -134,3 +134,6 @@ func (w *Window) Close() { w.closed = true }
 func (w *Window) Size() (int, int) {
 	return int(w.width), int(w.height)
 }
+
+// HostSurface returns the underlying wl_surface.
+func (w *Window) HostSurface() *wl.Surface { return w.WLSurface }

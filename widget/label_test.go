@@ -97,3 +97,32 @@ func TestLabelPaint(t *testing.T) {
 		}
 	})
 }
+
+func TestLabelNaturalHeightPaints(t *testing.T) {
+	face := entryFace(t)
+
+	t.Run("a label at its measured size leaves ink", func(t *testing.T) {
+		// Regression: Measure rounded the line height down while the
+		// paint guard compared the exact float, so some sizes (13px
+		// DejaVu) measured a box their own painter rejected.
+		const px = 13.0
+		l := NewLabel(face, "server-01.example", px, render.RGB(255, 255, 255))
+		got := l.Measure(Constraints{Max: Size{W: 500, H: 100}})
+		stride := render.Stride(200)
+		data := make([]byte, stride*40)
+		cv := render.New(data, stride, 200, 40)
+		l.Arrange(render.Rect{X: 4, Y: 10, W: got.W, H: got.H})
+		l.Paint(cv)
+		ink := 0
+		for y := 10; y < 10+got.H; y++ {
+			for x := range 200 {
+				if render.ColorFromBytes(data[y*stride+x*4:]).A() > 0 {
+					ink++
+				}
+			}
+		}
+		if ink == 0 {
+			t.Errorf("label measured %v but its painter drew nothing: natural height must satisfy the paint guard", got)
+		}
+	})
+}

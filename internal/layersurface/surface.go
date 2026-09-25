@@ -174,3 +174,6 @@ func (s *Surface) Closed() bool {
 func (s *Surface) Size() (int, int) {
 	return int(s.width), int(s.height)
 }
+
+// HostSurface returns the underlying wl_surface.
+func (s *Surface) HostSurface() *wl.Surface { return s.WLSurface }
