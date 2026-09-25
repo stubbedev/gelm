@@ -43,6 +43,26 @@ type TooltipTexter interface {
 	TooltipText() string
 }
 
+// IsInteractive reports whether w or any ancestor consumes presses:
+// buttons, sliders, toggles, text inputs, and scroll areas. Hit tests
+// return the deepest widget, often a plain label inside a control, so
+// apps checking "was this chrome?" must walk up. Parents are recorded
+// during Arrange, so call it on an arranged tree.
+func IsInteractive(w Widget) bool {
+	for w != nil {
+		switch w.(type) {
+		case *Button, *Slider, *Switch, *CheckButton, *Entry, *TextArea, *Scroll:
+			return true
+		}
+		p, ok := w.(interface{ Parent() Widget })
+		if !ok {
+			return false
+		}
+		w = p.Parent()
+	}
+	return false
+}
+
 // HoverMover receives pointer motion while the widget is hovered, even
 // without a press: menus highlight rows with it.
 type HoverMover interface {
@@ -156,20 +176,23 @@ func (r *Router) Release(button uint32, p Point) {
 	}
 	hit := r.Root.HitTest(p)
 	if hit == r.pressed {
-		switch {
-		case hit == r.lastClickWidget && time.Since(r.lastClick) < doubleClickWindow:
-			if c, ok := hit.(DoubleClicker); ok {
-				c.DoubleClickAt(p)
+		handled := false
+		if hit == r.lastClickWidget && time.Since(r.lastClick) < doubleClickWindow {
+			// Only widgets with a double-click behavior consume the
+			// second click; everything else treats each release as
+			// its own click (two rapid clicks toggle twice).
+			if dc, ok := hit.(DoubleClicker); ok {
+				dc.DoubleClickAt(p)
+				handled = true
 			}
-			r.lastClick = time.Time{}
-			r.lastClickWidget = nil
-		default:
+		}
+		if !handled {
 			if c, ok := hit.(Clicker); ok {
 				c.ClickAt(p)
 			}
-			r.lastClick = time.Now()
-			r.lastClickWidget = hit
 		}
+		r.lastClick = time.Now()
+		r.lastClickWidget = hit
 	}
 	r.pressed = nil
 	r.dragging = false

@@ -88,13 +88,11 @@ func run() error {
 	onPress := func(btn, serial uint32, over widget.Widget) {
 		switch btn {
 		case widget.BTNLeft:
-			// Presses on plain chrome move the window; presses on
-			// interactive controls belong to the widgets.
-			switch over.(type) {
-			case *widget.Button, *widget.Slider, *widget.Switch,
-				*widget.CheckButton, *widget.Entry, *widget.TextArea,
-				*widget.Scroll:
-			default:
+			// Presses on plain chrome move the window; presses on or
+			// inside an interactive control belong to the widgets.
+			// Hit tests return the deepest widget (a label inside the
+			// button, a row inside the scroll), so walk the parents.
+			if !widget.IsInteractive(over) {
 				_ = win.Toplevel.Move(sess.Seat(), serial)
 			}
 		case widget.BTNRight:
@@ -144,8 +142,15 @@ func run() error {
 
 // showcase bundles the widgets the input hooks need.
 type showcase struct {
-	root widget.Widget
-	bump func()
+	root     widget.Widget
+	bump     func()
+	button   *widget.Button
+	slider   *widget.Slider
+	sw       *widget.Switch
+	check    *widget.CheckButton
+	entry    *widget.Entry
+	area     *widget.TextArea
+	scrolled *widget.Scroll
 }
 
 // buildUI assembles the full widget showcase: controls on the left,
@@ -206,7 +211,7 @@ func buildUI(tf *render.Typeface) showcase {
 	area.SetTooltip("multi-line editing")
 
 	list := widget.NewBox(widget.Column, 4, 0)
-	for i := 1; i <= 24; i++ {
+	for i := 1; i <= 48; i++ {
 		list.Append(widget.NewLabel(tf,
 			fmt.Sprintf("server-%02d.example   up   41ms", i), 12, t.Text), false)
 	}
@@ -245,5 +250,9 @@ func buildUI(tf *render.Typeface) showcase {
 	root.Append(columns, true)
 	root.Append(status, false)
 
-	return showcase{root: root, bump: bump}
+	return showcase{
+		root: root, bump: bump,
+		button: button, slider: slider, sw: sw, check: check,
+		entry: entry, area: area, scrolled: scrolled,
+	}
 }

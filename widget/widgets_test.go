@@ -359,13 +359,56 @@ func TestScroll(t *testing.T) {
 		return s
 	}
 
-	t.Run("viewport fits the constraints, child keeps its natural size", func(t *testing.T) {
+	t.Run("natural size is the child clamped to the constraints", func(t *testing.T) {
+		// Regression: Measure used to return the constraints verbatim,
+		// an unbounded appetite that blew up natural measurement in
+		// parent boxes and laid the viewport past the window edge.
 		s := newScroll()
-		if got := s.Measure(Constraints{Max: Size{W: 60, H: 60}}); got != (Size{W: 60, H: 60}) {
-			t.Errorf("viewport measure = %v, want 60x60", got)
+		if got := s.Measure(Constraints{Max: Size{W: 60, H: 60}}); got != (Size{W: 50, H: 60}) {
+			t.Errorf("viewport measure = %v, want the child natural 50x60 clamped to 60 height", got)
 		}
 		if s.nat.H != 200 {
 			t.Errorf("child natural height = %d, want 200", s.nat.H)
+		}
+	})
+
+	t.Run("a box row with an expanding scroll stays inside the parent", func(t *testing.T) {
+		// Regression for the showcase: the scroll's unbounded natural
+		// width pushed the row's second column off the window.
+		face := entryFace(t)
+		lbl := NewLabel(face, "side", 12, render.RGB(255, 255, 255))
+		list := NewBox(Column, 0, 0)
+		for range 24 {
+			list.Append(NewLabel(face, "server-01.example", 12, render.RGB(255, 255, 255)), false)
+		}
+		row := NewBox(Row, 20, 0).
+			Append(NewBox(Column, 8, 0).Append(lbl, false), true).
+			Append(NewScroll(list), true)
+		const (
+			w, h = 640, 470
+		)
+		row.Measure(Constraints{Max: Size{W: w, H: h}})
+		row.Arrange(render.Rect{X: 0, Y: 0, W: w, H: h})
+		// Walk to the scroll: its viewport must sit inside the window.
+		var found *Scroll
+		var walk func(w Widget)
+		walk = func(w Widget) {
+			if s, ok := w.(*Scroll); ok {
+				found = s
+			}
+			if c, ok := w.(interface{ Children() []Widget }); ok {
+				for _, k := range c.Children() {
+					walk(k)
+				}
+			}
+		}
+		walk(row)
+		if found == nil {
+			t.Fatal("no scroll in the row")
+		}
+		b := found.Bounds()
+		if b.X < 0 || b.Y < 0 || b.X+b.W > w || b.Y+b.H > h {
+			t.Errorf("scroll viewport %v leaves the %dx%d window", b, w, h)
 		}
 	})
 

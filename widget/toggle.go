@@ -66,8 +66,8 @@ func (s *Switch) HitTest(p Point) Widget {
 	return s.HitLeaf(s, p)
 }
 
-// Click toggles the switch; the Router invokes it on press+release.
-func (s *Switch) Click() { s.Toggle() }
+// ClickAt toggles the switch; the Router invokes it on press+release.
+func (s *Switch) ClickAt(Point) { s.Toggle() }
 
 // SetPressed is a no-op: the switch has no pressed visual.
 func (s *Switch) SetPressed(bool) {}
@@ -202,8 +202,8 @@ func (c *CheckButton) HitTest(p Point) Widget {
 	return c.HitLeaf(c, p)
 }
 
-// Click toggles the checkbox; the Router invokes it on press+release.
-func (c *CheckButton) Click() { c.Toggle() }
+// ClickAt toggles the checkbox; the Router invokes it on press+release.
+func (c *CheckButton) ClickAt(Point) { c.Toggle() }
 
 // Spacer is empty layout space of a fixed size.
 type Spacer struct {

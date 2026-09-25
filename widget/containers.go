@@ -198,12 +198,14 @@ func (s *Scroll) SetOffset(x, y int) {
 	s.offY = min(max(0, y), maxY)
 }
 
-// Measure measures the child without the viewport's limits to learn its
-// natural size, then reports the viewport as filling whatever the parent
-// offers, clamped to con.
+// Measure reports the child's natural size clamped to the offered
+// constraints. The viewport itself is sized by Arrange (expanding
+// children and cross stretch), so the reported natural size must stay
+// bounded: an unbounded appetite here would blow up natural measurement
+// in parent boxes and lay children out past the window edge.
 func (s *Scroll) Measure(con Constraints) Size {
 	s.nat = s.child.Measure(Constraints{Max: Size{W: math.MaxInt, H: math.MaxInt}})
-	return clampSize(con.Max, con)
+	return clampSize(s.nat, con)
 }
 
 // Arrange pins the viewport to r and places the child at the negative
