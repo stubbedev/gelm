@@ -36,6 +36,15 @@ func (e *Entry) Text() string {
 	return string(e.runes)
 }
 
+// SelectedText implements SelectedTexter.
+func (e *Entry) SelectedText() (string, bool) {
+	start, end, active := e.Selection()
+	if !active {
+		return "", false
+	}
+	return string(e.runes[start:end]), true
+}
+
 // SetText replaces the contents and moves the cursor to the end.
 func (e *Entry) SetText(s string) {
 	e.runes = []rune(s)

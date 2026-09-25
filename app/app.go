@@ -15,6 +15,7 @@ import (
 	"github.com/unxed/xkb-go"
 
 	"github.com/stubbedev/gelm/internal/buffer"
+	"github.com/stubbedev/gelm/internal/clipboard"
 	"github.com/stubbedev/gelm/internal/wlsession"
 	"github.com/stubbedev/gelm/render"
 	"github.com/stubbedev/gelm/widget"
@@ -52,6 +53,9 @@ type Config struct {
 	// OnPress, when set, fires after the router recorded a press; a
 	// window can use the serial for interactive move.
 	OnPress func(serial uint32, over widget.Widget)
+	// Clipboard, when set, enables ctrl+c, ctrl+x, and ctrl+v on the
+	// focused widget's selection.
+	Clipboard *clipboard.Clipboard
 	// OnKey, when set, receives every key press (repeats included)
 	// together with the router, for apps that map keycodes to typing
 	// or actions.
@@ -131,7 +135,7 @@ func Run(cfg Config) error {
 	// Key repeat: the compositor tells us its rate and delay; held keys
 	// re-fire the route while waitInput polls.
 	routeKey := func(keycode uint32, mods wlsession.Mods) {
-		routeKey(sess, router, keycode, mods, cfg.OnKey)
+		routeKey(sess, router, keycode, mods, cfg.Clipboard, cfg.OnKey)
 	}
 	rep := newKeyRepeater(sess.RepeatInfo())
 	sess.OnKey = func(keycode uint32, mods wlsession.Mods) {
@@ -224,12 +228,21 @@ type keyTranslator interface {
 
 // routeKey turns one key press into text or a widget action through the
 // compositor's keymap, then gives the app the raw event for any custom
-// bindings. Alt is never text; ctrl+editing keys still act (but ctrl+a
-// selects all first).
-func routeKey(sess keyTranslator, router *widget.Router, keycode uint32, mods wlsession.Mods, extra func(*widget.Router, uint32, wlsession.Mods)) {
+// bindings. Alt is never text. Ctrl handles clipboard (c, x, v when a
+// clipboard is configured) and select-all; other ctrl combos still act
+// on editing keys.
+func routeKey(sess keyTranslator, router *widget.Router, keycode uint32, mods wlsession.Mods, clip *clipboard.Clipboard, extra func(*widget.Router, uint32, wlsession.Mods)) {
 	sym := sess.KeySym(keycode)
 	isCtrl := ctrl(mods)
 	switch {
+	case isCtrl && clip != nil && (sym == xkb.Keysym('c') || sym == xkb.Keysym('C')):
+		copySelection(router, clip)
+	case isCtrl && clip != nil && (sym == xkb.Keysym('x') || sym == xkb.Keysym('X')):
+		if copySelection(router, clip) {
+			router.KeyAction(widget.KeyDelete, widget.Mods(mods))
+		}
+	case isCtrl && clip != nil && (sym == xkb.Keysym('v') || sym == xkb.Keysym('V')):
+		pasteSelection(router, clip)
 	case isCtrl && (sym == xkb.Keysym('a') || sym == xkb.Keysym('A')):
 		router.SelectAll()
 	case !isCtrl && mods&wlsession.ModAlt == 0:
@@ -249,6 +262,36 @@ func routeKey(sess keyTranslator, router *widget.Router, keycode uint32, mods wl
 	}
 	if extra != nil {
 		extra(router, keycode, mods)
+	}
+}
+
+// copySelection puts the focused widget's selection on the clipboard
+// and reports whether there was one.
+func copySelection(router *widget.Router, clip *clipboard.Clipboard) bool {
+	f := router.Focused()
+	if f == nil {
+		return false
+	}
+	sel, ok := f.(widget.SelectedTexter)
+	if !ok {
+		return false
+	}
+	text, has := sel.SelectedText()
+	if !has {
+		return false
+	}
+	return clip.WriteText(text) == nil
+}
+
+// pasteSelection inserts the clipboard text at the focused widget's
+// cursor.
+func pasteSelection(router *widget.Router, clip *clipboard.Clipboard) {
+	text, err := clip.ReadText()
+	if err != nil {
+		return
+	}
+	for _, r := range text {
+		router.Type(r)
 	}
 }
 

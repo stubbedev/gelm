@@ -179,6 +179,13 @@ func (r *Router) KeyAction(a KeyAction, mods Mods) {
 	}
 }
 
+// SelectedTexter exposes the widget's active selection.
+type SelectedTexter interface {
+	// SelectedText returns the selected text and whether a non-empty
+	// selection exists.
+	SelectedText() (string, bool)
+}
+
 // Type delivers a typed character to the focused widget.
 func (r *Router) Type(ch rune) {
 	if h, ok := r.focus.(RuneHandler); ok {

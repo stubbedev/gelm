@@ -14,6 +14,7 @@ import (
 	"os"
 
 	"github.com/stubbedev/gelm/app"
+	"github.com/stubbedev/gelm/internal/clipboard"
 	"github.com/stubbedev/gelm/internal/layersurface"
 	"github.com/stubbedev/gelm/internal/sysfont"
 	"github.com/stubbedev/gelm/internal/wlsession"
@@ -192,5 +193,6 @@ func run() error {
 		Scale:      out.Scale,
 		Root:       root,
 		Background: bgColor,
+		Clipboard:  clipboard.New(sess),
 	})
 }

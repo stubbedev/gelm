@@ -40,7 +40,7 @@ func TestRouteKey(t *testing.T) {
 	t.Run("printable keys reach the focused widget as text", func(t *testing.T) {
 		r, e := newRouter()
 		tr := &fakeTranslator{text: map[uint32]string{30: "x"}}
-		routeKey(tr, r, 30, 0, nil)
+		routeKey(tr, r, 30, 0, nil, nil)
 		if got := e.Text(); got != "x" {
 			t.Errorf("text = %q, want x", got)
 		}
@@ -50,7 +50,7 @@ func TestRouteKey(t *testing.T) {
 		r, e := newRouter()
 		tr := &fakeTranslator{syms: map[uint32]xkb.Keysym{14: xkb.KeyBackSpace}}
 		e.SetText("abc")
-		routeKey(tr, r, 14, 0, nil)
+		routeKey(tr, r, 14, 0, nil, nil)
 		if got := e.Text(); got != "ab" {
 			t.Errorf("text = %q, want ab", got)
 		}
@@ -60,8 +60,8 @@ func TestRouteKey(t *testing.T) {
 		r, e := newRouter()
 		tr := &fakeTranslator{syms: map[uint32]xkb.Keysym{30: xkb.Keysym('a')}}
 		e.SetText("abc")
-		routeKey(tr, r, 30, 0, nil)
-		routeKey(tr, r, 30, wlsessionCtrl(), nil)
+		routeKey(tr, r, 30, 0, nil, nil)
+		routeKey(tr, r, 30, wlsessionCtrl(), nil, nil)
 		start, end, active := e.Selection()
 		if !active || start != 0 || end != 3 {
 			t.Errorf("selection = %d..%d active=%v, want 0..3 true", start, end, active)
@@ -71,7 +71,7 @@ func TestRouteKey(t *testing.T) {
 	t.Run("alt never produces text", func(t *testing.T) {
 		r, e := newRouter()
 		tr := &fakeTranslator{text: map[uint32]string{30: "x"}}
-		routeKey(tr, r, 30, wlsessionAlt(), nil)
+		routeKey(tr, r, 30, wlsessionAlt(), nil, nil)
 		if got := e.Text(); got != "" {
 			t.Errorf("alt+key typed %q", got)
 		}
@@ -81,7 +81,7 @@ func TestRouteKey(t *testing.T) {
 		r, _ := newRouter()
 		tr := &fakeTranslator{}
 		seen := 0
-		routeKey(tr, r, 1, 0, func(*widget.Router, uint32, wlsession.Mods) { seen++ })
+		routeKey(tr, r, 1, 0, nil, func(*widget.Router, uint32, wlsession.Mods) { seen++ })
 		if seen != 1 {
 			t.Errorf("hook calls = %d, want 1", seen)
 		}
@@ -92,7 +92,7 @@ func TestRouteKey(t *testing.T) {
 		tr := &fakeTranslator{syms: map[uint32]xkb.Keysym{106: xkb.KeyRight}}
 		e.SetText("hello")
 		e.MoveHome()
-		routeKey(tr, r, 106, wlsessionShift(), nil)
+		routeKey(tr, r, 106, wlsessionShift(), nil, nil)
 		start, end, active := e.Selection()
 		if !active || start != 0 || end != 1 {
 			t.Errorf("selection = %d..%d active=%v, want 0..1 true", start, end, active)

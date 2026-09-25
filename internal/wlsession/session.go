@@ -66,6 +66,9 @@ type Session struct {
 	repeatDelay       uint32
 	xkbKeymap         *xkb.Keymap
 	xkbState          *xkb.State
+	dataDeviceManager *wl.DataDeviceManager
+	dataDevice        *wl.DataDevice
+	keyboardSerial    uint32
 
 	// OnPointerMove fires with the pointer position in surface
 	// (logical) coordinates.
@@ -179,13 +182,32 @@ func (s *Session) HandleRegistryGlobal(ev wl.RegistryGlobalEvent) {
 	case "wl_seat":
 		s.seat = wlclient.RegistryBindSeatInterface(s.registry, ev.Name, bindVersion(ev.Version, 7))
 		wlclient.SeatAddListener(s.seat, s)
+		s.ensureDataDevice()
 	case "xdg_wm_base":
 		ctx, _ := wl.GetUserData[wl.Context](s.registry)
 		wmBase := xdg.NewShell(ctx)
 		_ = s.registry.Bind(ev.Name, ev.Interface, bindVersion(ev.Version, 5), wmBase)
 		xdg.WmBaseAddListener(wmBase, s)
 		s.wmBase = wmBase
+	case "wl_data_device_manager":
+		ctx, _ := wl.GetUserData[wl.Context](s.registry)
+		s.dataDeviceManager = wl.NewDataDeviceManager(ctx)
+		_ = s.registry.Bind(ev.Name, ev.Interface, bindVersion(ev.Version, 3), s.dataDeviceManager)
+		s.ensureDataDevice()
 	}
+}
+
+// ensureDataDevice creates the seat's data device once both the manager
+// and the seat are bound, whichever arrives first.
+func (s *Session) ensureDataDevice() {
+	if s.dataDevice != nil || s.dataDeviceManager == nil || s.seat == nil {
+		return
+	}
+	dev, err := s.dataDeviceManager.GetDataDevice(s.seat)
+	if err != nil {
+		return
+	}
+	s.dataDevice = dev
 }
 
 // HandleRegistryGlobalRemove implements wl.RegistryGlobalRemoveHandler.
@@ -424,6 +446,18 @@ func (s *Session) WmBase() *xdg.WmBase { return s.wmBase }
 
 // Seat returns the bound wl_seat, or nil when the compositor has none.
 func (s *Session) Seat() *wl.Seat { return s.seat }
+
+// DataDeviceManager returns the bound wl_data_device_manager, or nil
+// when the compositor does not provide it; clipboard support needs it.
+func (s *Session) DataDeviceManager() *wl.DataDeviceManager { return s.dataDeviceManager }
+
+// DataDevice returns the seat's data device, or nil before both the
+// manager and the seat are bound.
+func (s *Session) DataDevice() *wl.DataDevice { return s.dataDevice }
+
+// KeyboardSerial returns the serial of the last keyboard enter, needed
+// by selection requests.
+func (s *Session) KeyboardSerial() uint32 { return s.keyboardSerial }
 
 // Roundtrip issues a display sync and dispatches until it completes.
 func (s *Session) Roundtrip() error {
