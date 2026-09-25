@@ -3,14 +3,13 @@
 default:
     @just --list
 
-# vet + lint + test + build (the release gates).
+# The release gates: vet + lint + test + build.
 check: vet lint test build
 
 vet:
     go vet ./...
 
-# golangci-lint against .golangci.yml (strict set: gosec, errorlint,
-# perfsprint, revive, ...; gofumpt + gci formatters).
+# golangci-lint against .golangci.yml.
 lint:
     golangci-lint run
 
@@ -23,8 +22,7 @@ build:
 fmt:
     gofmt -w .
 
-# The showcase window: every widget in one toplevel (clicks, drag,
-# tooltips, right-click menu, Tab focus, esc to close).
+# Every widget in one window: clicks, drag, tooltips, menu, Tab focus.
 demo:
     go run ./cmd/gelm-hello
 
