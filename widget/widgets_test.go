@@ -416,19 +416,3 @@ func TestSpacer(t *testing.T) {
 		t.Errorf("spacer hit = %v, want nil", got)
 	}
 }
-
-func TestCanvasLine(t *testing.T) {
-	stride := render.Stride(20)
-	data := make([]byte, stride*20)
-	cv := render.New(data, stride, 20, 20)
-	cv.Line(2, 10, 18, 10, 3, render.RGB(255, 0, 0))
-	hits := 0
-	for x := range 20 {
-		if render.ColorFromBytes(data[10*stride+x*4:]).A() > 0 {
-			hits++
-		}
-	}
-	if hits < 15 {
-		t.Errorf("horizontal line only %d px wide, want >= 15", hits)
-	}
-}

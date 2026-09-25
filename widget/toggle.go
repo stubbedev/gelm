@@ -176,9 +176,17 @@ func (c *CheckButton) Paint(cv *render.Canvas) {
 	inner.H -= 4
 	if c.checked {
 		cv.RoundedRect(inner, 3, render.RGB(0x89, 0xb4, 0xfa))
-		cx, cy := inner.X+inner.W/2, inner.Y+inner.H/2
-		cv.Line(cx-4, cy, cx-1, cy+3, 2, render.RGB(0x11, 0x11, 0x1b))
-		cv.Line(cx-1, cy+3, cx+4, cy-3, 2, render.RGB(0x11, 0x11, 0x1b))
+		bw, bh := float64(box.W), float64(box.H)
+		dark := render.RGB(0x11, 0x11, 0x1b)
+		stroke := max(2, box.W/7)
+		x0 := box.X + int(0.24*bw)
+		y0 := box.Y + int(0.55*bh)
+		x1 := box.X + int(0.42*bw)
+		y1 := box.Y + int(0.73*bh)
+		x2 := box.X + int(0.78*bw)
+		y2 := box.Y + int(0.27*bh)
+		cv.Line(x0, y0, x1, y1, stroke, dark)
+		cv.Line(x1, y1, x2, y2, stroke, dark)
 		return
 	}
 	cv.RoundedRect(inner, 3, render.RGB(0x1e, 0x1e, 0x2e))
