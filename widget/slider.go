@@ -107,3 +107,22 @@ func (s *Slider) SetPressed(on bool) { s.Pressed = on }
 func (s *Slider) DragMove(p Point) {
 	s.SetValue(s.ValueFromX(p.X))
 }
+
+// KeyAction implements KeyActionHandler: arrows nudge the value by one
+// step (or a tenth of the range without one), Home and End jump.
+func (s *Slider) KeyAction(a KeyAction, mods Mods) {
+	step := s.step
+	if step <= 0 {
+		step = (s.max - s.min) / 10
+	}
+	switch a {
+	case KeyLeft, KeyDown:
+		s.SetValue(s.value - step)
+	case KeyRight, KeyUp:
+		s.SetValue(s.value + step)
+	case KeyHome:
+		s.SetValue(s.min)
+	case KeyEnd:
+		s.SetValue(s.max)
+	}
+}
