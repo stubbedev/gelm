@@ -42,11 +42,12 @@ type Widget interface {
 	HitTest(p Point) Widget
 }
 
-// node carries the arranged bounds shared by every implementation. Embed
-// it; call HitLeaf from leaf HitTests and ArrangeRoot from implementations
-// that position children themselves.
+// node carries the arranged bounds and parent link shared by every
+// implementation. Embed it; call HitLeaf from leaf HitTests and
+// ArrangeRoot from implementations that position children themselves.
 type node struct {
 	bounds render.Rect
+	parent Widget
 }
 
 // Arrange records the widget's rect.
@@ -57,6 +58,38 @@ func (n *node) Arrange(r render.Rect) {
 // Bounds returns the last arranged rect.
 func (n *node) Bounds() render.Rect {
 	return n.bounds
+}
+
+// Parent returns the container that arranged this widget, or nil for the
+// tree root.
+func (n *node) Parent() Widget {
+	return n.parent
+}
+
+// setParent records the arranging container; containers call it on their
+// children during Arrange.
+func (n *node) setParent(p Widget) {
+	n.parent = p
+}
+
+// parentOf returns w's parent, or nil.
+func parentOf(w Widget) Widget {
+	if p, ok := w.(interface{ Parent() Widget }); ok {
+		return p.Parent()
+	}
+	return nil
+}
+
+// setParents records parent as the arranging container of every child.
+func setParents(parent Widget, kids ...Widget) {
+	for _, k := range kids {
+		if k == nil {
+			continue
+		}
+		if s, ok := k.(interface{ setParent(Widget) }); ok {
+			s.setParent(parent)
+		}
+	}
 }
 
 // HitLeaf returns the widget when p falls inside its bounds, else nil. It

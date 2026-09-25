@@ -1,0 +1,203 @@
+package widget
+
+import (
+	"testing"
+
+	"github.com/stubbedev/gelm/render"
+)
+
+// inputStub is a leaf with hover/press/click/drag state for router tests.
+type inputStub struct {
+	node
+	nat              Size
+	hovered, pressed bool
+	clicks           int
+	dragTo           []Point
+	scroll           int
+}
+
+func (s *inputStub) SetHovered(on bool) { s.hovered = on }
+func (s *inputStub) SetPressed(on bool) { s.pressed = on }
+func (s *inputStub) Click()             { s.clicks++ }
+func (s *inputStub) DragMove(p Point)   { s.dragTo = append(s.dragTo, p) }
+func (s *inputStub) ScrollBy(dy int)    { s.scroll += dy }
+func (s *inputStub) Measure(c Constraints) Size {
+	return clampSize(s.nat, c)
+}
+func (s *inputStub) Arrange(r render.Rect) { s.node.Arrange(r) }
+func (s *inputStub) Paint(*render.Canvas)  {}
+func (s *inputStub) HitTest(p Point) Widget {
+	return s.HitLeaf(s, p)
+}
+
+func TestRouterHover(t *testing.T) {
+	a := &inputStub{nat: Size{W: 20, H: 20}}
+	b := &inputStub{nat: Size{W: 20, H: 20}}
+	box := NewBox(Row, 0, 0).Append(a, false).Append(b, false)
+	box.Measure(Constraints{Max: Size{W: 100, H: 100}})
+	box.Arrange(render.Rect{X: 0, Y: 0, W: 40, H: 20})
+
+	r := &Router{Root: box}
+	r.Move(Point{X: 5, Y: 5})
+
+	t.Run("hover turns on the widget under the pointer", func(t *testing.T) {
+		if !a.hovered || b.hovered {
+			t.Errorf("a.hovered = %v, b.hovered = %v", a.hovered, b.hovered)
+		}
+		if r.Hovered() != a {
+			t.Errorf("Hovered = %v, want a", r.Hovered())
+		}
+	})
+
+	t.Run("moving off turns hover off", func(t *testing.T) {
+		r.Move(Point{X: 25, Y: 5})
+		if a.hovered || !b.hovered {
+			t.Errorf("a.hovered = %v, b.hovered = %v", a.hovered, b.hovered)
+		}
+	})
+
+	t.Run("leave clears hover", func(t *testing.T) {
+		r.Leave()
+		if b.hovered || r.Hovered() != nil {
+			t.Errorf("b.hovered = %v, hovered = %v", b.hovered, r.Hovered())
+		}
+	})
+}
+
+func TestRouterClick(t *testing.T) {
+	a := &inputStub{nat: Size{W: 20, H: 20}}
+	box := NewBox(Row, 0, 0).Append(a, false)
+	box.Measure(Constraints{Max: Size{W: 100, H: 100}})
+	box.Arrange(render.Rect{X: 0, Y: 0, W: 40, H: 20})
+	r := &Router{Root: box}
+
+	t.Run("press and release on the same widget clicks it", func(t *testing.T) {
+		r.Press(BTNLeft, Point{X: 5, Y: 5})
+		if !a.pressed {
+			t.Fatal("press did not set pressed state")
+		}
+		r.Release(BTNLeft, Point{X: 6, Y: 6})
+		if a.clicks != 1 {
+			t.Errorf("clicks = %d, want 1", a.clicks)
+		}
+		if a.pressed {
+			t.Error("release did not clear pressed state")
+		}
+	})
+
+	t.Run("release off the pressed widget does not click", func(t *testing.T) {
+		r.Press(BTNLeft, Point{X: 5, Y: 5})
+		r.Release(BTNLeft, Point{X: 500, Y: 500})
+		if a.clicks != 1 {
+			t.Errorf("clicks = %d, want still 1", a.clicks)
+		}
+	})
+
+	t.Run("non-primary buttons are ignored", func(t *testing.T) {
+		r.Press(BTNLeft+1, Point{X: 5, Y: 5})
+		r.Release(BTNLeft+1, Point{X: 5, Y: 5})
+		if a.clicks != 1 || a.pressed {
+			t.Errorf("clicks = %d pressed = %v", a.clicks, a.pressed)
+		}
+	})
+}
+
+func TestRouterDrag(t *testing.T) {
+	s := NewSlider(0, 100, 0, 0)
+	s.Measure(Constraints{Max: Size{W: 500, H: 100}})
+	s.Arrange(render.Rect{X: 0, Y: 0, W: 204, H: 18})
+	root := NewBox(Row, 0, 0).Append(s, false)
+	root.Measure(Constraints{Max: Size{W: 500, H: 100}})
+	root.Arrange(render.Rect{X: 0, Y: 0, W: 204, H: 18})
+
+	r := &Router{Root: root}
+	r.Press(BTNLeft, Point{X: 100, Y: 9})
+	t.Run("motion while pressed drags the slider", func(t *testing.T) {
+		r.Move(Point{X: 150, Y: 9})
+		if s.Value() <= 0 || s.Value() >= 100 {
+			t.Errorf("value = %v, want mid-drag value", s.Value())
+		}
+	})
+	t.Run("release ends the drag", func(t *testing.T) {
+		r.Release(BTNLeft, Point{X: 150, Y: 9})
+		v := s.Value()
+		r.Move(Point{X: 20, Y: 9})
+		if s.Value() != v {
+			t.Errorf("value moved after release: %v -> %v", v, s.Value())
+		}
+	})
+}
+
+func TestRouterScrollBubbles(t *testing.T) {
+	tall := NewBox(Column, 0, 0)
+	for range 10 {
+		tall.Append(newStub(50, 20), false)
+	}
+	scroll := NewScroll(tall)
+	scroll.ShowBars = true
+	root := NewBox(Row, 0, 0).Append(scroll, false)
+	root.Measure(Constraints{Max: Size{W: 100, H: 100}})
+	scroll.Measure(Constraints{Max: Size{W: 100, H: 100}})
+	root.Arrange(render.Rect{X: 0, Y: 0, W: 100, H: 100})
+	scroll.Arrange(render.Rect{X: 0, Y: 0, W: 100, H: 100})
+
+	t.Run("axis reaches the scroll through the parent chain", func(t *testing.T) {
+		r := &Router{Root: root}
+		r.Move(Point{X: 5, Y: 5})
+		r.Axis(2)
+		if _, offY := scroll.Offset(); offY != 80 {
+			t.Errorf("scroll offset = %d, want 80", offY)
+		}
+	})
+}
+
+func TestRouterFocusKeys(t *testing.T) {
+	e := NewEntry(entryFace(t), 14, render.RGB(255, 255, 255))
+	e.SetText("hi")
+	box := NewBox(Row, 0, 0).Append(e, false)
+	box.Measure(Constraints{Max: Size{W: 200, H: 100}})
+	box.Arrange(render.Rect{X: 0, Y: 0, W: 200, H: 28})
+
+	r := &Router{Root: box}
+	t.Run("no focus swallows keys", func(t *testing.T) {
+		r.Type('x')
+		r.KeyAction(KeyBackspace)
+		if e.Text() != "hi" {
+			t.Errorf("text = %q, want untouched hi", e.Text())
+		}
+	})
+
+	t.Run("focus by press routes runes and actions", func(t *testing.T) {
+		r.Press(BTNLeft, Point{X: 10, Y: 14})
+		r.Type('!')
+		if e.Text() != "hi!" {
+			t.Fatalf("text = %q, want hi!", e.Text())
+		}
+		r.KeyAction(KeyBackspace)
+		if e.Text() != "hi" {
+			t.Errorf("text = %q, want hi", e.Text())
+		}
+		if r.Focused() != e {
+			t.Errorf("focus = %v, want the entry", r.Focused())
+		}
+	})
+}
+
+func TestParentChain(t *testing.T) {
+	leaf := newStub(10, 10)
+	box := NewBox(Row, 0, 0).Append(leaf, false)
+	box.Measure(Constraints{Max: Size{W: 100, H: 100}})
+	box.Arrange(render.Rect{X: 0, Y: 0, W: 100, H: 100})
+
+	t.Run("arranged children know their container", func(t *testing.T) {
+		if got := parentOf(leaf); got != Widget(box) {
+			t.Errorf("parent = %v, want the box", got)
+		}
+	})
+
+	t.Run("the root has no parent", func(t *testing.T) {
+		if got := parentOf(box); got != nil {
+			t.Errorf("root parent = %v, want nil", got)
+		}
+	})
+}

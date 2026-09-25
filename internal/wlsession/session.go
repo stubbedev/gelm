@@ -1,10 +1,12 @@
 // Package wlsession owns the wl_display connection: registry discovery,
-// globals binding, output scale tracking, and the blocking event dispatch.
+// globals binding, output scale tracking, seat input, and the blocking
+// event dispatch.
 package wlsession
 
 import (
 	"errors"
 	"fmt"
+	"os"
 
 	"github.com/neurlang/wayland/wl"
 	"github.com/neurlang/wayland/wlclient"
@@ -34,11 +36,27 @@ type Session struct {
 	compositor        *wl.Compositor
 	shm               *wl.Shm
 	layerShell        *wlr.ZwlrLayerShellV1
+	seat              *wl.Seat
+	pointer           *wl.Pointer
+	keyboard          *wl.Keyboard
 	compositorVersion uint32
 	outputs           []*Output
 	hasArgb           bool
 	globals           map[string]bool
 	ifaceNames        map[uint32]string
+	mods              uint32
+
+	// OnPointerMove fires with the pointer position in surface
+	// (logical) coordinates.
+	OnPointerMove func(x, y float64)
+	// OnPointerButton fires on button state changes: the wayland button
+	// code and 1 for press, 0 for release.
+	OnPointerButton func(button, state uint32)
+	// OnPointerAxis fires with vertical scroll deltas, positive down.
+	OnPointerAxis func(dy float64)
+	// OnKey fires on key presses (never releases) with the evdev
+	// keycode and whether a shift modifier is held.
+	OnKey func(keycode uint32, shift bool)
 }
 
 // Connect binds the display, waits for the initial registry burst and the
@@ -129,6 +147,9 @@ func (s *Session) HandleRegistryGlobal(ev wl.RegistryGlobalEvent) {
 		shell := wlr.NewZwlrLayerShellV1(ctx)
 		_ = s.registry.Bind(ev.Name, ev.Interface, 1, shell)
 		s.layerShell = shell
+	case "wl_seat":
+		s.seat = wlclient.RegistryBindSeatInterface(s.registry, ev.Name, bindVersion(ev.Version, 7))
+		wlclient.SeatAddListener(s.seat, s)
 	}
 }
 
@@ -171,6 +192,113 @@ func (e *outputEvents) HandleOutputMode(wl.OutputModeEvent) {}
 
 // HandleOutputDone implements wl.OutputDoneHandler.
 func (e *outputEvents) HandleOutputDone(wl.OutputDoneEvent) {}
+
+// seat capabilities bits.
+const (
+	capPointer  = 1
+	capKeyboard = 2
+)
+
+// HandleSeatCapabilities implements wl.SeatCapabilitiesHandler: the
+// pointer and keyboard objects are created as the compositor offers them.
+func (s *Session) HandleSeatCapabilities(ev wl.SeatCapabilitiesEvent) {
+	if ev.Capabilities&capPointer != 0 && s.pointer == nil {
+		p, err := s.seat.GetPointer()
+		if err != nil {
+			return
+		}
+		s.pointer = p
+		wlclient.PointerAddListener(p, s)
+	}
+	if ev.Capabilities&capKeyboard != 0 && s.keyboard == nil {
+		k, err := s.seat.GetKeyboard()
+		if err != nil {
+			return
+		}
+		s.keyboard = k
+		wlclient.KeyboardAddListener(k, s)
+	}
+}
+
+// HandleSeatName implements wl.SeatNameHandler.
+func (s *Session) HandleSeatName(wl.SeatNameEvent) {}
+
+// HandlePointerEnter implements wl.PointerEnterHandler.
+func (s *Session) HandlePointerEnter(ev wl.PointerEnterEvent) {
+	if s.OnPointerMove != nil {
+		s.OnPointerMove(float64(ev.SurfaceX), float64(ev.SurfaceY))
+	}
+}
+
+// HandlePointerLeave implements wl.PointerLeaveHandler.
+func (s *Session) HandlePointerLeave(wl.PointerLeaveEvent) {}
+
+// HandlePointerMotion implements wl.PointerMotionHandler.
+func (s *Session) HandlePointerMotion(ev wl.PointerMotionEvent) {
+	if s.OnPointerMove != nil {
+		s.OnPointerMove(float64(ev.SurfaceX), float64(ev.SurfaceY))
+	}
+}
+
+// HandlePointerButton implements wl.PointerButtonHandler.
+func (s *Session) HandlePointerButton(ev wl.PointerButtonEvent) {
+	if s.OnPointerButton != nil {
+		s.OnPointerButton(ev.Button, ev.State)
+	}
+}
+
+// HandlePointerAxis implements wl.PointerAxisHandler.
+func (s *Session) HandlePointerAxis(ev wl.PointerAxisEvent) {
+	if ev.Axis == 0 && s.OnPointerAxis != nil {
+		s.OnPointerAxis(float64(ev.Value))
+	}
+}
+
+// HandlePointerFrame implements wl.PointerFrameHandler.
+func (s *Session) HandlePointerFrame(wl.PointerFrameEvent) {}
+
+// HandlePointerAxisSource implements wl.PointerAxisSourceHandler.
+func (s *Session) HandlePointerAxisSource(wl.PointerAxisSourceEvent) {}
+
+// HandlePointerAxisStop implements wl.PointerAxisStopHandler.
+func (s *Session) HandlePointerAxisStop(wl.PointerAxisStopEvent) {}
+
+// HandlePointerAxisDiscrete implements wl.PointerAxisDiscreteHandler.
+func (s *Session) HandlePointerAxisDiscrete(wl.PointerAxisDiscreteEvent) {}
+
+// HandlePointerAxisValue120 implements wl.PointerAxisValue120Handler.
+func (s *Session) HandlePointerAxisValue120(wl.PointerAxisValue120Event) {}
+
+// HandleKeyboardKeymap implements wl.KeyboardKeymapHandler: the keymap fd
+// is consumed and closed, gelm maps evdev keycodes with a built-in US
+// layout instead of parsing xkb.
+func (s *Session) HandleKeyboardKeymap(ev wl.KeyboardKeymapEvent) {
+	if ev.FdError == nil && ev.Fd != 0 {
+		f := os.NewFile(ev.Fd, "wayland-keymap")
+		_ = f.Close()
+	}
+}
+
+// HandleKeyboardEnter implements wl.KeyboardEnterHandler.
+func (s *Session) HandleKeyboardEnter(wl.KeyboardEnterEvent) {}
+
+// HandleKeyboardLeave implements wl.KeyboardLeaveHandler.
+func (s *Session) HandleKeyboardLeave(wl.KeyboardLeaveEvent) {}
+
+// HandleKeyboardKey implements wl.KeyboardKeyHandler: presses only.
+func (s *Session) HandleKeyboardKey(ev wl.KeyboardKeyEvent) {
+	if ev.State == 1 && s.OnKey != nil {
+		s.OnKey(ev.Key, s.mods&1 != 0)
+	}
+}
+
+// HandleKeyboardModifiers implements wl.KeyboardModifiersHandler.
+func (s *Session) HandleKeyboardModifiers(ev wl.KeyboardModifiersEvent) {
+	s.mods = ev.ModsDepressed
+}
+
+// HandleKeyboardRepeatInfo implements wl.KeyboardRepeatInfoHandler.
+func (s *Session) HandleKeyboardRepeatInfo(wl.KeyboardRepeatInfoEvent) {}
 
 // Compositor returns the bound wl_compositor.
 func (s *Session) Compositor() *wl.Compositor { return s.compositor }

@@ -51,6 +51,7 @@ func (b *Button) Arrange(r render.Rect) {
 		W: max(0, r.W-2*b.padding),
 		H: max(0, r.H-2*b.padding),
 	})
+	setParents(b, b.child)
 }
 
 // ArrangeRoot records the button's own rect.
@@ -80,5 +81,18 @@ func (b *Button) HitTest(p Point) Widget {
 func (b *Button) Click() {
 	if b.OnClick != nil {
 		b.OnClick()
+	}
+}
+
+// SetHovered implements HoverSetter.
+func (b *Button) SetHovered(on bool) { b.Hovered = on }
+
+// SetPressed implements PressSetter.
+func (b *Button) SetPressed(on bool) { b.Pressed = on }
+
+// KeyAction activates the button on Enter when focused.
+func (b *Button) KeyAction(a KeyAction) {
+	if a == KeyEnter {
+		b.Click()
 	}
 }

@@ -155,6 +155,7 @@ func (b *Box) Arrange(r render.Rect) {
 			rect = render.Rect{X: inner.X, Y: inner.Y + pos, W: inner.W, H: size}
 		}
 		c.w.Arrange(rect)
+		setParents(b, c.w)
 		pos += size + b.spacing
 	}
 }
