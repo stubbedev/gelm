@@ -79,8 +79,14 @@ func (b *Button) HitTest(p Point) Widget {
 	return b.HitLeaf(b, p)
 }
 
-// Click fires the OnClick hook. It is a no-op without one.
-func (b *Button) Click() {
+// ClickAt fires the OnClick hook, ignoring the release point. It is a
+// no-op without one.
+func (b *Button) ClickAt(p Point) {
+	b.click()
+}
+
+// click fires the hook from ClickAt and KeyAction.
+func (b *Button) click() {
 	if b.OnClick != nil {
 		b.OnClick()
 	}
@@ -95,6 +101,6 @@ func (b *Button) SetPressed(on bool) { b.Pressed = on }
 // KeyAction activates the button on Enter when focused.
 func (b *Button) KeyAction(a KeyAction) {
 	if a == KeyEnter {
-		b.Click()
+		b.click()
 	}
 }

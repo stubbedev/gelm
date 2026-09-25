@@ -50,9 +50,10 @@ type Config struct {
 	// OnPress, when set, fires after the router recorded a press; a
 	// window can use the serial for interactive move.
 	OnPress func(serial uint32, over widget.Widget)
-	// OnKey, when set, receives every key press together with the
-	// router, for apps that map keycodes to typing or actions.
-	OnKey func(r *widget.Router, keycode uint32, shift bool)
+	// OnKey, when set, receives every key press (repeats included)
+	// together with the router, for apps that map keycodes to typing
+	// or actions.
+	OnKey func(r *widget.Router, keycode uint32, mods wlsession.Mods)
 	// IdleWait bounds one idle poll before another frame is drawn.
 	// Zero defaults to 50ms.
 	IdleWait time.Duration
@@ -119,16 +120,29 @@ func Run(cfg Config) error {
 		router.Leave()
 		request()
 	}
-	sess.OnKey = func(keycode uint32, shift bool) {
-		if cfg.OnKey != nil {
-			cfg.OnKey(router, keycode, shift)
-		}
-		request()
-	}
 
 	idle := cfg.IdleWait
 	if idle == 0 {
 		idle = 50 * time.Millisecond
+	}
+
+	// Key repeat: the compositor tells us its rate and delay; held keys
+	// re-fire OnKey while waitInput polls.
+	rep := newKeyRepeater(sess.RepeatInfo())
+	sess.OnKey = func(keycode uint32, mods wlsession.Mods) {
+		rep.press(keycode, mods)
+		if cfg.OnKey != nil {
+			cfg.OnKey(router, keycode, mods)
+		}
+	}
+	sess.OnKeyUp = rep.release
+	pump := func() bool {
+		code, mods, ok := rep.tick()
+		if !ok || cfg.OnKey == nil {
+			return ok
+		}
+		cfg.OnKey(router, code, mods)
+		return true
 	}
 
 	for !host.Closed() {
@@ -178,7 +192,7 @@ func Run(cfg Config) error {
 			}
 		}
 
-		if !waitInput(sess, redraw, host, idle) {
+		if !waitInput(sess, redraw, host, idle, pump) {
 			break
 		}
 	}
@@ -196,8 +210,9 @@ func (f frameDone) HandleCallbackDone(wl.CallbackDoneEvent) {
 }
 
 // waitInput polls the connection until more input arrives or the deadline
-// passes, and reports whether the loop should continue.
-func waitInput(sess *wlsession.Session, redraw chan struct{}, host Host, idle time.Duration) bool {
+// passes, firing due key repeats along the way, and reports whether the
+// loop should continue.
+func waitInput(sess *wlsession.Session, redraw chan struct{}, host Host, idle time.Duration, pump func() bool) bool {
 	deadline := time.Now().Add(idle)
 	for time.Now().Before(deadline) && !host.Closed() {
 		select {
@@ -205,10 +220,66 @@ func waitInput(sess *wlsession.Session, redraw chan struct{}, host Host, idle ti
 			return true
 		default:
 		}
+		if pump() {
+			return true
+		}
 		if err := sess.Roundtrip(); err != nil {
 			return false
 		}
 		time.Sleep(5 * time.Millisecond)
 	}
 	return !host.Closed()
+}
+
+// keyRepeater synthesizes repeat presses for a held key, on the
+// compositor's schedule: one repeat after the initial delay, then one
+// every 1/rate.
+type keyRepeater struct {
+	rate, delay time.Duration
+	held        *heldKey
+	next        time.Time
+}
+
+type heldKey struct {
+	code uint32
+	mods wlsession.Mods
+}
+
+// newKeyRepeater builds a repeater from the compositor's repeat info;
+// zeros fall back to 400ms delay and 20 keys per second.
+func newKeyRepeater(rate, delayMs uint32) *keyRepeater {
+	if rate == 0 {
+		rate = 20
+	}
+	if delayMs == 0 {
+		delayMs = 400
+	}
+	return &keyRepeater{
+		rate:  time.Second / time.Duration(rate),
+		delay: time.Duration(delayMs) * time.Millisecond,
+	}
+}
+
+// press records the key now held; a new press replaces and re-arms the
+// previous one, matching physical repeat behavior.
+func (r *keyRepeater) press(code uint32, mods wlsession.Mods) {
+	r.held = &heldKey{code: code, mods: mods}
+	r.next = time.Now().Add(r.delay)
+}
+
+// release stops repeating when the held key comes up.
+func (r *keyRepeater) release(code uint32) {
+	if r.held != nil && r.held.code == code {
+		r.held = nil
+	}
+}
+
+// tick fires the next repeat when one is due and reports whether a key
+// press should be delivered.
+func (r *keyRepeater) tick() (code uint32, mods wlsession.Mods, ok bool) {
+	if r.held == nil || time.Now().Before(r.next) {
+		return 0, 0, false
+	}
+	r.next = time.Now().Add(r.rate)
+	return r.held.code, r.held.mods, true
 }

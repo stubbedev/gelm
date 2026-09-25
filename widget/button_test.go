@@ -99,14 +99,14 @@ func TestButtonClick(t *testing.T) {
 		fired := false
 		b := NewButton(newStub(1, 1), 0, 0)
 		b.OnClick = func() { fired = true }
-		b.Click()
+		b.ClickAt(Point{X: 0, Y: 0})
 		if !fired {
-			t.Error("Click did not fire OnClick")
+			t.Error("ClickAt did not fire OnClick")
 		}
 	})
 
 	t.Run("without OnClick it does not panic", func(t *testing.T) {
 		b := NewButton(newStub(1, 1), 0, 0)
-		b.Click()
+		b.ClickAt(Point{X: 0, Y: 0})
 	})
 }

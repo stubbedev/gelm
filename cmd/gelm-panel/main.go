@@ -192,8 +192,8 @@ func run() error {
 		Scale:      out.Scale,
 		Root:       root,
 		Background: bgColor,
-		OnKey: func(r *widget.Router, keycode uint32, shift bool) {
-			ch, action, ok := mapKey(keycode, shift)
+		OnKey: func(r *widget.Router, keycode uint32, mods wlsession.Mods) {
+			ch, action, ok := mapKey(keycode, mods&wlsession.ModShift != 0)
 			switch {
 			case ok && ch != 0:
 				r.Type(ch)

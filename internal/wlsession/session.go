@@ -29,6 +29,18 @@ type Output struct {
 	Scale int
 }
 
+// Mods is a bitmask of held keyboard modifiers, mirroring the low bits
+// of the wayland ModsDepressed map.
+type Mods uint8
+
+// Modifier bits.
+const (
+	ModShift Mods = 1 << iota
+	ModCapsLock
+	ModCtrl
+	ModAlt
+)
+
 // Session is a connected display with the globals gelm needs bound.
 type Session struct {
 	Display *wl.Display
@@ -47,6 +59,8 @@ type Session struct {
 	globals           map[string]bool
 	ifaceNames        map[uint32]string
 	mods              uint32
+	repeatRate        uint32
+	repeatDelay       uint32
 
 	// OnPointerMove fires with the pointer position in surface
 	// (logical) coordinates.
@@ -60,8 +74,10 @@ type Session struct {
 	// OnPointerLeave fires when the pointer leaves the surface.
 	OnPointerLeave func()
 	// OnKey fires on key presses (never releases) with the evdev
-	// keycode and whether a shift modifier is held.
-	OnKey func(keycode uint32, shift bool)
+	// keycode and the held modifiers.
+	OnKey func(keycode uint32, mods Mods)
+	// OnKeyUp fires on key releases with the evdev keycode.
+	OnKeyUp func(keycode uint32)
 	// OnWmBasePing fires when the compositor pings liveness; reply
 	// through Window.Pong.
 	OnWmBasePing func(serial uint32)
@@ -311,10 +327,17 @@ func (s *Session) HandleKeyboardEnter(wl.KeyboardEnterEvent) {}
 // HandleKeyboardLeave implements wl.KeyboardLeaveHandler.
 func (s *Session) HandleKeyboardLeave(wl.KeyboardLeaveEvent) {}
 
-// HandleKeyboardKey implements wl.KeyboardKeyHandler: presses only.
+// HandleKeyboardKey implements wl.KeyboardKeyHandler.
 func (s *Session) HandleKeyboardKey(ev wl.KeyboardKeyEvent) {
-	if ev.State == 1 && s.OnKey != nil {
-		s.OnKey(ev.Key, s.mods&1 != 0)
+	switch ev.State {
+	case 1:
+		if s.OnKey != nil {
+			s.OnKey(ev.Key, s.Mods())
+		}
+	case 0:
+		if s.OnKeyUp != nil {
+			s.OnKeyUp(ev.Key)
+		}
 	}
 }
 
@@ -323,8 +346,24 @@ func (s *Session) HandleKeyboardModifiers(ev wl.KeyboardModifiersEvent) {
 	s.mods = ev.ModsDepressed
 }
 
-// HandleKeyboardRepeatInfo implements wl.KeyboardRepeatInfoHandler.
-func (s *Session) HandleKeyboardRepeatInfo(wl.KeyboardRepeatInfoEvent) {}
+// Mods returns the currently held modifiers (shift, ctrl, alt).
+func (s *Session) Mods() Mods {
+	return Mods(s.mods) & (ModShift | ModCtrl | ModAlt)
+}
+
+// HandleKeyboardRepeatInfo implements wl.KeyboardRepeatInfoHandler: the
+// compositor's rate (keys per second) and delay (milliseconds).
+func (s *Session) HandleKeyboardRepeatInfo(ev wl.KeyboardRepeatInfoEvent) {
+	s.repeatRate = uint32(ev.Rate)
+	s.repeatDelay = uint32(ev.Delay)
+}
+
+// RepeatInfo returns the compositor's key repeat rate in keys per second
+// and the initial delay in milliseconds. Zeros mean the compositor sent
+// no repeat info; callers fall back to their own defaults.
+func (s *Session) RepeatInfo() (rate, delayMs uint32) {
+	return s.repeatRate, s.repeatDelay
+}
 
 // Compositor returns the bound wl_compositor.
 func (s *Session) Compositor() *wl.Compositor { return s.compositor }

@@ -86,7 +86,7 @@ func run() error {
 	log.Printf("gelm-hello: mapped at %dx%d", w, h)
 
 	sess.OnWmBasePing = win.Pong
-	sess.OnKey = func(keycode uint32, _ bool) {
+	sess.OnKey = func(keycode uint32, _ wlsession.Mods) {
 		if keycode == 1 { // KEY_ESC
 			win.Close()
 		}

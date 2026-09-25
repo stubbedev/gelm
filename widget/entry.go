@@ -112,17 +112,19 @@ func (e *Entry) Paint(cv *render.Canvas) {
 	e.face.DrawAligned(cv, e.Text(), e.bounds, e.sizePx, e.color, render.AlignStart)
 
 	// Cursor bar after the text before the cursor.
-	prefix := string(e.runes[:e.cursor])
-	x := e.bounds.X + 8
-	if prefix != "" {
-		x += int(e.face.Shape(prefix, e.sizePx).Advance() + 0.5)
-	}
+	x := e.bounds.X + 8 + int(e.face.Shape(e.Text(), e.sizePx).CaretX(e.cursor)+0.5)
 	cv.FillRect(render.Rect{X: x, Y: e.bounds.Y + 6, W: 2, H: e.bounds.H - 12}, e.color)
 }
 
 // HitTest returns the entry when p is inside its bounds.
 func (e *Entry) HitTest(p Point) Widget {
 	return e.HitLeaf(e, p)
+}
+
+// ClickAt places the cursor at the clicked text position.
+func (e *Entry) ClickAt(p Point) {
+	x := float64(p.X - e.bounds.X - 8)
+	e.cursor = e.face.Shape(e.Text(), e.sizePx).CaretAt(x)
 }
 
 // InsertRune implements RuneHandler.

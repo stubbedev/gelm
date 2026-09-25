@@ -14,8 +14,9 @@ type PressSetter interface {
 }
 
 // Clicker is invoked when a press and release land on the same widget.
+// p is the release point in root coordinates.
 type Clicker interface {
-	Click()
+	ClickAt(p Point)
 }
 
 // DragMover receives pointer motion while the widget is pressed.
@@ -111,7 +112,7 @@ func (r *Router) Release(button uint32, p Point) {
 	hit := r.Root.HitTest(p)
 	if hit == r.pressed {
 		if c, ok := r.pressed.(Clicker); ok {
-			c.Click()
+			c.ClickAt(p)
 		}
 	}
 	r.pressed = nil

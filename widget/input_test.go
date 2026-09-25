@@ -18,7 +18,7 @@ type inputStub struct {
 
 func (s *inputStub) SetHovered(on bool) { s.hovered = on }
 func (s *inputStub) SetPressed(on bool) { s.pressed = on }
-func (s *inputStub) Click()             { s.clicks++ }
+func (s *inputStub) ClickAt(p Point)    { s.clicks++ }
 func (s *inputStub) DragMove(p Point)   { s.dragTo = append(s.dragTo, p) }
 func (s *inputStub) ScrollBy(dy int)    { s.scroll += dy }
 func (s *inputStub) Measure(c Constraints) Size {
