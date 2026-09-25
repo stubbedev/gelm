@@ -14,6 +14,7 @@ import (
 	"github.com/neurlang/wayland/wlclient"
 	"github.com/unxed/xkb-go"
 
+	"github.com/stubbedev/gelm/internal/anim"
 	"github.com/stubbedev/gelm/internal/buffer"
 	"github.com/stubbedev/gelm/internal/clipboard"
 	"github.com/stubbedev/gelm/internal/wlsession"
@@ -217,8 +218,14 @@ func Run(cfg Config) error {
 			}
 		}
 
+		anim.Tick(time.Now())
 		if !waitInput(sess, redraw, host, idle, pump) {
 			break
+		}
+		if anim.Active() {
+			// Animations need the next frame immediately; skip the
+			// idle wait.
+			continue
 		}
 	}
 	return ErrClosed

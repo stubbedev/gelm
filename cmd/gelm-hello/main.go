@@ -7,10 +7,12 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"time"
 
 	"github.com/unxed/xkb-go"
 
 	"github.com/stubbedev/gelm/app"
+	"github.com/stubbedev/gelm/internal/anim"
 	"github.com/stubbedev/gelm/internal/popup"
 	"github.com/stubbedev/gelm/internal/sysfont"
 	"github.com/stubbedev/gelm/internal/window"
@@ -55,6 +57,7 @@ func run() error {
 	// The widget tree: centered column with a counter button.
 	count := 0
 	countLabel := widget.NewLabel(tf, "clicked 0 times", 15, widget.Current().Text)
+	progress := widget.NewProgressBar(0)
 	button := widget.NewButton(
 		widget.NewBox(widget.Row, 8, 0).
 			Append(widget.NewLabel(tf, "click me", 15, widget.Current().Text), false),
@@ -62,10 +65,15 @@ func run() error {
 	button.OnClick = func() {
 		count++
 		countLabel.SetText(fmt.Sprintf("clicked %d times", count))
+		progress.SetValue(0)
+		anim.Start(600*time.Millisecond, func(t float64) {
+			progress.SetValue(t)
+		})
 	}
 	root := widget.NewBox(widget.Column, 12, 16)
 	root.Append(widget.NewLabel(tf, "gelm window", 18, widget.Current().Accent), false)
 	root.Append(button, false)
+	root.Append(progress, false)
 	root.Append(countLabel, false)
 	root.Append(widget.NewLabel(tf, "drag to move, esc to close", 11, widget.Current().TextMuted), false)
 
