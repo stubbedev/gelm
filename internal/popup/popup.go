@@ -47,6 +47,9 @@ type Config struct {
 	// Serial is the pointer or keyboard serial of the event that opens
 	// the popup, used for the grab.
 	Serial uint32
+	// NoGrab skips the seat grab: the popup tracks hover without
+	// taking input, which tooltips need.
+	NoGrab bool
 }
 
 // New positions and maps a popup, then grabs the seat so clicks outside
@@ -113,11 +116,13 @@ func New(sess *wlsession.Session, cfg Config) (*Popup, error) {
 	if err := p.EnsureUsable(); err != nil {
 		return nil, fmt.Errorf("popup: %w", err)
 	}
-	if err := pop.Grab(sess.Seat(), cfg.Serial); err != nil {
-		return nil, fmt.Errorf("popup: grab: %w", err)
-	}
-	if err := sess.Roundtrip(); err != nil {
-		return nil, fmt.Errorf("popup: grab roundtrip: %w", err)
+	if !cfg.NoGrab {
+		if err := pop.Grab(sess.Seat(), cfg.Serial); err != nil {
+			return nil, fmt.Errorf("popup: grab: %w", err)
+		}
+		if err := sess.Roundtrip(); err != nil {
+			return nil, fmt.Errorf("popup: grab roundtrip: %w", err)
+		}
 	}
 	return p, nil
 }

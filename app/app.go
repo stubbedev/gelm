@@ -58,6 +58,8 @@ type Config struct {
 	// OnPointerMove, when set, receives raw pointer positions in
 	// surface (logical) coordinates, for anchoring context menus.
 	OnPointerMove func(x, y float64)
+	// TooltipFace renders hover tooltips; nil disables tooltips.
+	TooltipFace *render.Typeface
 	// Clipboard, when set, enables ctrl+c, ctrl+x, and ctrl+v on the
 	// focused widget's selection.
 	Clipboard *clipboard.Clipboard
@@ -97,6 +99,7 @@ func Run(cfg Config) error {
 		}
 	}
 	lastW, lastH := host.Size()
+	tip := &tooltipCtl{since: time.Now()}
 
 	sess := cfg.Session
 	sess.OnPointerMove = func(x, y float64) {
@@ -219,6 +222,9 @@ func Run(cfg Config) error {
 		}
 
 		anim.Tick(time.Now())
+		tip.update(router, time.Now(), func(h widget.Widget, text string) tooltipWindow {
+			return openTooltip(sess, host, &cfg, int(pointer.x), int(pointer.y), text)
+		})
 		if !waitInput(sess, redraw, host, idle, pump) {
 			break
 		}

@@ -70,6 +70,8 @@ func run() error {
 			progress.SetValue(t)
 		})
 	}
+	button.SetTooltip("increments the counter")
+	countLabel.SetTooltip("your click total")
 	root := widget.NewBox(widget.Column, 12, 16)
 	root.Append(widget.NewLabel(tf, "gelm window", 18, widget.Current().Accent), false)
 	root.Append(button, false)
@@ -144,6 +146,7 @@ func run() error {
 		Background:    widget.Current().Bg,
 		OnPress:       onPress,
 		OnPointerMove: func(x, y float64) { posX, posY = int(x), int(y) },
+		TooltipFace:   tf,
 		OnKey: func(_ *widget.Router, code uint32, _ wlsession.Mods) {
 			if sess.KeySym(code) == xkb.KeyEscape {
 				win.Close()

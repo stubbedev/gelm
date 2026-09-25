@@ -42,13 +42,21 @@ type Widget interface {
 	HitTest(p Point) Widget
 }
 
-// node carries the arranged bounds and parent link shared by every
-// implementation. Embed it; call HitLeaf from leaf HitTests and
-// ArrangeRoot from implementations that position children themselves.
+// node carries the arranged bounds, parent link, and tooltip text
+// shared by every implementation. Embed it; call HitLeaf from leaf
+// HitTests and ArrangeRoot from implementations that position children
+// themselves.
 type node struct {
-	bounds render.Rect
-	parent Widget
+	bounds  render.Rect
+	parent  Widget
+	tooltip string
 }
+
+// SetTooltip sets hover text shown after a dwell; empty clears it.
+func (n *node) SetTooltip(s string) { n.tooltip = s }
+
+// TooltipText returns the hover text, empty when none is set.
+func (n *node) TooltipText() string { return n.tooltip }
 
 // Arrange records the widget's rect.
 func (n *node) Arrange(r render.Rect) {

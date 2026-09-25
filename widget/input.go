@@ -37,6 +37,12 @@ type DragMover interface {
 	DragMove(p Point)
 }
 
+// TooltipTexter exposes a widget's hover tooltip text.
+type TooltipTexter interface {
+	// TooltipText returns the tooltip, empty when none is set.
+	TooltipText() string
+}
+
 // HoverMover receives pointer motion while the widget is hovered, even
 // without a press: menus highlight rows with it.
 type HoverMover interface {

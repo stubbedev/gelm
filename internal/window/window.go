@@ -141,6 +141,9 @@ func (w *Window) Size() (int, int) {
 // HostSurface returns the underlying wl_surface.
 func (w *Window) HostSurface() *wl.Surface { return w.WLSurface }
 
+// TooltipSurface returns the xdg_surface hover tooltips anchor to.
+func (w *Window) TooltipSurface() *xdg.Surface { return w.XdgSurface }
+
 // Decorate requests server-side title bars and borders through the
 // xdg-decoration manager. A nil manager (compositor without the
 // global) is a silent no-op: the window simply stays undecorated.
