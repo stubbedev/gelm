@@ -11,6 +11,7 @@ import (
 	"github.com/unxed/xkb-go"
 
 	"github.com/stubbedev/gelm/app"
+	"github.com/stubbedev/gelm/internal/popup"
 	"github.com/stubbedev/gelm/internal/sysfont"
 	"github.com/stubbedev/gelm/internal/window"
 	"github.com/stubbedev/gelm/internal/wlsession"
@@ -89,21 +90,49 @@ func run() error {
 
 	sess.OnWmBasePing = win.Pong
 
-	onPress := func(serial uint32, over widget.Widget) {
-		// A press that is not on the counter button starts an
-		// interactive move, handled entirely by the compositor.
-		if over != button {
+	posX, posY := 0, 0
+	onPress := func(btn, serial uint32, over widget.Widget) {
+		switch {
+		case btn == widget.BTNLeft && over != button:
+			// A left press on the background starts an interactive
+			// move, handled entirely by the compositor.
 			_ = win.Toplevel.Move(sess.Seat(), serial)
+		case btn == widget.BTNRight:
+			items := []widget.MenuItem{
+				{Label: "Say hello", OnClick: func() {
+					count++
+					countLabel.SetText(fmt.Sprintf("clicked %d times", count))
+				}},
+				{Label: "Light theme", OnClick: func() { widget.SetTheme(widget.LightTheme()) }},
+				{Label: "Dark theme", OnClick: func() { widget.SetTheme(widget.DarkTheme()) }},
+				{},
+				{Label: "Close window", OnClick: win.Close},
+			}
+			menu := widget.NewMenu(tf, 13, items...)
+			mSize := menu.Measure(widget.Constraints{Max: widget.Size{W: 200, H: 400}})
+			p, err := popup.New(sess, popup.Config{
+				Parent: win.XdgSurface,
+				X:      posX, Y: posY,
+				Width: mSize.W, Height: mSize.H,
+				Serial: serial,
+			})
+			if err != nil {
+				log.Printf("gelm-hello: popup: %v", err)
+				return
+			}
+			menu.OnDismiss = p.Close
+			_ = popup.Run(sess, p, 1, menu, widget.Current().Surface)
 		}
 	}
 
 	if err := app.Run(app.Config{
-		Session:    sess,
-		Host:       win,
-		Scale:      1,
-		Root:       root,
-		Background: widget.Current().Bg,
-		OnPress:    onPress,
+		Session:       sess,
+		Host:          win,
+		Scale:         1,
+		Root:          root,
+		Background:    widget.Current().Bg,
+		OnPress:       onPress,
+		OnPointerMove: func(x, y float64) { posX, posY = int(x), int(y) },
 		OnKey: func(_ *widget.Router, code uint32, _ wlsession.Mods) {
 			if sess.KeySym(code) == xkb.KeyEscape {
 				win.Close()

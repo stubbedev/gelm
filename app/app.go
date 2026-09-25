@@ -50,9 +50,13 @@ type Config struct {
 	Root widget.Widget
 	// Background fills the frame before the tree paints.
 	Background render.Color
-	// OnPress, when set, fires after the router recorded a press; a
-	// window can use the serial for interactive move.
-	OnPress func(serial uint32, over widget.Widget)
+	// OnPress, when set, fires after the router recorded a press with
+	// the button, its serial (for interactive move), and the widget
+	// under the pointer.
+	OnPress func(button uint32, serial uint32, over widget.Widget)
+	// OnPointerMove, when set, receives raw pointer positions in
+	// surface (logical) coordinates, for anchoring context menus.
+	OnPointerMove func(x, y float64)
 	// Clipboard, when set, enables ctrl+c, ctrl+x, and ctrl+v on the
 	// focused widget's selection.
 	Clipboard *clipboard.Clipboard
@@ -97,6 +101,9 @@ func Run(cfg Config) error {
 	sess.OnPointerMove = func(x, y float64) {
 		pointer.x, pointer.y = x, y
 		router.Move(widget.Point{X: int(x) * cfg.Scale, Y: int(y) * cfg.Scale})
+		if cfg.OnPointerMove != nil {
+			cfg.OnPointerMove(x, y)
+		}
 		request()
 	}
 	sess.OnPointerButton = func(button, state, serial uint32) {
@@ -104,7 +111,7 @@ func Run(cfg Config) error {
 		if state == 1 {
 			router.Press(button, p)
 			if cfg.OnPress != nil {
-				cfg.OnPress(serial, router.Hovered())
+				cfg.OnPress(button, serial, router.Hovered())
 			}
 		} else {
 			router.Release(button, p)

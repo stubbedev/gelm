@@ -460,12 +460,19 @@ func (s *Session) DataDevice() *wl.DataDevice { return s.dataDevice }
 func (s *Session) KeyboardSerial() uint32 { return s.keyboardSerial }
 
 // Roundtrip issues a display sync and dispatches until it completes.
+// Proxies destroyed mid-queue (a done frame callback, a dismissed
+// popup) abort a dispatch pass with ErrContextRunProxyNil; retrying is
+// safe and finishes the roundtrip.
 func (s *Session) Roundtrip() error {
 	cb, err := s.Display.Sync()
 	if err != nil {
 		return err
 	}
-	return s.Display.Context().RunTill(cb)
+	err = s.Display.Context().RunTill(cb)
+	for errors.Is(err, wl.ErrContextRunProxyNil) {
+		err = s.Display.Context().RunTill(cb)
+	}
+	return err
 }
 
 // Run dispatches events forever; it returns when the connection dies.

@@ -11,6 +11,9 @@ const doubleClickWindow = 400 * time.Millisecond
 // BTNLeft is the wayland button code of the primary pointer button.
 const BTNLeft uint32 = 0x110
 
+// BTNRight is the wayland button code of the secondary pointer button.
+const BTNRight uint32 = 0x111
+
 // HoverSetter receives hover tracking from the Router.
 type HoverSetter interface {
 	SetHovered(on bool)
@@ -30,6 +33,12 @@ type Clicker interface {
 // DragMover receives pointer motion while the widget is pressed.
 type DragMover interface {
 	DragMove(p Point)
+}
+
+// HoverMover receives pointer motion while the widget is hovered, even
+// without a press: menus highlight rows with it.
+type HoverMover interface {
+	HoverMove(p Point)
 }
 
 // ScrollHandler receives axis scrolling; the Router walks the parent chain
@@ -92,7 +101,8 @@ type Router struct {
 	lastClickWidget       Widget
 }
 
-// Move updates hover state and feeds drags. p is in root coordinates.
+// Move updates hover state and feeds drags and in-widget hover
+// tracking. p is in root coordinates.
 func (r *Router) Move(p Point) {
 	hit := r.Root.HitTest(p)
 	if r.hover != hit {
@@ -103,6 +113,9 @@ func (r *Router) Move(p Point) {
 		if h, ok := hit.(HoverSetter); ok {
 			h.SetHovered(true)
 		}
+	}
+	if h, ok := r.hover.(HoverMover); ok {
+		h.HoverMove(p)
 	}
 	if r.dragging {
 		if d, ok := r.pressed.(DragMover); ok {
