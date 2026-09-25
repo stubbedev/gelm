@@ -44,6 +44,9 @@ func NewTextArea(face *render.Typeface, sizePx float64, color render.Color) *Tex
 func (t *TextArea) SetPlaceholder(s string) { t.placeholder = s }
 
 // Text returns the contents, lines joined with newlines.
+// CursorName reports the text caret shape while hovered.
+func (t *TextArea) CursorName() string { return "xterm" }
+
 func (t *TextArea) Text() string {
 	parts := make([]string, len(t.lines))
 	for i, l := range t.lines {

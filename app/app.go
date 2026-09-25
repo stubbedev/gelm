@@ -100,11 +100,18 @@ func Run(cfg Config) error {
 	}
 	lastW, lastH := host.Size()
 	tip := &tooltipCtl{since: time.Now()}
+	lastCursor := ""
 
 	sess := cfg.Session
 	sess.OnPointerMove = func(x, y float64) {
 		pointer.x, pointer.y = x, y
 		router.Move(widget.Point{X: int(x) * cfg.Scale, Y: int(y) * cfg.Scale})
+		if shape := cursorFor(router.Hovered()); shape != lastCursor {
+			lastCursor = shape
+			if err := sess.SetCursor(shape); err != nil {
+				lastCursor = ""
+			}
+		}
 		if cfg.OnPointerMove != nil {
 			cfg.OnPointerMove(x, y)
 		}
@@ -113,6 +120,10 @@ func Run(cfg Config) error {
 	sess.OnPointerButton = func(button, state, serial uint32) {
 		p := widget.Point{X: int(pointer.x) * cfg.Scale, Y: int(pointer.y) * cfg.Scale}
 		if state == 1 {
+			// Any press dismisses a tooltip, like every toolkit.
+			if tip.open != nil {
+				tip.open.Close()
+			}
 			router.Press(button, p)
 			if cfg.OnPress != nil {
 				cfg.OnPress(button, serial, router.Hovered())

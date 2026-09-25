@@ -36,6 +36,9 @@ func (e *Entry) SetPlaceholder(s string) {
 }
 
 // Text returns the entry contents.
+// CursorName reports the text caret shape while hovered.
+func (e *Entry) CursorName() string { return "xterm" }
+
 func (e *Entry) Text() string {
 	return string(e.runes)
 }

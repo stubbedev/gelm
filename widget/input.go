@@ -37,6 +37,13 @@ type DragMover interface {
 	DragMove(p Point)
 }
 
+// CursorNamer lets a widget request a pointer shape while hovered,
+// using xcursor names ("xterm" for text, "left_ptr" arrow default).
+type CursorNamer interface {
+	// CursorName returns the xcursor shape for the hovered widget.
+	CursorName() string
+}
+
 // TooltipTexter exposes a widget's hover tooltip text.
 type TooltipTexter interface {
 	// TooltipText returns the tooltip, empty when none is set.

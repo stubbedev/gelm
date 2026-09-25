@@ -84,6 +84,15 @@ func (t *tooltipCtl) update(router *widget.Router, now time.Time, opener func(wi
 	}
 }
 
+// cursorFor resolves the pointer shape for the hovered widget: the
+// widget's own request (text fields ask for the caret), else the arrow.
+func cursorFor(hover widget.Widget) string {
+	if cn, ok := hover.(widget.CursorNamer); ok {
+		return cn.CursorName()
+	}
+	return ""
+}
+
 // openTooltip maps a one-shot painted popup at the pointer.
 func openTooltip(sess *wlsession.Session, host Host, cfg *Config, pointerX, pointerY int, text string) *popup.Popup {
 	ts, ok := host.(tooltipSurfacer)
@@ -103,6 +112,17 @@ func openTooltip(sess *wlsession.Session, host Host, cfg *Config, pointerX, poin
 	})
 	if err != nil {
 		return nil
+	}
+	// Tooltips are pure display: an empty input region keeps the
+	// compositor from ever routing the pointer to the popup, which
+	// would steal clicks from the window beneath.
+	region, err := sess.Compositor().CreateRegion()
+	if err == nil {
+		_ = region.Add(0, 0, 0, 0)
+		_ = tp.HostSurface().SetInputRegion(region)
+		_ = region.Destroy()
+		// The input region is double-buffered: commit to apply.
+		_ = tp.HostSurface().Commit()
 	}
 	w, h := tp.Size()
 	box.Measure(widget.Constraints{Max: widget.Size{W: w, H: h}})

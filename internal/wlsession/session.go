@@ -72,6 +72,10 @@ type Session struct {
 	keyboardSerial    uint32
 	decorationManager *deco.ZxdgDecorationManagerV1
 
+	desiredCursor      string
+	pointerEnterSerial uint32
+	cursorSurface      *wl.Surface
+
 	// OnPointerMove fires with the pointer position in surface
 	// (logical) coordinates.
 	OnPointerMove func(x, y float64)
@@ -296,6 +300,8 @@ func (s *Session) HandleWmBasePing(ev xdg.WmBasePingEvent) {
 
 // HandlePointerEnter implements wl.PointerEnterHandler.
 func (s *Session) HandlePointerEnter(ev wl.PointerEnterEvent) {
+	s.pointerEnterSerial = ev.Serial
+	_ = s.applyCursor()
 	if s.OnPointerMove != nil {
 		s.OnPointerMove(float64(ev.SurfaceX), float64(ev.SurfaceY))
 	}
