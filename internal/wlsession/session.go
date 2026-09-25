@@ -8,6 +8,7 @@ import (
 
 	"github.com/neurlang/wayland/wl"
 	"github.com/neurlang/wayland/wlclient"
+
 	"github.com/stubbedev/gelm/wlr"
 )
 
@@ -82,7 +83,7 @@ func Connect() (*Session, error) {
 	}
 	if !s.hasArgb {
 		s.Close()
-		return nil, fmt.Errorf("wlsession: compositor lacks ARGB8888 wl_shm support")
+		return nil, errors.New("wlsession: compositor lacks ARGB8888 wl_shm support")
 	}
 	return s, nil
 }
@@ -204,6 +205,6 @@ func (s *Session) Run() error {
 // Close disconnects from the display.
 func (s *Session) Close() {
 	if s.Display != nil {
-		s.Display.Context().Close()
+		_ = s.Display.Context().Close()
 	}
 }

@@ -6,6 +6,7 @@ package buffer
 import (
 	"errors"
 	"fmt"
+	"math"
 
 	"github.com/neurlang/wayland/os"
 	"github.com/neurlang/wayland/wl"
@@ -71,6 +72,9 @@ func NewFile(shm *wl.Shm, bufW, bufH, scale int) (*Buffer, error) {
 	}
 	stride := Stride(bufW)
 	size := stride * bufH
+	if size > math.MaxInt32 {
+		return nil, fmt.Errorf("buffer: size %d exceeds the wayland int32 range", size)
+	}
 
 	fd, err := os.CreateAnonymousFile(int64(size))
 	if err != nil {

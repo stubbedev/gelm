@@ -27,7 +27,7 @@ func TestAcquireAllocatesUpToCapacity(t *testing.T) {
 	created := 0
 	p := New(countingCreate(&created, 100, 20), 3)
 
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		b, err := p.Acquire()
 		if err != nil {
 			t.Fatalf("acquire %d: %v", i, err)

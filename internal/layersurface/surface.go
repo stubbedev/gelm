@@ -8,6 +8,7 @@ import (
 	"fmt"
 
 	"github.com/neurlang/wayland/wl"
+
 	"github.com/stubbedev/gelm/wlr"
 )
 
