@@ -161,7 +161,7 @@ func TestRouterFocusKeys(t *testing.T) {
 	r := &Router{Root: box}
 	t.Run("no focus swallows keys", func(t *testing.T) {
 		r.Type('x')
-		r.KeyAction(KeyBackspace)
+		r.KeyAction(KeyBackspace, 0)
 		if e.Text() != "hi" {
 			t.Errorf("text = %q, want untouched hi", e.Text())
 		}
@@ -173,7 +173,7 @@ func TestRouterFocusKeys(t *testing.T) {
 		if e.Text() != "hi!" {
 			t.Fatalf("text = %q, want hi!", e.Text())
 		}
-		r.KeyAction(KeyBackspace)
+		r.KeyAction(KeyBackspace, 0)
 		if e.Text() != "hi" {
 			t.Errorf("text = %q, want hi", e.Text())
 		}

@@ -1,5 +1,13 @@
 package widget
 
+import (
+	"time"
+)
+
+// doubleClickWindow is the maximum gap between the clicks of a
+// double-click.
+const doubleClickWindow = 400 * time.Millisecond
+
 // BTNLeft is the wayland button code of the primary pointer button.
 const BTNLeft uint32 = 0x110
 
@@ -30,6 +38,17 @@ type ScrollHandler interface {
 	ScrollBy(dy int)
 }
 
+// Mods is a bitmask of held keyboard modifiers.
+type Mods uint8
+
+// Modifier bits.
+const (
+	ModShift Mods = 1 << iota
+	ModCapsLock
+	ModCtrl
+	ModAlt
+)
+
 // KeyAction is an editing or activation action derived from a keyboard
 // event.
 type KeyAction uint8
@@ -44,9 +63,10 @@ const (
 	KeyEnter
 )
 
-// KeyActionHandler receives editing and activation actions.
+// KeyActionHandler receives editing and activation actions with the
+// modifiers held at the time.
 type KeyActionHandler interface {
-	KeyAction(a KeyAction)
+	KeyAction(a KeyAction, mods Mods)
 }
 
 // RuneHandler receives typed characters.
@@ -66,6 +86,8 @@ type Router struct {
 
 	hover, pressed, focus Widget
 	dragging              bool
+	lastClick             time.Time
+	lastClickWidget       Widget
 }
 
 // Move updates hover state and feeds drags. p is in root coordinates.
@@ -111,8 +133,19 @@ func (r *Router) Release(button uint32, p Point) {
 	}
 	hit := r.Root.HitTest(p)
 	if hit == r.pressed {
-		if c, ok := r.pressed.(Clicker); ok {
-			c.ClickAt(p)
+		switch {
+		case hit == r.lastClickWidget && time.Since(r.lastClick) < doubleClickWindow:
+			if c, ok := hit.(DoubleClicker); ok {
+				c.DoubleClickAt(p)
+			}
+			r.lastClick = time.Time{}
+			r.lastClickWidget = nil
+		default:
+			if c, ok := hit.(Clicker); ok {
+				c.ClickAt(p)
+			}
+			r.lastClick = time.Now()
+			r.lastClickWidget = hit
 		}
 	}
 	r.pressed = nil
@@ -140,9 +173,9 @@ func (r *Router) Axis(dy float64) {
 
 // KeyAction delivers an editing or activation action to the focused
 // widget.
-func (r *Router) KeyAction(a KeyAction) {
+func (r *Router) KeyAction(a KeyAction, mods Mods) {
 	if h, ok := r.focus.(KeyActionHandler); ok {
-		h.KeyAction(a)
+		h.KeyAction(a, mods)
 	}
 }
 
@@ -150,6 +183,24 @@ func (r *Router) KeyAction(a KeyAction) {
 func (r *Router) Type(ch rune) {
 	if h, ok := r.focus.(RuneHandler); ok {
 		h.InsertRune(ch)
+	}
+}
+
+// DoubleClicker is invoked on the second click of a double-click; p is
+// the release point in root coordinates.
+type DoubleClicker interface {
+	DoubleClickAt(p Point)
+}
+
+// SelectAller clears or sets a full selection on the focused widget.
+type SelectAller interface {
+	SelectAll()
+}
+
+// SelectAll asks the focused widget to select its entire content.
+func (r *Router) SelectAll() {
+	if s, ok := r.focus.(SelectAller); ok {
+		s.SelectAll()
 	}
 }
 

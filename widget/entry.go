@@ -1,6 +1,8 @@
 package widget
 
 import (
+	"unicode"
+
 	"github.com/stubbedev/gelm/render"
 )
 
@@ -16,6 +18,7 @@ type Entry struct {
 
 	runes  []rune
 	cursor int
+	anchor int // selection anchor; equals cursor when nothing is selected
 }
 
 // NewEntry returns an empty entry painted with face at sizePx.
@@ -37,6 +40,7 @@ func (e *Entry) Text() string {
 func (e *Entry) SetText(s string) {
 	e.runes = []rune(s)
 	e.cursor = len(e.runes)
+	e.anchor = e.cursor
 }
 
 // Cursor returns the cursor position as a rune index.
@@ -44,33 +48,91 @@ func (e *Entry) Cursor() int {
 	return e.cursor
 }
 
-// Insert inserts s at the cursor and leaves the cursor after it.
+// Selection returns the selected rune range and whether a non-empty
+// selection exists.
+func (e *Entry) Selection() (start, end int, active bool) {
+	start, end = e.cursor, e.anchor
+	if start > end {
+		start, end = end, start
+	}
+	return start, end, start != end
+}
+
+// collapse drops any selection: the selected runes are removed and the
+// cursor rests at their start. Without a selection it only resets the
+// anchor.
+func (e *Entry) collapse() {
+	start, end, active := e.Selection()
+	if active {
+		e.runes = append(e.runes[:start], e.runes[end:]...)
+	}
+	e.anchor = start
+	e.cursor = start
+}
+
+// Insert inserts s at the cursor. An active selection is replaced.
 func (e *Entry) Insert(s string) {
+	e.collapse()
 	r := []rune(s)
 	e.runes = append(e.runes[:e.cursor], append(append([]rune{}, r...), e.runes[e.cursor:]...)...)
 	e.cursor += len(r)
+	e.anchor = e.cursor
 }
 
-// Backspace deletes the rune before the cursor; it is a no-op at the start.
+// Backspace deletes the selection, or the rune before the cursor when
+// nothing is selected.
 func (e *Entry) Backspace() {
+	if _, _, active := e.Selection(); active {
+		e.collapse()
+		return
+	}
 	if e.cursor == 0 {
 		return
 	}
 	e.runes = append(e.runes[:e.cursor-1], e.runes[e.cursor:]...)
 	e.cursor--
+	e.anchor = e.cursor
 }
 
-// Delete deletes the rune at the cursor; it is a no-op at the end.
+// Delete deletes the selection, or the rune at the cursor when nothing
+// is selected.
 func (e *Entry) Delete() {
+	if _, _, active := e.Selection(); active {
+		e.collapse()
+		return
+	}
 	if e.cursor >= len(e.runes) {
 		return
 	}
 	e.runes = append(e.runes[:e.cursor], e.runes[e.cursor+1:]...)
 }
 
-// MoveCursor moves the cursor by delta runes, clamped to [0, len].
+// MoveCursor moves the cursor by delta runes, clamped to [0, len]. An
+// active selection collapses to the edge the motion points at first,
+// without moving further - the standard first-press behavior.
 func (e *Entry) MoveCursor(delta int) {
+	if _, _, active := e.Selection(); active {
+		start, end, _ := e.Selection()
+		edge := start
+		if delta > 0 {
+			edge = end
+		}
+		e.cursor, e.anchor = edge, edge
+		return
+	}
 	e.cursor += delta
+	e.clampCursor()
+	e.anchor = e.cursor
+}
+
+// MoveCursorExtending moves the cursor by delta runes, growing or
+// shrinking the selection from its anchor (shift+arrow behavior).
+func (e *Entry) MoveCursorExtending(delta int) {
+	e.cursor += delta
+	e.clampCursor()
+}
+
+func (e *Entry) clampCursor() {
 	if e.cursor < 0 {
 		e.cursor = 0
 	}
@@ -79,11 +141,13 @@ func (e *Entry) MoveCursor(delta int) {
 	}
 }
 
-// MoveHome puts the cursor at the start.
-func (e *Entry) MoveHome() { e.cursor = 0 }
+// MoveHome puts the cursor at the start, dropping any selection.
+func (e *Entry) MoveHome() { e.cursor, e.anchor = 0, 0 }
 
-// MoveEnd puts the cursor after the last rune.
-func (e *Entry) MoveEnd() { e.cursor = len(e.runes) }
+// MoveEnd puts the cursor after the last rune, dropping any selection.
+func (e *Entry) MoveEnd() {
+	e.cursor, e.anchor = len(e.runes), len(e.runes)
+}
 
 // Measure wants the text advance (or the placeholder's) plus padding; an
 // empty field keeps its padding so the box stays visible. Clamped to con.
@@ -100,14 +164,22 @@ func (e *Entry) Measure(con Constraints) Size {
 	return clampSize(Size{W: w, H: h}, con)
 }
 
-// Paint draws the field: placeholder when empty, text otherwise, and the
-// cursor bar. Zero color fields fall back to the theme.
+// Paint draws the field: placeholder when empty, text otherwise, the
+// selection highlight, and the cursor bar. Zero color fields fall back
+// to the theme.
 func (e *Entry) Paint(cv *render.Canvas) {
 	t := Current()
 	cv.RoundedRect(e.bounds, t.Radius, t.Surface)
 	if len(e.runes) == 0 && e.placeholder != "" {
 		e.face.DrawAligned(cv, e.placeholder, e.bounds, e.sizePx, t.Border, render.AlignStart)
 		return
+	}
+	if start, end, active := e.Selection(); active {
+		x0 := e.bounds.X + 8 + int(e.face.Shape(e.Text(), e.sizePx).CaretX(start)+0.5)
+		x1 := e.bounds.X + 8 + int(e.face.Shape(e.Text(), e.sizePx).CaretX(end)+0.5)
+		a := t.Accent
+		cv.FillRect(render.Rect{X: x0, Y: e.bounds.Y + 4, W: x1 - x0, H: e.bounds.H - 8},
+			render.RGBA(a.R(), a.G(), a.B(), 90))
 	}
 	e.face.DrawAligned(cv, e.Text(), e.bounds, e.sizePx, e.color, render.AlignStart)
 
@@ -121,10 +193,51 @@ func (e *Entry) HitTest(p Point) Widget {
 	return e.HitLeaf(e, p)
 }
 
-// ClickAt places the cursor at the clicked text position.
+// ClickAt places the cursor (and the selection anchor) at the clicked
+// text position.
 func (e *Entry) ClickAt(p Point) {
 	x := float64(p.X - e.bounds.X - 8)
 	e.cursor = e.face.Shape(e.Text(), e.sizePx).CaretAt(x)
+	e.anchor = e.cursor
+}
+
+// DragMove extends the selection while the pointer drags; the anchor
+// stays where the press landed.
+func (e *Entry) DragMove(p Point) {
+	x := float64(p.X - e.bounds.X - 8)
+	e.cursor = e.face.Shape(e.Text(), e.sizePx).CaretAt(x)
+}
+
+// DoubleClickAt selects the run of same-class runes (word or whitespace)
+// under the clicked position.
+func (e *Entry) DoubleClickAt(p Point) {
+	if len(e.runes) == 0 {
+		return
+	}
+	x := float64(p.X - e.bounds.X - 8)
+	c := e.face.Shape(e.Text(), e.sizePx).CaretAt(x)
+	if c >= len(e.runes) {
+		c = len(e.runes) - 1
+	}
+	word := func(r rune) bool {
+		return r == '_' || unicode.IsLetter(r) || unicode.IsDigit(r)
+	}
+	wantWord := word(e.runes[c])
+	start := c
+	for start > 0 && word(e.runes[start-1]) == wantWord {
+		start--
+	}
+	end := c + 1
+	for end < len(e.runes) && word(e.runes[end]) == wantWord {
+		end++
+	}
+	e.cursor, e.anchor = end, start
+}
+
+// SelectAll selects the entire contents.
+func (e *Entry) SelectAll() {
+	e.anchor = 0
+	e.cursor = len(e.runes)
 }
 
 // InsertRune implements RuneHandler.
@@ -132,21 +245,39 @@ func (e *Entry) InsertRune(r rune) {
 	e.Insert(string(r))
 }
 
-// KeyAction implements KeyActionHandler for editing keys.
-func (e *Entry) KeyAction(a KeyAction) {
+// KeyAction implements KeyActionHandler for editing keys. Shift-extended
+// motion grows the selection from its anchor.
+func (e *Entry) KeyAction(a KeyAction, mods Mods) {
+	shift := mods&ModShift != 0
 	switch a {
 	case KeyBackspace:
 		e.Backspace()
 	case KeyDelete:
 		e.Delete()
 	case KeyLeft:
-		e.MoveCursor(-1)
+		if shift {
+			e.MoveCursorExtending(-1)
+		} else {
+			e.MoveCursor(-1)
+		}
 	case KeyRight:
-		e.MoveCursor(1)
+		if shift {
+			e.MoveCursorExtending(1)
+		} else {
+			e.MoveCursor(1)
+		}
 	case KeyHome:
-		e.MoveHome()
+		if shift {
+			e.cursor = 0
+		} else {
+			e.MoveHome()
+		}
 	case KeyEnd:
-		e.MoveEnd()
+		if shift {
+			e.cursor = len(e.runes)
+		} else {
+			e.MoveEnd()
+		}
 	case KeyEnter:
 	}
 }
