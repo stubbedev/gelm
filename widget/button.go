@@ -59,14 +59,16 @@ func (b *Button) ArrangeRoot(r render.Rect) {
 	b.node.Arrange(r)
 }
 
-// Paint draws the state's background, then the child.
+// Paint draws the state's background, then the child. A zero Bg family
+// falls back to the theme.
 func (b *Button) Paint(cv *render.Canvas) {
-	bg := b.Bg
+	t := Current()
+	bg := t.resolve(b.Bg, t.Surface)
 	switch {
 	case b.Pressed:
-		bg = b.BgPressed
+		bg = t.resolve(b.BgPressed, t.SurfacePressed)
 	case b.Hovered:
-		bg = b.BgHover
+		bg = t.resolve(b.BgHover, t.SurfaceHover)
 	}
 	cv.RoundedRect(b.bounds, b.radius, bg)
 	b.child.Paint(cv)

@@ -71,19 +71,21 @@ func (s *Slider) Measure(con Constraints) Size {
 	return clampSize(Size{W: 200, H: 18}, con)
 }
 
-// Paint draws the trough and the handle at the value's position.
+// Paint draws the trough, fill, and handle. Zero colors fall back to the
+// theme.
 func (s *Slider) Paint(cv *render.Canvas) {
+	t := Current()
 	cy := s.bounds.Y + s.bounds.H/2
 	trough := render.Rect{X: s.bounds.X + 4, Y: cy - 2, W: s.bounds.W - 8, H: 4}
-	cv.RoundedRect(trough, 2, render.RGB(0x45, 0x47, 0x5a))
+	cv.RoundedRect(trough, 2, t.Border)
 
 	filled := trough
 	filled.W = int(float64(trough.W) * s.fraction())
-	cv.RoundedRect(filled, 2, render.RGB(0x89, 0xb4, 0xfa))
+	cv.RoundedRect(filled, 2, t.Accent)
 
 	knob := 14
 	kx := s.bounds.X + 4 + int(float64(s.bounds.W-8)*s.fraction()) - knob/2
-	cv.RoundedRect(render.Rect{X: kx, Y: cy - knob/2, W: knob, H: knob}, knob/2, render.RGB(0xcd, 0xd6, 0xf4))
+	cv.RoundedRect(render.Rect{X: kx, Y: cy - knob/2, W: knob, H: knob}, knob/2, t.Text)
 }
 
 func (s *Slider) fraction() float64 {

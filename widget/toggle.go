@@ -44,10 +44,12 @@ func (s *Switch) Measure(con Constraints) Size {
 }
 
 // Paint draws the track and knob. The knob sits at the right when on.
+// Zero colors fall back to the theme.
 func (s *Switch) Paint(cv *render.Canvas) {
-	track := render.RGB(0x45, 0x47, 0x5a)
+	t := Current()
+	track := t.Surface
 	if s.on {
-		track = render.RGB(0x89, 0xb4, 0xfa)
+		track = t.Accent
 	}
 	cv.RoundedRect(s.bounds, s.bounds.H/2, track)
 
@@ -56,7 +58,7 @@ func (s *Switch) Paint(cv *render.Canvas) {
 	if s.on {
 		kx = s.bounds.X + s.bounds.W - 3 - knobD
 	}
-	cv.RoundedRect(render.Rect{X: kx, Y: s.bounds.Y + 3, W: knobD, H: knobD}, knobD/2, render.RGB(0xcd, 0xd6, 0xf4))
+	cv.RoundedRect(render.Rect{X: kx, Y: s.bounds.Y + 3, W: knobD, H: knobD}, knobD/2, t.Text)
 }
 
 // HitTest returns the switch when p is inside its bounds.
@@ -104,13 +106,15 @@ func (p *ProgressBar) Measure(con Constraints) Size {
 	return clampSize(Size{W: 160, H: 10}, con)
 }
 
-// Paint draws the trough and the proportional fill.
+// Paint draws the trough and the proportional fill. Zero colors fall back
+// to the theme.
 func (p *ProgressBar) Paint(cv *render.Canvas) {
-	cv.RoundedRect(p.bounds, p.bounds.H/2, render.RGB(0x45, 0x47, 0x5a))
+	t := Current()
+	cv.RoundedRect(p.bounds, p.bounds.H/2, t.Surface)
 	fill := p.bounds
 	fill.W = int(float64(p.bounds.W) * p.value)
 	if fill.W > 0 {
-		cv.RoundedRect(fill, p.bounds.H/2, render.RGB(0x89, 0xb4, 0xfa))
+		cv.RoundedRect(fill, p.bounds.H/2, t.Accent)
 	}
 }
 
@@ -159,7 +163,10 @@ func (c *CheckButton) Measure(con Constraints) Size {
 }
 
 // Paint draws the box; when checked, an accent fill and a check mark.
+// Paint draws the box; when checked, an accent fill and a check mark.
+// Colors fall back to the theme.
 func (c *CheckButton) Paint(cv *render.Canvas) {
+	t := Current()
 	box := c.bounds
 	if box.W > box.H {
 		box.W = box.H
@@ -167,17 +174,15 @@ func (c *CheckButton) Paint(cv *render.Canvas) {
 	if box.H > box.W {
 		box.H = box.W
 	}
-	border := render.RGB(0x58, 0x5b, 0x70)
-	cv.RoundedRect(box, 4, border)
+	cv.RoundedRect(box, 4, t.Border)
 	inner := box
 	inner.X += 2
 	inner.Y += 2
 	inner.W -= 4
 	inner.H -= 4
 	if c.checked {
-		cv.RoundedRect(inner, 3, render.RGB(0x89, 0xb4, 0xfa))
+		cv.RoundedRect(inner, 3, t.Accent)
 		bw, bh := float64(box.W), float64(box.H)
-		dark := render.RGB(0x11, 0x11, 0x1b)
 		stroke := max(2, box.W/7)
 		x0 := box.X + int(0.24*bw)
 		y0 := box.Y + int(0.55*bh)
@@ -185,11 +190,11 @@ func (c *CheckButton) Paint(cv *render.Canvas) {
 		y1 := box.Y + int(0.73*bh)
 		x2 := box.X + int(0.78*bw)
 		y2 := box.Y + int(0.27*bh)
-		cv.Line(x0, y0, x1, y1, stroke, dark)
-		cv.Line(x1, y1, x2, y2, stroke, dark)
+		cv.Line(x0, y0, x1, y1, stroke, t.OnAccent)
+		cv.Line(x1, y1, x2, y2, stroke, t.OnAccent)
 		return
 	}
-	cv.RoundedRect(inner, 3, render.RGB(0x1e, 0x1e, 0x2e))
+	cv.RoundedRect(inner, 3, t.Bg)
 }
 
 // HitTest returns the checkbox when p is inside its bounds.

@@ -101,11 +101,12 @@ func (e *Entry) Measure(con Constraints) Size {
 }
 
 // Paint draws the field: placeholder when empty, text otherwise, and the
-// cursor bar.
+// cursor bar. Zero color fields fall back to the theme.
 func (e *Entry) Paint(cv *render.Canvas) {
-	cv.RoundedRect(e.bounds, 6, render.RGB(0x18, 0x18, 0x24))
+	t := Current()
+	cv.RoundedRect(e.bounds, t.Radius, t.Surface)
 	if len(e.runes) == 0 && e.placeholder != "" {
-		e.face.DrawAligned(cv, e.placeholder, e.bounds, e.sizePx, render.RGB(0x58, 0x5b, 0x70), render.AlignStart)
+		e.face.DrawAligned(cv, e.placeholder, e.bounds, e.sizePx, t.Border, render.AlignStart)
 		return
 	}
 	e.face.DrawAligned(cv, e.Text(), e.bounds, e.sizePx, e.color, render.AlignStart)
