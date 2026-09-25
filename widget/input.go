@@ -58,6 +58,8 @@ const (
 	KeyDelete
 	KeyLeft
 	KeyRight
+	KeyUp
+	KeyDown
 	KeyHome
 	KeyEnd
 	KeyEnter

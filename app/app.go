@@ -306,6 +306,10 @@ func actionForSym(sym xkb.Keysym) (widget.KeyAction, bool) {
 		return widget.KeyLeft, true
 	case xkb.KeyRight:
 		return widget.KeyRight, true
+	case xkb.KeyUp:
+		return widget.KeyUp, true
+	case xkb.KeyDown:
+		return widget.KeyDown, true
 	case xkb.KeyHome:
 		return widget.KeyHome, true
 	case xkb.KeyEnd:
