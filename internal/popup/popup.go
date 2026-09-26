@@ -307,7 +307,7 @@ func (in *popupInput) HandlePointerButton(button, state, serial uint32) {
 }
 
 // HandlePointerAxis implements wlsession.SurfacePointerHandler.
-func (in *popupInput) HandlePointerAxis(float64) {}
+func (in *popupInput) HandlePointerAxis(dx, dy float64) {}
 
 // HandlePointerLeave implements wlsession.SurfacePointerHandler.
 func (in *popupInput) HandlePointerLeave() { in.router.Leave() }

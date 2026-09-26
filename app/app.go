@@ -143,17 +143,27 @@ func (in *surfaceInput) HandlePointerButton(button, state, serial uint32) {
 }
 
 // HandlePointerAxis implements wlsession.SurfacePointerHandler.
-func (in *surfaceInput) HandlePointerAxis(dy float64) {
-	steps := int(dy / 10)
-	if dy != 0 && steps == 0 {
+// HandlePointerAxis implements wlsession.SurfacePointerHandler: dx
+// from the horizontal axis, dy from the vertical, both positive
+// downward/rightward.
+func (in *surfaceInput) HandlePointerAxis(dx, dy float64) {
+	dxSteps, dySteps := axisSteps(dx), axisSteps(dy)
+	debug.Log("input", "route axis dx=%.1f dy=%.1f steps=%d,%d hover %T", dx, dy, dxSteps, dySteps, in.router.Hovered())
+	in.router.Axis(float64(dxSteps), float64(dySteps))
+	in.request()
+}
+
+// axisSteps converts a smooth axis value to 40px steps, keeping at
+// least one step when the value is nonzero.
+func axisSteps(v float64) int {
+	steps := int(v / 10)
+	if v != 0 && steps == 0 {
 		steps = 1
-		if dy < 0 {
+		if v < 0 {
 			steps = -1
 		}
 	}
-	debug.Log("input", "route axis dy=%.1f steps=%d hover %T", dy, steps, in.router.Hovered())
-	in.router.Axis(float64(steps))
-	in.request()
+	return steps
 }
 
 // HandlePointerLeave implements wlsession.SurfacePointerHandler.

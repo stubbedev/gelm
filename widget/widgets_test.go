@@ -438,14 +438,50 @@ func TestScroll(t *testing.T) {
 		s := NewScroll(newStub(20, 20))
 		s.Measure(Constraints{Max: Size{W: 60, H: 60}})
 		s.Arrange(render.Rect{X: 0, Y: 0, W: 60, H: 60})
-		if got := s.HitTest(Point{X: 10, Y: 10}); got != s.child {
+		// The 20x20 child centers in the 60x60 viewport: it spans
+		// (20,20)-(40,40); everything else is the scroll's empty area.
+		if got := s.HitTest(Point{X: 30, Y: 30}); got != s.child {
 			t.Errorf("hit = %v, want the child", got)
 		}
-		if got := s.HitTest(Point{X: 40, Y: 40}); got != Widget(s) {
+		if got := s.HitTest(Point{X: 10, Y: 10}); got != Widget(s) {
 			t.Errorf("hit over empty viewport = %v, want the scroll", got)
 		}
 		if got := s.HitTest(Point{X: 500, Y: 500}); got != nil {
 			t.Errorf("hit outside = %v, want nil", got)
+		}
+	})
+
+	t.Run("fill stretches a smaller child across the viewport", func(t *testing.T) {
+		s := NewScroll(newStub(20, 20))
+		s.FillX, s.FillY = true, true
+		s.Measure(Constraints{Max: Size{W: 60, H: 60}})
+		s.Arrange(render.Rect{X: 0, Y: 0, W: 60, H: 60})
+		cb := s.child.(*stub).Bounds()
+		if cb.W != 60 || cb.H != 60 {
+			t.Errorf("child = %dx%d, want 60x60 under fill", cb.W, cb.H)
+		}
+		if got := s.HitTest(Point{X: 5, Y: 5}); got != s.child {
+			t.Errorf("hit = %v, want the stretched child", got)
+		}
+	})
+
+	t.Run("hit-testing resolves through the scroll offset", func(t *testing.T) {
+		list := NewBox(Column, 0, 0)
+		labels := make([]Widget, 0, 6)
+		for range 6 {
+			l := newStub(60, 20)
+			labels = append(labels, l)
+			list.Append(l, false)
+		}
+		s := NewScroll(list)
+		s.Measure(Constraints{Max: Size{W: 60, H: 60}})
+		s.Arrange(render.Rect{X: 0, Y: 0, W: 60, H: 60})
+		s.SetOffset(0, 30)                               // scrolled 1.5 rows down
+		s.Arrange(render.Rect{X: 0, Y: 0, W: 60, H: 60}) // the loop re-arranges each frame
+		// The third row's content now sits at viewport y=10..30: a press
+		// there must hit row 3, not whatever row was there before.
+		if got := s.HitTest(Point{X: 30, Y: 15}); got != labels[2] {
+			t.Errorf("scrolled hit = %v, want the third row", got)
 		}
 	})
 }

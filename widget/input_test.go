@@ -144,7 +144,7 @@ func TestRouterScrollBubbles(t *testing.T) {
 	t.Run("axis reaches the scroll through the parent chain", func(t *testing.T) {
 		r := &Router{Root: root}
 		r.Move(Point{X: 5, Y: 5})
-		r.Axis(2)
+		r.Axis(0, 2)
 		if _, offY := scroll.Offset(); offY != 80 {
 			t.Errorf("scroll offset = %d, want 80", offY)
 		}

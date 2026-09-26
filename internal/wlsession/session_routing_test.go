@@ -30,7 +30,7 @@ func (h *recordingHandler) HandlePointerButton(button, state, serial uint32) {
 	}
 }
 
-func (h *recordingHandler) HandlePointerAxis(dy float64) { h.axes++ }
+func (h *recordingHandler) HandlePointerAxis(dx, dy float64) { h.axes++ }
 
 func (h *recordingHandler) HandlePointerLeave() { h.leaves++ }
 

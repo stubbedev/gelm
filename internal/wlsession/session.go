@@ -102,6 +102,11 @@ type Session struct {
 	// to; keyboard events route through KeyboardFocus().
 	keyboardFocus *wl.Surface
 
+	// wheel120 accumulates axis_value120 units per axis (vertical,
+	// horizontal) between pointer frames; the frame flushes them as
+	// whole-notch scroll deltas.
+	wheel120 [2]int32
+
 	// OnKey fires on key presses (never releases) with the evdev
 	// keycode and the held modifiers. Keyboard focus is seat-wide,
 	// unlike pointer events which route per surface.
@@ -126,8 +131,10 @@ type SurfacePointerHandler interface {
 	// HandlePointerButton reports a press or release: the wayland
 	// button code, 1 pressed / 0 released, and the event serial.
 	HandlePointerButton(button, state, serial uint32)
-	// HandlePointerAxis reports vertical scroll, positive down.
-	HandlePointerAxis(dy float64)
+	// HandlePointerAxis reports scroll motion: dx from the horizontal
+	// axis (tilt wheels, trackpads), dy from the vertical, both
+	// positive right/down.
+	HandlePointerAxis(dx, dy float64)
 	// HandlePointerLeave reports the pointer leaving the surface.
 	HandlePointerLeave()
 }
@@ -483,20 +490,47 @@ func (s *Session) HandlePointerButton(ev wl.PointerButtonEvent) {
 	}
 }
 
-// HandlePointerAxis implements wl.PointerAxisHandler: routed like
-// motion, so wheel scrolling follows the grab while dragging.
+// Axis orientation enum values on the wire.
+const (
+	axisVertical   = 0
+	axisHorizontal = 1
+)
+
+// wheelPerStep converts axis_value120 units to the smooth-axis scale
+// the app treats as one scroll step (10): one wheel click is 120 units.
+const wheelPerStep = 12.0
+
+// HandlePointerAxis implements wl.PointerAxisHandler: smooth scroll
+// motion routed like motion, so scrolling follows the grab while
+// dragging. Discrete wheel clicks arrive separately through
+// axis_value120 and are flushed at the frame.
 func (s *Session) HandlePointerAxis(ev wl.PointerAxisEvent) {
-	if ev.Axis != 0 {
+	dx, dy := 0.0, 0.0
+	if ev.Axis == axisVertical {
+		dy = float64(ev.Value)
+	} else {
+		dx = float64(ev.Value)
+	}
+	if h := s.pointerTarget(); h != nil {
+		h.HandlePointerAxis(dx, dy)
+	}
+	debug.Log("input", "wire axis dx=%.1f dy=%.1f", dx, dy)
+}
+
+// HandlePointerFrame implements wl.PointerFrameHandler: flushes
+// accumulated axis_value120 wheel clicks to the pointer target as
+// whole-notch scroll deltas. Multiple clicks inside one frame batch
+// here, which is the wheel acceleration multiplicity.
+func (s *Session) HandlePointerFrame(wl.PointerFrameEvent) {
+	dv, dh := s.wheel120[0], s.wheel120[1]
+	s.wheel120[0], s.wheel120[1] = 0, 0
+	if dv == 0 && dh == 0 {
 		return
 	}
 	if h := s.pointerTarget(); h != nil {
-		h.HandlePointerAxis(float64(ev.Value))
+		h.HandlePointerAxis(float64(dh)/wheelPerStep, float64(-dv)/wheelPerStep)
 	}
-	debug.Log("input", "wire axis %.1f", ev.Value)
 }
-
-// HandlePointerFrame implements wl.PointerFrameHandler.
-func (s *Session) HandlePointerFrame(wl.PointerFrameEvent) {}
 
 // HandlePointerAxisSource implements wl.PointerAxisSourceHandler.
 func (s *Session) HandlePointerAxisSource(wl.PointerAxisSourceEvent) {}
@@ -507,8 +541,11 @@ func (s *Session) HandlePointerAxisStop(wl.PointerAxisStopEvent) {}
 // HandlePointerAxisDiscrete implements wl.PointerAxisDiscreteHandler.
 func (s *Session) HandlePointerAxisDiscrete(wl.PointerAxisDiscreteEvent) {}
 
-// HandlePointerAxisValue120 implements wl.PointerAxisValue120Handler.
-func (s *Session) HandlePointerAxisValue120(wl.PointerAxisValue120Event) {}
+// HandlePointerAxisValue120 implements wl.PointerAxisValue120Handler:
+// accumulates wheel click counts per axis; one click is 120 units.
+func (s *Session) HandlePointerAxisValue120(ev wl.PointerAxisValue120Event) {
+	s.wheel120[min(ev.Axis, 1)] += ev.Value120
+}
 
 // HandleKeyboardKeymap implements wl.KeyboardKeymapHandler: the keymap fd
 // is consumed and closed, gelm maps evdev keycodes with a built-in US

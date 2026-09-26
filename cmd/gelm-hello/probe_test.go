@@ -90,7 +90,7 @@ func TestShowcaseControlsReceivePresses(t *testing.T) {
 			t.Fatalf("list content hit %T is not interactive", over)
 		}
 		router.Move(p)
-		router.Axis(3)
+		router.Axis(0, 3)
 		afterX, afterY := show.scrolled.Offset()
 		t.Logf("raw after Axis: x=%d y=%d (before=%d,%d)", afterX, afterY, before, 0)
 		if afterY <= before {

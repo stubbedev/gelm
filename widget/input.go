@@ -76,10 +76,21 @@ type HoverMover interface {
 	HoverMove(p Point)
 }
 
-// ScrollHandler receives axis scrolling; the Router walks the parent chain
-// from the hovered widget until one handles it.
+// ScrollHandler receives scroll deltas in 40px steps: dx from the
+// horizontal axis (tilt wheels, trackpads), dy from the vertical.
 type ScrollHandler interface {
-	ScrollBy(dy int)
+	ScrollBy(dx, dy int)
+}
+
+// Axis routes vertical and horizontal scrolling to the hovered widget
+// or the nearest ancestor that handles scrolling.
+func (r *Router) Axis(dx, dy float64) {
+	for target := r.hover; target != nil; target = parentOf(target) {
+		if sc, ok := target.(ScrollHandler); ok {
+			sc.ScrollBy(int(dx), int(dy))
+			return
+		}
+	}
 }
 
 // Mods is a bitmask of held keyboard modifiers.
@@ -223,15 +234,7 @@ func (r *Router) Leave() {
 }
 
 // Axis routes vertical scrolling to the hovered widget or the nearest
-// ancestor that handles scrolling. dy is positive to scroll down.
-func (r *Router) Axis(dy float64) {
-	for target := r.hover; target != nil; target = parentOf(target) {
-		if sc, ok := target.(ScrollHandler); ok {
-			sc.ScrollBy(int(dy))
-			return
-		}
-	}
-}
+// ancestor that handles it.
 
 // KeyAction delivers an editing or activation action to the focused
 // widget.
