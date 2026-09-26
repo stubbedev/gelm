@@ -1,0 +1,302 @@
+package widget
+
+import (
+	"bytes"
+	"errors"
+	"image"
+	"image/color"
+	"image/png"
+	"os"
+	"path/filepath"
+	"testing"
+
+	"github.com/stubbedev/gelm/internal/icons"
+	"github.com/stubbedev/gelm/render"
+)
+
+const (
+	testGreenSVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">
+  <rect width="16" height="16" fill="#00ff00"/>
+</svg>`
+
+	testBlueSVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">
+  <rect width="16" height="16" fill="#0000ff"/>
+</svg>`
+
+	testSymbolicSVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">
+  <rect width="16" height="16" fill="currentColor"/>
+</svg>`
+)
+
+// iconTree writes a two-theme fixture tree and points the shared
+// icons.Default cache at it; the cleanup restores hicolor and the
+// environment search paths.
+func iconTree(t *testing.T) {
+	t.Helper()
+	root := t.TempDir()
+	write := func(rel string, data []byte) {
+		t.Helper()
+		path := filepath.Join(root, rel)
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("wtest/index.theme", []byte(`[Icon Theme]
+Name=W Test
+Directories=16x16/apps,symbolic/apps
+
+[16x16/apps]
+Size=16
+Type=Fixed
+
+[symbolic/apps]
+Size=16
+`))
+	write("wtest/16x16/apps/flag.svg", []byte(testGreenSVG))
+	write("wtest/symbolic/apps/face-symbolic.svg", []byte(testSymbolicSVG))
+	write("wblue/index.theme", []byte(`[Icon Theme]
+Name=W Blue
+Directories=16x16/apps
+
+[16x16/apps]
+Size=16
+Type=Fixed
+`))
+	write("wblue/16x16/apps/flag.svg", []byte(testBlueSVG))
+
+	def := icons.Default()
+	def.SetSearchPaths([]string{root})
+	def.SetTheme("wtest")
+	t.Cleanup(func() {
+		def.SetSearchPaths(nil)
+		def.SetTheme("hicolor")
+	})
+}
+
+// paintIcon measures, arranges, and paints w at the origin of a box x
+// box logical canvas at the given device scale, over black. It returns
+// the pixel data so tests can read back what painted.
+func paintIcon(w *Icon, box, num, denom int) ([]byte, int) {
+	dev := (box*num + denom - 1) / denom
+	data := make([]byte, render.Stride(dev)*dev)
+	cv := render.NewScaled(data, render.Stride(dev), dev, dev, num, denom)
+	cv.Clear(cv.Rect(), render.RGB(0, 0, 0))
+	w.Measure(Constraints{Max: Size{W: box, H: box}})
+	w.Arrange(render.Rect{X: 0, Y: 0, W: box, H: box})
+	w.Paint(cv)
+	return data, dev
+}
+
+func centerPx(data []byte, dev int) render.Color {
+	return render.ColorFromBytes(data[(dev/2)*render.Stride(dev)+(dev/2)*4:])
+}
+
+func pngDoc(t *testing.T, r, g, b uint8) []byte {
+	t.Helper()
+	img := image.NewNRGBA(image.Rect(0, 0, 16, 16))
+	for y := range 16 {
+		for x := range 16 {
+			img.Set(x, y, color.NRGBA{R: r, G: g, B: b, A: 255})
+		}
+	}
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
+}
+
+func TestNewIconStatic(t *testing.T) {
+	ic, err := render.LoadSVG([]byte(testGreenSVG), 16, 16)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := NewIcon(ic)
+
+	t.Run("natural size is the raster size", func(t *testing.T) {
+		sz := w.Measure(Constraints{Max: Size{W: 100, H: 100}})
+		if sz.W != 16 || sz.H != 16 {
+			t.Errorf("Measure = %v, want 16x16", sz)
+		}
+	})
+
+	t.Run("paints as is", func(t *testing.T) {
+		data, dev := paintIcon(w, 16, 1, 1)
+		if got := centerPx(data, dev); got != render.RGB(0, 0xff, 0) {
+			t.Errorf("center = %v, want green", got)
+		}
+	})
+}
+
+func TestNewThemeIconRenders(t *testing.T) {
+	iconTree(t)
+	w := NewThemeIcon("flag", 16)
+	data, dev := paintIcon(w, 16, 1, 1)
+	if got := centerPx(data, dev); got != render.RGB(0, 0xff, 0) {
+		t.Errorf("center = %v, want green (the themed flag)", got)
+	}
+	if err := w.Err(); err != nil {
+		t.Errorf("Err = %v, want nil", err)
+	}
+}
+
+func TestNewFileIconRenders(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "red.png")
+	if err := os.WriteFile(path, pngDoc(t, 0xff, 0, 0), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	w := NewFileIcon(path, 16)
+	data, dev := paintIcon(w, 16, 1, 1)
+	if got := centerPx(data, dev); got != render.RGB(0xff, 0, 0) {
+		t.Errorf("center = %v, want red", got)
+	}
+}
+
+func TestNewSVGIconRenders(t *testing.T) {
+	w := NewSVGIcon([]byte(testBlueSVG), 16)
+	data, dev := paintIcon(w, 16, 1, 1)
+	if got := centerPx(data, dev); got != render.RGB(0, 0, 0xff) {
+		t.Errorf("center = %v, want blue", got)
+	}
+}
+
+func TestNewThemeIconMissing(t *testing.T) {
+	iconTree(t)
+	w := NewThemeIcon("no-such-icon", 16)
+	data, dev := paintIcon(w, 16, 1, 1)
+	if got := centerPx(data, dev); got != render.RGB(0, 0, 0) {
+		t.Errorf("center = %v, want untouched black", got)
+	}
+	if !errors.Is(w.Err(), icons.ErrNotFound) {
+		t.Errorf("Err = %v, want ErrNotFound", w.Err())
+	}
+}
+
+func TestIconSymbolicFollowsAccent(t *testing.T) {
+	iconTree(t)
+	defer SetTheme(DarkTheme())
+	face := NewThemeIcon("face-symbolic", 16)
+
+	SetTheme(DarkTheme())
+	darkData, darkDev := paintIcon(face, 16, 1, 1)
+	dark := centerPx(darkData, darkDev)
+	if dark != DarkTheme().Accent {
+		t.Errorf("center = %v, want the dark accent", dark)
+	}
+
+	SetTheme(LightTheme())
+	lightData, lightDev := paintIcon(face, 16, 1, 1)
+	light := centerPx(lightData, lightDev)
+	if light != LightTheme().Accent {
+		t.Errorf("center = %v, want the light accent", light)
+	}
+	if dark == light {
+		t.Error("symbolic icon kept its color across the theme swap")
+	}
+}
+
+func TestIconPinnedTint(t *testing.T) {
+	iconTree(t)
+	red := render.RGB(0xff, 0, 0)
+
+	t.Run("themed source", func(t *testing.T) {
+		w := NewThemeIcon("flag", 16)
+		w.SetTint(red)
+		data, dev := paintIcon(w, 16, 1, 1)
+		if got := centerPx(data, dev); got != red {
+			t.Errorf("center = %v, want the pinned tint", got)
+		}
+	})
+
+	t.Run("static source recolors eagerly", func(t *testing.T) {
+		ic, err := render.LoadSVG([]byte(testGreenSVG), 16, 16)
+		if err != nil {
+			t.Fatal(err)
+		}
+		w := NewIcon(ic)
+		w.SetTint(red)
+		data, dev := paintIcon(w, 16, 1, 1)
+		if got := centerPx(data, dev); got != red {
+			t.Errorf("center = %v, want the pinned tint", got)
+		}
+	})
+}
+
+func TestIconRescalesWithCanvas(t *testing.T) {
+	iconTree(t)
+	w := NewThemeIcon("flag", 16)
+
+	paintIcon(w, 16, 1, 1)
+	if w1, h1 := w.ic.Size(); w1 != 16 || h1 != 16 {
+		t.Errorf("1x raster = %dx%d, want 16x16", w1, h1)
+	}
+	data, dev := paintIcon(w, 16, 240, 120)
+	if w2, h2 := w.ic.Size(); w2 != 32 || h2 != 32 {
+		t.Errorf("2x raster = %dx%d, want 32x32", w2, h2)
+	}
+	if got := centerPx(data, dev); got != render.RGB(0, 0xff, 0) {
+		t.Errorf("center = %v, want green", got)
+	}
+}
+
+func TestIconThemeSwitchRepaints(t *testing.T) {
+	iconTree(t)
+	w := NewThemeIcon("flag", 16)
+	CollectDamage(w) // drain the initial theme stamp
+	data, dev := paintIcon(w, 16, 1, 1)
+	if got := centerPx(data, dev); got != render.RGB(0, 0xff, 0) {
+		t.Fatalf("center = %v, want green", got)
+	}
+	if _, any := CollectDamage(w); any {
+		t.Fatal("unexpected damage after painting")
+	}
+
+	// The cache-wide theme switch must surface as damage on the next
+	// collect, even though no widget state changed.
+	icons.Default().SetTheme("wblue")
+	rects, any := CollectDamage(w)
+	if !any {
+		t.Fatal("theme switch produced no damage")
+	}
+	if len(rects) != 1 || rects[0] != w.bounds {
+		t.Errorf("damage = %v, want the icon bounds %v", rects, w.bounds)
+	}
+
+	data, dev = paintIcon(w, 16, 1, 1)
+	if got := centerPx(data, dev); got != render.RGB(0, 0, 0xff) {
+		t.Errorf("center = %v, want blue (the wblue flag)", got)
+	}
+}
+
+func TestIconMutationsInvalidate(t *testing.T) {
+	iconTree(t)
+	w := NewThemeIcon("flag", 16)
+	paintIcon(w, 16, 1, 1)
+	CollectDamage(w)
+
+	w.SetTint(render.RGB(0xff, 0, 0))
+	if rects, any := CollectDamage(w); !any {
+		t.Error("SetTint produced no damage")
+	} else if len(rects) != 1 || rects[0] != w.bounds {
+		t.Errorf("damage = %v, want the icon bounds %v", rects, w.bounds)
+	}
+}
+
+func TestIconMeasureWantsLogicalSize(t *testing.T) {
+	iconTree(t)
+	for _, tc := range []struct {
+		w    *Icon
+		want Size
+	}{
+		{NewThemeIcon("flag", 16), Size{W: 16, H: 16}},
+		{NewSVGIcon([]byte(testBlueSVG), 24), Size{W: 24, H: 24}},
+	} {
+		sz := tc.w.Measure(Constraints{Max: Size{W: 100, H: 100}})
+		if sz != tc.want {
+			t.Errorf("Measure = %v, want %v", sz, tc.want)
+		}
+	}
+}
