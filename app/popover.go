@@ -7,6 +7,7 @@ import (
 	"github.com/neurlang/wayland/wl"
 
 	"github.com/stubbedev/gelm/internal/popup"
+	"github.com/stubbedev/gelm/internal/scale"
 	"github.com/stubbedev/gelm/render"
 	"github.com/stubbedev/gelm/widget"
 	"github.com/stubbedev/gelm/wlr"
@@ -218,11 +219,23 @@ func (a *Application) OpenPopover(host Host, cfg PopoverConfig) (*Popover, error
 
 	a.popovers.openOrReplace(host, p)
 	go func() {
-		_ = popup.Run(a.sess, pop, 1, keyRoot, widget.Current().Surface, keys)
+		_ = popup.Run(a.sess, pop, a.fracFor(host), keyRoot, widget.Current().Surface, keys)
 		a.popovers.take(host)
 		fireClosed()
 	}()
 	return p, nil
+}
+
+// fracFor returns host's current 120-based device scale, so popups and
+// other one-shot surfaces match the window they open over; 120 (1x)
+// before the first rescale or for unknown hosts.
+func (a *Application) fracFor(host Host) uint32 {
+	for _, w := range a.windows {
+		if w.host == host {
+			return w.frac120
+		}
+	}
+	return scale.Denom
 }
 
 // EnsureUsable implements Host for the toplevel handle.

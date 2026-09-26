@@ -157,7 +157,6 @@ func clampWidgetSize(s widget.Size, con widget.Constraints) widget.Size {
 // newDragTestInput builds a surface input around a stub tree.
 func newDragTestInput(root widget.Widget, dnd dragController) *surfaceInput {
 	return &surfaceInput{
-		scale:   1,
 		router:  &widget.Router{Root: root},
 		surf:    &wl.Surface{},
 		dnd:     dnd,
@@ -315,22 +314,24 @@ func TestSurfaceInputRoutesDrops(t *testing.T) {
 	}
 }
 
-func TestSurfaceInputDropCoordinatesScale(t *testing.T) {
+func TestSurfaceInputDropCoordinatesAreLogical(t *testing.T) {
 	zone := &dropZone{mime: mimeGelmTile}
 	root := rowOf(zone)
 	dnd := &fakeDnD{payload: []byte("x")}
 	in := newDragTestInput(root, dnd)
-	in.scale = 2
+	in.frac = func() uint32 { return 300 } // 2.5x device scale
 
+	// Drop points are logical surface pixels at any device scale: the
+	// widget tree is laid out in the same space the events arrive in.
 	if m := in.DragEnter([]string{mimeGelmTile}, 5, 3); m == "" {
 		t.Fatal("drag was rejected")
 	}
-	if zone.enterPoint != (widget.Point{X: 10, Y: 6}) {
-		t.Errorf("enter point %v, want the 2x-scaled (10,6)", zone.enterPoint)
+	if zone.enterPoint != (widget.Point{X: 5, Y: 3}) {
+		t.Errorf("enter point %v, want the logical (5,3)", zone.enterPoint)
 	}
 	in.Drop(3, 4)
-	if zone.dropPoint != (widget.Point{X: 6, Y: 8}) {
-		t.Errorf("drop point %v, want the 2x-scaled (6,8)", zone.dropPoint)
+	if zone.dropPoint != (widget.Point{X: 3, Y: 4}) {
+		t.Errorf("drop point %v, want the logical (3,4)", zone.dropPoint)
 	}
 }
 

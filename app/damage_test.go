@@ -11,6 +11,7 @@ import (
 	"github.com/neurlang/wayland/wl"
 
 	"github.com/stubbedev/gelm/internal/buffer"
+	"github.com/stubbedev/gelm/internal/scale"
 	"github.com/stubbedev/gelm/render"
 	"github.com/stubbedev/gelm/widget"
 )
@@ -78,11 +79,14 @@ func newPaintHarness(root widget.Widget, w, hgt int) *paintHarness {
 		},
 	}
 	ph.wnd.surf = ph.surf
-	ph.wnd.pool = buffer.New(func() (*buffer.Buffer, error) {
-		b := fakeBuffer(w, hgt)
+	// The fake allocator hangs off newBuffer, not the pool, so a live
+	// rescale's pool rebuild keeps allocating fakes at the new size.
+	ph.wnd.newBuffer = func() (*buffer.Buffer, error) {
+		b := fakeBuffer(scale.DeviceSize(w, ph.wnd.frac120), scale.DeviceSize(hgt, ph.wnd.frac120))
 		ph.bufs = append(ph.bufs, b)
 		return b, nil
-	}, 3)
+	}
+	ph.wnd.pool = buffer.New(ph.wnd.allocator(), 3)
 	return ph
 }
 

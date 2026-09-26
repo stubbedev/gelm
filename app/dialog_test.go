@@ -81,7 +81,6 @@ func TestModalBlocksParentInput(t *testing.T) {
 
 	in := &surfaceInput{
 		router:  &widget.Router{Root: clickable},
-		scale:   1,
 		request: func() {},
 		blocked: func() bool { return blocked },
 	}

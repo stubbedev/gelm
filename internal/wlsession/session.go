@@ -23,7 +23,10 @@ import (
 )
 
 // requiredGlobals are the interfaces gelm cannot run without, in the order
-// they are reported as missing.
+// they are reported as missing. The fractional-scale protocols
+// (wp_viewporter, wp_fractional_scale_manager_v1) are deliberately not
+// here: they are feature-detected and optional, and compositors without
+// them keep the exact integer-scale behavior.
 var requiredGlobals = []string{"wl_compositor", "wl_shm", "wl_output", "zwlr_layer_shell_v1"}
 
 // minCompositorVersion is the wl_surface version SetBufferScale needs
@@ -41,6 +44,11 @@ type Output struct {
 
 	// ModeW and ModeH are the current mode's pixel size.
 	ModeW, ModeH int
+
+	// Transform is the output's rotation/flip as wl_output.geometry
+	// reports it (a wl_output.transform enum); surfaces pinned to the
+	// output publish it with wl_surface.set_buffer_transform.
+	Transform int32
 
 	// name is the registry global name, for hotplug removal.
 	name uint32
@@ -66,6 +74,8 @@ type Session struct {
 	compositor        *wl.Compositor
 	shm               *wl.Shm
 	layerShell        *wlr.ZwlrLayerShellV1
+	viewporter        *wlr.WpViewporter
+	fracScaleManager  *wlr.WpScaleManagerV1
 	seat              *wl.Seat
 	pointer           *wl.Pointer
 	keyboard          *wl.Keyboard
@@ -270,6 +280,16 @@ func (s *Session) HandleRegistryGlobal(ev wl.RegistryGlobalEvent) {
 		shell := wlr.NewZwlrLayerShellV1(ctx)
 		_ = s.registry.Bind(ev.Name, ev.Interface, 1, shell)
 		s.layerShell = shell
+	case "wp_viewporter":
+		ctx, _ := wl.GetUserData[wl.Context](s.registry)
+		vp := wlr.NewWpViewporter(ctx)
+		_ = s.registry.Bind(ev.Name, ev.Interface, bindVersion(ev.Version, 1), vp)
+		s.viewporter = vp
+	case "wp_fractional_scale_manager_v1":
+		ctx, _ := wl.GetUserData[wl.Context](s.registry)
+		mgr := wlr.NewWpScaleManagerV1(ctx)
+		_ = s.registry.Bind(ev.Name, ev.Interface, bindVersion(ev.Version, 1), mgr)
+		s.fracScaleManager = mgr
 	case "wl_seat":
 		s.seat = wlclient.RegistryBindSeatInterface(s.registry, ev.Name, bindVersion(ev.Version, 7))
 		wlclient.SeatAddListener(s.seat, s)
@@ -372,8 +392,12 @@ func (e *outputEvents) HandleOutputScale(ev wl.OutputScaleEvent) {
 	}
 }
 
-// HandleOutputGeometry implements wl.OutputGeometryHandler.
-func (e *outputEvents) HandleOutputGeometry(wl.OutputGeometryEvent) {}
+// HandleOutputGeometry implements wl.OutputGeometryHandler: the event's
+// transform is what rotated outputs need surfaces to publish through
+// wl_surface.set_buffer_transform.
+func (e *outputEvents) HandleOutputGeometry(ev wl.OutputGeometryEvent) {
+	e.out.Transform = ev.Transform
+}
 
 // HandleOutputMode implements wl.OutputModeHandler: the current mode
 // (flag bit 0) records the output's pixel size, the fallback for layer
@@ -758,6 +782,17 @@ func (s *Session) Shm() *wl.Shm { return s.shm }
 
 // LayerShell returns the bound zwlr_layer_shell_v1.
 func (s *Session) LayerShell() *wlr.ZwlrLayerShellV1 { return s.layerShell }
+
+// Viewporter returns the bound wp_viewporter, or nil when the
+// compositor does not provide it; fractional scaling degrades to
+// integer set_buffer_scale without it.
+func (s *Session) Viewporter() *wlr.WpViewporter { return s.viewporter }
+
+// FractionalScaleManager returns the bound
+// wp_fractional_scale_manager_v1, or nil when the compositor does not
+// provide it; without it there are no preferred_scale events and
+// surfaces keep their integer scale.
+func (s *Session) FractionalScaleManager() *wlr.WpScaleManagerV1 { return s.fracScaleManager }
 
 // Outputs returns the bound outputs in registry order.
 func (s *Session) Outputs() []*Output { return s.outputs }

@@ -17,6 +17,7 @@ import (
 	"github.com/stubbedev/gelm/app"
 	"github.com/stubbedev/gelm/internal/anim"
 	"github.com/stubbedev/gelm/internal/popup"
+	"github.com/stubbedev/gelm/internal/scale"
 	"github.com/stubbedev/gelm/internal/sysfont"
 	"github.com/stubbedev/gelm/internal/window"
 	"github.com/stubbedev/gelm/internal/wlsession"
@@ -117,7 +118,7 @@ func run() error {
 			}
 			menu.OnDismiss = p.Close
 			keyRouter := &widget.Router{Root: menu}
-			_ = popup.Run(sess, p, 1, menu, widget.Current().Surface, keyRouter)
+			_ = popup.Run(sess, p, scale.Denom, menu, widget.Current().Surface, keyRouter)
 		}
 	}
 

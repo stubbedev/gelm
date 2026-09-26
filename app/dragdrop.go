@@ -10,6 +10,7 @@ import (
 	"github.com/stubbedev/gelm/internal/buffer"
 	"github.com/stubbedev/gelm/internal/debug"
 	"github.com/stubbedev/gelm/internal/dragdrop"
+	"github.com/stubbedev/gelm/internal/scale"
 	"github.com/stubbedev/gelm/internal/wlsession"
 	"github.com/stubbedev/gelm/render"
 	"github.com/stubbedev/gelm/widget"
@@ -53,7 +54,7 @@ func (in *surfaceInput) startDrag() {
 	}
 	err := in.dnd.StartDrag(dragdrop.StartConfig{
 		Origin:     in.surf,
-		Icon:       renderDragIcon(in.sess, in.router.Pressed(), in.scale),
+		Icon:       renderDragIcon(in.sess, in.router.Pressed(), in.deviceScale()),
 		GrabSerial: in.pressSerial,
 		Content: dragdrop.Content{
 			Mimes:  content.Mimes,
@@ -73,10 +74,11 @@ func (in *surfaceInput) startDrag() {
 }
 
 // renderDragIcon paints w standalone into a fresh shm-backed surface
-// the compositor moves with the pointer during the drag. Any failure
-// leaves the icon nil: start_drag takes a nil icon and shows a
-// fallback graphic.
-func renderDragIcon(sess *wlsession.Session, w widget.Widget, scale int) *wl.Surface {
+// the compositor moves with the pointer during the drag. frac120 is the
+// source window's current 120-based device scale; the icon surface
+// scales to match. Any failure leaves the icon nil: start_drag takes a
+// nil icon and shows a fallback graphic.
+func renderDragIcon(sess *wlsession.Session, w widget.Widget, frac120 uint32) *wl.Surface {
 	if sess == nil || sess.Compositor() == nil || sess.Shm() == nil || w == nil {
 		return nil
 	}
@@ -84,19 +86,23 @@ func renderDragIcon(sess *wlsession.Session, w widget.Widget, scale int) *wl.Sur
 	if size.W <= 0 || size.H <= 0 {
 		return nil
 	}
-	b, err := buffer.NewFile(sess.Shm(), size.W*scale, size.H*scale, scale)
+	b, err := buffer.NewFile(sess.Shm(),
+		scale.DeviceSize(size.W, frac120), scale.DeviceSize(size.H, frac120),
+		scale.IntegerScale(frac120))
 	if err != nil {
 		debug.Log("frame", "dnd icon buffer: %v", err)
 		return nil
 	}
 	w.Arrange(render.Rect{X: 0, Y: 0, W: size.W, H: size.H})
-	cv := render.New(b.Data, b.Stride, b.Width, b.Height)
+	cv := render.NewScaled(b.Data, b.Stride, b.Width, b.Height, int(frac120), scale.Denom)
 	w.Paint(cv)
 	surf, err := sess.Compositor().CreateSurface()
 	if err != nil {
 		debug.Log("frame", "dnd icon surface: %v", err)
 		return nil
 	}
+	sc := scale.New(sess, surf, nil)
+	_ = sc.Apply(frac120, size.W, size.H)
 	attach := func(err error, what string) bool {
 		if err != nil {
 			debug.Log("frame", "dnd icon %s: %v", what, err)
@@ -162,8 +168,21 @@ func (in *surfaceInput) Drop(x, y float64) {
 	in.request()
 }
 
-// dropPoint scales surface coordinates into router (root) coordinates,
-// the same mapping the pointer path applies.
+// deviceScale reports the host window's 120-based device scale for
+// one-shot surfaces; 1x when unset (wire-free tests).
+func (in *surfaceInput) deviceScale() uint32 {
+	if in.frac == nil {
+		return scale.Denom
+	}
+	if f := in.frac(); f != 0 {
+		return f
+	}
+	return scale.Denom
+}
+
+// dropPoint maps surface coordinates into router (root) coordinates,
+// the same mapping the pointer path applies: both are logical pixels,
+// so it truncates to the tree's integer grid.
 func (in *surfaceInput) dropPoint(x, y float64) widget.Point {
-	return widget.Point{X: int(x) * in.scale, Y: int(y) * in.scale}
+	return widget.Point{X: int(x), Y: int(y)}
 }

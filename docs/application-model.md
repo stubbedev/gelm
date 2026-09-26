@@ -42,7 +42,11 @@ The session tracks `wl_output` globals in arrival order
   event, so its `OnClosed` is the spawn-cleanup path.
 
 Per-output scale comes from the output's integer scale; `LayerConfig`
-derives it when `Scale` is zero.
+derives it when `Scale` is zero. With the fractional-scale protocols
+(`wp_viewporter` plus `wp_fractional_scale_manager_v1`) the compositor's
+`preferred_scale` — 1.25 and friends included — overrides the integer
+scale live: buffers resize in place, no window recreation. Compositors
+without the protocols keep the integer behavior.
 
 ## Concept mapping
 
@@ -55,7 +59,7 @@ derives it when `Scale` is zero.
 | `relm4::Component` | not needed | widgets are retained objects; there is no actor model to wrap |
 | `relm4::Worker` | not needed | timers ride the parked loop (`WakeAfter`); long work needs a goroutine plus `app`-side marshalling, which is #27's subject |
 | `gtk::Application::quit` | `Application.Quit` | authoritative, bypasses vetoes |
-| per-window `scale-factor` | per-window integer `Scale` | fractional scaling is #14 |
+| per-window `scale-factor` | per-window `Scale` plus live `preferred_scale` | fractional scaling lands with #14 |
 
 ## What is deliberately absent
 

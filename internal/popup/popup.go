@@ -14,6 +14,7 @@ import (
 
 	"github.com/stubbedev/gelm/internal/buffer"
 	"github.com/stubbedev/gelm/internal/debug"
+	"github.com/stubbedev/gelm/internal/scale"
 	"github.com/stubbedev/gelm/internal/wlsession"
 	"github.com/stubbedev/gelm/render"
 	"github.com/stubbedev/gelm/widget"
@@ -40,6 +41,10 @@ type Popup struct {
 	WLSurface  *wl.Surface
 	XdgSurface *xdg.Surface
 	XdgPopup   *xdg.Popup
+
+	// sc carries the surface's scale state (viewport destination or
+	// integer set_buffer_scale); Run applies the parent window's scale.
+	sc *scale.Controller
 
 	w          int32
 	h          int32
@@ -108,6 +113,7 @@ func New(sess *wlsession.Session, cfg Config) (*Popup, error) {
 	}
 	debug.Log("input", "popup surface %d created", surf.Id())
 	p := &Popup{WLSurface: surf, w: int32(cfg.Width), h: int32(cfg.Height)}
+	p.sc = scale.New(sess, surf, nil)
 
 	xdgSurf, err := wmBase.GetSurface(surf)
 	if err != nil {
@@ -216,18 +222,26 @@ func (p *Popup) Close() {
 // the host surface keeps receiving nothing and no hooks are swapped.
 // A non-nil keys router receives seat keyboard events translated to
 // KeyActions, which menus need for arrow and Enter navigation.
-func Run(sess *wlsession.Session, p *Popup, scale int, root widget.Widget, bg render.Color, keys *widget.Router) error {
+// frac120 is the parent window's 120-based device scale; the popup's
+// buffers are built at that device scale while its widget tree stays
+// logical.
+func Run(sess *wlsession.Session, p *Popup, frac120 uint32, root widget.Widget, bg render.Color, keys *widget.Router) error {
+	if frac120 == 0 {
+		frac120 = scale.Denom
+	}
 	surf := p.HostSurface()
 	create := func() (*buffer.Buffer, error) {
 		w, h := p.Size()
-		return buffer.NewFile(sess.Shm(), w*scale, h, scale)
+		return buffer.NewFile(sess.Shm(),
+			scale.DeviceSize(w, frac120), scale.DeviceSize(h, frac120),
+			scale.IntegerScale(frac120))
 	}
 	pool := buffer.New(create, 2)
 
 	router := &widget.Router{Root: root}
 	var pointer struct{ x, y float64 }
 	dirty := true
-	input := &popupInput{router: router, scale: scale, pointer: &pointer, markDirty: func() { dirty = true }}
+	input := &popupInput{router: router, pointer: &pointer, markDirty: func() { dirty = true }}
 	sess.SetSurfaceInput(p.WLSurface, input)
 	defer sess.SetSurfaceInput(p.WLSurface, nil)
 
@@ -260,11 +274,12 @@ func Run(sess *wlsession.Session, p *Popup, scale int, root widget.Widget, bg re
 				wlclient.BufferAddListener(b.WL, buffer.ReleaseHandler{B: b})
 
 				w, h := p.Size()
+				_ = p.sc.Apply(frac120, w, h)
 				root.Measure(widget.Constraints{Max: widget.Size{W: w, H: h}})
 				root.Arrange(render.Rect{X: 0, Y: 0, W: w, H: h})
 
-				cv := render.New(b.Data, b.Stride, b.Width, b.Height)
-				cv.Clear(cv.Rect(), bg)
+				cv := render.NewScaled(b.Data, b.Stride, b.Width, b.Height, int(frac120), scale.Denom)
+				cv.ClearDevice(cv.Rect(), bg)
 				root.Paint(cv)
 
 				if err := surf.Attach(b.WL, 0, 0); err != nil {
@@ -308,7 +323,6 @@ func (f frameDone) HandleCallbackDone(wl.CallbackDoneEvent) {
 // tree. It implements wlsession.SurfacePointerHandler.
 type popupInput struct {
 	router    *widget.Router
-	scale     int
 	pointer   *struct{ x, y float64 }
 	markDirty func()
 }
@@ -321,13 +335,13 @@ func (in *popupInput) HandlePointerMotion(x, y float64) { in.move(x, y) }
 
 func (in *popupInput) move(x, y float64) {
 	in.pointer.x, in.pointer.y = x, y
-	in.router.Move(widget.Point{X: int(x) * in.scale, Y: int(y) * in.scale})
+	in.router.Move(widget.Point{X: int(x), Y: int(y)})
 	in.markDirty()
 }
 
 // HandlePointerButton implements wlsession.SurfacePointerHandler.
 func (in *popupInput) HandlePointerButton(button, state, serial uint32) {
-	pt := widget.Point{X: int(in.pointer.x) * in.scale, Y: int(in.pointer.y) * in.scale}
+	pt := widget.Point{X: int(in.pointer.x), Y: int(in.pointer.y)}
 	if state == 1 {
 		in.router.Press(button, pt)
 	} else {

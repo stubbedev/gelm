@@ -75,8 +75,9 @@ type WindowConfig struct {
 	// Width and Height request the initial size; zero lets the
 	// compositor pick.
 	Width, Height uint32
-	// Scale is the integer output scale the surface renders at; zero
-	// means 1.
+	// Scale is the initial integer output scale the surface renders at;
+	// zero means 1. With the fractional-scale protocol the compositor's
+	// preferred scale (1.25 and friends) overrides this live.
 	Scale int
 	// Root is the window's widget tree.
 	Root widget.Widget
@@ -119,7 +120,9 @@ type LayerConfig struct {
 	Keyboard layersurface.KeyboardMode
 	// Namespace tags the surface for compositor-side rules.
 	Namespace string
-	// Scale is the integer output scale; zero derives it from Output.
+	// Scale is the initial integer output scale; zero derives it from
+	// Output, then 1. With the fractional-scale protocol the
+	// compositor's preferred scale overrides this live.
 	Scale int
 	// Root is the window's widget tree.
 	Root widget.Widget
@@ -206,12 +209,17 @@ func (a *Application) NewLayer(cfg LayerConfig) (*LayerWindow, error) {
 	if err != nil {
 		return nil, err
 	}
-	a.newWindow(&layerHost{ls: ls, out: cfg.Output}, scale, cfg.Root, windowHooks{
+	hw := a.newWindow(&layerHost{ls: ls, out: cfg.Output}, scale, cfg.Root, windowHooks{
 		background: cfg.Background,
 		onPress:    cfg.OnPress,
 		onMove:     cfg.OnPointerMove,
 		onKey:      cfg.OnKey,
 	}, cfg.OnClosed)
+	// A rotated output's transform must be published before the first
+	// commit so the compositor maps the buffers correctly.
+	if cfg.Output != nil && cfg.Output.Transform != 0 && hw.sc != nil {
+		_ = hw.sc.SetTransform(cfg.Output.Transform)
+	}
 	if err := surf.Commit(); err != nil {
 		return nil, fmt.Errorf("app: initial commit: %w", err)
 	}
@@ -286,7 +294,7 @@ func (a *Application) Run() error {
 		// focus moving elsewhere. The previous dispatch's changes are
 		// picked up here, one event later.
 		if w := a.focused(); w != nil {
-			a.ime.sync(w.router, w.input.scale, true)
+			a.ime.sync(w.router, true)
 		}
 		if anim.Active() {
 			anim.Tick(now)
@@ -370,9 +378,8 @@ func (a *Application) updateTips(now time.Time) {
 			return openTooltip(w.sess, w.host, &Config{
 				Session:     w.sess,
 				Host:        w.host,
-				Scale:       w.input.scale,
 				TooltipFace: a.tooltipFace,
-			}, int(w.input.x), int(w.input.y), text)
+			}, w.frac120, int(w.input.x), int(w.input.y), text)
 		})
 	}
 }
@@ -404,7 +411,7 @@ func (a *Application) imeEvent(ev wlsession.IMEEvent) {
 	if target == nil {
 		return
 	}
-	a.ime.deliver(target.router, target.input.scale, ev)
+	a.ime.deliver(target.router, ev)
 	for _, w := range a.windows {
 		w.dirty = true
 	}

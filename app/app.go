@@ -42,7 +42,9 @@ type Config struct {
 	Session *wlsession.Session
 	// Host carries the widget tree.
 	Host Host
-	// Scale is the integer output scale the surface renders at.
+	// Scale is the initial integer output scale the surface renders at;
+	// zero means 1. With the fractional-scale protocol the compositor's
+	// preferred scale (1.25 and friends) overrides this live.
 	Scale int
 	// Root is the widget tree.
 	Root widget.Widget
@@ -71,11 +73,12 @@ type Config struct {
 // drags, scroll, cursor shapes, and tooltip state. It implements
 // wlsession.SurfacePointerHandler, so events arrive only when the
 // compositor's pointer focus (or an active grab) belongs to this
-// surface.
+// surface. Pointer coordinates are logical pixels and route into the
+// widget tree unchanged - the device scale lives entirely in the paint
+// pipeline.
 type surfaceInput struct {
 	sess    *wlsession.Session
 	surf    *wl.Surface
-	scale   int
 	router  *widget.Router
 	tip     *tooltipCtl
 	onPress func(button uint32, serial uint32, over widget.Widget)
@@ -83,6 +86,9 @@ type surfaceInput struct {
 	// dnd, when set, starts drags from press+motion gestures and
 	// receives this surface's data-device events (dragdrop.Target).
 	dnd dragController
+	// frac reports the host window's current 120-based device scale,
+	// for one-shot surfaces created from this input (drag icons).
+	frac func() uint32
 
 	x, y           float64
 	lastCursor     string
@@ -118,10 +124,12 @@ func (in *surfaceInput) HandlePointerMotion(x, y float64) {
 }
 
 // move feeds one pointer position to the router and updates the
-// cursor shape, hover bookkeeping, and the drag gesture.
+// cursor shape, hover bookkeeping, and the drag gesture. The position
+// is logical surface coordinates; the tree is laid out in the same
+// space, so it routes 1:1 at every device scale.
 func (in *surfaceInput) move(x, y float64) {
 	in.x, in.y = x, y
-	in.router.Move(widget.Point{X: int(x) * in.scale, Y: int(y) * in.scale})
+	in.router.Move(widget.Point{X: int(x), Y: int(y)})
 	in.startDrag()
 	debug.Log("input", "route move (%.1f,%.1f) hit %T", x, y, in.router.Hovered())
 	if debug.Enabled {
@@ -149,7 +157,7 @@ func (in *surfaceInput) HandlePointerButton(button, state, serial uint32) {
 	if in.dropInput() {
 		return
 	}
-	p := widget.Point{X: int(in.x) * in.scale, Y: int(in.y) * in.scale}
+	p := widget.Point{X: int(in.x), Y: int(in.y)}
 	debug.Log("input", "route button %d %s at (%.1f,%.1f) over %T",
 		button, buttonStateName(state), in.x, in.y, in.router.Hovered())
 	if state == 1 {

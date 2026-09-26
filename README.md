@@ -16,7 +16,9 @@ What works today:
 - pooled `wl_shm` ARGB8888 buffers (premultiplied) with defined busy
   semantics; the shell never draws into a buffer the compositor holds
 - damage-tracked frame loop driven by frame callbacks, integer HiDPI
-  scaling from `wl_output.scale`
+  scaling from `wl_output.scale`, and fractional scaling via
+  `wp_viewporter` + `wp_fractional_scale_v1` (preferred scale changes
+  resize buffers in place)
 
 Demo (on a layer-shell compositor: Hyprland, niri, sway, river, ...):
 

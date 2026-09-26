@@ -8,8 +8,14 @@
 // (widget.CollectDamage) define the repaint region, painting is clipped
 // to it, and only that region goes out as wl_surface.damage_buffer. The
 // pool's stale bookkeeping keeps partial repaints correct when the
-// acquired buffer's content is older than the last frame; a fresh or
-// resized buffer is fully stale and falls back to a full repaint.
+// acquired buffer's content is older than the last frame; a fresh,
+// resized, or rescaled buffer is fully stale and falls back to a full
+// repaint.
+//
+// Coordinates: the widget tree lives in logical (surface) pixels end to
+// end - layout, input routing, popovers, IME rects. The device scale
+// (frac120, 120-based; 240 is 2x, 150 is 1.25) appears only in buffer
+// sizes, the paint canvas, and the damage rects sent on the wire.
 package app
 
 import (
@@ -23,6 +29,7 @@ import (
 	"github.com/stubbedev/gelm/internal/buffer"
 	"github.com/stubbedev/gelm/internal/debug"
 	"github.com/stubbedev/gelm/internal/dragdrop"
+	"github.com/stubbedev/gelm/internal/scale"
 	"github.com/stubbedev/gelm/internal/wlsession"
 	"github.com/stubbedev/gelm/render"
 	"github.com/stubbedev/gelm/widget"
@@ -45,8 +52,24 @@ type hostWindow struct {
 	// surf is the wire half of the host surface; production wraps the
 	// wl_surface, tests substitute a recorder.
 	surf surfaceHandle
-	// scale maps widget (logical) coordinates to buffer pixels.
-	scale int
+	// sc is the surface-scale wire state: viewport destination or
+	// integer set_buffer_scale, plus the output transform. Production
+	// wraps internal/scale.Controller; nil in wire-free tests.
+	sc scaleWire
+	// newBuffer allocates one pooled buffer at the current logical size
+	// and device scale; a field so wire-free tests substitute fake
+	// buffers and rescale keeps using the substitute.
+	newBuffer func() (*buffer.Buffer, error)
+	// frac120 is the device scale as a 120-based fraction (120 is 1x,
+	// 150 is 1.25, 240 is 2): buffers are ceil(logical * frac120/120)
+	// device pixels in both axes. scale is the rounded-up integer
+	// fallback the wire sees without the viewporter.
+	frac120 uint32
+	scale   int
+	// scaleApplied records that the wire scale state went out at least
+	// once, so the first draw publishes it when the surface had no size
+	// to scale at creation time.
+	scaleApplied bool
 	// dnd is the application's drag-and-drop controller; its Bind
 	// lifetime matches the window's.
 	dnd          *dragdrop.Controller
@@ -85,26 +108,37 @@ type windowHooks struct {
 // focused widget's bounds.
 const focusRingPad = 2
 
-func newHostWindow(sess *wlsession.Session, host Host, scale int, root widget.Widget, hooks windowHooks, dnd *dragdrop.Controller) *hostWindow {
+func newHostWindow(sess *wlsession.Session, host Host, initialScale int, root widget.Widget, hooks windowHooks, dnd *dragdrop.Controller) *hostWindow {
 	w0, h0 := host.Size()
+	if initialScale < 1 {
+		initialScale = 1
+	}
 	w := &hostWindow{
 		host: host, sess: sess, cfg: hooks,
-		surf:   wireSurface{wl: host.HostSurface()},
-		scale:  scale,
-		router: &widget.Router{Root: root},
-		dnd:    dnd,
-		tip:    &tooltipCtl{since: time.Now()},
-		lastW:  w0, lastH: h0,
+		surf:    wireSurface{wl: host.HostSurface()},
+		frac120: uint32(initialScale * 120),
+		scale:   initialScale,
+		router:  &widget.Router{Root: root},
+		dnd:     dnd,
+		tip:     &tooltipCtl{since: time.Now()},
+		lastW:   w0, lastH: h0,
 		dirty: true,
 	}
-	w.pool = buffer.New(w.create, 3)
+	w.newBuffer = w.create
+	w.pool = buffer.New(w.allocator(), 3)
+	// Wire the scale state before anything can commit: with the
+	// fractional protocols the compositor's preferred_scale events (the
+	// initial one included) land in rescale; without them the window
+	// keeps the integer scale it was created with.
+	w.sc = scale.New(sess, host.HostSurface(), w.rescale)
 	input := &surfaceInput{
-		sess: sess, surf: host.HostSurface(), scale: scale,
+		sess: sess, surf: host.HostSurface(),
 		router: w.router, tip: w.tip,
 		onPress: hooks.onPress, onMove: hooks.onMove,
 		dnd:     dnd,
 		request: func() { w.dirty = true },
 		blocked: func() bool { return w.blocked },
+		frac:    func() uint32 { return w.frac120 },
 	}
 	w.input = input
 	sess.SetSurfaceInput(host.HostSurface(), input)
@@ -123,16 +157,76 @@ func (w *hostWindow) release() {
 	}
 }
 
-// create builds one buffer at the window's current size and scale and
-// wires its release event into the pool, once per buffer lifetime.
+// create builds one buffer at the window's current logical size and
+// device scale and wires its release event into the pool, once per
+// buffer lifetime.
 func (w *hostWindow) create() (*buffer.Buffer, error) {
 	bw, bh := w.host.Size()
-	b, err := buffer.NewFile(w.sess.Shm(), bw*w.scale, bh, w.scale)
+	b, err := buffer.NewFile(w.sess.Shm(),
+		scale.DeviceSize(bw, w.frac120), scale.DeviceSize(bh, w.frac120), w.scale)
 	if err != nil {
 		return nil, err
 	}
 	wlclient.BufferAddListener(b.WL, buffer.ReleaseHandler{B: b})
 	return b, nil
+}
+
+// scaleWire is the surface-scale seam beside surfaceHandle: the requests
+// a rescale performs on the wire. Production wraps
+// internal/scale.Controller; tests record. Nil is allowed and skips the
+// wire traffic (wire-free tests).
+type scaleWire interface {
+	// Apply publishes device scale frac120 for a surface of logical
+	// size w x h: the viewport destination in fractional mode, the
+	// rounded-up set_buffer_scale in integer mode.
+	Apply(frac120 uint32, w, h int) error
+	// SetTransform publishes the output transform the buffers are
+	// submitted for (rotated outputs).
+	SetTransform(t int32) error
+}
+
+// allocator is the pool's buffer source: it always consults the
+// newBuffer field, so a rescale's pool rebuild keeps any test
+// substitute in place.
+func (w *hostWindow) allocator() func() (*buffer.Buffer, error) {
+	return func() (*buffer.Buffer, error) { return w.newBuffer() }
+}
+
+// devNum is frac120 as the numerator the render pipeline multiplies
+// by, normalizing the zero value of wire-free test windows to 1x.
+func (w *hostWindow) devNum() int {
+	if w.frac120 == 0 {
+		return scale.Denom
+	}
+	return int(w.frac120)
+}
+
+// rescale switches the window to a new device scale in place: the same
+// hostWindow, widget tree, router, focus, and pool survive; only the
+// buffers are rebuilt. The fresh buffers are fully stale, so the next
+// frame falls back to a full repaint at the new device size, exactly as
+// a resize does. frac120 is the 120-based preferred scale (150 is 1.25);
+// zero is not a scale and is ignored.
+func (w *hostWindow) rescale(frac120 uint32) {
+	if frac120 == 0 || frac120 == w.frac120 {
+		return
+	}
+	w.frac120 = frac120
+	w.scale = scale.IntegerScale(frac120)
+	bw, bh := w.host.Size()
+	if w.sc != nil {
+		_ = w.sc.Apply(frac120, bw, bh)
+	}
+	w.scaleApplied = true
+	w.pool.Resize(w.allocator())
+	// The logical layout is unchanged, so widgets owe no damage - but
+	// the screen must still be fully repainted at the new device size.
+	// Queue the whole window; the fresh buffers' full staleness covers
+	// the device-space remainder on the next frame.
+	w.pendingRects = append(w.pendingRects, render.Rect{W: bw, H: bh})
+	w.dirty = true
+	debug.Log("frame", "rescale %d/120: buffers %d px per logical px",
+		frac120, frac120)
 }
 
 // surfaceHandle is the wire-facing half of the host surface: the
@@ -196,13 +290,22 @@ func (w *hostWindow) draw() bool {
 	bw, bh := w.host.Size()
 	if bw != w.lastW || bh != w.lastH {
 		w.lastW, w.lastH = bw, bh
-		w.pool.Resize(w.create)
+		w.pool.Resize(w.allocator())
 		w.dirty = true
+	}
+	// Publish the wire scale state on the first draw with a real size:
+	// a surface created unconfigured has nothing to scale yet. Fractional
+	// windows have already applied theirs through rescale.
+	if w.sc != nil && !w.scaleApplied && bw > 0 && bh > 0 {
+		if err := w.sc.Apply(w.frac120, bw, bh); err == nil {
+			w.scaleApplied = true
+		}
 	}
 
 	// Measure (cached per widget: a static tree costs nothing) and
 	// arrange; Arrange invalidates the old rect of anything that moved,
-	// so the drain below sees moves from this frame too.
+	// so the drain below sees moves from this frame too. All tree
+	// coordinates are logical pixels.
 	w.router.Root.Measure(widget.Constraints{Max: widget.Size{W: bw, H: bh}})
 	w.router.Root.Arrange(render.Rect{X: 0, Y: 0, W: bw, H: bh})
 
@@ -244,11 +347,13 @@ func (w *hostWindow) draw() bool {
 	// A buffer with stale content must repaint everything that changed
 	// since its content was last on screen, not just this frame's
 	// damage. Fresh buffers are fully stale: the full-repaint fallback
-	// for the first frame and after resizes.
+	// for the first frame, after resizes, and after rescales.
+	// Everything past this point is in device pixels: pending logical
+	// damage maps outward, stale is tracked in buffer pixels.
 	bufBounds = render.Rect{W: b.Width, H: b.Height}
 	rects := make([]render.Rect, 0, len(w.pendingRects)+1)
 	for _, r := range w.pendingRects {
-		if r = r.Intersect(bufBounds); !r.Empty() {
+		if r = render.MapRect(r, w.devNum(), scale.Denom).Intersect(bufBounds); !r.Empty() {
 			rects = append(rects, r)
 		}
 	}
@@ -262,12 +367,12 @@ func (w *hostWindow) draw() bool {
 	}
 	region := render.UnionAll(rects)
 	w.pendingRects = w.pendingRects[:0]
-	debug.Log("frame", "draw %dx%d at scale %d: %d damage rect(s), region %dx%d",
-		bw, bh, w.scale, len(rects), region.W, region.H)
+	debug.Log("frame", "draw %dx%d at %d/120: %d damage rect(s), region %dx%d",
+		bw, bh, w.frac120, len(rects), region.W, region.H)
 
-	cv := render.New(b.Data, b.Stride, b.Width, b.Height)
+	cv := render.NewScaled(b.Data, b.Stride, b.Width, b.Height, w.devNum(), scale.Denom)
 	prev := cv.PushClip(region)
-	cv.Clear(region, w.cfg.background)
+	cv.ClearDevice(region, w.cfg.background)
 	w.router.Root.Paint(cv)
 	if ring := w.focusRingRect(); !ring.Empty() {
 		cv.BorderRect(ring, focusRingPad, widget.Current().Accent)

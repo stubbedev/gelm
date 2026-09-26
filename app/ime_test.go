@@ -43,7 +43,7 @@ func TestIMESync(t *testing.T) {
 	t.Run("an editable focus enables text input with surrounding text", func(t *testing.T) {
 		wire := &fakeIMEWire{available: true}
 		r, _ := imeRouter(t)
-		newIMEController(wire).sync(r, 1, true)
+		newIMEController(wire).sync(r, true)
 		if len(wire.updates) != 1 {
 			t.Fatalf("updates = %d, want 1", len(wire.updates))
 		}
@@ -66,8 +66,8 @@ func TestIMESync(t *testing.T) {
 		wire := &fakeIMEWire{available: true}
 		r, _ := imeRouter(t)
 		c := newIMEController(wire)
-		c.sync(r, 1, true)
-		c.sync(r, 1, true)
+		c.sync(r, true)
+		c.sync(r, true)
 		if len(wire.updates) != 1 {
 			t.Errorf("updates = %d, want 1 (unchanged state must dedup)", len(wire.updates))
 		}
@@ -77,9 +77,9 @@ func TestIMESync(t *testing.T) {
 		wire := &fakeIMEWire{available: true}
 		r, e := imeRouter(t)
 		c := newIMEController(wire)
-		c.sync(r, 1, true)
+		c.sync(r, true)
 		e.MoveCursor(-1)
-		c.sync(r, 1, true)
+		c.sync(r, true)
 		if len(wire.updates) != 2 {
 			t.Fatalf("updates = %d, want 2", len(wire.updates))
 		}
@@ -107,14 +107,14 @@ func TestIMESync(t *testing.T) {
 
 		wire := &fakeIMEWire{available: true}
 		c := newIMEController(wire)
-		c.sync(r, 1, true)
+		c.sync(r, true)
 		if len(wire.updates) != 1 || !wire.updates[0].Enabled {
 			t.Fatalf("first sync must enable, got %+v", wire.updates)
 		}
 		bp := box.Bounds()
 		r.Press(widget.BTNLeft, widget.Point{X: bp.X + bp.W - 5, Y: 15})
 		r.Release(widget.BTNLeft, widget.Point{X: bp.X + bp.W - 5, Y: 15})
-		c.sync(r, 1, true)
+		c.sync(r, true)
 		if len(wire.updates) != 2 {
 			t.Fatalf("updates = %d, want 2", len(wire.updates))
 		}
@@ -123,17 +123,15 @@ func TestIMESync(t *testing.T) {
 		}
 	})
 
-	t.Run("the caret rect is divided by the buffer scale", func(t *testing.T) {
+	t.Run("the caret rect is surface-local at any device scale", func(t *testing.T) {
+		// The tree is laid out in logical surface pixels, so the caret
+		// rect passes to set_cursor_rectangle unmodified - there is no
+		// scale division left to round wrong at fractional factors.
 		wire := &fakeIMEWire{available: true}
 		r, _ := imeRouter(t)
-		newIMEController(wire).sync(r, 2, true)
+		newIMEController(wire).sync(r, true)
 		st := wire.updates[0]
-		if st.CursorRect.X%2 != 0 && st.CursorRect.X != 0 {
-			// Not a strict multiple-of-two contract, but the caret
-			// must sit in surface coordinates, i.e. halved.
-			t.Logf("caret x = %d", st.CursorRect.X)
-		}
-		if st.CursorRect.X > 200 || st.CursorRect.H > 60 {
+		if st.CursorRect.X > 200 || st.CursorRect.H > 30 {
 			t.Errorf("caret rect = %+v, want surface (not buffer) coordinates", st.CursorRect)
 		}
 	})
@@ -145,8 +143,8 @@ func TestIMESyncWithoutProtocol(t *testing.T) {
 	wire := &fakeIMEWire{}
 	r, e := imeRouter(t)
 	c := newIMEController(wire)
-	c.sync(r, 1, true)
-	c.sync(r, 1, true)
+	c.sync(r, true)
+	c.sync(r, true)
 	if len(wire.updates) != 0 {
 		t.Errorf("updates without the protocol = %d, want 0", len(wire.updates))
 	}
@@ -155,7 +153,7 @@ func TestIMESyncWithoutProtocol(t *testing.T) {
 	if got := e.Text(); got != "abx" {
 		t.Errorf("text = %q, want abx (keyboard path must be untouched)", got)
 	}
-	c.deliver(r, 1, wlsession.IMEEvent{Commit: "y", Current: true})
+	c.deliver(r, wlsession.IMEEvent{Commit: "y", Current: true})
 	if len(wire.updates) != 0 {
 		t.Errorf("updates = %d, want 0 even after a batch", len(wire.updates))
 	}
@@ -165,7 +163,7 @@ func TestIMEDeliver(t *testing.T) {
 	t.Run("preedit shows in the entry without touching the contents", func(t *testing.T) {
 		wire := &fakeIMEWire{available: true}
 		r, e := imeRouter(t)
-		newIMEController(wire).deliver(r, 1, wlsession.IMEEvent{
+		newIMEController(wire).deliver(r, wlsession.IMEEvent{
 			Preedit: "かん", PreeditCursorBegin: 3, PreeditCursorEnd: 3, Current: true,
 		})
 		if !e.Composing() {
@@ -180,8 +178,8 @@ func TestIMEDeliver(t *testing.T) {
 		wire := &fakeIMEWire{available: true}
 		r, e := imeRouter(t)
 		c := newIMEController(wire)
-		c.deliver(r, 1, wlsession.IMEEvent{Preedit: "かん", PreeditCursorBegin: 3, PreeditCursorEnd: 3})
-		c.deliver(r, 1, wlsession.IMEEvent{Commit: "漢", Current: true})
+		c.deliver(r, wlsession.IMEEvent{Preedit: "かん", PreeditCursorBegin: 3, PreeditCursorEnd: 3})
+		c.deliver(r, wlsession.IMEEvent{Commit: "漢", Current: true})
 		if got := e.Text(); got != "ab漢" {
 			t.Errorf("text = %q, want ab漢", got)
 		}
@@ -193,7 +191,7 @@ func TestIMEDeliver(t *testing.T) {
 	t.Run("delete surrounding applies before the commit", func(t *testing.T) {
 		wire := &fakeIMEWire{available: true}
 		r, e := imeRouter(t)
-		newIMEController(wire).deliver(r, 1, wlsession.IMEEvent{
+		newIMEController(wire).deliver(r, wlsession.IMEEvent{
 			DeleteBefore: 1, Commit: "z", Current: true,
 		})
 		if got := e.Text(); got != "az" {
@@ -205,7 +203,7 @@ func TestIMEDeliver(t *testing.T) {
 		wire := &fakeIMEWire{available: true}
 		r, _ := imeRouter(t)
 		c := newIMEController(wire)
-		c.deliver(r, 1, wlsession.IMEEvent{Commit: "x", Current: true})
+		c.deliver(r, wlsession.IMEEvent{Commit: "x", Current: true})
 		if len(wire.updates) != 1 {
 			t.Fatalf("updates = %d, want 1 resync", len(wire.updates))
 		}
@@ -220,7 +218,7 @@ func TestIMEDeliver(t *testing.T) {
 	t.Run("a stale batch applies but skips the resync", func(t *testing.T) {
 		wire := &fakeIMEWire{available: true}
 		r, e := imeRouter(t)
-		newIMEController(wire).deliver(r, 1, wlsession.IMEEvent{Commit: "x"})
+		newIMEController(wire).deliver(r, wlsession.IMEEvent{Commit: "x"})
 		if got := e.Text(); got != "abx" {
 			t.Errorf("text = %q, want abx (stale batches still apply)", got)
 		}
@@ -234,9 +232,9 @@ func TestIMEReset(t *testing.T) {
 	wire := &fakeIMEWire{available: true}
 	r, e := imeRouter(t)
 	c := newIMEController(wire)
-	c.sync(r, 1, true)
+	c.sync(r, true)
 	c.reset()
-	c.sync(r, 1, true)
+	c.sync(r, true)
 	if len(wire.updates) != 2 {
 		t.Errorf("updates after reset = %d, want 2 (focus moves invalidate state)", len(wire.updates))
 	}

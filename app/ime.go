@@ -46,7 +46,12 @@ func newIMEController(sess imeWire) *imeController {
 // else. causeOther marks changes made without the input method, asking
 // it to drop its composing state. Without the protocol this is a
 // no-op, so the keyboard path runs exactly as without IME support.
-func (c *imeController) sync(r *widget.Router, scale int, causeOther bool) {
+//
+// The widget tree is laid out in logical surface pixels, so the caret
+// rect is already surface-local: set_cursor_rectangle takes surface
+// coordinates and the rect passes through with no scaling or rounding
+// at any device scale.
+func (c *imeController) sync(r *widget.Router, causeOther bool) {
 	if !c.sess.TextInputAvailable() {
 		return
 	}
@@ -61,11 +66,6 @@ func (c *imeController) sync(r *widget.Router, scale int, causeOther bool) {
 		return
 	}
 	c.sent, c.have = next, true
-	if scale < 1 {
-		scale = 1
-	}
-	// The caret rect arrives in root coordinates (logical pixels
-	// times the buffer scale); the wire wants surface coordinates.
 	st := wlsession.IMEState{
 		Enabled:     next.enabled,
 		Multiline:   next.multiline,
@@ -74,10 +74,10 @@ func (c *imeController) sync(r *widget.Router, scale int, causeOther bool) {
 		Anchor:      next.anchor,
 		CauseOther:  causeOther,
 		CursorRect: wlsession.Rect{
-			X: int32(next.rect.X / scale),
-			Y: int32(next.rect.Y / scale),
-			W: int32(next.rect.W / scale),
-			H: int32(next.rect.H / scale),
+			X: int32(next.rect.X),
+			Y: int32(next.rect.Y),
+			W: int32(next.rect.W),
+			H: int32(next.rect.H),
 		},
 	}
 	c.sess.UpdateIME(st)
@@ -88,7 +88,7 @@ func (c *imeController) sync(r *widget.Router, scale int, causeOther bool) {
 // string, show the next preedit. A batch whose serial still matches
 // our commits also re-pushes the state, which the changes just
 // invalidated.
-func (c *imeController) deliver(r *widget.Router, scale int, ev wlsession.IMEEvent) {
+func (c *imeController) deliver(r *widget.Router, ev wlsession.IMEEvent) {
 	cl, ok := r.Focused().(widget.IMEClient)
 	if !ok {
 		return
@@ -101,7 +101,7 @@ func (c *imeController) deliver(r *widget.Router, scale int, ev wlsession.IMEEve
 	}
 	cl.IMEPreedit(ev.Preedit, ev.PreeditCursorBegin, ev.PreeditCursorEnd)
 	if ev.Current {
-		c.sync(r, scale, false)
+		c.sync(r, false)
 	}
 }
 

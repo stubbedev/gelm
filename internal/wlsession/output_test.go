@@ -6,6 +6,41 @@ import (
 	"github.com/neurlang/wayland/wl"
 )
 
+// TestOutputTransform tracks the geometry event's transform, which
+// rotated-output surfaces need for wl_surface.set_buffer_transform.
+func TestOutputTransform(t *testing.T) {
+	s := &Session{globals: make(map[string]bool), ifaceNames: make(map[uint32]string)}
+	out := &Output{Scale: 1}
+	e := &outputEvents{sess: s, out: out}
+
+	e.HandleOutputGeometry(wl.OutputGeometryEvent{Transform: 2})
+	if out.Transform != 2 {
+		t.Errorf("transform = %d, want 2 from the geometry event", out.Transform)
+	}
+	e.HandleOutputGeometry(wl.OutputGeometryEvent{Transform: 0})
+	if out.Transform != 0 {
+		t.Errorf("transform = %d, want 0 after the output unrotated", out.Transform)
+	}
+}
+
+// TestOutputScaleKeepsIntegerFactor pins the integer wl_output.scale
+// bookkeeping that predates the fractional protocol: zero factors are
+// dropped, real ones recorded.
+func TestOutputScaleKeepsIntegerFactor(t *testing.T) {
+	s := &Session{globals: make(map[string]bool), ifaceNames: make(map[uint32]string)}
+	out := &Output{Scale: 1}
+	e := &outputEvents{sess: s, out: out}
+
+	e.HandleOutputScale(wl.OutputScaleEvent{Factor: 2})
+	if out.Scale != 2 {
+		t.Errorf("scale = %d, want 2", out.Scale)
+	}
+	e.HandleOutputScale(wl.OutputScaleEvent{Factor: 0})
+	if out.Scale != 2 {
+		t.Errorf("scale = %d after a zero factor, want 2 kept", out.Scale)
+	}
+}
+
 // TestOutputHotplug pins the registry-level output bookkeeping: added
 // outputs land in Outputs() in arrival order and a removed global
 // drops the matching output and fires the removal hook.

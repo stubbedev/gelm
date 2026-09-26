@@ -8,6 +8,7 @@ import (
 	"github.com/stubbedev/gelm/internal/buffer"
 	"github.com/stubbedev/gelm/internal/debug"
 	"github.com/stubbedev/gelm/internal/popup"
+	"github.com/stubbedev/gelm/internal/scale"
 	"github.com/stubbedev/gelm/internal/wlsession"
 	"github.com/stubbedev/gelm/render"
 	"github.com/stubbedev/gelm/widget"
@@ -111,8 +112,10 @@ func cursorFor(hover widget.Widget) string {
 	return ""
 }
 
-// openTooltip maps a one-shot painted popup at the pointer.
-func openTooltip(sess *wlsession.Session, host Host, cfg *Config, pointerX, pointerY int, text string) *popup.Popup {
+// openTooltip maps a one-shot painted popup at the pointer. The popup
+// surface scales with the host window: frac120 is the window's current
+// 120-based device scale.
+func openTooltip(sess *wlsession.Session, host Host, cfg *Config, frac120 uint32, pointerX, pointerY int, text string) *popup.Popup {
 	ts, ok := host.(tooltipSurfacer)
 	if !ok || cfg.TooltipFace == nil {
 		debug.Log("input", "tooltip unavailable: host %T or nil face", host)
@@ -147,13 +150,16 @@ func openTooltip(sess *wlsession.Session, host Host, cfg *Config, pointerX, poin
 	w, h := tp.Size()
 	box.Measure(widget.Constraints{Max: widget.Size{W: w, H: h}})
 	box.Arrange(render.Rect{X: 0, Y: 0, W: w, H: h})
-	b, err := buffer.NewFile(sess.Shm(), w*cfg.Scale, h, cfg.Scale)
+	sc := scale.New(sess, tp.HostSurface(), nil)
+	_ = sc.Apply(frac120, w, h)
+	b, err := buffer.NewFile(sess.Shm(),
+		scale.DeviceSize(w, frac120), scale.DeviceSize(h, frac120), scale.IntegerScale(frac120))
 	if err != nil {
 		tp.Close()
 		return nil
 	}
-	cv := render.New(b.Data, b.Stride, b.Width, b.Height)
-	cv.Clear(cv.Rect(), widget.Current().Surface)
+	cv := render.NewScaled(b.Data, b.Stride, b.Width, b.Height, int(frac120), scale.Denom)
+	cv.ClearDevice(cv.Rect(), widget.Current().Surface)
 	box.Paint(cv)
 	surf := tp.HostSurface()
 	if err := surf.Attach(b.WL, 0, 0); err != nil {
