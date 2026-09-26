@@ -26,6 +26,7 @@ import (
 	"github.com/neurlang/wayland/wl"
 	"github.com/neurlang/wayland/wlclient"
 
+	"github.com/stubbedev/gelm/internal/anim"
 	"github.com/stubbedev/gelm/internal/buffer"
 	"github.com/stubbedev/gelm/internal/debug"
 	"github.com/stubbedev/gelm/internal/dragdrop"
@@ -97,6 +98,10 @@ type hostWindow struct {
 	dirty        bool
 	frameReady   bool
 	framePending bool
+	// frameArmedAt is when the pending frame callback was armed; the
+	// animation clock judges a callback dead (occluded surface) once
+	// it stays unanswered past frameStaleAfter.
+	frameArmedAt time.Time
 	drawErr      error
 	// paintedPixels is the pixel count the last frame actually wrote;
 	// the paint-count tests pin it.
@@ -357,6 +362,24 @@ func (s wireSurface) Frame(ready *bool) error {
 	return nil
 }
 
+// frameStaleAfter is how long a committed frame may sit unanswered
+// before the loop treats the compositor as paused and lets the
+// animation timer pace the draw itself. One and a half frame periods:
+// safely past callback jitter at any refresh rate, tight enough to
+// keep an occluded tween moving.
+const frameStaleAfter = 3 * anim.FrameInterval / 2
+
+// frameOwed reports whether a dirty window may commit a frame now:
+// normally the previous frame's callback must have returned, but a
+// running animation whose callback went unheard past frameStaleAfter
+// draws on the animation clock's timer instead.
+func (w *hostWindow) frameOwed(animating bool, now time.Time) bool {
+	if !w.framePending {
+		return true
+	}
+	return animating && now.Sub(w.frameArmedAt) >= frameStaleAfter
+}
+
 // draw paints one frame: resize check, acquire, cached measure, arrange,
 // damage collection, region-clipped paint, commit, and frame-callback
 // arming. It reports whether the loop may continue; drawErr carries the
@@ -483,6 +506,7 @@ func (w *hostWindow) draw() bool {
 	}
 	debug.Log("frame", "frame committed, waiting for callback")
 	w.framePending = true
+	w.frameArmedAt = time.Now()
 	return true
 }
 

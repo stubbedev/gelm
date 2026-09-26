@@ -204,11 +204,12 @@ type Scroll struct {
 	dragStartOffY int
 
 	// auto-hide: bar alpha 0..1, the time of the last scroll or hover
-	// change, and a tween generation so overlapping fades stay ordered.
-	alpha     float64
-	hovered   bool
-	lastInput time.Time
-	fadeGen   int
+	// change, and the running fade's Cancel so a fresh fade replaces
+	// the previous one mid-flight.
+	alpha      float64
+	hovered    bool
+	lastInput  time.Time
+	cancelFade anim.Cancel
 }
 
 // gutter is the scrollbar strip width reserved inside the viewport.
@@ -263,20 +264,19 @@ func (s *Scroll) showBars() {
 	s.fadeTo(1)
 }
 
-// fadeTo animates the bar alpha toward to, replacing any pending fade.
-// Each tween step invalidates the gutter strips so the fading bars
-// repaint.
+// fadeTo animates the bar alpha toward to, canceling any fade still
+// running: the new tween's first callback takes over from the old
+// one's last value. Each step invalidates the gutter strips so the
+// fading bars repaint.
 func (s *Scroll) fadeTo(to float64) {
 	if (to == 1 && s.alpha == 1) || (to == 0 && s.alpha == 0) {
 		return
 	}
-	s.fadeGen++
-	gen := s.fadeGen
+	if s.cancelFade != nil {
+		s.cancelFade()
+	}
 	from := s.alpha
-	anim.Start(barFade, func(t float64) {
-		if gen != s.fadeGen {
-			return
-		}
+	s.cancelFade = anim.Start(barFade, func(t float64) {
 		s.alpha = from + (to-from)*t
 		s.invalidateBars()
 	})

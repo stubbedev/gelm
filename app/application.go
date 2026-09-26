@@ -305,10 +305,17 @@ func (a *Application) Run() error {
 		if w := a.focused(); w != nil {
 			a.ime.sync(w.router, true)
 		}
-		if anim.Active() {
-			anim.Tick(now)
-			for _, w := range a.windows {
-				w.dirty = true
+		animating := anim.Active()
+		if animating {
+			// The animation clock ticks on loop wakes: frame callbacks
+			// pace it when the compositor answers, the timer Next()
+			// schedules pace it when they stop (occlusion). A tick that
+			// ran callbacks invalidated widgets, so only then is a
+			// frame owed.
+			if anim.Tick(now) {
+				for _, w := range a.windows {
+					w.dirty = true
+				}
 			}
 		}
 		a.updateTips(now)
@@ -342,9 +349,15 @@ func (a *Application) Run() error {
 				// Not configured yet; the configure event wakes the park.
 				continue
 			}
-			// Draw when something changed and pacing allows (see
-			// shouldDraw).
-			if shouldDraw(w.dirty, w.framePending, anim.Active(), resized) {
+			// Draw when something changed: a configure-driven resize
+			// repaint always goes out (a pacing-gated one deadlocks,
+			// see shouldDraw), otherwise the frameOwed pacing decides:
+			// either the previous frame's callback returned, or an
+			// animation's timer deadline passed with the callback
+			// still unheard - an occluded surface stops receiving
+			// callbacks, and the animation clock keeps it moving at
+			// the frame period.
+			if shouldDraw(w, animating, now, resized) {
 				w.dirty = false
 				if !w.draw() {
 					return w.drawErr
@@ -355,7 +368,7 @@ func (a *Application) Run() error {
 			return ErrClosed
 		}
 
-		var tipNext, repNext, animEnd time.Time
+		var tipNext, repNext, animFrame time.Time
 		for _, w := range a.windows {
 			if t, ok := w.tip.next(); ok && (tipNext.IsZero() || t.Before(tipNext)) {
 				tipNext = t
@@ -365,9 +378,9 @@ func (a *Application) Run() error {
 			repNext = t
 		}
 		if t, ok := anim.Next(); ok {
-			animEnd = t
+			animFrame = t
 		}
-		wakeAt, ok := nextWake(repNext, animEnd, tipNext, now)
+		wakeAt, ok := nextWake(repNext, animFrame, tipNext, now)
 		if ok {
 			a.kicker.schedule(a.sess, wakeAt)
 		}

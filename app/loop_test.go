@@ -136,33 +136,124 @@ func TestKeyRepeatLatency(t *testing.T) {
 // bypass: a configure-driven repaint must go out even with a frame
 // still pending, because compositors withhold that callback until the
 // surface commits at the configured size - gating it deadlocks the
-// resize.
+// resize. The frameOwed rules underneath are pinned in TestFrameOwed.
 func TestShouldDraw(t *testing.T) {
+	t0 := time.Now()
 	t.Run("an idle window never draws", func(t *testing.T) {
-		if shouldDraw(false, false, false, false) {
+		if shouldDraw(&hostWindow{}, false, t0, false) {
 			t.Error("undirtied window drew")
 		}
 	})
 	t.Run("a dirty window waits for its frame callback", func(t *testing.T) {
-		if shouldDraw(true, true, false, false) {
+		w := &hostWindow{dirty: true, framePending: true, frameArmedAt: t0}
+		if shouldDraw(w, false, t0, false) {
 			t.Error("drew while the previous frame was pending")
 		}
 	})
 	t.Run("a returned callback lets the frame go out", func(t *testing.T) {
-		if !shouldDraw(true, false, false, false) {
+		if !shouldDraw(&hostWindow{dirty: true}, false, t0, false) {
 			t.Error("pacing blocked a ready frame")
 		}
 	})
-	t.Run("an animation keeps producing frames", func(t *testing.T) {
-		if !shouldDraw(true, true, true, false) {
-			t.Error("animation frames blocked by pacing")
+	t.Run("a stale animation frame goes out", func(t *testing.T) {
+		w := &hostWindow{dirty: true, framePending: true, frameArmedAt: t0}
+		if !shouldDraw(w, true, t0.Add(frameStaleAfter), false) {
+			t.Error("occluded animation stalled")
 		}
 	})
 	t.Run("a configure resize bypasses pacing", func(t *testing.T) {
-		if !shouldDraw(true, true, false, true) {
+		w := &hostWindow{dirty: true, framePending: true, frameArmedAt: t0}
+		if !shouldDraw(w, false, t0, true) {
 			t.Error("resize repaint blocked by pacing; the resize would deadlock")
 		}
 	})
+}
+
+// TestLoopKickerCoalesces pins the wakeup budget: one outstanding kick
+// covers every deadline it spans, and a fired kick rearms. The
+// animation loop passes here once per frame - a kicker that re-armed on
+// covered deadlines would queue a sync per pass and never park.
+func TestLoopKickerCoalesces(t *testing.T) {
+	k := &loopKicker{}
+	now := time.Now()
+	deadline := now.Add(16 * time.Millisecond)
+
+	if k.covers(deadline, now) {
+		t.Error("a fresh kicker claims a pending kick")
+	}
+	k.until = deadline
+	if !k.covers(deadline, now) {
+		t.Error("the pending kick does not cover its own deadline")
+	}
+	if !k.covers(deadline.Add(-time.Millisecond), now) {
+		t.Error("a deadline 1ms before the pending kick is treated as uncovered")
+	}
+	if k.covers(deadline.Add(3*time.Millisecond), now) {
+		t.Error("a deadline 3ms past the pending kick counts as covered")
+	}
+	if k.covers(deadline, deadline.Add(time.Millisecond)) {
+		t.Error("a fired kick still counts as pending")
+	}
+}
+
+// TestAnimatingLoopWakesOnFrameDeadlines drives the loop's wake
+// decision across a tween's lifetime: an animating tree wakes once per
+// animation frame period, each tick rolls the deadline forward, and
+// when the tween ends the loop parks again - the acceptance half of
+// the timer-driven animation clock.
+func TestAnimatingLoopWakesOnFrameDeadlines(t *testing.T) {
+	anim.Reset()
+	t.Cleanup(anim.Reset)
+	rep := newKeyRepeater(0, 0)
+	never := time.Time{}
+
+	if _, ok := nextWake(repNext(rep), animNext(), never, time.Now()); ok {
+		t.Fatal("static tree scheduled a wakeup")
+	}
+
+	anim.Start(70*time.Millisecond, func(float64) {})
+	now := time.Now()
+	wakes := 0
+	for anim.Active() {
+		wake, ok := nextWake(repNext(rep), animNext(), never, now)
+		if !ok {
+			t.Fatal("animating tree did not schedule a wake")
+		}
+		if d := wake.Sub(now); d <= 0 || d > anim.FrameInterval {
+			t.Fatalf("wake in %v, want one animation frame period (%v) or less", d, anim.FrameInterval)
+		}
+		wakes++
+		now = wake
+		anim.Tick(now) // the loop ticks its animation clock on the wake
+	}
+	if wakes < 3 {
+		t.Errorf("wakes over a 70ms tween = %d, want the ~%v frame cadence", wakes, anim.FrameInterval)
+	}
+	if _, ok := nextWake(repNext(rep), animNext(), never, now); ok {
+		t.Error("finished tween still scheduled wakeups")
+	}
+}
+
+// TestFrameOwed pins the loop's frame gate: a frame goes out when the
+// compositor answered the previous one, and an animation pushes one
+// through only once its callback has gone unheard past the staleness
+// bound - the occluded case the animation timer covers.
+func TestFrameOwed(t *testing.T) {
+	t0 := time.Now()
+	w := &hostWindow{framePending: true, frameArmedAt: t0}
+
+	if !(&hostWindow{}).frameOwed(true, t0) {
+		t.Error("window without a pending frame was not owed one")
+	}
+	if w.frameOwed(false, t0.Add(time.Second)) {
+		t.Error("pending frame drawn past without the callback")
+	}
+	if w.frameOwed(true, t0.Add(anim.FrameInterval)) {
+		t.Error("animation drew over a fresh pending frame")
+	}
+	if !w.frameOwed(true, t0.Add(frameStaleAfter)) {
+		t.Error("animation did not take over after the callback went stale")
+	}
 }
 
 func TestTooltipNext(t *testing.T) {

@@ -272,22 +272,32 @@ type loopKicker struct {
 }
 
 // schedule arms a wakeup for at unless one is already pending that
-// covers it.
+// covers it. While a tween runs the loop passes here once per frame:
+// re-arming a covered deadline would queue another sync per pass and
+// the parked loop would stop parking at all.
 func (k *loopKicker) schedule(sess *wlsession.Session, at time.Time) {
 	now := time.Now()
-	if !k.until.After(now) || at.Add(-2*time.Millisecond).Before(k.until) {
-		// A stale or already-covered kick: rearm.
-		k.until = at
-		sess.WakeAfter(at.Sub(now))
+	if k.covers(at, now) {
+		return
 	}
+	k.until = at
+	sess.WakeAfter(at.Sub(now))
+}
+
+// covers reports whether the pending kick still satisfies at: it has
+// not fired yet, and fires no more than 2ms before at. A pending kick
+// that already fired (or lands earlier than that) does not cover.
+func (k *loopKicker) covers(at, now time.Time) bool {
+	return k.until.After(now) && !at.Add(-2*time.Millisecond).After(k.until)
 }
 
 // nextWake computes the earliest timer deadline the parked loop must
 // wake for; false means nothing is pending and the loop may sleep until
-// the next compositor event. Deadlines already due return false: the
-// next loop iteration handles them, and parking for zero duration would
-// only burn a cycle.
-func nextWake(repeat, animEnd, tipNext time.Time, now time.Time) (time.Time, bool) {
+// the next compositor event. animFrame is the animation clock's next
+// tick deadline while tweens run. Deadlines already due return false:
+// the next loop iteration handles them, and parking for zero duration
+// would only burn a cycle.
+func nextWake(repeat, animFrame, tipNext time.Time, now time.Time) (time.Time, bool) {
 	wake := time.Time{}
 	found := false
 	consider := func(t time.Time) {
@@ -299,20 +309,22 @@ func nextWake(repeat, animEnd, tipNext time.Time, now time.Time) (time.Time, boo
 		}
 	}
 	consider(repeat)
-	consider(animEnd)
+	consider(animFrame)
 	consider(tipNext)
 	return wake, found
 }
 
-// shouldDraw reports whether a dirty window may paint this iteration:
-// pacing allows when the previous frame's callback returned, an
-// animation keeps producing frames (occluded surfaces stop getting
-// callbacks), or a configure resized the window. The resize bypass is
-// a liveness requirement, not politeness: compositors hold the surface's
-// frame callback until it commits at the configured size, so a
-// resize repaint gated on pacing would deadlock the resize.
-func shouldDraw(dirty, framePending, animActive, resized bool) bool {
-	return dirty && (!framePending || animActive || resized)
+// shouldDraw reports whether a dirty window may paint this iteration.
+// A configure-driven resize always repaints: compositors hold the
+// surface's frame callback until it commits at the configured size, so
+// a resize repaint gated on pacing would deadlock the resize - a
+// liveness requirement, not politeness. Otherwise frameOwed pacing
+// decides: the previous frame's callback returned, or an animation's
+// timer deadline passed with the callback still unheard (an occluded
+// surface stops getting callbacks and the animation clock keeps it
+// moving at the frame period).
+func shouldDraw(w *hostWindow, animating bool, now time.Time, resized bool) bool {
+	return w.dirty && (resized || w.frameOwed(animating, now))
 }
 
 // frameDone flips ready when the compositor reports the frame as taken.

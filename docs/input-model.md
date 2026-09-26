@@ -35,7 +35,9 @@ polling. Wakeups come from exactly three sources:
 
 - compositor events: pointer, keyboard, frame callbacks, configure,
   buffer releases;
-- timer deadlines — key repeat, animation ends, tooltip dwell — each
+- timer deadlines — key repeat, animation frame deadlines (a running
+  tween wakes one frame period past the last tick; a finished one
+  schedules nothing), tooltip dwell — each
   armed through `Session.WakeAfter`, which kicks the parked read with a
   `wl_display.sync` from the timer goroutine;
 - nothing else. With no dirty state and no pending timers the loop
@@ -44,7 +46,9 @@ polling. Wakeups come from exactly three sources:
 Redraws happen only when dirty, paced by the frame callback. A frame
 that never completes (fully occluded surface) leaves the loop waiting
 for events rather than spinning: dirty input still forces the next
-redraw, animation redraws wait for the next timer tick, and configure
+redraw, a running animation takes over the pacing itself once its
+frame callback stays unanswered past a frame period and a half (the
+animation clock's timer keeps the tween moving), and configure
 size changes mark the frame dirty themselves.
 
 If the connection ever needs a timeout-based wake without a timer
