@@ -100,9 +100,11 @@ type Session struct {
 	tiSerial          uint32 // commits sent on textInput; done events compare against it
 	tiPending         tiPending
 
-	desiredCursor      string
 	pointerEnterSerial uint32
-	cursorSurface      *wl.Surface
+
+	// crs is the cursor state (shape, animation timing, frame
+	// timer); see cursor.go.
+	crs cursorState
 
 	// OnOutputAdded fires when a wl_output global appears, including
 	// after Connect for hotplug; OnOutputRemoved fires when its global
@@ -460,7 +462,10 @@ func (s *Session) HandleSeatCapabilities(ev wl.SeatCapabilitiesEvent) {
 // depends on it, notifying the focused surface's handler first.
 func (s *Session) pointerLost() {
 	s.pointer = nil
+	s.crs.mu.Lock()
 	s.pointerEnterSerial = 0
+	s.crs.mu.Unlock()
+	s.stopCursorAnim()
 	s.grabSurface = nil
 	if s.pointerFocus != nil {
 		if h := s.surfaceHandlers[s.pointerFocus]; h != nil {
@@ -565,7 +570,9 @@ func (s *Session) HandleWmBasePing(ev xdg.WmBasePingEvent) {
 // handler and becomes the motion target until a leave or grab says
 // otherwise.
 func (s *Session) HandlePointerEnter(ev wl.PointerEnterEvent) {
+	s.crs.mu.Lock()
 	s.pointerEnterSerial = ev.Serial
+	s.crs.mu.Unlock()
 	_ = s.applyCursor()
 	s.pointerFocus = ev.Surface
 	debug.Log("input", "wire enter surf=%d (%.1f,%.1f)",
@@ -581,9 +588,19 @@ func (s *Session) HandlePointerEnter(ev wl.PointerEnterEvent) {
 // grabbing input device went away.
 func (s *Session) HandlePointerLeave(ev wl.PointerLeaveEvent) {
 	debug.Log("input", "wire leave surf=%d", ev.Surface.Id())
+	grabbed := s.grabSurface != nil
 	s.grabSurface = nil
 	if s.pointerFocus == ev.Surface {
 		s.pointerFocus = nil
+	}
+	// Restore the default shape unless an implicit grab keeps the
+	// pointer: a drag (slider, resize) must not see its cursor flip
+	// to the arrow just because the pointer crossed the surface edge.
+	// Shapes stick across surfaces of one client, so without the
+	// restore the next surface would inherit whatever the old one
+	// showed.
+	if !grabbed {
+		_ = s.restoreCursor()
 	}
 	if h := s.surfaceHandlers[ev.Surface]; h != nil {
 		h.HandlePointerLeave()
@@ -894,6 +911,7 @@ func (s *Session) Run() error {
 
 // Close disconnects from the display.
 func (s *Session) Close() {
+	s.stopCursorAnim()
 	if s.Display != nil {
 		_ = s.Display.Context().Close()
 	}

@@ -96,8 +96,12 @@ type surfaceInput struct {
 	// set, an edge press belongs to the window frame, not the widgets.
 	startResize func(edges uint32, serial uint32)
 
-	x, y           float64
-	lastCursor     string
+	x, y       float64
+	lastCursor string
+	// cursorPin, when set, overrides the hover-derived shape for the
+	// life of a gesture: edge resize and chrome drags pin a shape by
+	// name ("resize_e", "grabbing") and clear the pin with "".
+	cursorPin      string
 	pressX, pressY float64
 	pressSerial    uint32
 	dragStarted    bool
@@ -144,14 +148,7 @@ func (in *surfaceInput) move(x, y float64) {
 			debug.Log("input", "hit bounds (%d,%d)+%dx%d", fb.X, fb.Y, fb.W, fb.H)
 		}
 	}
-	if shape := in.cursorAt(x, y); shape != in.lastCursor {
-		in.lastCursor = shape
-		if in.sess != nil {
-			if err := in.sess.SetCursor(shape); err != nil {
-				in.lastCursor = ""
-			}
-		}
-	}
+	in.applyCursorShape()
 	if in.onMove != nil {
 		in.onMove(x, y)
 	}
@@ -236,12 +233,53 @@ func axisSteps(v float64) int {
 
 // HandlePointerLeave implements wlsession.SurfacePointerHandler.
 func (in *surfaceInput) HandlePointerLeave() {
+	// Forget the shape even while a modal blocks this window: the
+	// session restores the default arrow on leave, and a stale cache
+	// would skip the next re-apply on re-entry.
+	in.lastCursor = ""
 	if in.dropInput() {
 		return
 	}
 	debug.Log("input", "route leave")
 	in.router.Leave()
 	in.request()
+}
+
+// cursorShape is the shape this surface asks for right now: the
+// pinned gesture shape while one lasts, else the position's shape -
+// a resize edge wins, then the hovered widget's request.
+func (in *surfaceInput) cursorShape() string {
+	if in.cursorPin != "" {
+		return in.cursorPin
+	}
+	return in.cursorAt(in.x, in.y)
+}
+
+// applyCursorShape pushes the shape to the session when it changed.
+// A failed apply forgets the cache so the next motion retries.
+func (in *surfaceInput) applyCursorShape() {
+	shape := in.cursorShape()
+	if shape == in.lastCursor {
+		return
+	}
+	in.lastCursor = shape
+	if in.sess == nil {
+		return
+	}
+	if err := in.sess.SetCursor(shape); err != nil {
+		in.lastCursor = ""
+	}
+}
+
+// pinCursor overrides the hover-derived cursor shape for a gesture:
+// a resize interaction pins "resize_e" while the edge drag runs, a
+// chrome drag can pin "grabbing". While pinned, hover changes do not
+// clobber the shape, and the pin survives pointer leave so an active
+// grab keeps its cursor. Clear the pin with "" when the gesture
+// ends; the hovered widget's shape - or the default arrow - returns.
+func (in *surfaceInput) pinCursor(shape string) {
+	in.cursorPin = shape
+	in.applyCursorShape()
 }
 
 // Run drives one host until it closes: acquire a buffer, measure and
