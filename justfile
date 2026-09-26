@@ -40,6 +40,9 @@ demo:
 demo-headless GOELM_DEBUG="input,frame": test-env test-build
     #!/bin/sh
     dir="{{test_dir}}"
+    if [ ! -f "$dir/client.env" ]; then
+        echo "test compositor env missing; run just test-env"; exit 1
+    fi
     . "$dir/client.env"
     export WAYLAND_DISPLAY XDG_RUNTIME_DIR="$dir" GOELM_DEBUG="{{GOELM_DEBUG}}"
     "$dir/gelm-hello" >"$dir/demo.log" 2>&1 &
@@ -60,6 +63,9 @@ multi:
 multi-headless GOELM_DEBUG="input,frame": test-env test-build
     #!/bin/sh
     dir="{{test_dir}}"
+    if [ ! -f "$dir/client.env" ]; then
+        echo "test compositor env missing; run just test-env"; exit 1
+    fi
     . "$dir/client.env"
     export WAYLAND_DISPLAY XDG_RUNTIME_DIR="$dir" GOELM_DEBUG="{{GOELM_DEBUG}}"
     go build -tags gelmdebug -o "$dir/gelm-multi" ./cmd/gelm-multi || exit 1
@@ -122,6 +128,7 @@ test-env-stop:
         kill -9 "$pid" 2>/dev/null
     fi
     pkill -f "$dir/gelm-hello" 2>/dev/null
+    pkill -f "$dir/gelm-multi" 2>/dev/null
     rm -rf "$dir"
     echo "test compositor stopped"
 
