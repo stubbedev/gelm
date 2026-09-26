@@ -365,6 +365,10 @@ func actionForSym(sym xkb.Keysym) (widget.KeyAction, bool) {
 		return widget.KeyEnd, true
 	case xkb.KeyReturn, xkb.KeyKPEnter:
 		return widget.KeyEnter, true
+	case xkb.KeyPrior:
+		return widget.KeyPriorPage, true
+	case xkb.KeyNext:
+		return widget.KeyNextPage, true
 	}
 	return 0, false
 }

@@ -127,6 +127,8 @@ const (
 	KeyHome
 	KeyEnd
 	KeyEnter
+	KeyPriorPage
+	KeyNextPage
 )
 
 // KeyActionHandler receives editing and activation actions with the
