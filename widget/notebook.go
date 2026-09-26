@@ -166,6 +166,9 @@ func (n *Notebook) Paint(cv *render.Canvas) {
 	}
 }
 
+// Role implements Roleer.
+func (n *Notebook) Role() Role { return RoleTabList }
+
 // HitTest resolves the tab strip into the notebook itself (clicks
 // select or close) and otherwise delegates to the visible page.
 func (n *Notebook) HitTest(p Point) Widget {

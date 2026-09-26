@@ -365,6 +365,9 @@ func (s *Scroll) tickFade() {
 	s.fadeTo(0)
 }
 
+// Role implements Roleer.
+func (s *Scroll) Role() Role { return RoleScrollArea }
+
 // HitTest returns the widget under p: the scrollbar gutters belong to
 // the scroll itself (a press there drags or pages, never hits content),
 // the child's bounds already carry the scroll offset so hit-testing

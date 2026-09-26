@@ -74,6 +74,9 @@ func (b *Button) Paint(cv *render.Canvas) {
 	b.child.Paint(cv)
 }
 
+// Role implements Roleer.
+func (b *Button) Role() Role { return RoleButton }
+
 // HitTest returns the button when p is inside its bounds.
 func (b *Button) HitTest(p Point) Widget {
 	return b.HitLeaf(b, p)
@@ -98,9 +101,20 @@ func (b *Button) SetHovered(on bool) { b.Hovered = on }
 // SetPressed implements PressSetter.
 func (b *Button) SetPressed(on bool) { b.Pressed = on }
 
-// KeyAction activates the button on Enter when focused.
-func (b *Button) KeyAction(a KeyAction) {
+// KeyAction implements KeyActionHandler: Enter activates the button
+// when focused, which is what makes it reachable by Tab at all - the
+// traversal only collects KeyActionHandler implementations.
+func (b *Button) KeyAction(a KeyAction, _ Mods) {
 	if a == KeyEnter {
+		b.click()
+	}
+}
+
+// InsertRune implements RuneHandler: Space activates the button, the
+// other half of the GTK activation pair. Text never reaches a focused
+// button, so a blank rune can only mean "activate".
+func (b *Button) InsertRune(r rune) {
+	if r == ' ' {
 		b.click()
 	}
 }

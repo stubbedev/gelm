@@ -159,6 +159,9 @@ func (m *Menu) Paint(cv *render.Canvas) {
 	}
 }
 
+// Role implements Roleer.
+func (m *Menu) Role() Role { return RoleMenu }
+
 // HitTest returns the menu when p is inside its bounds.
 func (m *Menu) HitTest(p Point) Widget { return m.HitLeaf(m, p) }
 

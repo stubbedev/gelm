@@ -64,6 +64,9 @@ func (l *Label) Paint(cv *render.Canvas) {
 	l.face.DrawAligned(cv, l.text, l.bounds, l.sizePx, l.color, l.align)
 }
 
+// Role implements Roleer.
+func (l *Label) Role() Role { return RoleLabel }
+
 // HitTest returns the label when p is inside its bounds.
 func (l *Label) HitTest(p Point) Widget {
 	return l.HitLeaf(l, p)

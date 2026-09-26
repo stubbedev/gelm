@@ -530,6 +530,9 @@ func (t *TextArea) Paint(cv *render.Canvas) {
 	}
 }
 
+// Role implements Roleer.
+func (t *TextArea) Role() Role { return RoleTextArea }
+
 // HitTest returns the area when p is inside its bounds.
 func (t *TextArea) HitTest(p Point) Widget { return t.HitLeaf(t, p) }
 

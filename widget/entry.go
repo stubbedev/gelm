@@ -250,6 +250,9 @@ func (e *Entry) Paint(cv *render.Canvas) {
 	}
 }
 
+// Role implements Roleer.
+func (e *Entry) Role() Role { return RoleEntry }
+
 // HitTest returns the entry when p is inside its bounds.
 func (e *Entry) HitTest(p Point) Widget {
 	return e.HitLeaf(e, p)

@@ -95,6 +95,9 @@ func (s *Slider) fraction() float64 {
 	return (s.value - s.min) / (s.max - s.min)
 }
 
+// Role implements Roleer.
+func (s *Slider) Role() Role { return RoleSlider }
+
 // HitTest returns the slider when p is inside its bounds.
 func (s *Slider) HitTest(p Point) Widget {
 	return s.HitLeaf(s, p)

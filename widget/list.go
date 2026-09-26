@@ -181,6 +181,9 @@ func (l *List) Paint(cv *render.Canvas) {
 	cv.PopClip(prev)
 }
 
+// Role implements Roleer.
+func (l *List) Role() Role { return RoleList }
+
 // HitTest returns the row widget under p, or the list itself.
 func (l *List) HitTest(p Point) Widget {
 	if !l.bounds.Contains(p.X, p.Y) {

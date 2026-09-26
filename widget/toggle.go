@@ -61,6 +61,9 @@ func (s *Switch) Paint(cv *render.Canvas) {
 	cv.RoundedRect(render.Rect{X: kx, Y: s.bounds.Y + 3, W: knobD, H: knobD}, knobD/2, t.Text)
 }
 
+// Role implements Roleer.
+func (s *Switch) Role() Role { return RoleSwitch }
+
 // HitTest returns the switch when p is inside its bounds.
 func (s *Switch) HitTest(p Point) Widget {
 	return s.HitLeaf(s, p)
@@ -71,6 +74,22 @@ func (s *Switch) ClickAt(Point) { s.Toggle() }
 
 // SetPressed is a no-op: the switch has no pressed visual.
 func (s *Switch) SetPressed(bool) {}
+
+// KeyAction implements KeyActionHandler: Enter toggles when focused,
+// which makes the switch reachable and activatable by keyboard only.
+func (s *Switch) KeyAction(a KeyAction, _ Mods) {
+	if a == KeyEnter {
+		s.Toggle()
+	}
+}
+
+// InsertRune implements RuneHandler: Space toggles, the other half of
+// the GTK activation pair.
+func (s *Switch) InsertRune(r rune) {
+	if r == ' ' {
+		s.Toggle()
+	}
+}
 
 // ProgressBar paints a read-only fill over a trough.
 type ProgressBar struct {
@@ -117,6 +136,9 @@ func (p *ProgressBar) Paint(cv *render.Canvas) {
 		cv.RoundedRect(fill, p.bounds.H/2, t.Accent)
 	}
 }
+
+// Role implements Roleer.
+func (p *ProgressBar) Role() Role { return RoleProgressBar }
 
 // HitTest returns the bar when p is inside its bounds.
 func (p *ProgressBar) HitTest(pt Point) Widget {
@@ -197,6 +219,9 @@ func (c *CheckButton) Paint(cv *render.Canvas) {
 	cv.RoundedRect(inner, 3, t.Bg)
 }
 
+// Role implements Roleer.
+func (c *CheckButton) Role() Role { return RoleCheckBox }
+
 // HitTest returns the checkbox when p is inside its bounds.
 func (c *CheckButton) HitTest(p Point) Widget {
 	return c.HitLeaf(c, p)
@@ -204,6 +229,22 @@ func (c *CheckButton) HitTest(p Point) Widget {
 
 // ClickAt toggles the checkbox; the Router invokes it on press+release.
 func (c *CheckButton) ClickAt(Point) { c.Toggle() }
+
+// KeyAction implements KeyActionHandler: Enter toggles when focused,
+// which makes the checkbox reachable and activatable by keyboard only.
+func (c *CheckButton) KeyAction(a KeyAction, _ Mods) {
+	if a == KeyEnter {
+		c.Toggle()
+	}
+}
+
+// InsertRune implements RuneHandler: Space toggles, the other half of
+// the GTK activation pair.
+func (c *CheckButton) InsertRune(r rune) {
+	if r == ' ' {
+		c.Toggle()
+	}
+}
 
 // Spacer is empty layout space of a fixed size.
 type Spacer struct {
