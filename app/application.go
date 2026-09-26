@@ -29,11 +29,12 @@ type Application struct {
 	tooltipFace *render.Typeface
 	onKey       func(r *widget.Router, keycode uint32, mods wlsession.Mods)
 
-	windows []*hostWindow
-	dialogs []*Dialog
-	quit    bool
-	rep     *keyRepeater
-	kicker  *loopKicker
+	windows  []*hostWindow
+	dialogs  []*Dialog
+	popovers popoverRegistry
+	quit     bool
+	rep      *keyRepeater
+	kicker   *loopKicker
 }
 
 // NewApplication binds an application to a connected session.

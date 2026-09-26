@@ -199,3 +199,7 @@ func (s *Surface) Size() (int, int) {
 
 // HostSurface returns the underlying wl_surface.
 func (s *Surface) HostSurface() *wl.Surface { return s.WLSurface }
+
+// LayerPopupSurface returns the layer surface for popup parenting;
+// layer surfaces have no xdg_surface of their own.
+func (s *Surface) LayerPopupSurface() *wlr.ZwlrLayerSurfaceV1 { return s.Layer }

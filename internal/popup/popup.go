@@ -17,6 +17,18 @@ import (
 	"github.com/stubbedev/gelm/internal/wlsession"
 	"github.com/stubbedev/gelm/render"
 	"github.com/stubbedev/gelm/widget"
+	"github.com/stubbedev/gelm/wlr"
+)
+
+// Gravity picks which side of the anchor rect the popup opens on.
+type Gravity uint8
+
+// Popup gravities.
+const (
+	GravityBottom Gravity = iota
+	GravityTop
+	GravityRight
+	GravityLeft
 )
 
 // ErrClosed reports that the popup was dismissed; Run returns it when
@@ -39,12 +51,18 @@ type Popup struct {
 // Config describes where the popup goes and how big it is.
 type Config struct {
 	// Parent is the parent's xdg_surface; a popup always nests under a
-	// shell surface.
+	// shell surface. Layer-parented popups leave this nil and set
+	// LayerParent instead.
 	Parent *xdg.Surface
+	// LayerParent parents the popup to a layer surface (bars, panels).
+	LayerParent *wlr.ZwlrLayerSurfaceV1
 	// X, Y is the anchor point in parent surface coordinates.
 	X, Y int
 	// Width, Height is the popup's size in surface pixels.
 	Width, Height int
+	// Gravity picks which side of the anchor the popup opens on; zero
+	// is below.
+	Gravity Gravity
 	// Serial is the pointer or keyboard serial of the event that opens
 	// the popup, used for the grab.
 	Serial uint32
