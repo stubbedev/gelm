@@ -16,6 +16,7 @@ import (
 	"github.com/neurlang/wayland/xdg"
 	"github.com/unxed/xkb-go"
 
+	"github.com/stubbedev/gelm/internal/debug"
 	"github.com/stubbedev/gelm/wlr"
 )
 
@@ -76,25 +77,42 @@ type Session struct {
 	pointerEnterSerial uint32
 	cursorSurface      *wl.Surface
 
-	// OnPointerMove fires with the pointer position in surface
-	// (logical) coordinates.
-	OnPointerMove func(x, y float64)
-	// OnPointerButton fires on button state changes: the wayland button
-	// code, 1 for press and 0 for release, and the event serial needed
-	// for interactive move and resize requests.
-	OnPointerButton func(button, state, serial uint32)
-	// OnPointerAxis fires with vertical scroll deltas, positive down.
-	OnPointerAxis func(dy float64)
-	// OnPointerLeave fires when the pointer leaves the surface.
-	OnPointerLeave func()
+	// Pointer routing state. surfaceHandlers maps a wl_surface to the
+	// handler that receives pointer events targeting it; pointerFocus
+	// is the surface the compositor says the pointer is over, and
+	// grabSurface holds implicit-grab routing while a button is down.
+	surfaceHandlers map[*wl.Surface]SurfacePointerHandler
+	pointerFocus    *wl.Surface
+	grabSurface     *wl.Surface
+
 	// OnKey fires on key presses (never releases) with the evdev
-	// keycode and the held modifiers.
+	// keycode and the held modifiers. Keyboard focus is seat-wide,
+	// unlike pointer events which route per surface.
 	OnKey func(keycode uint32, mods Mods)
 	// OnKeyUp fires on key releases with the evdev keycode.
 	OnKeyUp func(keycode uint32)
 	// OnWmBasePing fires when the compositor pings liveness; reply
 	// through Window.Pong.
 	OnWmBasePing func(serial uint32)
+}
+
+// SurfacePointerHandler receives the pointer events whose compositor
+// focus belongs to one registered surface, with coordinates in that
+// surface's logical space. Hosts and popup surfaces register one
+// handler each, so multiple surfaces never fight over one callback.
+type SurfacePointerHandler interface {
+	// HandlePointerEnter reports the pointer entering the surface.
+	HandlePointerEnter(x, y float64)
+	// HandlePointerMotion reports movement within the surface; while
+	// a grab is active it may carry coordinates outside the surface.
+	HandlePointerMotion(x, y float64)
+	// HandlePointerButton reports a press or release: the wayland
+	// button code, 1 pressed / 0 released, and the event serial.
+	HandlePointerButton(button, state, serial uint32)
+	// HandlePointerAxis reports vertical scroll, positive down.
+	HandlePointerAxis(dy float64)
+	// HandlePointerLeave reports the pointer leaving the surface.
+	HandlePointerLeave()
 }
 
 // Connect binds the display, waits for the initial registry burst and the
@@ -106,9 +124,10 @@ func Connect() (*Session, error) {
 		return nil, fmt.Errorf("wlsession: connect: %w", err)
 	}
 	s := &Session{
-		Display:    d,
-		globals:    make(map[string]bool),
-		ifaceNames: make(map[uint32]string),
+		Display:         d,
+		globals:         make(map[string]bool),
+		ifaceNames:      make(map[uint32]string),
+		surfaceHandlers: make(map[*wl.Surface]SurfacePointerHandler),
 	}
 
 	reg, err := d.GetRegistry()
@@ -266,25 +285,83 @@ const (
 	capKeyboard = 2
 )
 
-// HandleSeatCapabilities implements wl.SeatCapabilitiesHandler: the
-// pointer and keyboard objects are created as the compositor offers them.
+// HandleSeatCapabilities implements wl.SeatCapabilitiesHandler. The
+// pointer and keyboard objects track the advertised capabilities: when
+// a capability disappears the compositor destroys the matching object,
+// so the stale proxy must be dropped and a fresh one created on the
+// next gain, or input goes silent after a unplug-replug.
 func (s *Session) HandleSeatCapabilities(ev wl.SeatCapabilitiesEvent) {
-	if ev.Capabilities&capPointer != 0 && s.pointer == nil {
+	hasPointer := ev.Capabilities&capPointer != 0
+	hasKeyboard := ev.Capabilities&capKeyboard != 0
+
+	if !hasPointer && s.pointer != nil {
+		debug.Log("seat", "pointer capability lost")
+		s.pointerLost()
+	}
+	if hasPointer && s.pointer == nil {
 		p, err := s.seat.GetPointer()
 		if err != nil {
 			return
 		}
 		s.pointer = p
 		wlclient.PointerAddListener(p, s)
+		debug.Log("seat", "pointer capability gained")
 	}
-	if ev.Capabilities&capKeyboard != 0 && s.keyboard == nil {
+	if !hasKeyboard && s.keyboard != nil {
+		s.keyboard = nil
+		s.mods = 0
+		debug.Log("seat", "keyboard capability lost")
+	}
+	if hasKeyboard && s.keyboard == nil {
 		k, err := s.seat.GetKeyboard()
 		if err != nil {
 			return
 		}
 		s.keyboard = k
 		wlclient.KeyboardAddListener(k, s)
+		debug.Log("seat", "keyboard capability gained")
 	}
+}
+
+// pointerLost drops the pointer object and every routing state that
+// depends on it, notifying the focused surface's handler first.
+func (s *Session) pointerLost() {
+	s.pointer = nil
+	s.pointerEnterSerial = 0
+	s.grabSurface = nil
+	if s.pointerFocus != nil {
+		if h := s.surfaceHandlers[s.pointerFocus]; h != nil {
+			h.HandlePointerLeave()
+		}
+		s.pointerFocus = nil
+	}
+}
+
+// SetSurfaceInput registers h as the receiver of pointer events
+// targeting surf; h == nil unregisters. Handlers must be registered
+// before the surface can receive input and removed when the surface
+// is destroyed.
+func (s *Session) SetSurfaceInput(surf *wl.Surface, h SurfacePointerHandler) {
+	if h == nil {
+		delete(s.surfaceHandlers, surf)
+		return
+	}
+	s.surfaceHandlers[surf] = h
+}
+
+// pointerTarget returns the handler pointer events route to right
+// now: the grabbed surface while a button is held, else the surface
+// under the pointer. Nil when neither applies or nothing is
+// registered.
+func (s *Session) pointerTarget() SurfacePointerHandler {
+	surf := s.grabSurface
+	if surf == nil {
+		surf = s.pointerFocus
+	}
+	if surf == nil {
+		return nil
+	}
+	return s.surfaceHandlers[surf]
 }
 
 // HandleSeatName implements wl.SeatNameHandler.
@@ -298,41 +375,74 @@ func (s *Session) HandleWmBasePing(ev xdg.WmBasePingEvent) {
 	}
 }
 
-// HandlePointerEnter implements wl.PointerEnterHandler.
+// HandlePointerEnter implements wl.PointerEnterHandler: the pointer
+// gained focus on ev.Surface. The enter is routed to that surface's
+// handler and becomes the motion target until a leave or grab says
+// otherwise.
 func (s *Session) HandlePointerEnter(ev wl.PointerEnterEvent) {
 	s.pointerEnterSerial = ev.Serial
 	_ = s.applyCursor()
-	if s.OnPointerMove != nil {
-		s.OnPointerMove(float64(ev.SurfaceX), float64(ev.SurfaceY))
+	s.pointerFocus = ev.Surface
+	debug.Log("input", "wire enter surf=%d (%.1f,%.1f)",
+		ev.Surface.Id(), ev.SurfaceX, ev.SurfaceY)
+	if h := s.surfaceHandlers[ev.Surface]; h != nil {
+		h.HandlePointerEnter(float64(ev.SurfaceX), float64(ev.SurfaceY))
 	}
 }
 
-// HandlePointerLeave implements wl.PointerLeaveHandler.
-func (s *Session) HandlePointerLeave(wl.PointerLeaveEvent) {
-	if s.OnPointerLeave != nil {
-		s.OnPointerLeave()
+// HandlePointerLeave implements wl.PointerLeaveHandler: pointer focus
+// left ev.Surface. A leave always ends the client-side grab: the
+// compositor only strips focus when the pointer truly left or the
+// grabbing input device went away.
+func (s *Session) HandlePointerLeave(ev wl.PointerLeaveEvent) {
+	debug.Log("input", "wire leave surf=%d", ev.Surface.Id())
+	s.grabSurface = nil
+	if s.pointerFocus == ev.Surface {
+		s.pointerFocus = nil
+	}
+	if h := s.surfaceHandlers[ev.Surface]; h != nil {
+		h.HandlePointerLeave()
 	}
 }
 
-// HandlePointerMotion implements wl.PointerMotionHandler.
+// HandlePointerMotion implements wl.PointerMotionHandler: routed to
+// the grabbed surface during a drag, else the focused surface.
 func (s *Session) HandlePointerMotion(ev wl.PointerMotionEvent) {
-	if s.OnPointerMove != nil {
-		s.OnPointerMove(float64(ev.SurfaceX), float64(ev.SurfaceY))
+	if h := s.pointerTarget(); h != nil {
+		h.HandlePointerMotion(float64(ev.SurfaceX), float64(ev.SurfaceY))
 	}
+	debug.Log("input", "wire motion (%.1f,%.1f)", ev.SurfaceX, ev.SurfaceY)
 }
 
-// HandlePointerButton implements wl.PointerButtonHandler.
+// HandlePointerButton implements wl.PointerButtonHandler: routed like
+// motion, and a press opens the client-side implicit grab so drags
+// keep feeding the pressed surface after the pointer leaves it. A
+// release ends the grab.
 func (s *Session) HandlePointerButton(ev wl.PointerButtonEvent) {
-	if s.OnPointerButton != nil {
-		s.OnPointerButton(ev.Button, ev.State, ev.Serial)
+	debug.Log("input", "wire button %d state=%d serial=%d", ev.Button, ev.State, ev.Serial)
+	if h := s.pointerTarget(); h != nil {
+		h.HandlePointerButton(ev.Button, ev.State, ev.Serial)
+	}
+	switch ev.State {
+	case 1:
+		if s.grabSurface == nil {
+			s.grabSurface = s.pointerFocus
+		}
+	case 0:
+		s.grabSurface = nil
 	}
 }
 
-// HandlePointerAxis implements wl.PointerAxisHandler.
+// HandlePointerAxis implements wl.PointerAxisHandler: routed like
+// motion, so wheel scrolling follows the grab while dragging.
 func (s *Session) HandlePointerAxis(ev wl.PointerAxisEvent) {
-	if ev.Axis == 0 && s.OnPointerAxis != nil {
-		s.OnPointerAxis(float64(ev.Value))
+	if ev.Axis != 0 {
+		return
 	}
+	if h := s.pointerTarget(); h != nil {
+		h.HandlePointerAxis(float64(ev.Value))
+	}
+	debug.Log("input", "wire axis %.1f", ev.Value)
 }
 
 // HandlePointerFrame implements wl.PointerFrameHandler.

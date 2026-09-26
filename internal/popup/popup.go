@@ -185,8 +185,10 @@ func (p *Popup) Close() {
 }
 
 // Run drives the popup's own render loop until it is dismissed: paint
-// through paint each frame, dispatch input through the session. It
-// restores the session's pointer hooks afterwards.
+// through paint each frame, dispatch input through the session. The
+// popup surface registers its own pointer handler, so events land here
+// only while the compositor routes focus (or the popup grab) to it —
+// the host surface keeps receiving nothing and no hooks are swapped.
 func Run(sess *wlsession.Session, p *Popup, scale int, root widget.Widget, bg render.Color) error {
 	surf := p.HostSurface()
 	create := func() (*buffer.Buffer, error) {
@@ -197,22 +199,9 @@ func Run(sess *wlsession.Session, p *Popup, scale int, root widget.Widget, bg re
 
 	router := &widget.Router{Root: root}
 	var pointer struct{ x, y float64 }
-	prevMove, prevButton := sess.OnPointerMove, sess.OnPointerButton
-	sess.OnPointerMove = func(x, y float64) {
-		pointer.x, pointer.y = x, y
-		router.Move(widget.Point{X: int(x) * scale, Y: int(y) * scale})
-	}
-	sess.OnPointerButton = func(button, state, serial uint32) {
-		pt := widget.Point{X: int(pointer.x) * scale, Y: int(pointer.y) * scale}
-		if state == 1 {
-			router.Press(button, pt)
-		} else {
-			router.Release(button, pt)
-		}
-	}
-	defer func() {
-		sess.OnPointerMove, sess.OnPointerButton = prevMove, prevButton
-	}()
+	input := &popupInput{router: router, scale: scale, pointer: &pointer}
+	sess.SetSurfaceInput(p.WLSurface, input)
+	defer sess.SetSurfaceInput(p.WLSurface, nil)
 
 	for !p.Closed() {
 		b, err := pool.Acquire()
@@ -269,3 +258,38 @@ type frameDone struct {
 func (f frameDone) HandleCallbackDone(wl.CallbackDoneEvent) {
 	*f.ready = true
 }
+
+// popupInput routes one popup surface's pointer events into its widget
+// tree. It implements wlsession.SurfacePointerHandler.
+type popupInput struct {
+	router  *widget.Router
+	scale   int
+	pointer *struct{ x, y float64 }
+}
+
+// HandlePointerEnter implements wlsession.SurfacePointerHandler.
+func (in *popupInput) HandlePointerEnter(x, y float64) { in.move(x, y) }
+
+// HandlePointerMotion implements wlsession.SurfacePointerHandler.
+func (in *popupInput) HandlePointerMotion(x, y float64) { in.move(x, y) }
+
+func (in *popupInput) move(x, y float64) {
+	in.pointer.x, in.pointer.y = x, y
+	in.router.Move(widget.Point{X: int(x) * in.scale, Y: int(y) * in.scale})
+}
+
+// HandlePointerButton implements wlsession.SurfacePointerHandler.
+func (in *popupInput) HandlePointerButton(button, state, serial uint32) {
+	pt := widget.Point{X: int(in.pointer.x) * in.scale, Y: int(in.pointer.y) * in.scale}
+	if state == 1 {
+		in.router.Press(button, pt)
+	} else {
+		in.router.Release(button, pt)
+	}
+}
+
+// HandlePointerAxis implements wlsession.SurfacePointerHandler.
+func (in *popupInput) HandlePointerAxis(float64) {}
+
+// HandlePointerLeave implements wlsession.SurfacePointerHandler.
+func (in *popupInput) HandlePointerLeave() { in.router.Leave() }

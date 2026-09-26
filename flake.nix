@@ -22,6 +22,12 @@
             golangci-lint # Linter behind `just lint`, config in .golangci.yml
             delve # Go debugger
             just # Task runner
+
+            # Headless test compositor: sway on WLR_BACKENDS=headless gives
+            # input integration tests a private, deterministic Wayland
+            # session (layer shell + virtual pointer protocol included)
+            # without touching the developer's real desktop.
+            sway
           ];
 
           shellHook = ''

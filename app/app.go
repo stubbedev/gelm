@@ -17,6 +17,7 @@ import (
 	"github.com/stubbedev/gelm/internal/anim"
 	"github.com/stubbedev/gelm/internal/buffer"
 	"github.com/stubbedev/gelm/internal/clipboard"
+	"github.com/stubbedev/gelm/internal/debug"
 	"github.com/stubbedev/gelm/internal/wlsession"
 	"github.com/stubbedev/gelm/render"
 	"github.com/stubbedev/gelm/widget"
@@ -72,6 +73,103 @@ type Config struct {
 	IdleWait time.Duration
 }
 
+// surfaceInput routes one host surface's pointer events into the
+// widget tree: hover tracking, press/release with click detection,
+// drags, scroll, cursor shapes, and tooltip state. It implements
+// wlsession.SurfacePointerHandler, so events arrive only when the
+// compositor's pointer focus (or an active grab) belongs to this
+// surface.
+type surfaceInput struct {
+	sess    *wlsession.Session
+	surf    *wl.Surface
+	scale   int
+	router  *widget.Router
+	tip     *tooltipCtl
+	onPress func(button uint32, serial uint32, over widget.Widget)
+	onMove  func(x, y float64)
+
+	x, y       float64
+	lastCursor string
+	// request schedules a repaint; installed by Run once the redraw
+	// channel exists.
+	request func()
+}
+
+// HandlePointerEnter implements wlsession.SurfacePointerHandler.
+func (in *surfaceInput) HandlePointerEnter(x, y float64) {
+	in.move(x, y)
+}
+
+// HandlePointerMotion implements wlsession.SurfacePointerHandler.
+func (in *surfaceInput) HandlePointerMotion(x, y float64) {
+	in.move(x, y)
+}
+
+// move feeds one pointer position to the router and updates the
+// cursor shape and hover bookkeeping.
+func (in *surfaceInput) move(x, y float64) {
+	in.x, in.y = x, y
+	in.router.Move(widget.Point{X: int(x) * in.scale, Y: int(y) * in.scale})
+	debug.Log("input", "route move (%.1f,%.1f) hit %T", x, y, in.router.Hovered())
+	if debug.Enabled {
+		if bs, ok := in.router.Hovered().(widget.Boundser); ok {
+			fb := bs.Bounds()
+			debug.Log("input", "hit bounds (%d,%d)+%dx%d", fb.X, fb.Y, fb.W, fb.H)
+		}
+	}
+	if shape := cursorFor(in.router.Hovered()); shape != in.lastCursor {
+		in.lastCursor = shape
+		if err := in.sess.SetCursor(shape); err != nil {
+			in.lastCursor = ""
+		}
+	}
+	if in.onMove != nil {
+		in.onMove(x, y)
+	}
+	in.request()
+}
+
+// HandlePointerButton implements wlsession.SurfacePointerHandler.
+func (in *surfaceInput) HandlePointerButton(button, state, serial uint32) {
+	p := widget.Point{X: int(in.x) * in.scale, Y: int(in.y) * in.scale}
+	debug.Log("input", "route button %d %s at (%.1f,%.1f) over %T",
+		button, buttonStateName(state), in.x, in.y, in.router.Hovered())
+	if state == 1 {
+		// Any press dismisses a tooltip, like every toolkit.
+		if in.tip.open != nil {
+			in.tip.open.Close()
+		}
+		in.router.Press(button, p)
+		if in.onPress != nil {
+			in.onPress(button, serial, in.router.Hovered())
+		}
+	} else {
+		in.router.Release(button, p)
+	}
+	in.request()
+}
+
+// HandlePointerAxis implements wlsession.SurfacePointerHandler.
+func (in *surfaceInput) HandlePointerAxis(dy float64) {
+	steps := int(dy / 10)
+	if dy != 0 && steps == 0 {
+		steps = 1
+		if dy < 0 {
+			steps = -1
+		}
+	}
+	debug.Log("input", "route axis dy=%.1f steps=%d hover %T", dy, steps, in.router.Hovered())
+	in.router.Axis(float64(steps))
+	in.request()
+}
+
+// HandlePointerLeave implements wlsession.SurfacePointerHandler.
+func (in *surfaceInput) HandlePointerLeave() {
+	debug.Log("input", "route leave")
+	in.router.Leave()
+	in.request()
+}
+
 // Run drives the host until it closes: acquire a buffer, measure and
 // arrange the tree, paint, commit full-frame damage, pace on the frame
 // callback, and dispatch input into a router meanwhile. It returns
@@ -90,7 +188,6 @@ func Run(cfg Config) error {
 	pool := buffer.New(create, 3)
 
 	router := &widget.Router{Root: cfg.Root}
-	var pointer struct{ x, y float64 }
 	redraw := make(chan struct{}, 1)
 	request := func() {
 		select {
@@ -100,55 +197,17 @@ func Run(cfg Config) error {
 	}
 	lastW, lastH := host.Size()
 	tip := &tooltipCtl{since: time.Now()}
-	lastCursor := ""
+
+	input := &surfaceInput{
+		sess: cfg.Session, surf: surf, scale: cfg.Scale,
+		router: router, tip: tip,
+		onPress: cfg.OnPress, onMove: cfg.OnPointerMove,
+		request: request,
+	}
+	cfg.Session.SetSurfaceInput(surf, input)
+	defer cfg.Session.SetSurfaceInput(surf, nil)
 
 	sess := cfg.Session
-	sess.OnPointerMove = func(x, y float64) {
-		pointer.x, pointer.y = x, y
-		router.Move(widget.Point{X: int(x) * cfg.Scale, Y: int(y) * cfg.Scale})
-		if shape := cursorFor(router.Hovered()); shape != lastCursor {
-			lastCursor = shape
-			if err := sess.SetCursor(shape); err != nil {
-				lastCursor = ""
-			}
-		}
-		if cfg.OnPointerMove != nil {
-			cfg.OnPointerMove(x, y)
-		}
-		request()
-	}
-	sess.OnPointerButton = func(button, state, serial uint32) {
-		p := widget.Point{X: int(pointer.x) * cfg.Scale, Y: int(pointer.y) * cfg.Scale}
-		if state == 1 {
-			// Any press dismisses a tooltip, like every toolkit.
-			if tip.open != nil {
-				tip.open.Close()
-			}
-			router.Press(button, p)
-			if cfg.OnPress != nil {
-				cfg.OnPress(button, serial, router.Hovered())
-			}
-		} else {
-			router.Release(button, p)
-		}
-		request()
-	}
-	sess.OnPointerAxis = func(dy float64) {
-		steps := int(dy / 10)
-		if dy != 0 && steps == 0 {
-			steps = 1
-			if dy < 0 {
-				steps = -1
-			}
-		}
-		router.Axis(float64(steps))
-		request()
-	}
-	sess.OnPointerLeave = func() {
-		router.Leave()
-		request()
-	}
-
 	idle := cfg.IdleWait
 	if idle == 0 {
 		idle = 50 * time.Millisecond
@@ -226,6 +285,7 @@ func Run(cfg Config) error {
 			return fmt.Errorf("app: frame callback: %w", err)
 		}
 		wlclient.CallbackAddListener(cb, frameDone{ready: &frameReady})
+		debug.Log("frame", "frame committed, waiting for callback")
 		for !frameReady && !host.Closed() {
 			if err := sess.Roundtrip(); err != nil {
 				return fmt.Errorf("app: frame dispatch: %w", err)
@@ -234,7 +294,7 @@ func Run(cfg Config) error {
 
 		anim.Tick(time.Now())
 		tip.update(router, time.Now(), func(h widget.Widget, text string) tooltipWindow {
-			return openTooltip(sess, host, &cfg, int(pointer.x), int(pointer.y), text)
+			return openTooltip(sess, host, &cfg, int(input.x), int(input.y), text)
 		})
 		if !waitInput(sess, redraw, host, idle, pump) {
 			break
@@ -255,7 +315,16 @@ type frameDone struct {
 
 // HandleCallbackDone implements wl.CallbackDoneHandler.
 func (f frameDone) HandleCallbackDone(wl.CallbackDoneEvent) {
+	debug.Log("frame", "frame callback done")
 	*f.ready = true
+}
+
+// buttonStateName renders a wl_pointer.button state for traces.
+func buttonStateName(state uint32) string {
+	if state == 1 {
+		return "press"
+	}
+	return "release"
 }
 
 // ctrl reports whether ctrl is held.
