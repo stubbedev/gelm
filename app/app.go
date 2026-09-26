@@ -369,31 +369,7 @@ func pasteSelection(router *widget.Router, clip *clipboard.Clipboard) {
 
 // actionForSym maps editing keysyms to widget actions.
 func actionForSym(sym xkb.Keysym) (widget.KeyAction, bool) {
-	switch sym {
-	case xkb.KeyBackSpace:
-		return widget.KeyBackspace, true
-	case xkb.KeyDelete:
-		return widget.KeyDelete, true
-	case xkb.KeyLeft:
-		return widget.KeyLeft, true
-	case xkb.KeyRight:
-		return widget.KeyRight, true
-	case xkb.KeyUp:
-		return widget.KeyUp, true
-	case xkb.KeyDown:
-		return widget.KeyDown, true
-	case xkb.KeyHome:
-		return widget.KeyHome, true
-	case xkb.KeyEnd:
-		return widget.KeyEnd, true
-	case xkb.KeyReturn, xkb.KeyKPEnter:
-		return widget.KeyEnter, true
-	case xkb.KeyPrior:
-		return widget.KeyPriorPage, true
-	case xkb.KeyNext:
-		return widget.KeyNextPage, true
-	}
-	return 0, false
+	return widget.KeyActionForSym(sym)
 }
 
 // keyRepeater synthesizes repeat presses for a held key, on the

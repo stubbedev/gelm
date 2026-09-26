@@ -3,6 +3,8 @@ package widget
 import (
 	"time"
 
+	"github.com/unxed/xkb-go"
+
 	"github.com/stubbedev/gelm/render"
 )
 
@@ -129,7 +131,41 @@ const (
 	KeyEnter
 	KeyPriorPage
 	KeyNextPage
+	KeyDismiss
 )
+
+// KeyActionForSym maps a keysym to an editing or activation action.
+// Popup hosts use it to route seat keyboard events into popup-local
+// widget trees without importing the app package.
+func KeyActionForSym(sym xkb.Keysym) (KeyAction, bool) {
+	switch sym {
+	case xkb.KeyBackSpace:
+		return KeyBackspace, true
+	case xkb.KeyDelete:
+		return KeyDelete, true
+	case xkb.KeyLeft:
+		return KeyLeft, true
+	case xkb.KeyRight:
+		return KeyRight, true
+	case xkb.KeyUp:
+		return KeyUp, true
+	case xkb.KeyDown:
+		return KeyDown, true
+	case xkb.KeyHome:
+		return KeyHome, true
+	case xkb.KeyEnd:
+		return KeyEnd, true
+	case xkb.KeyReturn, xkb.KeyKPEnter:
+		return KeyEnter, true
+	case xkb.KeyPrior:
+		return KeyPriorPage, true
+	case xkb.KeyNext:
+		return KeyNextPage, true
+	case xkb.KeyEscape:
+		return KeyDismiss, true
+	}
+	return 0, false
+}
 
 // KeyActionHandler receives editing and activation actions with the
 // modifiers held at the time.

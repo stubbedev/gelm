@@ -116,7 +116,8 @@ func run() error {
 				return
 			}
 			menu.OnDismiss = p.Close
-			_ = popup.Run(sess, p, 1, menu, widget.Current().Surface)
+			keyRouter := &widget.Router{Root: menu}
+			_ = popup.Run(sess, p, 1, menu, widget.Current().Surface, keyRouter)
 		}
 	}
 

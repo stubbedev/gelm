@@ -194,9 +194,11 @@ func (p *Popup) Close() {
 // Run drives the popup's own render loop until it is dismissed: paint
 // through paint each frame, dispatch input through the session. The
 // popup surface registers its own pointer handler, so events land here
-// only while the compositor routes focus (or the popup grab) to it —
+// only while the compositor routes focus (or the popup grab) to it -
 // the host surface keeps receiving nothing and no hooks are swapped.
-func Run(sess *wlsession.Session, p *Popup, scale int, root widget.Widget, bg render.Color) error {
+// A non-nil keys router receives seat keyboard events translated to
+// KeyActions, which menus need for arrow and Enter navigation.
+func Run(sess *wlsession.Session, p *Popup, scale int, root widget.Widget, bg render.Color, keys *widget.Router) error {
 	surf := p.HostSurface()
 	create := func() (*buffer.Buffer, error) {
 		w, h := p.Size()
@@ -210,6 +212,16 @@ func Run(sess *wlsession.Session, p *Popup, scale int, root widget.Widget, bg re
 	input := &popupInput{router: router, scale: scale, pointer: &pointer, markDirty: func() { dirty = true }}
 	sess.SetSurfaceInput(p.WLSurface, input)
 	defer sess.SetSurfaceInput(p.WLSurface, nil)
+
+	if keys != nil {
+		prevKey := sess.OnKey
+		sess.OnKey = func(code uint32, mods wlsession.Mods) {
+			if a, ok := widget.KeyActionForSym(sess.KeySym(code)); ok {
+				keys.KeyAction(a, widget.Mods(mods))
+			}
+		}
+		defer func() { sess.OnKey = prevKey }()
+	}
 
 	frameReady := false
 	framePending := false
