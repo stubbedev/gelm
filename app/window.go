@@ -25,6 +25,13 @@ type hostWindow struct {
 	sess *wlsession.Session
 	cfg  windowHooks
 
+	win *Window
+
+	// blocked suppresses pointer input while a modal dialog is open;
+	// isDialog marks the exempt dialog windows themselves.
+	blocked  bool
+	isDialog bool
+
 	pool         *buffer.Pool
 	router       *widget.Router
 	input        *surfaceInput
@@ -66,6 +73,7 @@ func newHostWindow(sess *wlsession.Session, host Host, scale int, root widget.Wi
 		router: router, tip: w.tip,
 		onPress: hooks.onPress, onMove: hooks.onMove,
 		request: func() { w.dirty = true },
+		blocked: func() bool { return w.blocked },
 	}
 	w.input = input
 	sess.SetSurfaceInput(host.HostSurface(), input)

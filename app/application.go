@@ -30,6 +30,7 @@ type Application struct {
 	onKey       func(r *widget.Router, keycode uint32, mods wlsession.Mods)
 
 	windows []*hostWindow
+	dialogs []*Dialog
 	quit    bool
 	rep     *keyRepeater
 	kicker  *loopKicker
@@ -128,33 +129,41 @@ type LayerConfig struct {
 // adds it to the application. The window joins the loop on the next
 // Run iteration (or immediately when Run is already running).
 func (a *Application) NewWindow(cfg WindowConfig) (*Window, error) {
+	win, _, err := a.newWindowWindow(cfg)
+	return win, err
+}
+
+// newWindowWindow creates the toplevel and its loop state.
+func (a *Application) newWindowWindow(cfg WindowConfig) (*Window, *hostWindow, error) {
 	if a.sess.WmBase() == nil {
-		return nil, errors.New("app: compositor has no xdg_wm_base; windows unsupported")
+		return nil, nil, errors.New("app: compositor has no xdg_wm_base; windows unsupported")
 	}
 	surf, err := a.sess.Compositor().CreateSurface()
 	if err != nil {
-		return nil, fmt.Errorf("app: create surface: %w", err)
+		return nil, nil, fmt.Errorf("app: create surface: %w", err)
 	}
 	win, err := window.New(a.sess.WmBase(), surf, window.Config{
 		Title: cfg.Title, AppID: cfg.AppID, Width: cfg.Width, Height: cfg.Height,
 	})
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	scale := cfg.Scale
 	if scale == 0 {
 		scale = 1
 	}
-	a.newWindow(win, scale, cfg.Root, windowHooks{
+	w := &Window{app: a}
+	hw := a.newWindow(win, scale, cfg.Root, windowHooks{
 		background: cfg.Background,
 		onPress:    cfg.OnPress,
 		onMove:     cfg.OnPointerMove,
 		onKey:      cfg.OnKey,
 	}, cfg.OnClosed)
+	hw.win = w
 	if err := surf.Commit(); err != nil {
-		return nil, fmt.Errorf("app: initial commit: %w", err)
+		return nil, nil, fmt.Errorf("app: initial commit: %w", err)
 	}
-	return &Window{app: a, win: win}, nil
+	return w, hw, nil
 }
 
 // NewLayer creates a layer surface from a declarative config — the
@@ -227,13 +236,14 @@ func (h *layerHost) Size() (int, int) {
 }
 
 // newWindow builds the loop state for one created host and joins it to
-// the application. Lifecycle is owned by the loop from here on.
-func (a *Application) newWindow(host Host, scale int, root widget.Widget, hooks windowHooks, onClosed func()) {
+// the application.
+func (a *Application) newWindow(host Host, scale int, root widget.Widget, hooks windowHooks, onClosed func()) *hostWindow {
 	hooks.onClosed = onClosed
 	w := newHostWindow(a.sess, host, scale, root, hooks)
 	a.windows = append(a.windows, w)
 	// Wake the parked loop so a new window paints promptly.
 	a.sess.WakeAfter(0)
+	return w
 }
 
 // outputWire maps an application-level output to its wl_output; nil
@@ -386,20 +396,32 @@ func (a *Application) focused() *hostWindow {
 
 // Window is the application's handle on one toplevel window.
 type Window struct {
-	app *Application
-	win *window.Window
+	app    *Application
+	win    *window.Window
+	closed bool
 }
 
 // Close closes the window from the client side; the close-request veto
 // does not apply to explicit closes.
-func (w *Window) Close() { w.win.Close() }
+func (w *Window) Close() {
+	if w.win != nil {
+		w.win.Close()
+	}
+	w.closed = true
+}
 
 // Closed reports whether the window closed.
-func (w *Window) Closed() bool { return w.win.Closed() }
+func (w *Window) Closed() bool {
+	return w.closed || (w.win != nil && w.win.Closed())
+}
 
 // SetCloseRequest installs a veto: return false to keep the window
 // open when the compositor asks it to close.
-func (w *Window) SetCloseRequest(veto func() bool) { w.win.SetCloseRequest(veto) }
+func (w *Window) SetCloseRequest(veto func() bool) {
+	if w.win != nil {
+		w.win.SetCloseRequest(veto)
+	}
+}
 
 // LayerWindow is the application's handle on one layer surface.
 type LayerWindow struct {

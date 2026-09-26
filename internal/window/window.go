@@ -119,6 +119,15 @@ func (w *Window) HandleToplevelConfigure(ev xdg.ToplevelConfigureEvent) {
 // close request.
 func (w *Window) SetCloseRequest(veto func() bool) { w.onCloseRequest = veto }
 
+// SetParent parents this toplevel to another, for transient dialogs.
+// A nil parent clears the association.
+func (w *Window) SetParent(parent *Window) {
+	if parent == nil || parent.Toplevel == nil {
+		return
+	}
+	_ = w.Toplevel.SetParent(parent.Toplevel)
+}
+
 // HandleToplevelClose marks the window closed unless a close-request
 // veto rejects it.
 func (w *Window) HandleToplevelClose(xdg.ToplevelCloseEvent) {

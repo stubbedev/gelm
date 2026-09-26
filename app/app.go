@@ -86,15 +86,28 @@ type surfaceInput struct {
 	// request schedules a repaint; installed by Run once the redraw
 	// channel exists.
 	request func()
+	// blocked suppresses all pointer input while a modal dialog is
+	// open over this window.
+	blocked func() bool
 }
+
+// dropInput reports whether a modal dialog over this window currently
+// owns the pointer.
+func (in *surfaceInput) dropInput() bool { return in.blocked != nil && in.blocked() }
 
 // HandlePointerEnter implements wlsession.SurfacePointerHandler.
 func (in *surfaceInput) HandlePointerEnter(x, y float64) {
+	if in.dropInput() {
+		return
+	}
 	in.move(x, y)
 }
 
 // HandlePointerMotion implements wlsession.SurfacePointerHandler.
 func (in *surfaceInput) HandlePointerMotion(x, y float64) {
+	if in.dropInput() {
+		return
+	}
 	in.move(x, y)
 }
 
@@ -112,8 +125,10 @@ func (in *surfaceInput) move(x, y float64) {
 	}
 	if shape := cursorFor(in.router.Hovered()); shape != in.lastCursor {
 		in.lastCursor = shape
-		if err := in.sess.SetCursor(shape); err != nil {
-			in.lastCursor = ""
+		if in.sess != nil {
+			if err := in.sess.SetCursor(shape); err != nil {
+				in.lastCursor = ""
+			}
 		}
 	}
 	if in.onMove != nil {
@@ -124,12 +139,15 @@ func (in *surfaceInput) move(x, y float64) {
 
 // HandlePointerButton implements wlsession.SurfacePointerHandler.
 func (in *surfaceInput) HandlePointerButton(button, state, serial uint32) {
+	if in.dropInput() {
+		return
+	}
 	p := widget.Point{X: int(in.x) * in.scale, Y: int(in.y) * in.scale}
 	debug.Log("input", "route button %d %s at (%.1f,%.1f) over %T",
 		button, buttonStateName(state), in.x, in.y, in.router.Hovered())
 	if state == 1 {
 		// Any press dismisses a tooltip, like every toolkit.
-		if in.tip.open != nil {
+		if in.tip != nil && in.tip.open != nil {
 			in.tip.open.Close()
 		}
 		in.router.Press(button, p)
@@ -142,11 +160,13 @@ func (in *surfaceInput) HandlePointerButton(button, state, serial uint32) {
 	in.request()
 }
 
-// HandlePointerAxis implements wlsession.SurfacePointerHandler.
 // HandlePointerAxis implements wlsession.SurfacePointerHandler: dx
 // from the horizontal axis, dy from the vertical, both positive
 // downward/rightward.
 func (in *surfaceInput) HandlePointerAxis(dx, dy float64) {
+	if in.dropInput() {
+		return
+	}
 	dxSteps, dySteps := axisSteps(dx), axisSteps(dy)
 	debug.Log("input", "route axis dx=%.1f dy=%.1f steps=%d,%d hover %T", dx, dy, dxSteps, dySteps, in.router.Hovered())
 	in.router.Axis(float64(dxSteps), float64(dySteps))
@@ -168,6 +188,9 @@ func axisSteps(v float64) int {
 
 // HandlePointerLeave implements wlsession.SurfacePointerHandler.
 func (in *surfaceInput) HandlePointerLeave() {
+	if in.dropInput() {
+		return
+	}
 	debug.Log("input", "route leave")
 	in.router.Leave()
 	in.request()
