@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"time"
 
 	deco "github.com/neurlang/wayland/unstable/xdg-decoration-v1"
 	"github.com/neurlang/wayland/wl"
@@ -602,6 +603,45 @@ func (s *Session) Roundtrip() error {
 		err = s.Display.Context().RunTill(cb)
 	}
 	return err
+}
+
+// Step dispatches exactly one event, blocking until one arrives. It is
+// the park point of an event-driven loop: with nothing to do, a loop
+// calling Step holds no CPU and wakes only when the compositor sends
+// something or a WakeAfter kick fires.
+func (s *Session) Step() error {
+	err := s.Display.Context().Run()
+	for errors.Is(err, wl.ErrContextRunProxyNil) {
+		err = s.Display.Context().Run()
+	}
+	return err
+}
+
+// kickHandler unregisters its sync callback once the wakeup fired, so
+// parked-loop kicks do not leak proxies.
+type kickHandler struct{ cb *wl.Callback }
+
+// HandleCallbackDone implements wl.CallbackDoneHandler.
+func (k kickHandler) HandleCallbackDone(wl.CallbackDoneEvent) {
+	wlclient.CallbackDestroy(k.cb)
+}
+
+// WakeAfter arranges for a loop parked in Step to return by waiting d:
+// a timer sends a wl_display.sync, and its done event ends the blocking
+// read. The sync callback may occasionally leak its registration if the
+// event is dispatched before the listener attaches; the wake itself is
+// unaffected because dispatching the event is what ends Step.
+func (s *Session) WakeAfter(d time.Duration) {
+	if d < 0 {
+		d = 0
+	}
+	time.AfterFunc(d, func() {
+		cb, err := s.Display.Sync()
+		if err != nil {
+			return
+		}
+		wlclient.CallbackAddListener(cb, kickHandler{cb: cb})
+	})
 }
 
 // Run dispatches events forever; it returns when the connection dies.

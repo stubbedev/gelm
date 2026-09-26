@@ -68,9 +68,6 @@ type Config struct {
 	// together with the router, for apps that map keycodes to typing
 	// or actions.
 	OnKey func(r *widget.Router, keycode uint32, mods wlsession.Mods)
-	// IdleWait bounds one idle poll before another frame is drawn.
-	// Zero defaults to 50ms.
-	IdleWait time.Duration
 }
 
 // surfaceInput routes one host surface's pointer events into the
@@ -172,8 +169,11 @@ func (in *surfaceInput) HandlePointerLeave() {
 
 // Run drives the host until it closes: acquire a buffer, measure and
 // arrange the tree, paint, commit full-frame damage, pace on the frame
-// callback, and dispatch input into a router meanwhile. It returns
-// ErrClosed when the surface ended.
+// callback, and dispatch input into a router meanwhile. The loop parks
+// in Session.Step between events: timers (key repeat, animation, tooltip
+// dwell) schedule wakeups, and with nothing pending the process holds no
+// CPU — even when the compositor stops sending frame callbacks for an
+// occluded surface. It returns ErrClosed when the surface ended.
 func Run(cfg Config) error {
 	host := cfg.Host
 	if err := host.EnsureUsable(); err != nil {
@@ -188,13 +188,8 @@ func Run(cfg Config) error {
 	pool := buffer.New(create, 3)
 
 	router := &widget.Router{Root: cfg.Root}
-	redraw := make(chan struct{}, 1)
-	request := func() {
-		select {
-		case redraw <- struct{}{}:
-		default:
-		}
-	}
+	dirty := true
+	markDirty := func() { dirty = true }
 	lastW, lastH := host.Size()
 	tip := &tooltipCtl{since: time.Now()}
 
@@ -202,19 +197,15 @@ func Run(cfg Config) error {
 		sess: cfg.Session, surf: surf, scale: cfg.Scale,
 		router: router, tip: tip,
 		onPress: cfg.OnPress, onMove: cfg.OnPointerMove,
-		request: request,
+		request: markDirty,
 	}
 	cfg.Session.SetSurfaceInput(surf, input)
 	defer cfg.Session.SetSurfaceInput(surf, nil)
 
 	sess := cfg.Session
-	idle := cfg.IdleWait
-	if idle == 0 {
-		idle = 50 * time.Millisecond
-	}
 
-	// Key repeat: the compositor tells us its rate and delay; held keys
-	// re-fire the route while waitInput polls.
+	// Key repeat: the compositor tells us its rate and delay; repeats
+	// fire from timer wakeups, not loop polling.
 	routeKey := func(keycode uint32, mods wlsession.Mods) {
 		routeKey(sess, router, keycode, mods, cfg.Clipboard, cfg.OnKey)
 	}
@@ -222,36 +213,41 @@ func Run(cfg Config) error {
 	sess.OnKey = func(keycode uint32, mods wlsession.Mods) {
 		rep.press(keycode, mods)
 		routeKey(keycode, mods)
-		request()
+		markDirty()
 	}
 	sess.OnKeyUp = rep.release
-	pump := func() bool {
-		code, mods, ok := rep.tick()
-		if !ok {
-			return false
-		}
-		routeKey(code, mods)
-		return true
+
+	frameReady := false
+	framePending := false
+	var drawErr error
+	kicker := &loopKicker{}
+	opener := func(h widget.Widget, text string) tooltipWindow {
+		return openTooltip(sess, host, &cfg, int(input.x), int(input.y), text)
 	}
 
-	for !host.Closed() {
-		b, err := pool.Acquire()
-		if errors.Is(err, buffer.ErrBusy) {
-			if err := sess.Roundtrip(); err != nil {
-				return fmt.Errorf("app: dispatch while busy: %w", err)
-			}
-			continue
-		}
-		if err != nil {
-			return fmt.Errorf("app: acquire buffer: %w", err)
-		}
-		wlclient.BufferAddListener(b.WL, buffer.ReleaseHandler{B: b})
-
+	draw := func() bool {
+		// Resize before acquiring: Resize destroys every buffered
+		// wl_buffer, so running it after Acquire would hand back a
+		// destroyed buffer and the compositor kills the connection on
+		// the attach. A late configure therefore also marks the frame
+		// dirty even without input.
 		bw, bh := host.Size()
 		if bw != lastW || bh != lastH {
 			lastW, lastH = bw, bh
 			pool.Resize(create)
+			dirty = true
 		}
+		b, err := pool.Acquire()
+		if errors.Is(err, buffer.ErrBusy) {
+			// The release event wakes the park below; stay dirty.
+			dirty = true
+			return true
+		}
+		if err != nil {
+			return false
+		}
+		wlclient.BufferAddListener(b.WL, buffer.ReleaseHandler{B: b})
+
 		cfg.Root.Measure(widget.Constraints{Max: widget.Size{W: bw, H: bh}})
 		cfg.Root.Arrange(render.Rect{X: 0, Y: 0, W: bw, H: bh})
 
@@ -270,42 +266,121 @@ func Run(cfg Config) error {
 		}
 
 		if err := surf.Attach(b.WL, 0, 0); err != nil {
-			return fmt.Errorf("app: attach: %w", err)
+			drawErr = fmt.Errorf("app: attach: %w", err)
+			return false
 		}
+		debug.Log("frame", "main surface %d attached", surf.Id())
 		if err := surf.DamageBuffer(0, 0, int32(b.Width), int32(b.Height)); err != nil {
-			return fmt.Errorf("app: damage: %w", err)
+			drawErr = fmt.Errorf("app: damage: %w", err)
+			return false
 		}
 		if err := surf.Commit(); err != nil {
-			return fmt.Errorf("app: commit: %w", err)
+			drawErr = fmt.Errorf("app: commit: %w", err)
+			return false
 		}
 
-		frameReady := false
 		cb, err := surf.Frame()
 		if err != nil {
-			return fmt.Errorf("app: frame callback: %w", err)
+			drawErr = fmt.Errorf("app: frame callback: %w", err)
+			return false
 		}
 		wlclient.CallbackAddListener(cb, frameDone{ready: &frameReady})
 		debug.Log("frame", "frame committed, waiting for callback")
-		for !frameReady && !host.Closed() {
-			if err := sess.Roundtrip(); err != nil {
-				return fmt.Errorf("app: frame dispatch: %w", err)
+		framePending = true
+		return true
+	}
+
+	for !host.Closed() {
+		now := time.Now()
+
+		if frameReady {
+			frameReady = false
+			framePending = false
+		}
+		if code, mods, ok := rep.tick(); ok {
+			routeKey(code, mods)
+			dirty = true
+		}
+		if anim.Active() {
+			anim.Tick(now)
+			dirty = true
+		}
+		tip.update(router, now, opener)
+
+		// Draw when something changed and pacing allows: either the
+		// previous frame's callback returned, or an animation keeps
+		// producing frames even when the compositor stopped scheduling
+		// them (occlusion). An input-only redraw always goes out; if a
+		// frame is still pending the loop simply waits for its event.
+		if dirty && (!framePending || anim.Active()) {
+			dirty = false
+			if !draw() {
+				return drawErr
 			}
 		}
 
-		anim.Tick(time.Now())
-		tip.update(router, time.Now(), func(h widget.Widget, text string) tooltipWindow {
-			return openTooltip(sess, host, &cfg, int(input.x), int(input.y), text)
-		})
-		if !waitInput(sess, redraw, host, idle, pump) {
+		if host.Closed() {
 			break
 		}
-		if anim.Active() {
-			// Animations need the next frame immediately; skip the
-			// idle wait.
-			continue
+
+		tipNext, _ := tip.next()
+		repNext, repOK := rep.nextDeadline()
+		animEnd, animOK := anim.Next()
+		if !repOK {
+			repNext = time.Time{}
+		}
+		if !animOK {
+			animEnd = time.Time{}
+		}
+		wakeAt, ok := nextWake(repNext, animEnd, tipNext, now)
+		if ok {
+			kicker.schedule(sess, wakeAt)
+		}
+		if err := sess.Step(); err != nil {
+			return fmt.Errorf("app: dispatch: %w", err)
 		}
 	}
 	return ErrClosed
+}
+
+// loopKicker coalesces timer wakeups: one outstanding WakeAfter per
+// deadline, skipped while an earlier kick still covers the requested
+// time.
+type loopKicker struct {
+	until time.Time
+}
+
+// schedule arms a wakeup for at unless one is already pending that
+// covers it.
+func (k *loopKicker) schedule(sess *wlsession.Session, at time.Time) {
+	now := time.Now()
+	if !k.until.After(now) || at.Add(-2*time.Millisecond).Before(k.until) {
+		// A stale or already-covered kick: rearm.
+		k.until = at
+		sess.WakeAfter(at.Sub(now))
+	}
+}
+
+// nextWake computes the earliest timer deadline the parked loop must
+// wake for; false means nothing is pending and the loop may sleep until
+// the next compositor event. Deadlines already due return false: the
+// next loop iteration handles them, and parking for zero duration would
+// only burn a cycle.
+func nextWake(repeat, animEnd, tipNext time.Time, now time.Time) (time.Time, bool) {
+	wake := time.Time{}
+	found := false
+	consider := func(t time.Time) {
+		if t.IsZero() || !t.After(now) {
+			return
+		}
+		if !found || t.Before(wake) {
+			wake, found = t, true
+		}
+	}
+	consider(repeat)
+	consider(animEnd)
+	consider(tipNext)
+	return wake, found
 }
 
 // frameDone flips ready when the compositor reports the frame as taken.
@@ -436,28 +511,6 @@ func actionForSym(sym xkb.Keysym) (widget.KeyAction, bool) {
 	return 0, false
 }
 
-// waitInput polls the connection until more input arrives or the deadline
-// passes, firing due key repeats along the way, and reports whether the
-// loop should continue.
-func waitInput(sess *wlsession.Session, redraw chan struct{}, host Host, idle time.Duration, pump func() bool) bool {
-	deadline := time.Now().Add(idle)
-	for time.Now().Before(deadline) && !host.Closed() {
-		select {
-		case <-redraw:
-			return true
-		default:
-		}
-		if pump() {
-			return true
-		}
-		if err := sess.Roundtrip(); err != nil {
-			return false
-		}
-		time.Sleep(5 * time.Millisecond)
-	}
-	return !host.Closed()
-}
-
 // keyRepeater synthesizes repeat presses for a held key, on the
 // compositor's schedule: one repeat after the initial delay, then one
 // every 1/rate.
@@ -509,4 +562,13 @@ func (r *keyRepeater) tick() (code uint32, mods wlsession.Mods, ok bool) {
 	}
 	r.next = time.Now().Add(r.rate)
 	return r.held.code, r.held.mods, true
+}
+
+// nextDeadline reports when the next repeat would fire; false when no
+// key is held. The parked loop wakes for it instead of polling.
+func (r *keyRepeater) nextDeadline() (time.Time, bool) {
+	if r.held == nil {
+		return time.Time{}, false
+	}
+	return r.next, true
 }

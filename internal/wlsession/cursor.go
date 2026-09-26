@@ -6,6 +6,8 @@ import (
 
 	"github.com/neurlang/wayland/wl"
 	"github.com/neurlang/wayland/wlcursor"
+
+	"github.com/stubbedev/gelm/internal/debug"
 )
 
 // defaultCursor is shown whenever the app has not asked for another
@@ -59,6 +61,7 @@ func (s *Session) applyCursor() error {
 			return fmt.Errorf("cursor surface: %w", err)
 		}
 		s.cursorSurface = surf
+		debug.Log("input", "cursor surface %d created", surf.Id())
 	}
 	theme, err := loadCursorTheme(s.shm)
 	if err != nil {

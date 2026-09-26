@@ -9,7 +9,8 @@
 //
 //	wlpointer move X Y
 //	wlpointer click X Y [BUTTON]
-//	wlpointer axis DY
+//	wlpointer axis X Y DY
+//	wlpointer dwell X Y MS
 //	wlpointer sweep X0 Y0 X1 Y1 [STEP]
 //
 // Coordinates are compositor space. Extents for absolute motion come
@@ -255,6 +256,20 @@ func main() {
 		_ = ctx.SendRequest(vp, 4)
 		_ = roundtrip(d)
 		time.Sleep(60 * time.Millisecond)
+	case "dwell":
+		// Rest the pointer on X Y for MS milliseconds, keeping the
+		// virtual device alive the whole time: dwell-dependent behavior
+		// (tooltip delay) needs the pointer to stay put with focus.
+		if len(rest) != 3 {
+			die("dwell needs X Y MS")
+		}
+		ms, err := strconv.Atoi(rest[2])
+		if err != nil {
+			die("bad duration %q: %v", rest[2], err)
+		}
+		move(atoi(rest[0]), atoi(rest[1]))
+		settle()
+		time.Sleep(time.Duration(ms) * time.Millisecond)
 	default:
 		die("unknown command %q", cmd)
 	}

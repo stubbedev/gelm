@@ -13,6 +13,7 @@ import (
 	"github.com/neurlang/wayland/xdg"
 
 	"github.com/stubbedev/gelm/internal/buffer"
+	"github.com/stubbedev/gelm/internal/debug"
 	"github.com/stubbedev/gelm/internal/wlsession"
 	"github.com/stubbedev/gelm/render"
 	"github.com/stubbedev/gelm/widget"
@@ -87,6 +88,7 @@ func New(sess *wlsession.Session, cfg Config) (*Popup, error) {
 	if err != nil {
 		return nil, fmt.Errorf("popup: create surface: %w", err)
 	}
+	debug.Log("input", "popup surface %d created", surf.Id())
 	p := &Popup{WLSurface: surf, w: int32(cfg.Width), h: int32(cfg.Height)}
 
 	xdgSurf, err := wmBase.GetSurface(surf)
@@ -98,6 +100,7 @@ func New(sess *wlsession.Session, cfg Config) (*Popup, error) {
 		return nil, fmt.Errorf("popup: get popup: %w", err)
 	}
 	p.XdgSurface, p.XdgPopup = xdgSurf, pop
+	debug.Log("input", "popup xdg_surface %d xdg_popup %d", xdgSurf.Id(), pop.Id())
 	xdgSurf.AddConfigureHandler(p)
 	pop.AddConfigureHandler(p)
 	pop.AddPopupDoneHandler(p)
@@ -148,7 +151,9 @@ func (p *Popup) HandlePopupConfigure(ev xdg.PopupConfigureEvent) {
 // HandlePopupDone implements dismissal: the user clicked away.
 func (p *Popup) HandlePopupPopupDone(xdg.PopupPopupDoneEvent) {
 	p.closed = true
-	p.onClosed()
+	if p.onClosed != nil {
+		p.onClosed()
+	}
 }
 
 // EnsureUsable gates drawing until the first configure completed and the
@@ -181,7 +186,9 @@ func (p *Popup) Close() {
 		_ = p.XdgPopup.Destroy()
 	}
 	p.closed = true
-	p.onClosed()
+	if p.onClosed != nil {
+		p.onClosed()
+	}
 }
 
 // Run drives the popup's own render loop until it is dismissed: paint
@@ -199,51 +206,59 @@ func Run(sess *wlsession.Session, p *Popup, scale int, root widget.Widget, bg re
 
 	router := &widget.Router{Root: root}
 	var pointer struct{ x, y float64 }
-	input := &popupInput{router: router, scale: scale, pointer: &pointer}
+	dirty := true
+	input := &popupInput{router: router, scale: scale, pointer: &pointer, markDirty: func() { dirty = true }}
 	sess.SetSurfaceInput(p.WLSurface, input)
 	defer sess.SetSurfaceInput(p.WLSurface, nil)
 
+	frameReady := false
+	framePending := false
 	for !p.Closed() {
-		b, err := pool.Acquire()
-		if errors.Is(err, buffer.ErrBusy) {
-			if err := sess.Roundtrip(); err != nil {
-				return fmt.Errorf("popup: dispatch while busy: %w", err)
+		if frameReady {
+			frameReady = false
+			framePending = false
+		}
+		if dirty && !framePending {
+			dirty = false
+			b, err := pool.Acquire()
+			if errors.Is(err, buffer.ErrBusy) {
+				// The release event wakes the park below; stay dirty.
+				dirty = true
+			} else if err != nil {
+				return fmt.Errorf("popup: acquire buffer: %w", err)
+			} else {
+				wlclient.BufferAddListener(b.WL, buffer.ReleaseHandler{B: b})
+
+				w, h := p.Size()
+				root.Measure(widget.Constraints{Max: widget.Size{W: w, H: h}})
+				root.Arrange(render.Rect{X: 0, Y: 0, W: w, H: h})
+
+				cv := render.New(b.Data, b.Stride, b.Width, b.Height)
+				cv.Clear(cv.Rect(), bg)
+				root.Paint(cv)
+
+				if err := surf.Attach(b.WL, 0, 0); err != nil {
+					return fmt.Errorf("popup: attach: %w", err)
+				}
+				if err := surf.DamageBuffer(0, 0, int32(b.Width), int32(b.Height)); err != nil {
+					return fmt.Errorf("popup: damage: %w", err)
+				}
+				if err := surf.Commit(); err != nil {
+					return fmt.Errorf("popup: commit: %w", err)
+				}
+
+				cb, err := surf.Frame()
+				if err != nil {
+					return fmt.Errorf("popup: frame callback: %w", err)
+				}
+				wlclient.CallbackAddListener(cb, frameDone{ready: &frameReady})
+				framePending = true
 			}
-			continue
 		}
-		if err != nil {
-			return fmt.Errorf("popup: acquire buffer: %w", err)
-		}
-		wlclient.BufferAddListener(b.WL, buffer.ReleaseHandler{B: b})
-
-		w, h := p.Size()
-		root.Measure(widget.Constraints{Max: widget.Size{W: w, H: h}})
-		root.Arrange(render.Rect{X: 0, Y: 0, W: w, H: h})
-
-		cv := render.New(b.Data, b.Stride, b.Width, b.Height)
-		cv.Clear(cv.Rect(), bg)
-		root.Paint(cv)
-
-		if err := surf.Attach(b.WL, 0, 0); err != nil {
-			return fmt.Errorf("popup: attach: %w", err)
-		}
-		if err := surf.DamageBuffer(0, 0, int32(b.Width), int32(b.Height)); err != nil {
-			return fmt.Errorf("popup: damage: %w", err)
-		}
-		if err := surf.Commit(); err != nil {
-			return fmt.Errorf("popup: commit: %w", err)
-		}
-
-		frameReady := false
-		cb, err := surf.Frame()
-		if err != nil {
-			return fmt.Errorf("popup: frame callback: %w", err)
-		}
-		wlclient.CallbackAddListener(cb, frameDone{ready: &frameReady})
-		for !frameReady && !p.Closed() {
-			if err := sess.Roundtrip(); err != nil {
-				return fmt.Errorf("popup: frame dispatch: %w", err)
-			}
+		// Park: dismissal, pointer events, and buffer releases are all
+		// events; nothing here polls.
+		if err := sess.Step(); err != nil {
+			return fmt.Errorf("popup: dispatch: %w", err)
 		}
 	}
 	return ErrClosed
@@ -262,9 +277,10 @@ func (f frameDone) HandleCallbackDone(wl.CallbackDoneEvent) {
 // popupInput routes one popup surface's pointer events into its widget
 // tree. It implements wlsession.SurfacePointerHandler.
 type popupInput struct {
-	router  *widget.Router
-	scale   int
-	pointer *struct{ x, y float64 }
+	router    *widget.Router
+	scale     int
+	pointer   *struct{ x, y float64 }
+	markDirty func()
 }
 
 // HandlePointerEnter implements wlsession.SurfacePointerHandler.
@@ -276,6 +292,7 @@ func (in *popupInput) HandlePointerMotion(x, y float64) { in.move(x, y) }
 func (in *popupInput) move(x, y float64) {
 	in.pointer.x, in.pointer.y = x, y
 	in.router.Move(widget.Point{X: int(x) * in.scale, Y: int(y) * in.scale})
+	in.markDirty()
 }
 
 // HandlePointerButton implements wlsession.SurfacePointerHandler.
@@ -286,6 +303,7 @@ func (in *popupInput) HandlePointerButton(button, state, serial uint32) {
 	} else {
 		in.router.Release(button, pt)
 	}
+	in.markDirty()
 }
 
 // HandlePointerAxis implements wlsession.SurfacePointerHandler.

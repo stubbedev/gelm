@@ -27,6 +27,29 @@ it belongs to (`Session.SetSurfaceInput`). Surfaces never swap global
 hooks; nested loops (popup.Run) stay safe because routing, not hook
 replacement, decides who receives an event.
 
+## The parked loop
+
+The app loop parks in `Session.Step` (one blocking dispatch) instead of
+polling. Wakeups come from exactly three sources:
+
+- compositor events: pointer, keyboard, frame callbacks, configure,
+  buffer releases;
+- timer deadlines — key repeat, animation ends, tooltip dwell — each
+  armed through `Session.WakeAfter`, which kicks the parked read with a
+  `wl_display.sync` from the timer goroutine;
+- nothing else. With no dirty state and no pending timers the loop
+  schedules no kick and holds no CPU.
+
+Redraws happen only when dirty, paced by the frame callback. A frame
+that never completes (fully occluded surface) leaves the loop waiting
+for events rather than spinning: dirty input still forces the next
+redraw, animation redraws wait for the next timer tick, and configure
+size changes mark the frame dirty themselves.
+
+If the connection ever needs a timeout-based wake without a timer
+(single-shot waits), prefer `WakeAfter`; raw `Roundtrip` remains for
+handshakes that must complete before proceeding (popup configure).
+
 ## Pointer focus and routing
 
 - The compositor's `wl_pointer.enter` names the surface under the

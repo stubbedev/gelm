@@ -6,6 +6,7 @@ import (
 	"github.com/neurlang/wayland/xdg"
 
 	"github.com/stubbedev/gelm/internal/buffer"
+	"github.com/stubbedev/gelm/internal/debug"
 	"github.com/stubbedev/gelm/internal/popup"
 	"github.com/stubbedev/gelm/internal/wlsession"
 	"github.com/stubbedev/gelm/render"
@@ -55,6 +56,28 @@ type tooltipCtl struct {
 	since time.Time
 }
 
+// next returns when a pending tooltip could open: a hovered widget
+// with text, not yet open, one delay away. False when nothing is
+// pending, so the loop need not wake for tooltips.
+func (t *tooltipCtl) next() (time.Time, bool) {
+	if t.open != nil || t.hover == nil {
+		return time.Time{}, false
+	}
+	if text := hoverTooltipText(t.hover); text != "" {
+		return t.since.Add(tooltipDelay), true
+	}
+	return time.Time{}, false
+}
+
+// hoverTooltipText returns the hovered widget's tooltip text, empty
+// when it has none.
+func hoverTooltipText(h widget.Widget) string {
+	if tter, ok := h.(widget.TooltipTexter); ok {
+		return tter.TooltipText()
+	}
+	return ""
+}
+
 // update advances the tooltip state to now: reset the dwell on hover
 // change, close stale tooltips, open a due one through opener.
 func (t *tooltipCtl) update(router *widget.Router, now time.Time, opener func(widget.Widget, string) tooltipWindow) {
@@ -62,12 +85,7 @@ func (t *tooltipCtl) update(router *widget.Router, now time.Time, opener func(wi
 		t.open = nil
 	}
 	h := router.Hovered()
-	var text string
-	if h != nil {
-		if tter, ok := h.(widget.TooltipTexter); ok {
-			text = tter.TooltipText()
-		}
-	}
+	text := hoverTooltipText(h)
 	changed := h != t.hover
 	if changed {
 		t.hover, t.since = h, now
@@ -97,6 +115,7 @@ func cursorFor(hover widget.Widget) string {
 func openTooltip(sess *wlsession.Session, host Host, cfg *Config, pointerX, pointerY int, text string) *popup.Popup {
 	ts, ok := host.(tooltipSurfacer)
 	if !ok || cfg.TooltipFace == nil {
+		debug.Log("input", "tooltip unavailable: host %T or nil face", host)
 		return nil
 	}
 	lbl := widget.NewLabel(cfg.TooltipFace, text, 12, widget.Current().Text)
@@ -111,6 +130,7 @@ func openTooltip(sess *wlsession.Session, host Host, cfg *Config, pointerX, poin
 		NoGrab: true,
 	})
 	if err != nil {
+		debug.Log("input", "tooltip popup: %v", err)
 		return nil
 	}
 	// Tooltips are pure display: an empty input region keeps the

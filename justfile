@@ -116,6 +116,11 @@ move x="220" y="120": test-env test-build
 click x="220" y="120" button="272": test-env test-build
     env XDG_RUNTIME_DIR={{test_dir}} $(cat {{test_dir}}/client.env) {{test_dir}}/wlpointer click {{x}} {{y}} {{button}}
 
+# Rest the pointer on compositor coordinates for a duration, so
+# dwell-dependent behavior (tooltip delay) can trigger.
+dwell x="150" y="80" ms="900": test-env test-build
+    env XDG_RUNTIME_DIR={{test_dir}} $(cat {{test_dir}}/client.env) {{test_dir}}/wlpointer dwell {{x}} {{y}} {{ms}}
+
 # Send a vertical wheel tick at compositor coordinates (positive down).
 axis x="450" y="350" dy="60": test-env test-build
     env XDG_RUNTIME_DIR={{test_dir}} $(cat {{test_dir}}/client.env) {{test_dir}}/wlpointer axis {{x}} {{y}} {{dy}}

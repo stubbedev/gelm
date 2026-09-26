@@ -50,6 +50,26 @@ func Active() bool {
 	return false
 }
 
+// Next returns the earliest time a running tween reaches its end, and
+// whether one is running. An event-driven loop parks until then as a
+// fallback for its frame pacing.
+func Next() (time.Time, bool) {
+	mu.Lock()
+	defer mu.Unlock()
+	var next time.Time
+	found := false
+	for _, t := range active {
+		if t.done {
+			continue
+		}
+		end := t.start.Add(t.dur)
+		if !found || end.Before(next) {
+			next, found = end, true
+		}
+	}
+	return next, found
+}
+
 // Tick advances every running tween to now, calling fn with eased
 // progress, and drops finished ones. Call it once per frame before
 // painting.
