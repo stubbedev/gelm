@@ -77,6 +77,17 @@ type hostWindow struct {
 	input        *surfaceInput
 	tip          *tooltipCtl
 	lastW, lastH int
+	// limits reports the host's min/max size in logical pixels (zero
+	// axes unconstrained); sizes the compositor configures outside the
+	// limits are clamped before layout and buffers see them. Nil for
+	// hosts without limits (layer surfaces).
+	limits func() (minW, minH, maxW, maxH int)
+	// startResize engages the compositor's interactive resize grab;
+	// nil for hosts without edges (layer surfaces).
+	startResize func(edges uint32, serial uint32)
+	// decorated reports compositor-owned decorations, which disables
+	// the client's own edge handles; nil means never decorated.
+	decorated func() bool
 	// lastFocus is the widget the focus ring was last drawn around; a
 	// change adds both rings' rects to the damage union.
 	lastFocus widget.Widget
@@ -109,7 +120,6 @@ type windowHooks struct {
 const focusRingPad = 2
 
 func newHostWindow(sess *wlsession.Session, host Host, initialScale int, root widget.Widget, hooks windowHooks, dnd *dragdrop.Controller) *hostWindow {
-	w0, h0 := host.Size()
 	if initialScale < 1 {
 		initialScale = 1
 	}
@@ -121,9 +131,28 @@ func newHostWindow(sess *wlsession.Session, host Host, initialScale int, root wi
 		router:  &widget.Router{Root: root},
 		dnd:     dnd,
 		tip:     &tooltipCtl{since: time.Now()},
-		lastW:   w0, lastH: h0,
-		dirty: true,
+		dirty:   true,
 	}
+	// Toplevel hosts carry the size limits, the resize grab, and the
+	// decoration state; layer surfaces implement none of it.
+	if sl, ok := host.(sizeLimiter); ok {
+		w.limits = sl.SizeLimits
+	}
+	if rz, ok := host.(resizer); ok {
+		w.startResize = func(edges uint32, serial uint32) {
+			seat := sess.Seat()
+			if seat == nil {
+				return
+			}
+			if err := rz.Resize(seat, serial, edges); err != nil {
+				debug.Log("input", "interactive resize: %v", err)
+			}
+		}
+	}
+	if sd, ok := host.(serverDecorated); ok {
+		w.decorated = sd.ServerDecorated
+	}
+	w.lastW, w.lastH = w.layoutSize()
 	w.newBuffer = w.create
 	w.pool = buffer.New(w.allocator(), 3)
 	// Wire the scale state before anything can commit: with the
@@ -135,10 +164,16 @@ func newHostWindow(sess *wlsession.Session, host Host, initialScale int, root wi
 		sess: sess, surf: host.HostSurface(),
 		router: w.router, tip: w.tip,
 		onPress: hooks.onPress, onMove: hooks.onMove,
-		dnd:     dnd,
-		request: func() { w.dirty = true },
-		blocked: func() bool { return w.blocked },
-		frac:    func() uint32 { return w.frac120 },
+		dnd:         dnd,
+		request:     func() { w.dirty = true },
+		blocked:     func() bool { return w.blocked },
+		frac:        func() uint32 { return w.frac120 },
+		startResize: w.startResize,
+	}
+	// The edge probe exists only where the resize grab does (toplevels);
+	// layer surfaces stay pure widgets.
+	if w.startResize != nil {
+		input.resizeAt = w.resizeEdgeAt
 	}
 	w.input = input
 	sess.SetSurfaceInput(host.HostSurface(), input)
@@ -161,7 +196,7 @@ func (w *hostWindow) release() {
 // device scale and wires its release event into the pool, once per
 // buffer lifetime.
 func (w *hostWindow) create() (*buffer.Buffer, error) {
-	bw, bh := w.host.Size()
+	bw, bh := w.layoutSize()
 	b, err := buffer.NewFile(w.sess.Shm(),
 		scale.DeviceSize(bw, w.frac120), scale.DeviceSize(bh, w.frac120), w.scale)
 	if err != nil {
@@ -201,6 +236,52 @@ func (w *hostWindow) devNum() int {
 	return int(w.frac120)
 }
 
+// layoutSize is the configured size clamped to the window's min/max
+// limits: the one size every consumer works with - layout, buffers,
+// edge hit tests, and the scale wire state. Compositors normally never
+// configure outside the limits (set_min_size/set_max_size told them),
+// so this is a client-side fallback, not the primary enforcement.
+func (w *hostWindow) layoutSize() (int, int) {
+	bw, bh := w.host.Size()
+	if w.limits == nil {
+		return bw, bh
+	}
+	minW, minH, maxW, maxH := w.limits()
+	if minW != 0 && bw < minW {
+		bw = minW
+	}
+	if minH != 0 && bh < minH {
+		bh = minH
+	}
+	if maxW != 0 && bw > maxW {
+		bw = maxW
+	}
+	if maxH != 0 && bh > maxH {
+		bh = maxH
+	}
+	return bw, bh
+}
+
+// syncSize picks up a configure-driven size change: the pool resizes
+// (dropping every buffer - Resize must run before the next Acquire)
+// and a full repaint schedules, so the FIRST frame at the new size is
+// already correct: Measure/Arrange run at the new size below, and the
+// fresh buffers' full staleness forces a full repaint. Run polls this
+// between events - a configure alone, with no widget damage pending,
+// must still repaint - and draw re-checks so direct callers keep the
+// guarantee. It reports whether the size changed.
+func (w *hostWindow) syncSize() bool {
+	bw, bh := w.layoutSize()
+	if bw == w.lastW && bh == w.lastH {
+		return false
+	}
+	w.lastW, w.lastH = bw, bh
+	w.pool.Resize(w.allocator())
+	w.dirty = true
+	debug.Log("frame", "configure resize: %dx%d", bw, bh)
+	return true
+}
+
 // rescale switches the window to a new device scale in place: the same
 // hostWindow, widget tree, router, focus, and pool survive; only the
 // buffers are rebuilt. The fresh buffers are fully stale, so the next
@@ -213,7 +294,7 @@ func (w *hostWindow) rescale(frac120 uint32) {
 	}
 	w.frac120 = frac120
 	w.scale = scale.IntegerScale(frac120)
-	bw, bh := w.host.Size()
+	bw, bh := w.layoutSize()
 	if w.sc != nil {
 		_ = w.sc.Apply(frac120, bw, bh)
 	}
@@ -287,12 +368,8 @@ func (w *hostWindow) draw() bool {
 	// attach. A late configure therefore also marks the frame dirty
 	// even without input, and the fresh buffers are fully stale, so
 	// the frame repaints everything.
-	bw, bh := w.host.Size()
-	if bw != w.lastW || bh != w.lastH {
-		w.lastW, w.lastH = bw, bh
-		w.pool.Resize(w.allocator())
-		w.dirty = true
-	}
+	w.syncSize()
+	bw, bh := w.lastW, w.lastH
 	// Publish the wire scale state on the first draw with a real size:
 	// a surface created unconfigured has nothing to scale yet. Fractional
 	// windows have already applied theirs through rescale.

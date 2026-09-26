@@ -75,6 +75,13 @@ type WindowConfig struct {
 	// Width and Height request the initial size; zero lets the
 	// compositor pick.
 	Width, Height uint32
+	// MinWidth and MinHeight constrain how far the compositor may
+	// resize the window down (set_min_size on the wire); zero axes are
+	// unconstrained. Layout clamps to the same limits client-side.
+	MinWidth, MinHeight uint32
+	// MaxWidth and MaxHeight constrain how far the compositor may
+	// resize the window up (set_max_size); zero axes are unconstrained.
+	MaxWidth, MaxHeight uint32
 	// Scale is the initial integer output scale the surface renders at;
 	// zero means 1. With the fractional-scale protocol the compositor's
 	// preferred scale (1.25 and friends) overrides this live.
@@ -155,6 +162,8 @@ func (a *Application) newWindowWindow(cfg WindowConfig) (*Window, *hostWindow, e
 	}
 	win, err := window.New(a.sess.WmBase(), surf, window.Config{
 		Title: cfg.Title, AppID: cfg.AppID, Width: cfg.Width, Height: cfg.Height,
+		MinWidth: cfg.MinWidth, MinHeight: cfg.MinHeight,
+		MaxWidth: cfg.MaxWidth, MaxHeight: cfg.MaxHeight,
 	})
 	if err != nil {
 		return nil, nil, err
@@ -321,6 +330,10 @@ func (a *Application) Run() error {
 		}
 
 		for _, w := range a.windows {
+			// Pick up a configure-driven size change even when nothing
+			// else is dirty: syncSize resizes the pool and schedules the
+			// repaint, so the frame below already runs at the new size.
+			resized := w.syncSize()
 			if w.frameReady {
 				w.frameReady = false
 				w.framePending = false
@@ -329,13 +342,9 @@ func (a *Application) Run() error {
 				// Not configured yet; the configure event wakes the park.
 				continue
 			}
-			// Draw when something changed and pacing allows: either
-			// the previous frame's callback returned, or an animation
-			// keeps producing frames even when the compositor stopped
-			// scheduling them (occlusion). An input-only redraw always
-			// goes out; if a frame is still pending the loop waits for
-			// its event.
-			if w.dirty && (!w.framePending || anim.Active()) {
+			// Draw when something changed and pacing allows (see
+			// shouldDraw).
+			if shouldDraw(w.dirty, w.framePending, anim.Active(), resized) {
 				w.dirty = false
 				if !w.draw() {
 					return w.drawErr
@@ -460,6 +469,25 @@ func (w *Window) Closed() bool {
 func (w *Window) SetCloseRequest(veto func() bool) {
 	if w.win != nil {
 		w.win.SetCloseRequest(veto)
+	}
+}
+
+// SetMinSize constrains how far the compositor may resize the window
+// down (set_min_size on the wire); zero axes are unconstrained. The
+// limits also clamp layout client-side.
+func (w *Window) SetMinSize(width, height uint32) {
+	if w.win != nil {
+		// A failed request means the connection is dying; the next
+		// frame fails with the same cause.
+		_ = w.win.SetMinSize(width, height)
+	}
+}
+
+// SetMaxSize constrains how far the compositor may resize the window
+// up (set_max_size); zero axes are unconstrained.
+func (w *Window) SetMaxSize(width, height uint32) {
+	if w.win != nil {
+		_ = w.win.SetMaxSize(width, height)
 	}
 }
 

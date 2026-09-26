@@ -24,6 +24,10 @@ func (f *fakeHost) Closed() bool             { return false }
 func (f *fakeHost) Size() (int, int)         { return f.w, f.h }
 func (f *fakeHost) HostSurface() *wl.Surface { return nil }
 
+// resizeTo plays a compositor configure: the next frame sees the new
+// size.
+func (f *fakeHost) resizeTo(w, h int) { f.w, f.h = w, h }
+
 // fakeSurface records the wire traffic draw produces.
 type fakeSurface struct {
 	attaches, commits, frames int
@@ -80,9 +84,12 @@ func newPaintHarness(root widget.Widget, w, hgt int) *paintHarness {
 	}
 	ph.wnd.surf = ph.surf
 	// The fake allocator hangs off newBuffer, not the pool, so a live
-	// rescale's pool rebuild keeps allocating fakes at the new size.
+	// rescale's pool rebuild keeps allocating fakes at the new size -
+	// and a configure-driven resize too: the size is read at
+	// allocation time, exactly like the production create.
 	ph.wnd.newBuffer = func() (*buffer.Buffer, error) {
-		b := fakeBuffer(scale.DeviceSize(w, ph.wnd.frac120), scale.DeviceSize(hgt, ph.wnd.frac120))
+		bw, bh := ph.wnd.layoutSize()
+		b := fakeBuffer(scale.DeviceSize(bw, ph.wnd.frac120), scale.DeviceSize(bh, ph.wnd.frac120))
 		ph.bufs = append(ph.bufs, b)
 		return b, nil
 	}

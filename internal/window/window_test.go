@@ -92,6 +92,29 @@ func TestDecorateNilManager(t *testing.T) {
 	})
 }
 
+// TestLimitAndResizeStateOnWirelessWindow pins the wire-free paths: a
+// window without a wire records limits, answers ServerDecorated, and
+// treats resize grabs as no-ops instead of panicking.
+func TestLimitAndResizeStateOnWirelessWindow(t *testing.T) {
+	w := &Window{}
+	if err := w.SetMinSize(100, 50); err != nil {
+		t.Errorf("wire-free SetMinSize = %v, want nil", err)
+	}
+	if err := w.SetMaxSize(400, 300); err != nil {
+		t.Errorf("wire-free SetMaxSize = %v, want nil", err)
+	}
+	minW, minH, maxW, maxH := w.SizeLimits()
+	if minW != 100 || minH != 50 || maxW != 400 || maxH != 300 {
+		t.Errorf("SizeLimits = %d,%d,%d,%d, want 100,50,400,300", minW, minH, maxW, maxH)
+	}
+	if err := w.Resize(nil, 1, 10); err != nil {
+		t.Errorf("wire-free Resize = %v, want nil", err)
+	}
+	if w.ServerDecorated() {
+		t.Error("undecorated window reports server decorations")
+	}
+}
+
 // TestCloseRequestVeto pins the veto semantics: a nil veto accepts
 // every close request, a false return keeps the window open, and a
 // true return (or an explicit Close) closes it.

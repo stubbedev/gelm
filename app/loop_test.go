@@ -132,6 +132,39 @@ func TestKeyRepeatLatency(t *testing.T) {
 	}
 }
 
+// TestShouldDraw pins the frame-pacing gate, especially the resize
+// bypass: a configure-driven repaint must go out even with a frame
+// still pending, because compositors withhold that callback until the
+// surface commits at the configured size - gating it deadlocks the
+// resize.
+func TestShouldDraw(t *testing.T) {
+	t.Run("an idle window never draws", func(t *testing.T) {
+		if shouldDraw(false, false, false, false) {
+			t.Error("undirtied window drew")
+		}
+	})
+	t.Run("a dirty window waits for its frame callback", func(t *testing.T) {
+		if shouldDraw(true, true, false, false) {
+			t.Error("drew while the previous frame was pending")
+		}
+	})
+	t.Run("a returned callback lets the frame go out", func(t *testing.T) {
+		if !shouldDraw(true, false, false, false) {
+			t.Error("pacing blocked a ready frame")
+		}
+	})
+	t.Run("an animation keeps producing frames", func(t *testing.T) {
+		if !shouldDraw(true, true, true, false) {
+			t.Error("animation frames blocked by pacing")
+		}
+	})
+	t.Run("a configure resize bypasses pacing", func(t *testing.T) {
+		if !shouldDraw(true, true, false, true) {
+			t.Error("resize repaint blocked by pacing; the resize would deadlock")
+		}
+	})
+}
+
 func TestTooltipNext(t *testing.T) {
 	target := newTipTarget("hover text")
 	target.Arrange(render.Rect{X: 0, Y: 0, W: 100, H: 20})

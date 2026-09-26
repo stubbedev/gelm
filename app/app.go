@@ -89,6 +89,12 @@ type surfaceInput struct {
 	// frac reports the host window's current 120-based device scale,
 	// for one-shot surfaces created from this input (drag icons).
 	frac func() uint32
+	// resizeAt maps a pointer position to the xdg_toplevel.resize_edge
+	// bits under it (0 when interior); set only for toplevel windows.
+	resizeAt func(x, y float64) uint32
+	// startResize engages the compositor's resize grab; while both are
+	// set, an edge press belongs to the window frame, not the widgets.
+	startResize func(edges uint32, serial uint32)
 
 	x, y           float64
 	lastCursor     string
@@ -138,7 +144,7 @@ func (in *surfaceInput) move(x, y float64) {
 			debug.Log("input", "hit bounds (%d,%d)+%dx%d", fb.X, fb.Y, fb.W, fb.H)
 		}
 	}
-	if shape := cursorFor(in.router.Hovered()); shape != in.lastCursor {
+	if shape := in.cursorAt(x, y); shape != in.lastCursor {
 		in.lastCursor = shape
 		if in.sess != nil {
 			if err := in.sess.SetCursor(shape); err != nil {
@@ -150,6 +156,18 @@ func (in *surfaceInput) move(x, y float64) {
 		in.onMove(x, y)
 	}
 	in.request()
+}
+
+// cursorAt resolves the pointer shape at a position: a resize handle's
+// resize_* shape wins over the hovered widget's own request - the frame
+// owns the edges.
+func (in *surfaceInput) cursorAt(x, y float64) string {
+	if in.resizeAt != nil {
+		if shape := resizeCursor(in.resizeAt(x, y)); shape != "" {
+			return shape
+		}
+	}
+	return cursorFor(in.router.Hovered())
 }
 
 // HandlePointerButton implements wlsession.SurfacePointerHandler.
@@ -164,6 +182,16 @@ func (in *surfaceInput) HandlePointerButton(button, state, serial uint32) {
 		// Any press dismisses a tooltip, like every toolkit.
 		if in.tip != nil && in.tip.open != nil {
 			in.tip.open.Close()
+		}
+		// A press on a resize handle belongs to the window frame: the
+		// xdg_toplevel.resize grab replaces the widget press entirely.
+		if in.startResize != nil && in.resizeAt != nil {
+			if edges := in.resizeAt(in.x, in.y); edges != 0 {
+				debug.Log("input", "edge %d grabbed for resize (serial %d)", edges, serial)
+				in.startResize(edges, serial)
+				in.request()
+				return
+			}
 		}
 		in.router.Press(button, p)
 		// Remember the press for the drag gesture: the threshold is
@@ -274,6 +302,17 @@ func nextWake(repeat, animEnd, tipNext time.Time, now time.Time) (time.Time, boo
 	consider(animEnd)
 	consider(tipNext)
 	return wake, found
+}
+
+// shouldDraw reports whether a dirty window may paint this iteration:
+// pacing allows when the previous frame's callback returned, an
+// animation keeps producing frames (occluded surfaces stop getting
+// callbacks), or a configure resized the window. The resize bypass is
+// a liveness requirement, not politeness: compositors hold the surface's
+// frame callback until it commits at the configured size, so a
+// resize repaint gated on pacing would deadlock the resize.
+func shouldDraw(dirty, framePending, animActive, resized bool) bool {
+	return dirty && (!framePending || animActive || resized)
 }
 
 // frameDone flips ready when the compositor reports the frame as taken.
