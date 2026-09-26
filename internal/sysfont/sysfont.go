@@ -35,6 +35,33 @@ func Serif() (*render.Typeface, error) {
 	return resolve(fontscan.Serif)
 }
 
+// Variant resolves a bold, italic, or bold-italic face of the same
+// family base was resolved from, with the CSS matcher's fallback: a
+// family without the requested face returns its closest face, usually
+// the regular one. RichLabel wiring compares identity with base and
+// downgrades to plain rendering when they match.
+func Variant(base *render.Typeface, bold, italic bool) (*render.Typeface, error) {
+	aspect := font.Aspect{Style: font.StyleNormal, Weight: font.WeightNormal}
+	if bold {
+		aspect.Weight = font.WeightBold
+	}
+	if italic {
+		aspect.Style = font.StyleItalic
+	}
+	fm := fontscan.NewFontMap(quietLogger{})
+	// An empty cache path lets fontscan pick its platform default.
+	if err := fm.UseSystemFonts(""); err != nil {
+		return nil, fmt.Errorf("sysfont: scan system fonts: %w", err)
+	}
+	fm.SetQuery(fontscan.Query{Families: []string{base.Family()}, Aspect: aspect})
+	face := fm.ResolveFace('x')
+	tf, err := render.NewTypeface(face)
+	if err != nil {
+		return nil, fmt.Errorf("sysfont: no %s variant (bold=%v, italic=%v) found", base.Family(), bold, italic)
+	}
+	return tf, nil
+}
+
 // resolve asks the font map for the best regular face of a generic
 // family; the matcher applies CSS fallback rules, so the result honors
 // the user's font configuration.

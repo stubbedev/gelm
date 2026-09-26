@@ -132,6 +132,11 @@ func Describe(w Widget) A11yState {
 		if st.Name == "" {
 			st.Name = v.Text()
 		}
+	case *RichLabel:
+		st.Text = v.Text()
+		if st.Name == "" {
+			st.Name = v.Text()
+		}
 	case *Button:
 		if st.Name == "" {
 			st.Name = labelText(v.child)
