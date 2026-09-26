@@ -29,7 +29,10 @@ type Application struct {
 	clip        *clipboard.Clipboard
 	tooltipFace *render.Typeface
 	onKey       func(r *widget.Router, keycode uint32, mods wlsession.Mods)
-	ime         *imeController
+	// accels is the accelerator table: named actions plus keysym+mods
+	// bindings, consulted by routeKey before text routing.
+	accels *accelTable
+	ime    *imeController
 	// dnd drives drag-and-drop for every window on this application;
 	// inert when the compositor lacks a data device.
 	dnd *dragdrop.Controller
@@ -49,6 +52,7 @@ func NewApplication(sess *wlsession.Session) *Application {
 		dnd:    dragdrop.New(sess),
 		rep:    newKeyRepeater(sess.RepeatInfo()),
 		kicker: &loopKicker{},
+		accels: newAccelTable(),
 		ime:    newIMEController(sess),
 	}
 }
@@ -59,8 +63,10 @@ func (a *Application) SetClipboard(c *clipboard.Clipboard) { a.clip = c }
 // SetTooltipFace enables hover tooltips rendered with the given face.
 func (a *Application) SetTooltipFace(f *render.Typeface) { a.tooltipFace = f }
 
-// OnKey receives every key press on the focused window, after widget
-// routing, for app-level keybindings.
+// OnKey observes every key press on the focused window, after widget
+// routing and accelerators, for app-level keybindings. It still sees
+// keys an accelerator consumed; accelerators only suppress text
+// routing and widget actions.
 func (a *Application) OnKey(fn func(r *widget.Router, keycode uint32, mods wlsession.Mods)) {
 	a.onKey = fn
 }
@@ -429,7 +435,7 @@ func (a *Application) deliverKey(keycode uint32, mods wlsession.Mods) {
 	if target == nil {
 		return
 	}
-	routeKey(a.sess, target.router, keycode, mods, a.clip, a.onKey)
+	routeKey(a.sess, target.router, keycode, mods, a.clip, a.accels, a.onKey)
 }
 
 // imeEvent applies one input-method batch into the focused window's

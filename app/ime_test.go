@@ -149,7 +149,7 @@ func TestIMESyncWithoutProtocol(t *testing.T) {
 		t.Errorf("updates without the protocol = %d, want 0", len(wire.updates))
 	}
 	tr := &fakeTranslator{text: map[uint32]string{30: "x"}}
-	routeKey(tr, r, 30, 0, nil, nil)
+	routeKey(tr, r, 30, 0, nil, nil, nil)
 	if got := e.Text(); got != "abx" {
 		t.Errorf("text = %q, want abx (keyboard path must be untouched)", got)
 	}

@@ -399,23 +399,39 @@ type keyTranslator interface {
 
 // routeKey turns one key press into text or a widget action through the
 // compositor's keymap, then gives the app the raw event for any custom
-// bindings. Alt is never text. Ctrl handles clipboard (c, x, v when a
-// clipboard is configured) and select-all; other ctrl combos still act
-// on editing keys.
-func routeKey(sess keyTranslator, router *widget.Router, keycode uint32, mods wlsession.Mods, clip *clipboard.Clipboard, extra func(*widget.Router, uint32, wlsession.Mods)) {
+// bindings. The precedence is fixed:
+//
+//  1. built-in widget handling: clipboard (ctrl+c/x/v), select-all
+//     (ctrl+a), and Tab focus movement — with shift held these stand
+//     down, so ctrl+shift combos stay free for accelerators;
+//  2. accelerators, per-widget for the focused widget first, then
+//     app-wide; a fired accelerator consumes the event;
+//  3. text routing: typed characters and remaining editing keysyms
+//     into the focused widget. Alt is never text; ctrl combos skip
+//     text and still act on editing keys;
+//  4. extra (OnKey), which observes every press either way.
+func routeKey(sess keyTranslator, router *widget.Router, keycode uint32, mods wlsession.Mods, clip *clipboard.Clipboard, accels *accelTable, extra func(*widget.Router, uint32, wlsession.Mods)) {
 	sym := sess.KeySym(keycode)
 	isCtrl := ctrl(mods)
+	// shift re-keys letters and keeps shift+combo free for accels, so
+	// the built-ins below only claim plain ctrl combos.
+	noShift := mods&wlsession.ModShift == 0
+	handled := false
 	switch {
-	case isCtrl && clip != nil && (sym == xkb.Keysym('c') || sym == xkb.Keysym('C')):
+	case isCtrl && noShift && clip != nil && (sym == xkb.Keysym('c') || sym == xkb.Keysym('C')):
 		copySelection(router, clip)
-	case isCtrl && clip != nil && (sym == xkb.Keysym('x') || sym == xkb.Keysym('X')):
+		handled = true
+	case isCtrl && noShift && clip != nil && (sym == xkb.Keysym('x') || sym == xkb.Keysym('X')):
 		if copySelection(router, clip) {
 			router.KeyAction(widget.KeyDelete, widget.Mods(mods))
 		}
-	case isCtrl && clip != nil && (sym == xkb.Keysym('v') || sym == xkb.Keysym('V')):
+		handled = true
+	case isCtrl && noShift && clip != nil && (sym == xkb.Keysym('v') || sym == xkb.Keysym('V')):
 		pasteSelection(router, clip)
-	case isCtrl && (sym == xkb.Keysym('a') || sym == xkb.Keysym('A')):
+		handled = true
+	case isCtrl && noShift && (sym == xkb.Keysym('a') || sym == xkb.Keysym('A')):
 		router.SelectAll()
+		handled = true
 	case !isCtrl && mods&wlsession.ModAlt == 0 && sym == xkb.KeyTab:
 		// Tab trap: inside a widget that absorbs tabs (a multi-line
 		// text area) a plain Tab indents; ctrl+Tab and shift+Tab move
@@ -430,18 +446,26 @@ func routeKey(sess keyTranslator, router *widget.Router, keycode uint32, mods wl
 			}
 		}
 		router.FocusNext()
-	case !isCtrl && mods&wlsession.ModAlt == 0:
-		if txt := sess.KeyUTF8(keycode); txt != "" {
-			if r, _ := utf8.DecodeRuneInString(txt); r != utf8.RuneError && r != 0 {
-				router.Type(r)
+		handled = true
+	}
+	// Accelerators beat text routing: a ctrl+P binding must fire and
+	// insert nothing, while an unbound plain p still types.
+	if !handled && accels.fire(router, sym, mods) {
+		if extra != nil {
+			extra(router, keycode, mods)
+		}
+		return
+	}
+	if !handled {
+		if !isCtrl && mods&wlsession.ModAlt == 0 {
+			if txt := sess.KeyUTF8(keycode); txt != "" {
+				if r, _ := utf8.DecodeRuneInString(txt); r != utf8.RuneError && r != 0 {
+					router.Type(r)
+				}
+			} else if a, ok := actionForSym(sym); ok {
+				router.KeyAction(a, widget.Mods(mods))
 			}
-			break
-		}
-		if a, ok := actionForSym(sym); ok {
-			router.KeyAction(a, widget.Mods(mods))
-		}
-	default:
-		if a, ok := actionForSym(sym); ok {
+		} else if a, ok := actionForSym(sym); ok {
 			router.KeyAction(a, widget.Mods(mods))
 		}
 	}
