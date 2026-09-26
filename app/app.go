@@ -60,8 +60,13 @@ type Config struct {
 	// TooltipFace renders hover tooltips; nil disables tooltips.
 	TooltipFace *render.Typeface
 	// Clipboard, when set, enables ctrl+c, ctrl+x, and ctrl+v on the
-	// focused widget's selection.
+	// focused widget's selection, middle-click paste of the primary
+	// selection, and (with CopyOnSelect) copy-on-select.
 	Clipboard *clipboard.Clipboard
+	// CopyOnSelect mirrors selection changes into the primary
+	// selection (X11 style: select text, then middle-click elsewhere
+	// to paste it). Default off; needs a configured Clipboard.
+	CopyOnSelect bool
 	// OnKey, when set, receives every key press (repeats included)
 	// together with the router, for apps that map keycodes to typing
 	// or actions.
@@ -95,6 +100,9 @@ type surfaceInput struct {
 	// startResize engages the compositor's resize grab; while both are
 	// set, an edge press belongs to the window frame, not the widgets.
 	startResize func(edges uint32, serial uint32)
+	// primary carries the primary-selection behavior (middle-click
+	// paste, copy-on-select) shared by the application's windows.
+	primary *primarySelection
 
 	x, y       float64
 	lastCursor string
@@ -190,6 +198,12 @@ func (in *surfaceInput) HandlePointerButton(button, state, serial uint32) {
 				return
 			}
 		}
+		// Middle-click pastes the primary selection at the caret (X11
+		// refugees): the router ignores non-left presses, so this is
+		// the whole handling a middle press gets.
+		if button == widget.BTNMiddle {
+			in.primary.pasteAt(in.router)
+		}
 		in.router.Press(button, p)
 		// Remember the press for the drag gesture: the threshold is
 		// measured from here and start_drag wants this serial.
@@ -201,6 +215,11 @@ func (in *surfaceInput) HandlePointerButton(button, state, serial uint32) {
 		}
 	} else {
 		in.router.Release(button, p)
+		// A finished left-button selection is what copy-on-select
+		// mirrors into the primary selection.
+		if button == widget.BTNLeft {
+			in.primary.copyAfterRelease(in.router, serial)
+		}
 	}
 	in.request()
 }
@@ -292,6 +311,7 @@ func (in *surfaceInput) pinCursor(shape string) {
 func Run(cfg Config) error {
 	app := NewApplication(cfg.Session)
 	app.SetClipboard(cfg.Clipboard)
+	app.SetCopyOnSelect(cfg.CopyOnSelect)
 	app.SetTooltipFace(cfg.TooltipFace)
 	app.newWindow(cfg.Host, cfg.Scale, cfg.Root, windowHooks{
 		background: cfg.Background,
@@ -397,6 +417,16 @@ type keyTranslator interface {
 	KeySym(code uint32) xkb.Keysym
 }
 
+// primarySelectionSource is the clipboard-facing slice the
+// primary-selection behavior needs: read the current primary
+// selection and claim it with the triggering event's serial.
+// *clipboard.Clipboard implements it; tests stub it, mirroring
+// keyTranslator.
+type primarySelectionSource interface {
+	ReadPrimary() (string, error)
+	WritePrimary(text string, serial uint32) error
+}
+
 // routeKey turns one key press into text or a widget action through the
 // compositor's keymap, then gives the app the raw event for any custom
 // bindings. The precedence is fixed:
@@ -477,19 +507,36 @@ func routeKey(sess keyTranslator, router *widget.Router, keycode uint32, mods wl
 // copySelection puts the focused widget's selection on the clipboard
 // and reports whether there was one.
 func copySelection(router *widget.Router, clip *clipboard.Clipboard) bool {
-	f := router.Focused()
-	if f == nil {
-		return false
-	}
-	sel, ok := f.(widget.SelectedTexter)
+	text, ok := focusedSelection(router)
 	if !ok {
 		return false
 	}
-	text, has := sel.SelectedText()
-	if !has {
+	return clip.WriteText(text) == nil
+}
+
+// copySelectionPrimary claims the primary selection with the focused
+// widget's selection, X11 style. serial is the triggering event's
+// serial, which the protocol wants with the claim.
+func copySelectionPrimary(router *widget.Router, src primarySelectionSource, serial uint32) bool {
+	text, ok := focusedSelection(router)
+	if !ok {
 		return false
 	}
-	return clip.WriteText(text) == nil
+	return src.WritePrimary(text, serial) == nil
+}
+
+// focusedSelection returns the focused widget's selected text, or ok
+// false when nothing is focused or selected.
+func focusedSelection(router *widget.Router) (string, bool) {
+	f := router.Focused()
+	if f == nil {
+		return "", false
+	}
+	sel, ok := f.(widget.SelectedTexter)
+	if !ok {
+		return "", false
+	}
+	return sel.SelectedText()
 }
 
 // pasteSelection inserts the clipboard text at the focused widget's

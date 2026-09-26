@@ -19,6 +19,10 @@ const BTNLeft uint32 = 0x110
 // BTNRight is the wayland button code of the secondary pointer button.
 const BTNRight uint32 = 0x111
 
+// BTNMiddle is the wayland button code of the middle pointer button,
+// the X11 paste button.
+const BTNMiddle uint32 = 0x112
+
 // HoverSetter receives hover tracking from the Router.
 type HoverSetter interface {
 	SetHovered(on bool)
@@ -442,6 +446,15 @@ type SelectedTexter interface {
 	// SelectedText returns the selected text and whether a non-empty
 	// selection exists.
 	SelectedText() (string, bool)
+}
+
+// TextInserter is an editable text widget that accepts pasted text:
+// Insert places s at the caret, replacing any active selection, and
+// reports the change through OnChanged. Entry and TextArea implement
+// it; primary-selection pastes (middle click) target it.
+type TextInserter interface {
+	// Insert inserts s at the caret, replacing the selection.
+	Insert(s string)
 }
 
 // Type delivers a typed character to the focused widget.

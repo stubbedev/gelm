@@ -1,6 +1,7 @@
 // Package clipboard implements text copy and paste over the core
-// wl_data_device protocol: the offer pipeline for reading the current
-// selection, and a data source for claiming it.
+// wl_data_device protocol and, when the compositor offers it, the
+// zwp_primary_selection_unstable_v1 protocol: the offer pipeline for
+// reading a selection, and data sources for claiming either.
 package clipboard
 
 import (
@@ -12,6 +13,7 @@ import (
 	"github.com/neurlang/wayland/wl"
 
 	"github.com/stubbedev/gelm/internal/wlsession"
+	"github.com/stubbedev/gelm/wlr"
 )
 
 // mimePriority lists the text mime types we offer and accept, best
@@ -40,14 +42,22 @@ func pickTextMime(present func(string) bool) string {
 	return ""
 }
 
-// Clipboard tracks the seat's selection and claims it on behalf of the
-// app. Create one after connecting; it is not safe for concurrent use.
+// Clipboard tracks the seat's selections and claims them on behalf of
+// the app. Create one after connecting; it is not safe for concurrent
+// use.
 //
-// The data device also carries drag-and-drop (internal/dragdrop), whose
-// offers advertise mime types through the same wl_data_offer objects.
-// Each offer therefore tracks its own mime set (offerMimes), and only
-// an offer the compositor promotes with a selection event can ever
-// satisfy ReadText: a drag passing through never touches the
+// The regular selection (ctrl+c/x/v) travels over wl_data_device. The
+// primary selection (the X11-style PRIMARY that a middle click pastes)
+// travels over zwp_primary_selection_unstable_v1 when the compositor
+// advertises it; without it every primary call reports
+// ErrUnavailable. The two selections stay independent — their offer
+// mime sets and source payloads never mix.
+//
+// The data device also carries drag-and-drop (internal/dragdrop),
+// whose offers advertise mime types through the same wl_data_offer
+// objects. Each offer therefore tracks its own mime set (offerMimes),
+// and only an offer the compositor promotes with a selection event can
+// ever satisfy ReadText: a drag passing through never touches the
 // selection.
 type Clipboard struct {
 	sess   *wlsession.Session
@@ -58,26 +68,50 @@ type Clipboard struct {
 	selectionMimes map[string]bool
 	source         *wl.DataSource
 	out            string
+
+	// The primary selection mirrors the above over its own protocol
+	// objects; separate mimes map and payload, per-selection state.
+	primaryOffers map[*wlr.ZwpPrimarySelectionOfferV1]*offerMimes
+	primary       *wlr.ZwpPrimarySelectionOfferV1
+	primaryMimes  map[string]bool
+	primarySource *wlr.ZwpPrimarySelectionSourceV1
+	primaryOut    string
 }
 
-// offerMimes collects the mime types one wl_data_offer advertises.
-// The binding dispatches offer events without naming their object, so
+// offerMimes collects the mime types one advertised offer carries.
+// The bindings dispatch offer events without naming their object, so
 // each offer gets its own listener.
 type offerMimes struct {
 	mimes map[string]bool
 }
 
 // HandleDataOfferOffer implements wl.DataOfferOfferHandler: one
-// advertised mime type of this offer.
+// advertised mime type of this wl_data_offer.
 func (o *offerMimes) HandleDataOfferOffer(ev wl.DataOfferOfferEvent) {
 	o.mimes[ev.MimeType] = true
 }
 
-// New wires the clipboard to the session's data device and starts
+// HandleZwpPrimarySelectionOfferV1Offer implements
+// wlr.ZwpPrimarySelectionOfferV1OfferHandler: one advertised mime type
+// of this primary selection offer.
+func (o *offerMimes) HandleZwpPrimarySelectionOfferV1Offer(ev wlr.ZwpPrimarySelectionOfferV1OfferEvent) {
+	o.mimes[ev.MimeType] = true
+}
+
+// New wires the clipboard to the session's data device — and to the
+// primary selection device when the compositor has one — and starts
 // tracking selection offers.
 func New(sess *wlsession.Session) *Clipboard {
-	c := &Clipboard{sess: sess, offers: make(map[*wl.DataOffer]*offerMimes)}
+	c := &Clipboard{
+		sess:          sess,
+		offers:        make(map[*wl.DataOffer]*offerMimes),
+		primaryOffers: make(map[*wlr.ZwpPrimarySelectionOfferV1]*offerMimes),
+	}
 	if dev := sess.DataDevice(); dev != nil {
+		dev.AddDataOfferHandler(c)
+		dev.AddSelectionHandler(c)
+	}
+	if dev := sess.PrimarySelectionDevice(); dev != nil {
 		dev.AddDataOfferHandler(c)
 		dev.AddSelectionHandler(c)
 	}
@@ -108,24 +142,48 @@ func (c *Clipboard) HandleDataDeviceSelection(ev wl.DataDeviceSelectionEvent) {
 	}
 }
 
-// ReadText returns the current selection as text, blocking until the
-// compositor delivers it. Errors with ErrUnavailable when there is
-// nothing to read.
-func (c *Clipboard) ReadText() (string, error) {
-	if c.selection == nil || len(c.selectionMimes) == 0 {
+// HandleZwpPrimarySelectionDeviceV1DataOffer implements
+// wlr.ZwpPrimarySelectionDeviceV1DataOfferHandler: a new primary
+// selection offer appears; start listening for its mime types.
+func (c *Clipboard) HandleZwpPrimarySelectionDeviceV1DataOffer(ev wlr.ZwpPrimarySelectionDeviceV1DataOfferEvent) {
+	if ev.Offer == nil {
+		return
+	}
+	m := &offerMimes{mimes: make(map[string]bool)}
+	c.primaryOffers[ev.Offer] = m
+	ev.Offer.AddOfferHandler(m)
+}
+
+// HandleZwpPrimarySelectionDeviceV1Selection implements
+// wlr.ZwpPrimarySelectionDeviceV1SelectionHandler: the offer is now
+// the primary selection; a nil offer clears it.
+func (c *Clipboard) HandleZwpPrimarySelectionDeviceV1Selection(ev wlr.ZwpPrimarySelectionDeviceV1SelectionEvent) {
+	c.primary = ev.Id
+	if m := c.primaryOffers[ev.Id]; m != nil {
+		c.primaryMimes = m.mimes
+	} else {
+		c.primaryMimes = nil
+	}
+}
+
+// readOfferText drains a selection offer through a pipe: receive
+// starts the transfer on the write end, a roundtrip flushes the
+// request so the compositor dups the fd, and dropping our write end
+// yields EOF at the sender's last byte.
+func (c *Clipboard) readOfferText(receive func(string, uintptr) error, mimes map[string]bool) (string, error) {
+	if len(mimes) == 0 {
 		return "", ErrUnavailable
 	}
-	mime := pickTextMime(func(m string) bool { return c.selectionMimes[m] })
+	mime := pickTextMime(func(m string) bool { return mimes[m] })
 	if mime == "" {
 		return "", ErrUnavailable
 	}
-
 	r, w, err := os.Pipe()
 	if err != nil {
 		return "", fmt.Errorf("clipboard: pipe: %w", err)
 	}
 	defer r.Close()
-	if err := c.selection.Receive(mime, w.Fd()); err != nil {
+	if err := receive(mime, w.Fd()); err != nil {
 		return "", fmt.Errorf("clipboard: receive: %w", err)
 	}
 	// Flush the request so the compositor dups the fd before we drop
@@ -141,6 +199,26 @@ func (c *Clipboard) ReadText() (string, error) {
 		return "", fmt.Errorf("clipboard: read: %w", err)
 	}
 	return string(data), nil
+}
+
+// ReadText returns the current selection as text, blocking until the
+// compositor delivers it. Errors with ErrUnavailable when there is
+// nothing to read.
+func (c *Clipboard) ReadText() (string, error) {
+	if c.selection == nil {
+		return "", ErrUnavailable
+	}
+	return c.readOfferText(c.selection.Receive, c.selectionMimes)
+}
+
+// ReadPrimary returns the current primary selection as text, blocking
+// until the compositor delivers it. Errors with ErrUnavailable when
+// the protocol is missing or there is nothing to read.
+func (c *Clipboard) ReadPrimary() (string, error) {
+	if c.primary == nil {
+		return "", ErrUnavailable
+	}
+	return c.readOfferText(c.primary.Receive, c.primaryMimes)
 }
 
 // WriteText claims the selection with s as its text content. The data
@@ -172,15 +250,67 @@ func (c *Clipboard) WriteText(s string) error {
 	return nil
 }
 
-// HandleDataSourceSend implements wl.DataSourceSendHandler: a consumer
-// asked for our data; write it and close so the reader sees EOF.
-func (c *Clipboard) HandleDataSourceSend(ev wl.DataSourceSendEvent) {
-	if ev.FdError != nil || ev.Fd == 0 {
+// WritePrimary claims the primary selection with s as its text
+// content. serial is the serial of the input event that triggered the
+// claim — the protocol asks for the triggering press, so callers pass
+// the pointer (or keyboard) serial they received. The source stays
+// alive until another client or app replaces the selection.
+func (c *Clipboard) WritePrimary(s string, serial uint32) error {
+	mgr := c.sess.PrimarySelectionManager()
+	dev := c.sess.PrimarySelectionDevice()
+	if mgr == nil || dev == nil {
+		return ErrUnavailable
+	}
+	source, err := mgr.CreateSource()
+	if err != nil {
+		return fmt.Errorf("clipboard: create primary source: %w", err)
+	}
+	for _, m := range mimePriority {
+		if err := source.Offer(m); err != nil {
+			return fmt.Errorf("clipboard: offer: %w", err)
+		}
+	}
+	c.primaryOut = s
+	c.primarySource = source
+	source.AddSendHandler(c)
+	source.AddCancelledHandler(c)
+
+	if err := dev.SetSelection(source, serial); err != nil {
+		return fmt.Errorf("clipboard: set primary selection: %w", err)
+	}
+	return nil
+}
+
+// sendPayload writes a claimed selection's payload to the consumer's
+// fd and closes it, so the reader sees EOF. A zero fd means the
+// binding failed to dup the descriptor and there is nothing to
+// write to.
+func (c *Clipboard) sendPayload(out string, fd uintptr) {
+	if fd == 0 {
 		return
 	}
-	f := os.NewFile(ev.Fd, "clipboard-send")
-	_, _ = io.WriteString(f, c.out)
+	f := os.NewFile(fd, "selection-send")
+	_, _ = io.WriteString(f, out)
 	_ = f.Close()
+}
+
+// HandleDataSourceSend implements wl.DataSourceSendHandler: a consumer
+// asked for the regular selection's data.
+func (c *Clipboard) HandleDataSourceSend(ev wl.DataSourceSendEvent) {
+	if ev.FdError != nil {
+		return
+	}
+	c.sendPayload(c.out, ev.Fd)
+}
+
+// HandleZwpPrimarySelectionSourceV1Send implements
+// wlr.ZwpPrimarySelectionSourceV1SendHandler: a consumer asked for the
+// primary selection's data.
+func (c *Clipboard) HandleZwpPrimarySelectionSourceV1Send(ev wlr.ZwpPrimarySelectionSourceV1SendEvent) {
+	if ev.FdError != nil {
+		return
+	}
+	c.sendPayload(c.primaryOut, ev.Fd)
 }
 
 // HandleDataSourceCancelled implements wl.DataSourceCancelledHandler.
@@ -188,5 +318,14 @@ func (c *Clipboard) HandleDataSourceCancelled(wl.DataSourceCancelledEvent) {
 	if c.source != nil {
 		_ = c.source.Destroy()
 		c.source = nil
+	}
+}
+
+// HandleZwpPrimarySelectionSourceV1Cancelled implements
+// wlr.ZwpPrimarySelectionSourceV1CancelledHandler.
+func (c *Clipboard) HandleZwpPrimarySelectionSourceV1Cancelled(wlr.ZwpPrimarySelectionSourceV1CancelledEvent) {
+	if c.primarySource != nil {
+		_ = c.primarySource.Destroy()
+		c.primarySource = nil
 	}
 }

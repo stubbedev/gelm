@@ -124,7 +124,7 @@ type windowHooks struct {
 // focused widget's bounds.
 const focusRingPad = 2
 
-func newHostWindow(sess *wlsession.Session, host Host, initialScale int, root widget.Widget, hooks windowHooks, dnd *dragdrop.Controller) *hostWindow {
+func newHostWindow(sess *wlsession.Session, host Host, initialScale int, root widget.Widget, hooks windowHooks, dnd *dragdrop.Controller, primary *primarySelection) *hostWindow {
 	if initialScale < 1 {
 		initialScale = 1
 	}
@@ -174,6 +174,7 @@ func newHostWindow(sess *wlsession.Session, host Host, initialScale int, root wi
 		blocked:     func() bool { return w.blocked },
 		frac:        func() uint32 { return w.frac120 },
 		startResize: w.startResize,
+		primary:     primary,
 	}
 	// The edge probe exists only where the resize grab does (toplevels);
 	// layer surfaces stay pure widgets.

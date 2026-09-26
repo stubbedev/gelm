@@ -26,13 +26,17 @@ import (
 // Application is a set of windows sharing one session.
 type Application struct {
 	sess        *wlsession.Session
-	clip        *clipboard.Clipboard
 	tooltipFace *render.Typeface
 	onKey       func(r *widget.Router, keycode uint32, mods wlsession.Mods)
 	// accels is the accelerator table: named actions plus keysym+mods
 	// bindings, consulted by routeKey before text routing.
 	accels *accelTable
 	ime    *imeController
+	// clip enables ctrl+c/x/v via routeKey; primary carries the
+	// primary-selection behavior (middle-click paste, copy-on-select).
+	// SetClipboard fills both from one clipboard.
+	clip    *clipboard.Clipboard
+	primary *primarySelection
 	// dnd drives drag-and-drop for every window on this application;
 	// inert when the compositor lacks a data device.
 	dnd *dragdrop.Controller
@@ -48,17 +52,28 @@ type Application struct {
 // NewApplication binds an application to a connected session.
 func NewApplication(sess *wlsession.Session) *Application {
 	return &Application{
-		sess:   sess,
-		dnd:    dragdrop.New(sess),
-		rep:    newKeyRepeater(sess.RepeatInfo()),
-		kicker: &loopKicker{},
-		accels: newAccelTable(),
-		ime:    newIMEController(sess),
+		sess:    sess,
+		accels:  newAccelTable(),
+		primary: &primarySelection{},
+		dnd:     dragdrop.New(sess),
+		rep:     newKeyRepeater(sess.RepeatInfo()),
+		kicker:  &loopKicker{},
+		ime:     newIMEController(sess),
 	}
 }
 
-// SetClipboard enables ctrl+c/x/v on every window's focused widget.
-func (a *Application) SetClipboard(c *clipboard.Clipboard) { a.clip = c }
+// SetClipboard enables ctrl+c/x/v on every window's focused widget,
+// plus the primary-selection behavior (middle-click paste, and
+// copy-on-select once SetCopyOnSelect turns it on).
+func (a *Application) SetClipboard(c *clipboard.Clipboard) {
+	a.clip = c
+	a.primary.src = c
+}
+
+// SetCopyOnSelect turns X11-style copy-on-select on or off; a finished
+// selection claims the primary selection, so a middle click pastes it.
+// Default off. Needs a configured clipboard.
+func (a *Application) SetCopyOnSelect(on bool) { a.primary.copyOnSelect = on }
 
 // SetTooltipFace enables hover tooltips rendered with the given face.
 func (a *Application) SetTooltipFace(f *render.Typeface) { a.tooltipFace = f }
@@ -270,7 +285,7 @@ func (h *layerHost) Size() (int, int) {
 // the application.
 func (a *Application) newWindow(host Host, scale int, root widget.Widget, hooks windowHooks, onClosed func()) *hostWindow {
 	hooks.onClosed = onClosed
-	w := newHostWindow(a.sess, host, scale, root, hooks, a.dnd)
+	w := newHostWindow(a.sess, host, scale, root, hooks, a.dnd, a.primary)
 	a.windows = append(a.windows, w)
 	// Wake the parked loop so a new window paints promptly.
 	a.sess.WakeAfter(0)

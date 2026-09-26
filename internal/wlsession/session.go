@@ -71,35 +71,37 @@ const (
 type Session struct {
 	Display *wl.Display
 
-	registry          *wl.Registry
-	compositor        *wl.Compositor
-	shm               *wl.Shm
-	layerShell        *wlr.ZwlrLayerShellV1
-	viewporter        *wlr.WpViewporter
-	fracScaleManager  *wlr.WpScaleManagerV1
-	seat              *wl.Seat
-	pointer           *wl.Pointer
-	keyboard          *wl.Keyboard
-	wmBase            *xdg.WmBase
-	compositorVersion uint32
-	outputs           []*Output
-	hasArgb           bool
-	globals           map[string]bool
-	ifaceNames        map[uint32]string
-	mods              uint32
-	repeatRate        uint32
-	repeatDelay       uint32
-	xkbKeymap         *xkb.Keymap
-	xkbState          *xkb.State
-	dataDeviceManager *wl.DataDeviceManager
-	dataDeviceVersion uint32
-	dataDevice        *wl.DataDevice
-	keyboardSerial    uint32
-	decorationManager *deco.ZxdgDecorationManagerV1
-	textInputMgr      *text.ZwpInputManagerV3
-	textInput         *text.ZwpInputV3
-	tiSerial          uint32 // commits sent on textInput; done events compare against it
-	tiPending         tiPending
+	registry            *wl.Registry
+	compositor          *wl.Compositor
+	shm                 *wl.Shm
+	layerShell          *wlr.ZwlrLayerShellV1
+	viewporter          *wlr.WpViewporter
+	fracScaleManager    *wlr.WpScaleManagerV1
+	seat                *wl.Seat
+	pointer             *wl.Pointer
+	keyboard            *wl.Keyboard
+	wmBase              *xdg.WmBase
+	compositorVersion   uint32
+	outputs             []*Output
+	hasArgb             bool
+	globals             map[string]bool
+	ifaceNames          map[uint32]string
+	mods                uint32
+	repeatRate          uint32
+	repeatDelay         uint32
+	xkbKeymap           *xkb.Keymap
+	xkbState            *xkb.State
+	dataDeviceManager   *wl.DataDeviceManager
+	dataDeviceVersion   uint32
+	dataDevice          *wl.DataDevice
+	keyboardSerial      uint32
+	decorationManager   *deco.ZxdgDecorationManagerV1
+	textInputMgr        *text.ZwpInputManagerV3
+	textInput           *text.ZwpInputV3
+	tiSerial            uint32 // commits sent on textInput; done events compare against it
+	tiPending           tiPending
+	primarySelectionMgr *wlr.ZwpPrimarySelectionDeviceManagerV1
+	primarySelectionDev *wlr.ZwpPrimarySelectionDeviceV1
 
 	pointerEnterSerial uint32
 
@@ -298,6 +300,7 @@ func (s *Session) HandleRegistryGlobal(ev wl.RegistryGlobalEvent) {
 		wlclient.SeatAddListener(s.seat, s)
 		s.ensureDataDevice()
 		s.ensureTextInput()
+		s.ensurePrimarySelectionDevice()
 	case "xdg_wm_base":
 		ctx, _ := wl.GetUserData[wl.Context](s.registry)
 		wmBase := xdg.NewShell(ctx)
@@ -316,6 +319,8 @@ func (s *Session) HandleRegistryGlobal(ev wl.RegistryGlobalEvent) {
 		_ = s.registry.Bind(ev.Name, ev.Interface, bindVersion(ev.Version, 2), s.decorationManager)
 	case "zwp_text_input_manager_v3":
 		s.bindTextInputManager(ev)
+	case "zwp_primary_selection_device_manager_v1":
+		s.bindPrimarySelectionManager(ev)
 	}
 }
 
@@ -834,6 +839,13 @@ func (s *Session) DataDevice() *wl.DataDevice { return s.dataDevice }
 // version: three and above have the dnd action requests and events
 // (set_actions, finish), below that drags run in the v1 subset.
 func (s *Session) DataDeviceVersion() uint32 { return s.dataDeviceVersion }
+
+// PrimarySelectionManager returns the bound primary selection device
+// manager, or nil when the compositor does not provide it; primary
+// selection support needs it.
+func (s *Session) PrimarySelectionManager() *wlr.ZwpPrimarySelectionDeviceManagerV1 {
+	return s.primarySelectionMgr
+}
 
 // KeyboardSerial returns the serial of the last keyboard enter, needed
 // by selection requests.
