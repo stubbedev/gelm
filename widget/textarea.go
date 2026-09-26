@@ -58,6 +58,7 @@ func (t *TextArea) SetWrap(on bool) {
 	t.wrap = on
 	t.rowsValid = false
 	t.hasPref = false
+	t.InvalidateLayout()
 }
 
 // SetIndent sets how many spaces Tab inserts while focused; zero (the
@@ -88,7 +89,13 @@ func NewTextArea(face *render.Typeface, sizePx float64, color render.Color) *Tex
 }
 
 // SetPlaceholder sets the text shown when the area is empty.
-func (t *TextArea) SetPlaceholder(s string) { t.placeholder = s }
+func (t *TextArea) SetPlaceholder(s string) {
+	if t.placeholder == s {
+		return
+	}
+	t.placeholder = s
+	t.Invalidate()
+}
 
 // pos is a line/column cursor or anchor position in the logical
 // document.
@@ -123,6 +130,7 @@ func (t *TextArea) SetText(s string) {
 	t.anchor = t.cursor
 	t.hasPref = false
 	t.rowsValid = false
+	t.InvalidateLayout()
 }
 
 // SetCursor places the cursor and anchor at a line/column, clearing any
@@ -132,6 +140,7 @@ func (t *TextArea) SetCursor(line, col int) {
 	t.cursor = t.clamp(pos{line, col})
 	t.anchor = t.cursor
 	t.hasPref = false
+	t.Invalidate()
 }
 
 // clamp keeps p inside the document.
@@ -205,6 +214,7 @@ func (t *TextArea) collapse() {
 	t.lines = rest
 	t.cursor, t.anchor = start, start
 	t.rowsValid = false
+	t.InvalidateLayout()
 }
 
 // TextLen returns the number of logical lines, for tests and callers.
@@ -311,6 +321,7 @@ func (t *TextArea) Insert(s string) {
 	t.anchor = t.cursor
 	t.hasPref = false
 	t.rowsValid = false
+	t.InvalidateLayout()
 }
 
 // Delete removes the selection, or one rune/line break forward.
@@ -332,6 +343,7 @@ func (t *TextArea) Delete() {
 	}
 	t.anchor = t.clamp(t.cursor)
 	t.rowsValid = false
+	t.InvalidateLayout()
 }
 
 // Backspace removes the selection, or one rune/line break backward.
@@ -352,6 +364,7 @@ func (t *TextArea) Backspace() {
 		return
 	}
 	t.anchor = t.clamp(t.cursor)
+	t.Invalidate()
 	t.Delete()
 }
 
@@ -367,6 +380,7 @@ func (t *TextArea) move(delta pos, extend bool) {
 			start, _ := t.ordered()
 			t.cursor, t.anchor = start, start
 			if delta == (pos{}) {
+				t.Invalidate()
 				return
 			}
 		}
@@ -379,6 +393,7 @@ func (t *TextArea) move(delta pos, extend bool) {
 		t.anchor = t.cursor
 	}
 	t.hasPref = false
+	t.Invalidate()
 }
 
 // moveVertical moves the cursor one visual row up or down, honoring
@@ -408,6 +423,7 @@ func (t *TextArea) moveVertical(dline int, extend bool) {
 	if !extend {
 		t.anchor = t.cursor
 	}
+	t.Invalidate()
 }
 
 // wrapWidth returns the pixel width available for wrapping inside the
@@ -592,6 +608,7 @@ func (t *TextArea) DoubleClickAt(p Point) {
 	}
 	t.cursor, t.anchor = pos{at.line, end}, pos{at.line, start}
 	t.hasPref = false
+	t.Invalidate()
 }
 
 // SelectAll selects the entire document.
@@ -600,6 +617,7 @@ func (t *TextArea) SelectAll() {
 	t.anchor = pos{0, 0}
 	t.cursor = pos{len(t.lines) - 1, len(t.lines[len(t.lines)-1])}
 	t.hasPref = false
+	t.Invalidate()
 }
 
 // InsertRune implements RuneHandler.
@@ -631,6 +649,7 @@ func (t *TextArea) KeyAction(a KeyAction, mods Mods) {
 			if _, _, active := t.Selection(); active {
 				start, _ := t.ordered()
 				t.cursor, t.anchor = start, start
+				t.Invalidate()
 				return
 			}
 		}
@@ -643,6 +662,7 @@ func (t *TextArea) KeyAction(a KeyAction, mods Mods) {
 				t.anchor = t.cursor
 			}
 			t.hasPref = false
+			t.Invalidate()
 		}
 	case KeyRight:
 		c := t.clamp(t.cursor)
@@ -653,6 +673,7 @@ func (t *TextArea) KeyAction(a KeyAction, mods Mods) {
 					end = t.anchor
 				}
 				t.cursor, t.anchor = end, end
+				t.Invalidate()
 				return
 			}
 		}
@@ -665,6 +686,7 @@ func (t *TextArea) KeyAction(a KeyAction, mods Mods) {
 				t.anchor = t.cursor
 			}
 			t.hasPref = false
+			t.Invalidate()
 		}
 	case KeyUp:
 		t.moveVertical(-1, shift)
@@ -682,6 +704,7 @@ func (t *TextArea) KeyAction(a KeyAction, mods Mods) {
 			t.anchor = t.cursor
 		}
 		t.hasPref = false
+		t.Invalidate()
 	case KeyEnd:
 		if t.wrap {
 			t.ensureRows(t.wrapWidth())
@@ -693,6 +716,7 @@ func (t *TextArea) KeyAction(a KeyAction, mods Mods) {
 			t.anchor = t.cursor
 		}
 		t.hasPref = false
+		t.Invalidate()
 	case KeyEnter:
 		t.Insert("\n")
 	}

@@ -40,6 +40,7 @@ func NewNotebook(face *render.Typeface) *Notebook { return &Notebook{face: face}
 // selected one.
 func (n *Notebook) AppendTab(name string, w Widget) {
 	n.tabs = append(n.tabs, notebookTab{name: name, w: w})
+	n.InvalidateLayout()
 }
 
 // SelectedTab returns the visible page's name, empty when none.
@@ -60,12 +61,13 @@ func (n *Notebook) SelectTab(name string) {
 	}
 }
 
-// selectIndex switches pages and fires OnSelect.
+// selectIndex switches pages, invalidates the notebook, and fires OnSelect.
 func (n *Notebook) selectIndex(i int) {
 	if i == n.selected {
 		return
 	}
 	n.selected = i
+	n.Invalidate()
 	if n.OnSelect != nil {
 		n.OnSelect(n.tabs[i].name)
 	}
@@ -86,6 +88,7 @@ func (n *Notebook) CloseTab(name string) bool {
 		if n.selected < 0 {
 			n.selected = 0
 		}
+		n.InvalidateLayout()
 		return true
 	}
 	return false
@@ -102,6 +105,9 @@ func (n *Notebook) Children() []Widget {
 
 // Measure reports the tab bar height plus the largest page.
 func (n *Notebook) Measure(con Constraints) Size {
+	if sz, ok := n.measureHit(con); ok {
+		return sz
+	}
 	best := Size{}
 	for _, t := range n.tabs {
 		s := t.w.Measure(con)
@@ -109,7 +115,7 @@ func (n *Notebook) Measure(con Constraints) Size {
 		best.H = max(best.H, s.H)
 	}
 	best.H += tabBarHeight
-	return clampSize(best, con)
+	return n.measureStore(con, clampSize(best, con))
 }
 
 // Arrange lays out the tab strip and the visible page beneath it.

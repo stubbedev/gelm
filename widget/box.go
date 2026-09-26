@@ -55,9 +55,11 @@ func NewBox(axis Axis, spacing, padding int) *Box {
 }
 
 // Append adds a widget to the box and reports whether it should expand
-// into leftover main-axis space. It returns the box for chaining.
+// into leftover main-axis space. It returns the box for chaining. The
+// box's measure cache drops so the next frame sees the new child.
 func (b *Box) Append(w Widget, expand bool) *Box {
 	b.child = append(b.child, &childEntry{w: w, expand: expand})
+	b.InvalidateLayout()
 	return b
 }
 
@@ -97,8 +99,13 @@ func (b *Box) crossMax(con Constraints) int {
 
 // Measure measures every child and reports the box's natural size: the sum
 // of child sizes plus spacing and padding along the main axis, the largest
-// child plus padding across.
+// child plus padding across. The result is cached until an InvalidateLayout
+// anywhere in the subtree or a different constraint arrives, so a static
+// tree costs no recursion on later frames.
 func (b *Box) Measure(con Constraints) Size {
+	if sz, ok := b.measureHit(con); ok {
+		return sz
+	}
 	innerCross := max(0, b.crossMax(con)-2*b.padding)
 	availMain := max(0, b.main(con.Max)-2*b.padding-b.spacing*(len(b.child)-1))
 
@@ -114,7 +121,7 @@ func (b *Box) Measure(con Constraints) Size {
 		total -= b.spacing
 	}
 	cross += 2 * b.padding
-	return clampSize(b.withMain(Size{W: cross, H: cross}, total), con)
+	return b.measureStore(con, clampSize(b.withMain(Size{W: cross, H: cross}, total), con))
 }
 
 // Arrange positions the children inside r: the inner rect after padding,

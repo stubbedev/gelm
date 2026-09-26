@@ -42,6 +42,7 @@ func (s *Slider) SetValue(v float64) {
 		return
 	}
 	s.value = v
+	s.Invalidate()
 	if s.OnChanged != nil {
 		s.OnChanged(v)
 	}
@@ -68,7 +69,10 @@ func (s *Slider) ValueFromX(x int) float64 {
 
 // Measure wants a fixed 200x18 trough, clamped to con.
 func (s *Slider) Measure(con Constraints) Size {
-	return clampSize(Size{W: 200, H: 18}, con)
+	if sz, ok := s.measureHit(con); ok {
+		return sz
+	}
+	return s.measureStore(con, clampSize(Size{W: 200, H: 18}, con))
 }
 
 // Paint draws the trough, fill, and handle. Zero colors fall back to the

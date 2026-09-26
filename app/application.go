@@ -29,7 +29,7 @@ type Application struct {
 	clip        *clipboard.Clipboard
 	tooltipFace *render.Typeface
 	onKey       func(r *widget.Router, keycode uint32, mods wlsession.Mods)
-	ime *imeController
+	ime         *imeController
 	// dnd drives drag-and-drop for every window on this application;
 	// inert when the compositor lacks a data device.
 	dnd *dragdrop.Controller

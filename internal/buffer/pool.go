@@ -35,6 +35,12 @@ type Buffer struct {
 	Stride        int
 	Scale         int
 
+	// Stale is the region where this buffer's content lags what is on
+	// screen: the union of damage painted into other buffers since this
+	// one was last presented. A frame drawn here must repaint Stale plus
+	// the frame's own damage; a fresh buffer starts fully stale.
+	Stale render.Rect
+
 	busy bool
 }
 
@@ -92,7 +98,10 @@ func NewFile(shm *wl.Shm, bufW, bufH, scale int) (*Buffer, error) {
 		return nil, fmt.Errorf("buffer: wl_shm_pool.destroy: %w", err)
 	}
 
-	return &Buffer{WL: wlBuf, Data: data, Width: bufW, Height: bufH, Stride: stride, Scale: scale}, nil
+	return &Buffer{
+		WL: wlBuf, Data: data, Width: bufW, Height: bufH, Stride: stride, Scale: scale,
+		Stale: render.Rect{X: 0, Y: 0, W: bufW, H: bufH},
+	}, nil
 }
 
 // Pool is a fixed-capacity set of buffers for one surface.
@@ -133,6 +142,27 @@ func (p *Pool) Acquire() (*Buffer, error) {
 		return b, nil
 	}
 	return nil, ErrBusy
+}
+
+// Presented records a committed frame. changed is the region where the
+// screen actually differs after this commit (the frame's own damage, not
+// the buffer-initialization paint a fresh buffer also performs): b's
+// content now matches the screen, while every other buffer in the pool
+// lags by changed and must repaint it before its next reuse. This is
+// what makes partial damage safe with a rotating pool: whichever buffer
+// comes back next carries the accumulated damage of every frame missed
+// since its content was on screen.
+func (p *Pool) Presented(b *Buffer, changed render.Rect) {
+	// b was just repainted to match the screen, whatever it owed before.
+	b.Stale = render.Rect{}
+	if changed.Empty() {
+		return
+	}
+	for _, o := range p.buffers {
+		if o != b {
+			o.Stale = o.Stale.Union(changed)
+		}
+	}
 }
 
 // Resize drops every buffer, busy or not, and installs create as the

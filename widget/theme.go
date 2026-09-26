@@ -33,17 +33,23 @@ type Theme struct {
 // render at every call site.
 type Color = render.Color
 
+// themeGen bumps on every SetTheme so the damage collector repaints
+// each widget once after a restyle (node.takeDamage compares stamps).
+var themeGen uint64 = 1
+
 var current = DarkTheme()
 
 // Current returns the active theme.
 func Current() *Theme { return current }
 
 // SetTheme replaces the active theme. Passing nil restores DarkTheme.
+// The next frame repaints every widget with the new palette.
 func SetTheme(t *Theme) {
 	if t == nil {
 		t = DarkTheme()
 	}
 	current = t
+	themeGen++
 }
 
 // DarkTheme returns the default dark palette.

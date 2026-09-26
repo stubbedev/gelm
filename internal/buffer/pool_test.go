@@ -15,6 +15,7 @@ func newTestBuffer(w, h int) *Buffer {
 		Height: h,
 		Stride: stride,
 		Scale:  1,
+		Stale:  render.Rect{W: w, H: h},
 	}
 }
 
@@ -125,6 +126,77 @@ func TestStride(t *testing.T) {
 	}
 	if got := render.Stride(0); got != 0 {
 		t.Errorf("Stride(0) = %d, want 0", got)
+	}
+}
+
+func TestFreshBufferIsFullyStale(t *testing.T) {
+	b := newTestBuffer(100, 40)
+	if b.Stale != (render.Rect{W: 100, H: 40}) {
+		t.Errorf("fresh buffer stale = %+v, want the full buffer", b.Stale)
+	}
+}
+
+func TestPresentedMovesDamageToOtherBuffers(t *testing.T) {
+	created := 0
+	p := New(countingCreate(&created, 100, 40), 3)
+
+	a, err := p.Acquire()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a.Stale != (render.Rect{W: 100, H: 40}) {
+		t.Fatalf("fresh buffer stale = %+v, want full", a.Stale)
+	}
+	// Committing a frame through a fully stale buffer changes only the
+	// changed region; the initialization paint must not leak into other
+	// buffers' staleness.
+	p.Presented(a, render.Rect{X: 10, Y: 0, W: 20, H: 40})
+	if !a.Stale.Empty() {
+		t.Errorf("presented buffer stale = %+v, want empty", a.Stale)
+	}
+
+	b, err := p.Acquire()
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.Presented(b, render.Rect{X: 60, Y: 0, W: 10, H: 40})
+
+	// Re-acquiring a now carries the change missed while b was on
+	// screen; the first region does not apply, a was the screen then.
+	a.Release()
+	a2, err := p.Acquire()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a2 != a {
+		t.Fatal("released buffer was not reused")
+	}
+	want := render.Rect{X: 60, Y: 0, W: 10, H: 40}
+	if a2.Stale != want {
+		t.Errorf("rotated buffer stale = %+v, want the missed region %+v", a2.Stale, want)
+	}
+
+	// Re-presenting clears only the presented buffer.
+	p.Presented(a2, want)
+	if !a2.Stale.Empty() {
+		t.Errorf("presented buffer stale = %+v, want empty", a2.Stale)
+	}
+	if b.Stale != want {
+		t.Errorf("other buffer stale = %+v, want %+v", b.Stale, want)
+	}
+}
+
+func TestPresentedEmptyRegionIsNoop(t *testing.T) {
+	created := 0
+	p := New(countingCreate(&created, 50, 20), 2)
+	a, err := p.Acquire()
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.Stale = render.Rect{}
+	p.Presented(a, render.Rect{})
+	if !a.Stale.Empty() {
+		t.Error("empty present must not touch staleness")
 	}
 }
 

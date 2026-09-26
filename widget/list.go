@@ -71,6 +71,7 @@ func (l *List) Select(i int) {
 	l.sel = i
 	l.scrollTo(i)
 	l.dirty = true
+	l.Invalidate()
 	if l.OnSelect != nil {
 		l.OnSelect(i)
 	}
@@ -93,6 +94,7 @@ func (l *List) Changed() {
 		l.sel = n - 1
 	}
 	l.dirty = true
+	l.InvalidateLayout()
 }
 
 // scrollTo nudges the offset so row i is inside the viewport.
@@ -123,8 +125,11 @@ func (l *List) measureRowH() int {
 // clamped to the constraints: the list is the viewport, not the
 // content.
 func (l *List) Measure(con Constraints) Size {
+	if sz, ok := l.measureHit(con); ok {
+		return sz
+	}
 	h := l.measureRowH() * l.model.len()
-	return clampSize(Size{W: 120, H: h}, con)
+	return l.measureStore(con, clampSize(Size{W: 120, H: h}, con))
 }
 
 // Arrange lays out the viewport.
@@ -166,6 +171,7 @@ func (l *List) Paint(cv *render.Canvas) {
 		w := l.rows[i]
 		y := l.bounds.Y + i*l.rowH - l.offY
 		w.Arrange(render.Rect{X: l.bounds.X, Y: y, W: l.viewW, H: l.rowH})
+		setParents(l, w)
 		switch i {
 		case l.sel:
 			hl := th.Accent
@@ -210,6 +216,7 @@ func (l *List) HoverMove(p Point) {
 	}
 	l.hover = i
 	l.dirty = true
+	l.Invalidate()
 }
 
 // ScrollBy implements ScrollHandler.
@@ -217,6 +224,7 @@ func (l *List) ScrollBy(dx, dy int) {
 	scrollMax := max(0, l.model.len()*l.rowH-l.viewH)
 	l.offY = min(max(0, l.offY+dy*40), scrollMax)
 	l.dirty = true
+	l.Invalidate()
 }
 
 // KeyAction implements KeyActionHandler: selection motion clamps at

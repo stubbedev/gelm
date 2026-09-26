@@ -8,11 +8,11 @@ import (
 	"github.com/stubbedev/gelm/render"
 )
 
-func entryFace(t *testing.T) *render.Typeface {
-	t.Helper()
+func entryFace(tb testing.TB) *render.Typeface {
+	tb.Helper()
 	face, err := render.LoadFont(goregular.TTF)
 	if err != nil {
-		t.Fatal(err)
+		tb.Fatal(err)
 	}
 	return face
 }

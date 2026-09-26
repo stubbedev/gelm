@@ -34,12 +34,15 @@ func NewButton(child Widget, padding, radius int) *Button {
 
 // Measure pads the child's natural size on every side.
 func (b *Button) Measure(con Constraints) Size {
+	if sz, ok := b.measureHit(con); ok {
+		return sz
+	}
 	inner := Constraints{
 		Min: Size{},
 		Max: Size{W: max(0, con.Max.W-2*b.padding), H: max(0, con.Max.H-2*b.padding)},
 	}
 	nat := b.child.Measure(inner)
-	return clampSize(Size{W: nat.W + 2*b.padding, H: nat.H + 2*b.padding}, con)
+	return b.measureStore(con, clampSize(Size{W: nat.W + 2*b.padding, H: nat.H + 2*b.padding}, con))
 }
 
 // Arrange insets the child by the padding inside r.
@@ -95,11 +98,23 @@ func (b *Button) click() {
 	}
 }
 
-// SetHovered implements HoverSetter.
-func (b *Button) SetHovered(on bool) { b.Hovered = on }
+// SetHovered implements HoverSetter; the hover shade repaints.
+func (b *Button) SetHovered(on bool) {
+	if b.Hovered == on {
+		return
+	}
+	b.Hovered = on
+	b.Invalidate()
+}
 
-// SetPressed implements PressSetter.
-func (b *Button) SetPressed(on bool) { b.Pressed = on }
+// SetPressed implements PressSetter; the pressed shade repaints.
+func (b *Button) SetPressed(on bool) {
+	if b.Pressed == on {
+		return
+	}
+	b.Pressed = on
+	b.Invalidate()
+}
 
 // KeyAction implements KeyActionHandler: Enter activates the button
 // when focused, which is what makes it reachable by Tab at all - the

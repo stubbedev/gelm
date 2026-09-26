@@ -24,13 +24,14 @@ func NewLabel(face *render.Typeface, text string, sizePx float64, color render.C
 	return l
 }
 
-// SetText replaces the label text.
+// SetText replaces the label text and invalidates the label's bounds.
 func (l *Label) SetText(text string) {
 	if l.text == text {
 		return
 	}
 	l.text = text
 	l.retext()
+	l.InvalidateLayout()
 }
 
 // Text returns the current label text.
@@ -55,7 +56,10 @@ func (l *Label) retext() {
 
 // Measure returns the text's advance and line height, clamped to con.
 func (l *Label) Measure(con Constraints) Size {
-	return clampSize(l.natural, con)
+	if s, ok := l.measureHit(con); ok {
+		return s
+	}
+	return l.measureStore(con, clampSize(l.natural, con))
 }
 
 // Paint draws the text inside the arranged rect; nothing is painted when

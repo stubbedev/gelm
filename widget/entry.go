@@ -39,7 +39,11 @@ func NewEntry(face *render.Typeface, sizePx float64, color render.Color) *Entry 
 
 // SetPlaceholder sets the text shown when the entry is empty.
 func (e *Entry) SetPlaceholder(s string) {
+	if e.placeholder == s {
+		return
+	}
 	e.placeholder = s
+	e.InvalidateLayout()
 }
 
 // Text returns the entry contents.
@@ -66,7 +70,8 @@ func (e *Entry) SelectedText() (string, bool) {
 	return string(e.runes[start:end]), true
 }
 
-// SetText replaces the contents and moves the cursor to the end.
+// SetText replaces the contents, moves the cursor to the end, and
+// invalidates the field.
 func (e *Entry) SetText(s string) {
 	e.clearPreedit()
 	if s == e.Text() {
@@ -75,6 +80,7 @@ func (e *Entry) SetText(s string) {
 	e.runes = []rune(s)
 	e.cursor = len(e.runes)
 	e.anchor = e.cursor
+	e.InvalidateLayout()
 	e.changed()
 }
 
@@ -114,6 +120,7 @@ func (e *Entry) Insert(s string) {
 	e.runes = append(e.runes[:e.cursor], append(append([]rune{}, r...), e.runes[e.cursor:]...)...)
 	e.cursor += len(r)
 	e.anchor = e.cursor
+	e.InvalidateLayout()
 	e.changed()
 }
 
@@ -123,6 +130,7 @@ func (e *Entry) Backspace() {
 	e.clearPreedit()
 	if _, _, active := e.Selection(); active {
 		e.collapse()
+		e.InvalidateLayout()
 		e.changed()
 		return
 	}
@@ -132,6 +140,7 @@ func (e *Entry) Backspace() {
 	e.runes = append(e.runes[:e.cursor-1], e.runes[e.cursor:]...)
 	e.cursor--
 	e.anchor = e.cursor
+	e.InvalidateLayout()
 	e.changed()
 }
 
@@ -141,6 +150,7 @@ func (e *Entry) Delete() {
 	e.clearPreedit()
 	if _, _, active := e.Selection(); active {
 		e.collapse()
+		e.InvalidateLayout()
 		e.changed()
 		return
 	}
@@ -148,6 +158,7 @@ func (e *Entry) Delete() {
 		return
 	}
 	e.runes = append(e.runes[:e.cursor], e.runes[e.cursor+1:]...)
+	e.InvalidateLayout()
 	e.changed()
 }
 
@@ -163,11 +174,13 @@ func (e *Entry) MoveCursor(delta int) {
 			edge = end
 		}
 		e.cursor, e.anchor = edge, edge
+		e.Invalidate()
 		return
 	}
 	e.cursor += delta
 	e.clampCursor()
 	e.anchor = e.cursor
+	e.Invalidate()
 }
 
 // MoveCursorExtending moves the cursor by delta runes, growing or
@@ -176,6 +189,7 @@ func (e *Entry) MoveCursorExtending(delta int) {
 	e.clearPreedit()
 	e.cursor += delta
 	e.clampCursor()
+	e.Invalidate()
 }
 
 func (e *Entry) clampCursor() {
@@ -188,18 +202,22 @@ func (e *Entry) clampCursor() {
 }
 
 // MoveHome puts the cursor at the start, dropping any selection.
-func (e *Entry) MoveHome() { e.clearPreedit(); e.cursor, e.anchor = 0, 0 }
+func (e *Entry) MoveHome() { e.clearPreedit(); e.cursor, e.anchor = 0, 0; e.Invalidate() }
 
 // MoveEnd puts the cursor after the last rune, dropping any selection.
 func (e *Entry) MoveEnd() {
 	e.clearPreedit()
 	e.cursor, e.anchor = len(e.runes), len(e.runes)
+	e.Invalidate()
 }
 
 // Measure wants the text advance (or the placeholder's) plus padding; an
 // empty field keeps its padding so the box stays visible. Clamped to con.
 // Composing text counts toward the wanted width.
 func (e *Entry) Measure(con Constraints) Size {
+	if sz, ok := e.measureHit(con); ok {
+		return sz
+	}
 	text := string(e.displayRunes())
 	if text == "" {
 		text = e.placeholder
@@ -209,7 +227,7 @@ func (e *Entry) Measure(con Constraints) Size {
 		w += int(e.face.Shape(text, e.sizePx).Advance() + 0.5)
 	}
 	h := int(e.face.Shape("lg", e.sizePx).Ascent()+e.face.Shape("lg", e.sizePx).Descent()+0.5) + 12
-	return clampSize(Size{W: w, H: h}, con)
+	return e.measureStore(con, clampSize(Size{W: w, H: h}, con))
 }
 
 // Paint draws the field: placeholder when empty, text otherwise, the
@@ -265,6 +283,7 @@ func (e *Entry) ClickAt(p Point) {
 	x := float64(p.X - e.bounds.X - 8)
 	e.cursor = e.face.Shape(e.Text(), e.sizePx).CaretAt(x)
 	e.anchor = e.cursor
+	e.Invalidate()
 }
 
 // DragMove extends the selection while the pointer drags; the anchor
@@ -273,6 +292,7 @@ func (e *Entry) DragMove(p Point) {
 	e.clearPreedit()
 	x := float64(p.X - e.bounds.X - 8)
 	e.cursor = e.face.Shape(e.Text(), e.sizePx).CaretAt(x)
+	e.Invalidate()
 }
 
 // DoubleClickAt selects the run of same-class runes (word or whitespace)
@@ -300,6 +320,7 @@ func (e *Entry) DoubleClickAt(p Point) {
 		end++
 	}
 	e.cursor, e.anchor = end, start
+	e.Invalidate()
 }
 
 // SelectAll selects the entire contents.
@@ -307,6 +328,7 @@ func (e *Entry) SelectAll() {
 	e.clearPreedit()
 	e.anchor = 0
 	e.cursor = len(e.runes)
+	e.Invalidate()
 }
 
 // InsertRune implements RuneHandler.
@@ -350,12 +372,14 @@ func (e *Entry) KeyAction(a KeyAction, mods Mods) {
 	case KeyHome:
 		if shift {
 			e.cursor = 0
+			e.Invalidate()
 		} else {
 			e.MoveHome()
 		}
 	case KeyEnd:
 		if shift {
 			e.cursor = len(e.runes)
+			e.Invalidate()
 		} else {
 			e.MoveEnd()
 		}

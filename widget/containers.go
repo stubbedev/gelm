@@ -35,6 +35,7 @@ func (s *Stack) Add(name string, w Widget) *Stack {
 	if s.visible == "" {
 		s.visible = name
 	}
+	s.InvalidateLayout()
 	return s
 }
 
@@ -49,11 +50,12 @@ func (s *Stack) Children() []Widget {
 // Children exposes the stacked children for focus traversal.
 func (o *Overlay) Children() []Widget { return o.kids }
 
-// Show makes the child under name the visible one. Unknown names are
-// ignored.
+// Show makes the child under name the visible one and invalidates the
+// stack's bounds; unknown names are ignored.
 func (s *Stack) Show(name string) {
-	if _, ok := s.kids[name]; ok {
+	if _, ok := s.kids[name]; ok && name != s.visible {
 		s.visible = name
+		s.Invalidate()
 	}
 }
 
@@ -65,6 +67,9 @@ func (s *Stack) Visible() string {
 // Measure measures every child once and reports the largest, clamped to
 // con.
 func (s *Stack) Measure(con Constraints) Size {
+	if sz, ok := s.measureHit(con); ok {
+		return sz
+	}
 	best := Size{}
 	for _, name := range s.order {
 		nat := s.kids[name].Measure(con)
@@ -72,7 +77,7 @@ func (s *Stack) Measure(con Constraints) Size {
 		best.W = max(best.W, nat.W)
 		best.H = max(best.H, nat.H)
 	}
-	return clampSize(best, con)
+	return s.measureStore(con, clampSize(best, con))
 }
 
 // Arrange assigns the whole rect to every child.
@@ -120,18 +125,22 @@ func NewOverlay() *Overlay { return &Overlay{} }
 // Append adds a child on top.
 func (o *Overlay) Append(w Widget) *Overlay {
 	o.kids = append(o.kids, w)
+	o.InvalidateLayout()
 	return o
 }
 
 // Measure reports the largest child, clamped to con.
 func (o *Overlay) Measure(con Constraints) Size {
+	if sz, ok := o.measureHit(con); ok {
+		return sz
+	}
 	best := Size{}
 	for _, k := range o.kids {
 		nat := k.Measure(con)
 		best.W = max(best.W, nat.W)
 		best.H = max(best.H, nat.H)
 	}
-	return clampSize(best, con)
+	return o.measureStore(con, clampSize(best, con))
 }
 
 // Arrange assigns the whole rect to every child.
@@ -232,11 +241,16 @@ func (s *Scroll) scrollMax() (int, int) {
 
 // SetOffset scrolls to x, y, clamped so the child never leaves the
 // viewport (overshoot clamps). A child smaller than the viewport stays
-// pinned at 0.
+// pinned at 0. Scrolling invalidates the viewport bounds.
 func (s *Scroll) SetOffset(x, y int) {
 	maxX, maxY := s.scrollMax()
-	s.offX = min(max(0, x), maxX)
-	s.offY = min(max(0, y), maxY)
+	x = min(max(0, x), maxX)
+	y = min(max(0, y), maxY)
+	if x == s.offX && y == s.offY {
+		return
+	}
+	s.offX, s.offY = x, y
+	s.Invalidate()
 }
 
 // ShowBarsOnce marks the bars visible now and schedules their fade-out:
@@ -250,6 +264,8 @@ func (s *Scroll) showBars() {
 }
 
 // fadeTo animates the bar alpha toward to, replacing any pending fade.
+// Each tween step invalidates the gutter strips so the fading bars
+// repaint.
 func (s *Scroll) fadeTo(to float64) {
 	if (to == 1 && s.alpha == 1) || (to == 0 && s.alpha == 0) {
 		return
@@ -262,15 +278,32 @@ func (s *Scroll) fadeTo(to float64) {
 			return
 		}
 		s.alpha = from + (to-from)*t
+		s.invalidateBars()
 	})
 }
 
 // SetHovered implements HoverSetter: entering shows the bars, leaving
-// starts the dwell before they fade.
+// starts the dwell before they fade. Hovering itself paints nothing;
+// the fade tweens invalidate the gutter strips as alpha moves.
 func (s *Scroll) SetHovered(on bool) {
 	s.hovered = on
 	if on {
 		s.showBars()
+	}
+}
+
+// invalidateBars schedules a repaint of just the scrollbar strips -
+// the only pixels an alpha change touches - instead of the whole
+// viewport.
+func (s *Scroll) invalidateBars() {
+	if !s.ShowBars {
+		return
+	}
+	if track, _ := s.vBarGeometry(); track.W > 0 {
+		s.InvalidateRect(track)
+	}
+	if track, _ := s.hBarGeometry(); track.H > 0 {
+		s.InvalidateRect(track)
 	}
 }
 
@@ -280,8 +313,11 @@ func (s *Scroll) SetHovered(on bool) {
 // bounded: an unbounded appetite here would blow up natural measurement
 // in parent boxes and lay children out past the window edge.
 func (s *Scroll) Measure(con Constraints) Size {
+	if sz, ok := s.measureHit(con); ok {
+		return sz
+	}
 	s.nat = s.child.Measure(Constraints{Max: Size{W: math.MaxInt, H: math.MaxInt}})
-	return clampSize(s.nat, con)
+	return s.measureStore(con, clampSize(s.nat, con))
 }
 
 // Arrange pins the viewport to r, reserving a gutter for each

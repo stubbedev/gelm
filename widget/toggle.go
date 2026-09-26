@@ -28,6 +28,7 @@ func (s *Switch) SetOn(on bool) {
 		return
 	}
 	s.on = on
+	s.Invalidate()
 	if s.OnChanged != nil {
 		s.OnChanged(on)
 	}
@@ -40,7 +41,10 @@ func (s *Switch) Toggle() {
 
 // Measure wants a fixed 40x22 pill, clamped to con.
 func (s *Switch) Measure(con Constraints) Size {
-	return clampSize(Size{W: 40, H: 22}, con)
+	if sz, ok := s.measureHit(con); ok {
+		return sz
+	}
+	return s.measureStore(con, clampSize(Size{W: 40, H: 22}, con))
 }
 
 // Paint draws the track and knob. The knob sits at the right when on.
@@ -115,14 +119,23 @@ func math01(v float64) float64 {
 // Value returns the fill fraction in [0, 1].
 func (p *ProgressBar) Value() float64 { return p.value }
 
-// SetValue clamps v to [0, 1] and repaints on the next frame.
+// SetValue clamps v to [0, 1] and invalidates the bar so the next
+// frame repaints the fill.
 func (p *ProgressBar) SetValue(v float64) {
-	p.value = math01(v)
+	v = math01(v)
+	if v == p.value {
+		return
+	}
+	p.value = v
+	p.Invalidate()
 }
 
 // Measure wants a fixed 160x10 trough, clamped to con.
 func (p *ProgressBar) Measure(con Constraints) Size {
-	return clampSize(Size{W: 160, H: 10}, con)
+	if sz, ok := p.measureHit(con); ok {
+		return sz
+	}
+	return p.measureStore(con, clampSize(Size{W: 160, H: 10}, con))
 }
 
 // Paint draws the trough and the proportional fill. Zero colors fall back
@@ -169,6 +182,7 @@ func (c *CheckButton) SetChecked(checked bool) {
 		return
 	}
 	c.checked = checked
+	c.Invalidate()
 	if c.OnChanged != nil {
 		c.OnChanged(checked)
 	}
@@ -181,7 +195,10 @@ func (c *CheckButton) Toggle() {
 
 // Measure wants a fixed 20x20 box, clamped to con.
 func (c *CheckButton) Measure(con Constraints) Size {
-	return clampSize(Size{W: 20, H: 20}, con)
+	if sz, ok := c.measureHit(con); ok {
+		return sz
+	}
+	return c.measureStore(con, clampSize(Size{W: 20, H: 20}, con))
 }
 
 // Paint draws the box; when checked, an accent fill and a check mark.
@@ -259,7 +276,10 @@ func NewSpacer(w, h int) *Spacer {
 
 // Measure returns the spacer's size, clamped to con.
 func (s *Spacer) Measure(con Constraints) Size {
-	return clampSize(s.nat, con)
+	if sz, ok := s.measureHit(con); ok {
+		return sz
+	}
+	return s.measureStore(con, clampSize(s.nat, con))
 }
 
 // Paint paints nothing.

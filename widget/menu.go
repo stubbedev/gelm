@@ -69,6 +69,9 @@ func NewMenu(face *render.Typeface, sizePx float64, items ...MenuItem) *Menu {
 // Measure wants the widest row (label plus indicator, accelerator, and
 // submenu arrow) plus padding, and one row per item.
 func (m *Menu) Measure(con Constraints) Size {
+	if sz, ok := m.measureHit(con); ok {
+		return sz
+	}
 	w := 0
 	for _, it := range m.items {
 		row := m.face.Shape(it.Label, m.sizePx).Advance() + 24
@@ -85,7 +88,7 @@ func (m *Menu) Measure(con Constraints) Size {
 			w = adv
 		}
 	}
-	return clampSize(Size{W: w + 16, H: len(m.items)*m.itemH + 8}, con)
+	return m.measureStore(con, clampSize(Size{W: w + 16, H: len(m.items)*m.itemH + 8}, con))
 }
 
 // selectable reports whether keyboard motion may land on row i.
@@ -167,13 +170,19 @@ func (m *Menu) HitTest(p Point) Widget { return m.HitLeaf(m, p) }
 
 // SetHovered clears row hover when the pointer leaves the menu.
 func (m *Menu) SetHovered(on bool) {
-	if !on {
+	if !on && m.hovered != -1 {
 		m.hovered = -1
+		m.Invalidate()
 	}
 }
 
 // HoverMove tracks the hovered row as the pointer moves inside.
-func (m *Menu) HoverMove(p Point) { m.hovered = m.itemAt(p) }
+func (m *Menu) HoverMove(p Point) {
+	if i := m.itemAt(p); i != m.hovered {
+		m.hovered = i
+		m.Invalidate()
+	}
+}
 
 // itemAt maps a root-space point to an item index, -1 outside.
 func (m *Menu) itemAt(p Point) int {
@@ -216,6 +225,7 @@ func (m *Menu) activate(i int) {
 		return
 	case item.Kind == ItemCheck:
 		m.items[i].Checked = !m.items[i].Checked
+		m.Invalidate()
 	case item.Kind == ItemRadio:
 		for j := range m.items {
 			if m.items[j].Kind == ItemRadio && m.items[j].Group == item.Group {
@@ -223,6 +233,7 @@ func (m *Menu) activate(i int) {
 			}
 		}
 		m.items[i].Checked = true
+		m.Invalidate()
 	}
 	m.dismiss()
 	item.OnClick()
@@ -239,6 +250,7 @@ func (m *Menu) step(dir int) {
 		}
 		if m.selectable(i) {
 			m.hovered = i
+			m.Invalidate()
 			return
 		}
 	}
@@ -252,19 +264,23 @@ func (m *Menu) KeyAction(a KeyAction, mods Mods) {
 	case KeyDown:
 		if m.hovered < 0 {
 			m.hovered = m.nextSelectable(-1, 1)
+			m.Invalidate()
 			return
 		}
 		m.step(1)
 	case KeyUp:
 		if m.hovered < 0 {
 			m.hovered = m.nextSelectable(len(m.items), -1)
+			m.Invalidate()
 			return
 		}
 		m.step(-1)
 	case KeyHome:
 		m.hovered = m.nextSelectable(-1, 1)
+		m.Invalidate()
 	case KeyEnd:
 		m.hovered = m.nextSelectable(len(m.items), -1)
+		m.Invalidate()
 	case KeyEnter:
 		if m.hovered >= 0 {
 			m.activate(m.hovered)

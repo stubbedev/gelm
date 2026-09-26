@@ -17,8 +17,11 @@ func NewIcon(ic *render.Icon) *Icon {
 
 // Measure returns the icon's pixel size, clamped to con.
 func (i *Icon) Measure(con Constraints) Size {
+	if sz, ok := i.measureHit(con); ok {
+		return sz
+	}
 	w, h := i.ic.Size()
-	return clampSize(Size{W: w, H: h}, con)
+	return i.measureStore(con, clampSize(Size{W: w, H: h}, con))
 }
 
 // Paint draws the icon at the top-left of the arranged rect.
