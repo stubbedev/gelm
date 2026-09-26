@@ -80,9 +80,15 @@ type surfaceInput struct {
 	tip     *tooltipCtl
 	onPress func(button uint32, serial uint32, over widget.Widget)
 	onMove  func(x, y float64)
+	// dnd, when set, starts drags from press+motion gestures and
+	// receives this surface's data-device events (dragdrop.Target).
+	dnd dragController
 
-	x, y       float64
-	lastCursor string
+	x, y           float64
+	lastCursor     string
+	pressX, pressY float64
+	pressSerial    uint32
+	dragStarted    bool
 	// request schedules a repaint; installed by Run once the redraw
 	// channel exists.
 	request func()
@@ -112,10 +118,11 @@ func (in *surfaceInput) HandlePointerMotion(x, y float64) {
 }
 
 // move feeds one pointer position to the router and updates the
-// cursor shape and hover bookkeeping.
+// cursor shape, hover bookkeeping, and the drag gesture.
 func (in *surfaceInput) move(x, y float64) {
 	in.x, in.y = x, y
 	in.router.Move(widget.Point{X: int(x) * in.scale, Y: int(y) * in.scale})
+	in.startDrag()
 	debug.Log("input", "route move (%.1f,%.1f) hit %T", x, y, in.router.Hovered())
 	if debug.Enabled {
 		if bs, ok := in.router.Hovered().(widget.Boundser); ok {
@@ -151,6 +158,11 @@ func (in *surfaceInput) HandlePointerButton(button, state, serial uint32) {
 			in.tip.open.Close()
 		}
 		in.router.Press(button, p)
+		// Remember the press for the drag gesture: the threshold is
+		// measured from here and start_drag wants this serial.
+		in.pressX, in.pressY = in.x, in.y
+		in.pressSerial = serial
+		in.dragStarted = false
 		if in.onPress != nil {
 			in.onPress(button, serial, in.router.Hovered())
 		}

@@ -15,6 +15,7 @@ import (
 
 	"github.com/stubbedev/gelm/internal/anim"
 	"github.com/stubbedev/gelm/internal/clipboard"
+	"github.com/stubbedev/gelm/internal/dragdrop"
 	"github.com/stubbedev/gelm/internal/layersurface"
 	"github.com/stubbedev/gelm/internal/window"
 	"github.com/stubbedev/gelm/internal/wlsession"
@@ -28,7 +29,10 @@ type Application struct {
 	clip        *clipboard.Clipboard
 	tooltipFace *render.Typeface
 	onKey       func(r *widget.Router, keycode uint32, mods wlsession.Mods)
-	ime         *imeController
+	ime *imeController
+	// dnd drives drag-and-drop for every window on this application;
+	// inert when the compositor lacks a data device.
+	dnd *dragdrop.Controller
 
 	windows  []*hostWindow
 	dialogs  []*Dialog
@@ -42,6 +46,7 @@ type Application struct {
 func NewApplication(sess *wlsession.Session) *Application {
 	return &Application{
 		sess:   sess,
+		dnd:    dragdrop.New(sess),
 		rep:    newKeyRepeater(sess.RepeatInfo()),
 		kicker: &loopKicker{},
 		ime:    newIMEController(sess),
@@ -242,7 +247,7 @@ func (h *layerHost) Size() (int, int) {
 // the application.
 func (a *Application) newWindow(host Host, scale int, root widget.Widget, hooks windowHooks, onClosed func()) *hostWindow {
 	hooks.onClosed = onClosed
-	w := newHostWindow(a.sess, host, scale, root, hooks)
+	w := newHostWindow(a.sess, host, scale, root, hooks, a.dnd)
 	a.windows = append(a.windows, w)
 	// Wake the parked loop so a new window paints promptly.
 	a.sess.WakeAfter(0)

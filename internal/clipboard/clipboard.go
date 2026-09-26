@@ -42,18 +42,41 @@ func pickTextMime(present func(string) bool) string {
 
 // Clipboard tracks the seat's selection and claims it on behalf of the
 // app. Create one after connecting; it is not safe for concurrent use.
+//
+// The data device also carries drag-and-drop (internal/dragdrop), whose
+// offers advertise mime types through the same wl_data_offer objects.
+// Each offer therefore tracks its own mime set (offerMimes), and only
+// an offer the compositor promotes with a selection event can ever
+// satisfy ReadText: a drag passing through never touches the
+// selection.
 type Clipboard struct {
 	sess   *wlsession.Session
-	offer  *wl.DataOffer
-	mimes  map[string]bool
-	source *wl.DataSource
-	out    string
+	offers map[*wl.DataOffer]*offerMimes
+	// selection is the offer the compositor named as the selection;
+	// selectionMimes its advertised set.
+	selection      *wl.DataOffer
+	selectionMimes map[string]bool
+	source         *wl.DataSource
+	out            string
+}
+
+// offerMimes collects the mime types one wl_data_offer advertises.
+// The binding dispatches offer events without naming their object, so
+// each offer gets its own listener.
+type offerMimes struct {
+	mimes map[string]bool
+}
+
+// HandleDataOfferOffer implements wl.DataOfferOfferHandler: one
+// advertised mime type of this offer.
+func (o *offerMimes) HandleDataOfferOffer(ev wl.DataOfferOfferEvent) {
+	o.mimes[ev.MimeType] = true
 }
 
 // New wires the clipboard to the session's data device and starts
 // tracking selection offers.
 func New(sess *wlsession.Session) *Clipboard {
-	c := &Clipboard{sess: sess, mimes: make(map[string]bool)}
+	c := &Clipboard{sess: sess, offers: make(map[*wl.DataOffer]*offerMimes)}
 	if dev := sess.DataDevice(); dev != nil {
 		dev.AddDataOfferHandler(c)
 		dev.AddSelectionHandler(c)
@@ -61,30 +84,27 @@ func New(sess *wlsession.Session) *Clipboard {
 	return c
 }
 
-// HandleDataDeviceDataOffer implements wl.DataDeviceDataOfferHandler: a
-// new offer appears; listen for its mime types.
+// HandleDataDeviceDataOffer implements wl.DataDeviceDataOfferHandler:
+// a new offer appears; start listening for its mime types. Selection
+// and drag offers both pass here; only a later selection event makes
+// one the clipboard's.
 func (c *Clipboard) HandleDataDeviceDataOffer(ev wl.DataDeviceDataOfferEvent) {
-	c.mimes = make(map[string]bool)
-	c.offer = ev.Id
-	if ev.Id != nil {
-		ev.Id.AddOfferHandler(c)
+	if ev.Id == nil {
+		return
 	}
-}
-
-// HandleDataOffer implements wl.DataOfferOfferHandler: one advertised
-// mime type.
-func (c *Clipboard) HandleDataOfferOffer(ev wl.DataOfferOfferEvent) {
-	if c.mimes != nil {
-		c.mimes[ev.MimeType] = true
-	}
+	m := &offerMimes{mimes: make(map[string]bool)}
+	c.offers[ev.Id] = m
+	ev.Id.AddOfferHandler(m)
 }
 
 // HandleDataDeviceSelection implements wl.DataDeviceSelectionHandler:
 // the offer is now the selection; a nil offer clears it.
 func (c *Clipboard) HandleDataDeviceSelection(ev wl.DataDeviceSelectionEvent) {
-	c.offer = ev.Id
-	if ev.Id == nil {
-		c.mimes = nil
+	c.selection = ev.Id
+	if m := c.offers[ev.Id]; m != nil {
+		c.selectionMimes = m.mimes
+	} else {
+		c.selectionMimes = nil
 	}
 }
 
@@ -92,10 +112,10 @@ func (c *Clipboard) HandleDataDeviceSelection(ev wl.DataDeviceSelectionEvent) {
 // compositor delivers it. Errors with ErrUnavailable when there is
 // nothing to read.
 func (c *Clipboard) ReadText() (string, error) {
-	if c.offer == nil || len(c.mimes) == 0 {
+	if c.selection == nil || len(c.selectionMimes) == 0 {
 		return "", ErrUnavailable
 	}
-	mime := pickTextMime(func(m string) bool { return c.mimes[m] })
+	mime := pickTextMime(func(m string) bool { return c.selectionMimes[m] })
 	if mime == "" {
 		return "", ErrUnavailable
 	}
@@ -105,7 +125,7 @@ func (c *Clipboard) ReadText() (string, error) {
 		return "", fmt.Errorf("clipboard: pipe: %w", err)
 	}
 	defer r.Close()
-	if err := c.offer.Receive(mime, w.Fd()); err != nil {
+	if err := c.selection.Receive(mime, w.Fd()); err != nil {
 		return "", fmt.Errorf("clipboard: receive: %w", err)
 	}
 	// Flush the request so the compositor dups the fd before we drop

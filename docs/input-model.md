@@ -8,12 +8,13 @@ document together.
 ## Event flow
 
     compositor
-      |  wl_pointer / wl_keyboard events
+      |  wl_pointer / wl_keyboard / wl_data_device events
       v
     wlsession.Session            ONE dispatch path: Session.Roundtrip /
       |  routed per surface      Session.Run are the only readers of the
       v                          connection; nothing else may call them.
     wlsession.SurfacePointerHandler   (one per surface)
+    wlsession.SurfaceDropHandler      (one per surface, via internal/dragdrop)
       v
     app.surfaceInput / popup.popupInput
       v
@@ -86,6 +87,51 @@ handshakes that must complete before proceeding (popup configure).
 - A scroll-drag distinction therefore does not arise inside a widget:
   axis events route to the grab during a drag (scroll-follows-drag),
   and to the hover chain otherwise.
+
+## Drag and drop (wl_data_device)
+
+Data-device drag and drop runs beside the pointer path on the same
+session, and beside the clipboard, which keeps the same device's
+*selection*: offers are tracked per object, so a drag's offer never
+touches the selection and vice versa.
+
+- **Source.** A widget declares content with `widget.DragSource`:
+  mimes best first plus a provider that writes the bytes for one mime
+  on demand. A press on the widget plus motion past the app's
+  threshold (8 logical px) starts `data_device.start_drag` with the
+  press serial (the implicit grab) and a drag icon surface — a
+  standalone snapshot of the source widget; failures degrade to the
+  compositor's fallback icon. A drag that started cancels the click:
+  the router press is dropped, so the release never fires `Clicker`.
+- **Destination.** The session routes `data_device.enter/motion/
+  leave/drop` to the handler registered for the named surface
+  (`Session.SetSurfaceDrop`); enter names the surface, motion and
+  drop broadcast to every registered handler, and only the surface
+  holding the drag acts. The router bubbles from the deepest widget to
+  the nearest `DragEnterer`, the same way scroll finds its handler;
+  the target decides by mime — return the mime to accept, "" to
+  reject — and `DragOverSetter` carries the highlight, lit only for
+  accepted drags. Crossing between targets inside one surface
+  retargets on hover (the compositor only sends enter on surface
+  changes).
+- **Serials.** `start_drag` carries the press serial;
+  `data_offer.accept` carries the enter serial on every enter and
+  whenever the accepted mime changes. The keyboard enter serial stays
+  reserved for `set_selection`.
+- **Payload.** On drop the app fetches the bytes for the accepted
+  mime. A drag that originated in the same process short-circuits the
+  wire: the provider hands over the bytes directly and the source
+  concludes locally — no `receive`/`finish` round-trip, and no
+  deadlock, since both ends share one connection. Cross-process drops
+  read through the offer pipe (request, flush, read to EOF) and, on
+  data-device version 3+, acknowledge with `finish`; below version 3
+  there is no `dnd_finished`, so the source concludes on
+  `dnd_drop_performed`.
+- **Version.** The session binds `wl_data_device_manager` capped at
+  version 3 and reports the negotiated version
+  (`Session.DataDeviceVersion`); `set_actions`/`finish` and the dnd
+  action events exist only from version 3, and the controller gates
+  them accordingly (both sides declare the copy action there).
 
 ## Click-to-focus
 

@@ -14,6 +14,7 @@ import (
 
 	"github.com/stubbedev/gelm/internal/buffer"
 	"github.com/stubbedev/gelm/internal/debug"
+	"github.com/stubbedev/gelm/internal/dragdrop"
 	"github.com/stubbedev/gelm/internal/wlsession"
 	"github.com/stubbedev/gelm/render"
 	"github.com/stubbedev/gelm/widget"
@@ -32,9 +33,12 @@ type hostWindow struct {
 	blocked  bool
 	isDialog bool
 
-	pool         *buffer.Pool
-	router       *widget.Router
-	input        *surfaceInput
+	pool   *buffer.Pool
+	router *widget.Router
+	input  *surfaceInput
+	// dnd is the application's drag-and-drop controller; its Bind
+	// lifetime matches the window's.
+	dnd          *dragdrop.Controller
 	tip          *tooltipCtl
 	lastW, lastH int
 	dirty        bool
@@ -52,7 +56,7 @@ type windowHooks struct {
 	onClosed   func()
 }
 
-func newHostWindow(sess *wlsession.Session, host Host, scale int, root widget.Widget, hooks windowHooks) *hostWindow {
+func newHostWindow(sess *wlsession.Session, host Host, scale int, root widget.Widget, hooks windowHooks, dnd *dragdrop.Controller) *hostWindow {
 	pool := buffer.New(func() (*buffer.Buffer, error) {
 		bw, bh := host.Size()
 		return buffer.NewFile(sess.Shm(), bw*scale, bh, scale)
@@ -63,6 +67,7 @@ func newHostWindow(sess *wlsession.Session, host Host, scale int, root widget.Wi
 		host: host, sess: sess, cfg: hooks,
 		pool:   pool,
 		router: router,
+		dnd:    dnd,
 		tip:    &tooltipCtl{since: time.Now()},
 		lastW:  w0,
 		lastH:  h0,
@@ -72,18 +77,25 @@ func newHostWindow(sess *wlsession.Session, host Host, scale int, root widget.Wi
 		sess: sess, surf: host.HostSurface(), scale: scale,
 		router: router, tip: w.tip,
 		onPress: hooks.onPress, onMove: hooks.onMove,
+		dnd:     dnd,
 		request: func() { w.dirty = true },
 		blocked: func() bool { return w.blocked },
 	}
 	w.input = input
 	sess.SetSurfaceInput(host.HostSurface(), input)
+	if dnd != nil {
+		dnd.Bind(host.HostSurface(), input)
+	}
 	return w
 }
 
-// release unregisters the window's input handler; called when the loop
-// drops the window.
+// release unregisters the window's input handlers; called when the
+// loop drops the window.
 func (w *hostWindow) release() {
 	w.sess.SetSurfaceInput(w.host.HostSurface(), nil)
+	if w.dnd != nil {
+		w.dnd.Bind(w.host.HostSurface(), nil)
+	}
 }
 
 // create builds one buffer at the window's current size and scale.

@@ -1,6 +1,7 @@
 package widget
 
 import (
+	"io"
 	"time"
 
 	"github.com/unxed/xkb-go"
@@ -82,6 +83,55 @@ type HoverMover interface {
 // horizontal axis (tilt wheels, trackpads), dy from the vertical.
 type ScrollHandler interface {
 	ScrollBy(dx, dy int)
+}
+
+// DragContent is the payload a drag carries: mime types best first
+// and a provider that writes the bytes for one mime on demand. OnDone
+// is optional; it fires once the drag concluded — dropped and handed
+// off (true), or cancelled (false).
+type DragContent struct {
+	Mimes  []string
+	Write  func(mime string, w io.Writer) error
+	OnDone func(dropped bool)
+}
+
+// DragSource lets a widget start a drag-and-drop: a press on it plus
+// motion past the app's drag threshold offers DragContent through the
+// wl_data_device. Return nil to decline this particular press.
+type DragSource interface {
+	// DragContent returns the offered payload, or nil to not drag.
+	DragContent() *DragContent
+}
+
+// DragEnterer decides whether a widget accepts a drag hovering it,
+// by mime. mimes lists the offered types best first; return the mime
+// to receive on drop, or "" to reject the drag.
+type DragEnterer interface {
+	DragEnter(mimes []string, p Point) string
+}
+
+// DragHoverer receives drag movement while a drag hovers the widget,
+// for position-aware feedback (drop indicators, insertion gaps).
+type DragHoverer interface {
+	DragHover(p Point)
+}
+
+// DragLeaver receives a drag that left the widget without dropping.
+type DragLeaver interface {
+	DragLeave()
+}
+
+// Dropper receives a drop: the accepted mime, its bytes, and the
+// drop point in root coordinates.
+type Dropper interface {
+	Drop(mime string, data []byte, p Point)
+}
+
+// DragOverSetter receives drag-hover tracking from the Router, the
+// highlight bit while a drag sits over the widget — the drop-target
+// counterpart of HoverSetter.
+type DragOverSetter interface {
+	SetDragOver(on bool)
 }
 
 // Axis routes vertical and horizontal scrolling to the hovered widget
@@ -192,6 +242,12 @@ type Router struct {
 	dragging              bool
 	lastClick             time.Time
 	lastClickWidget       Widget
+
+	// drop-target state during a wl_data_device drag: the widget the
+	// drag is over, the offered mimes, and the mime it accepted.
+	dragTarget Widget
+	dragMimes  []string
+	dragMime   string
 }
 
 // Move updates hover state and feeds drags and in-widget hover
@@ -269,6 +325,105 @@ func (r *Router) Leave() {
 		h.SetHovered(false)
 	}
 	r.hover = nil
+}
+
+// Pressed returns the widget an implicit press is active on, or nil.
+func (r *Router) Pressed() Widget { return r.pressed }
+
+// CancelPress drops the active press without a click: a gesture that
+// became a data-device drag must not fire the widget on release.
+func (r *Router) CancelPress() {
+	if pr, ok := r.pressed.(PressSetter); ok {
+		pr.SetPressed(false)
+	}
+	r.pressed = nil
+	r.dragging = false
+}
+
+// dragHandlerAt walks up from the widget at p to the nearest ancestor
+// that decides drag acceptance. Hit tests return the deepest widget —
+// a label inside a row — so drop targets are found on the parent
+// chain, the same way Axis finds the scroll handler.
+func (r *Router) dragHandlerAt(p Point) Widget {
+	for w := r.Root.HitTest(p); w != nil; w = parentOf(w) {
+		if _, ok := w.(DragEnterer); ok {
+			return w
+		}
+	}
+	return nil
+}
+
+// DragEnter routes a drag entering the tree: find the drop target at
+// p, ask it for a decision by mime, and highlight it only when it
+// accepted. Returns the accepted mime ("" rejects).
+func (r *Router) DragEnter(mimes []string, p Point) string {
+	r.dragMimes = mimes
+	w := r.dragHandlerAt(p)
+	mime := ""
+	if d, ok := w.(DragEnterer); ok {
+		mime = d.DragEnter(mimes, p)
+	}
+	r.applyDragTarget(w, mime != "")
+	r.dragMime = mime
+	return mime
+}
+
+// DragHover routes drag movement within the tree. The compositor only
+// sends enter on surface changes, so crossing between targets inside
+// one surface retargets here, with the mimes from the enter.
+func (r *Router) DragHover(p Point) string {
+	w := r.dragHandlerAt(p)
+	if w != r.dragTarget {
+		return r.DragEnter(r.dragMimes, p)
+	}
+	if h, ok := w.(DragHoverer); ok {
+		h.DragHover(p)
+	}
+	return r.dragMime
+}
+
+// DragLeave clears the drop target after the drag left the surface or
+// ended without a drop.
+func (r *Router) DragLeave() {
+	r.applyDragTarget(nil, false)
+	r.dragMime = ""
+}
+
+// Drop delivers the drop to the current drop target and clears the
+// hover state. data carries the payload bytes the app fetched from
+// the offer — or through the same-process shortcut.
+func (r *Router) Drop(mime string, data []byte, p Point) {
+	w := r.dragTarget
+	r.applyDragTarget(nil, false)
+	r.dragMime = ""
+	if d, ok := w.(Dropper); ok {
+		d.Drop(mime, data, p)
+	}
+}
+
+// DragMime returns the mime the current drop target accepted, empty
+// while nothing is accepted; the payload is fetched for it on drop.
+func (r *Router) DragMime() string { return r.dragMime }
+
+// applyDragTarget swaps the drop target, clearing the old one's
+// highlight and notifying it of the departure; the new one is
+// highlighted only when it accepted the drag.
+func (r *Router) applyDragTarget(w Widget, accepted bool) {
+	if old := r.dragTarget; old != nil {
+		if s, ok := old.(DragOverSetter); ok {
+			s.SetDragOver(false)
+		}
+		if l, ok := old.(DragLeaver); ok {
+			l.DragLeave()
+		}
+	}
+	r.dragTarget = w
+	if w == nil || !accepted {
+		return
+	}
+	if s, ok := w.(DragOverSetter); ok {
+		s.SetDragOver(true)
+	}
 }
 
 // Axis routes vertical scrolling to the hovered widget or the nearest

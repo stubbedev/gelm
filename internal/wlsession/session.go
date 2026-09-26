@@ -30,6 +30,10 @@ var requiredGlobals = []string{"wl_compositor", "wl_shm", "wl_output", "zwlr_lay
 // (set_buffer_scale is version 3).
 const minCompositorVersion = 3
 
+// minDataDeviceVersion is the wl_data_device_manager version the dnd
+// action requests and events need (set_actions, finish, dnd_finished).
+const minDataDeviceVersion = 3
+
 // Output is one wl_output and its current integer scale.
 type Output struct {
 	WL    *wl.Output
@@ -77,6 +81,7 @@ type Session struct {
 	xkbKeymap         *xkb.Keymap
 	xkbState          *xkb.State
 	dataDeviceManager *wl.DataDeviceManager
+	dataDeviceVersion uint32
 	dataDevice        *wl.DataDevice
 	keyboardSerial    uint32
 	decorationManager *deco.ZxdgDecorationManagerV1
@@ -100,6 +105,7 @@ type Session struct {
 	// is the surface the compositor says the pointer is over, and
 	// grabSurface holds implicit-grab routing while a button is down.
 	surfaceHandlers map[*wl.Surface]SurfacePointerHandler
+	dropHandlers    map[*wl.Surface]SurfaceDropHandler
 	pointerFocus    *wl.Surface
 	grabSurface     *wl.Surface
 
@@ -153,6 +159,26 @@ type SurfacePointerHandler interface {
 	HandlePointerLeave()
 }
 
+// SurfaceDropHandler receives the wl_data_device drag-and-drop events
+// targeting one registered surface, with coordinates in that surface's
+// logical space. The offer travels with the enter event; its advertised
+// mime types are collected by whoever tracks the offer object
+// (internal/dragdrop), leaving the selection bookkeeping of
+// internal/clipboard untouched.
+type SurfaceDropHandler interface {
+	// HandleDragEnter reports a drag entering the surface: position in
+	// surface coordinates, the enter serial (the one accept replies
+	// with), and the offered data; a nil offer means no transfer.
+	HandleDragEnter(x, y float64, serial uint32, offer *wl.DataOffer)
+	// HandleDragMotion reports drag movement within the surface.
+	HandleDragMotion(x, y float64)
+	// HandleDragLeave reports the drag leaving without a drop.
+	HandleDragLeave()
+	// HandleDrop reports the drop; the payload transfers on request
+	// through the offer afterward.
+	HandleDrop()
+}
+
 // Connect binds the display, waits for the initial registry burst and the
 // shm format list, and fails when a required global, the HiDPI-capable
 // compositor version, or the ARGB8888 shm format is missing.
@@ -166,6 +192,7 @@ func Connect() (*Session, error) {
 		globals:         make(map[string]bool),
 		ifaceNames:      make(map[uint32]string),
 		surfaceHandlers: make(map[*wl.Surface]SurfacePointerHandler),
+		dropHandlers:    make(map[*wl.Surface]SurfaceDropHandler),
 	}
 
 	reg, err := d.GetRegistry()
@@ -257,7 +284,8 @@ func (s *Session) HandleRegistryGlobal(ev wl.RegistryGlobalEvent) {
 	case "wl_data_device_manager":
 		ctx, _ := wl.GetUserData[wl.Context](s.registry)
 		s.dataDeviceManager = wl.NewDataDeviceManager(ctx)
-		_ = s.registry.Bind(ev.Name, ev.Interface, bindVersion(ev.Version, 3), s.dataDeviceManager)
+		s.dataDeviceVersion = bindVersion(ev.Version, minDataDeviceVersion)
+		_ = s.registry.Bind(ev.Name, ev.Interface, s.dataDeviceVersion, s.dataDeviceManager)
 		s.ensureDataDevice()
 	case "zxdg_decoration_manager_v1":
 		ctx, _ := wl.GetUserData[wl.Context](s.registry)
@@ -278,6 +306,13 @@ func (s *Session) ensureDataDevice() {
 	if err != nil {
 		return
 	}
+	// The session routes the drag-and-drop events per surface; the
+	// selection and data_offer events go to internal/clipboard and
+	// internal/dragdrop, which register their own handlers.
+	dev.AddEnterHandler(s)
+	dev.AddLeaveHandler(s)
+	dev.AddMotionHandler(s)
+	dev.AddDropHandler(s)
 	s.dataDevice = dev
 }
 
@@ -421,6 +456,58 @@ func (s *Session) SetSurfaceInput(surf *wl.Surface, h SurfacePointerHandler) {
 		return
 	}
 	s.surfaceHandlers[surf] = h
+}
+
+// SetSurfaceDrop registers h as the receiver of drag-and-drop events
+// targeting surf; h == nil unregisters. It mirrors SetSurfaceInput for
+// the wl_data_device half of the input model.
+func (s *Session) SetSurfaceDrop(surf *wl.Surface, h SurfaceDropHandler) {
+	if h == nil {
+		delete(s.dropHandlers, surf)
+		return
+	}
+	if s.dropHandlers == nil {
+		s.dropHandlers = make(map[*wl.Surface]SurfaceDropHandler)
+	}
+	s.dropHandlers[surf] = h
+}
+
+// HandleDataDeviceEnter implements wl.DataDeviceEnterHandler: a drag
+// entered a surface; route it to that surface's drop handler.
+func (s *Session) HandleDataDeviceEnter(ev wl.DataDeviceEnterEvent) {
+	if ev.Surface != nil {
+		debug.Log("input", "wire dnd enter surf=%d (%.1f,%.1f) serial=%d",
+			ev.Surface.Id(), ev.X, ev.Y, ev.Serial)
+	}
+	if h := s.dropHandlers[ev.Surface]; h != nil {
+		h.HandleDragEnter(float64(ev.X), float64(ev.Y), ev.Serial, ev.Id)
+	}
+}
+
+// HandleDataDeviceLeave implements wl.DataDeviceLeaveHandler: the drag
+// ended over every surface. The event names no surface, so every
+// registered handler hears it; only the one holding a drag acts.
+func (s *Session) HandleDataDeviceLeave(wl.DataDeviceLeaveEvent) {
+	debug.Log("input", "wire dnd leave")
+	for _, h := range s.dropHandlers {
+		h.HandleDragLeave()
+	}
+}
+
+// HandleDataDeviceMotion implements wl.DataDeviceMotionHandler.
+func (s *Session) HandleDataDeviceMotion(ev wl.DataDeviceMotionEvent) {
+	for _, h := range s.dropHandlers {
+		h.HandleDragMotion(float64(ev.X), float64(ev.Y))
+	}
+	debug.Log("input", "wire dnd motion (%.1f,%.1f)", ev.X, ev.Y)
+}
+
+// HandleDataDeviceDrop implements wl.DataDeviceDropHandler.
+func (s *Session) HandleDataDeviceDrop(wl.DataDeviceDropEvent) {
+	debug.Log("input", "wire dnd drop")
+	for _, h := range s.dropHandlers {
+		h.HandleDrop()
+	}
 }
 
 // pointerTarget returns the handler pointer events route to right
@@ -689,6 +776,11 @@ func (s *Session) DataDeviceManager() *wl.DataDeviceManager { return s.dataDevic
 // DataDevice returns the seat's data device, or nil before both the
 // manager and the seat are bound.
 func (s *Session) DataDevice() *wl.DataDevice { return s.dataDevice }
+
+// DataDeviceVersion returns the negotiated wl_data_device_manager
+// version: three and above have the dnd action requests and events
+// (set_actions, finish), below that drags run in the v1 subset.
+func (s *Session) DataDeviceVersion() uint32 { return s.dataDeviceVersion }
 
 // KeyboardSerial returns the serial of the last keyboard enter, needed
 // by selection requests.

@@ -41,6 +41,47 @@ func TestClipboardUnavailableWithoutOffer(t *testing.T) {
 	}
 }
 
+// Regression: offers from an unrelated transfer (a drag passing over
+// the window, internal/dragdrop) used to clobber the selection's mime
+// set, because one shared tracker collected every offer's mimes. Each
+// offer now carries its own tracker and only a selection event
+// promotes one, so the selection must survive a drag's offer
+// advertising a non-text mime.
+func TestSelectionSurvivesDragOffers(t *testing.T) {
+	c := &Clipboard{sess: &wlsession.Session{}, offers: make(map[*wl.DataOffer]*offerMimes)}
+	sel := &wl.DataOffer{} // opaque identity; never driven on the wire here
+	selectionMimes := &offerMimes{mimes: make(map[string]bool)}
+	selectionMimes.HandleDataOfferOffer(wl.DataOfferOfferEvent{MimeType: "text/plain;charset=utf-8"})
+	c.offers[sel] = selectionMimes
+	c.HandleDataDeviceSelection(wl.DataDeviceSelectionEvent{Id: sel})
+
+	// A drag offer appears and advertises a custom type.
+	drag := &wl.DataOffer{}
+	dragMimes := &offerMimes{mimes: make(map[string]bool)}
+	c.offers[drag] = dragMimes
+	dragMimes.HandleDataOfferOffer(wl.DataOfferOfferEvent{MimeType: "application/x-gelm-tile"})
+
+	// The selection is still the text one, with its own mimes intact.
+	if c.selection != sel {
+		t.Errorf("selection = %v, want the selection offer", c.selection)
+	}
+	if got := pickTextMime(func(m string) bool { return c.selectionMimes[m] }); got != "text/plain;charset=utf-8" {
+		t.Errorf("selection mime = %q, want the utf-8 text type", got)
+	}
+	if c.selectionMimes["application/x-gelm-tile"] {
+		t.Error("the drag offer's mime leaked into the selection")
+	}
+
+	// A nil selection clears the state.
+	c.HandleDataDeviceSelection(wl.DataDeviceSelectionEvent{})
+	if c.selection != nil || c.selectionMimes != nil {
+		t.Errorf("nil selection left state: %v %v", c.selection, c.selectionMimes)
+	}
+	if _, err := c.ReadText(); !errors.Is(err, ErrUnavailable) {
+		t.Errorf("ReadText = %v, want ErrUnavailable after clearing", err)
+	}
+}
+
 func TestSendHandlerWritesAndCloses(t *testing.T) {
 	c := &Clipboard{out: "clipboard payload"}
 	r, w, err := os.Pipe()
