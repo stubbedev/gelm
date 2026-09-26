@@ -271,11 +271,19 @@ func routeKey(sess keyTranslator, router *widget.Router, keycode uint32, mods wl
 	case isCtrl && (sym == xkb.Keysym('a') || sym == xkb.Keysym('A')):
 		router.SelectAll()
 	case !isCtrl && mods&wlsession.ModAlt == 0 && sym == xkb.KeyTab:
+		// Tab trap: inside a widget that absorbs tabs (a multi-line
+		// text area) a plain Tab indents; ctrl+Tab and shift+Tab move
+		// focus.
 		if mods&wlsession.ModShift != 0 {
 			router.FocusPrev()
-		} else {
-			router.FocusNext()
+			break
 		}
+		if f := router.Focused(); f != nil {
+			if tt, ok := f.(widget.TabTrapper); ok && tt.TrapTab(false) {
+				break
+			}
+		}
+		router.FocusNext()
 	case !isCtrl && mods&wlsession.ModAlt == 0:
 		if txt := sess.KeyUTF8(keycode); txt != "" {
 			if r, _ := utf8.DecodeRuneInString(txt); r != utf8.RuneError && r != 0 {

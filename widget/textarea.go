@@ -7,27 +7,65 @@ import (
 	"github.com/stubbedev/gelm/render"
 )
 
-// TextArea is a multi-line text editor: logical lines split on newlines,
-// per-line cursor motion with a sticky preferred column, and a selection
-// model shared with Entry. Text wider than the box clips; there is no
-// soft wrap yet.
+// TextArea is a multi-line editor: logical lines split on newlines,
+// per-line cursor motion with a sticky preferred column, and a
+// selection model shared with Entry. With wrap enabled (the default)
+// long logical lines flow across visual rows built from shaped advance
+// widths; editing and Text stay logical regardless.
 type TextArea struct {
 	node
 	face        *render.Typeface
 	sizePx      float64
 	color       render.Color
 	placeholder string
+	wrap        bool
+	indent      int // spaces per TrapTab insertion; 0 inserts a tab
 
 	lines   [][]rune
 	cursor  pos
 	anchor  pos
 	prefX   float64 // preferred visual column for vertical motion
 	hasPref bool
+
+	// Visual row cache, built lazily for the wrap width it was built
+	// with. rows always covers the document: with wrap off it is the
+	// identity mapping (one row per logical line).
+	rows      []visualRow
+	rowsWidth int
+	rowsValid bool
 }
 
-// pos is a line/column cursor or anchor position.
-type pos struct {
-	line, col int
+// visualRow maps one painted row to a rune range of a logical line.
+type visualRow struct {
+	line     int // logical line index
+	startCol int // first rune column (inclusive)
+	endCol   int // end rune column (exclusive)
+}
+
+// SetWrap toggles soft wrapping; the default is on.
+func (t *TextArea) SetWrap(on bool) {
+	if t.wrap == on {
+		return
+	}
+	t.wrap = on
+	t.rowsValid = false
+	t.hasPref = false
+}
+
+// SetIndent sets how many spaces Tab inserts while focused; zero (the
+// default) inserts a tab character.
+func (t *TextArea) SetIndent(n int) { t.indent = n }
+
+// TrapTab implements the tab-trap rule: a plain Tab inside the area
+// inserts indentation instead of moving focus. Ctrl and shift variants
+// are routed to focus movement before this is asked.
+func (t *TextArea) TrapTab(bool) bool {
+	if t.indent > 0 {
+		t.Insert(strings.Repeat(" ", t.indent))
+	} else {
+		t.Insert("\t")
+	}
+	return true
 }
 
 // NewTextArea returns an empty area painted with face at sizePx.
@@ -37,11 +75,18 @@ func NewTextArea(face *render.Typeface, sizePx float64, color render.Color) *Tex
 		sizePx: sizePx,
 		color:  color,
 		lines:  [][]rune{{}},
+		wrap:   true,
 	}
 }
 
 // SetPlaceholder sets the text shown when the area is empty.
 func (t *TextArea) SetPlaceholder(s string) { t.placeholder = s }
+
+// pos is a line/column cursor or anchor position in the logical
+// document.
+type pos struct {
+	line, col int
+}
 
 // Text returns the contents, lines joined with newlines.
 // CursorName reports the text caret shape while hovered.
@@ -68,6 +113,7 @@ func (t *TextArea) SetText(s string) {
 	t.cursor = pos{0, 0}
 	t.anchor = t.cursor
 	t.hasPref = false
+	t.rowsValid = false
 }
 
 // SetCursor places the cursor and anchor at a line/column, clearing any
@@ -147,10 +193,83 @@ func (t *TextArea) collapse() {
 	rest = append(rest, t.lines[end.line+1:]...)
 	t.lines = rest
 	t.cursor, t.anchor = start, start
+	t.rowsValid = false
 }
 
 // TextLen returns the number of logical lines, for tests and callers.
 func (t *TextArea) TextLen() int { return len(t.lines) }
+
+// runeWidth returns one rune's shaped advance.
+func (t *TextArea) runeWidth(r rune) float64 {
+	return t.face.Shape(string(r), t.sizePx).Advance()
+}
+
+// spanWidth returns the advance of a rune substring of line l.
+func (t *TextArea) spanWidth(l, from, to int) float64 {
+	return t.face.Shape(string(t.lines[l][from:to]), t.sizePx).Advance()
+}
+
+// ensureRows rebuilds the visual row cache for the given available
+// width when the text or width changed since the last build. With wrap
+// off, rows are the identity mapping. A row always keeps at least one
+// rune, so an unbreakable token wider than the viewport wraps one rune
+// at a time instead of disappearing.
+func (t *TextArea) ensureRows(availW int) {
+	if t.rowsValid && availW == t.rowsWidth {
+		return
+	}
+	t.rows = t.rows[:0]
+	for l, line := range t.lines {
+		if !t.wrap {
+			t.rows = append(t.rows, visualRow{l, 0, len(line)})
+			continue
+		}
+		start, x := 0, 0.0
+		limit := float64(availW)
+		for i, r := range line {
+			adv := t.runeWidth(r)
+			if i > start && x+adv > limit {
+				t.rows = append(t.rows, visualRow{l, start, i})
+				start = i
+				x = 0
+			}
+			x += adv
+		}
+		t.rows = append(t.rows, visualRow{l, start, len(line)})
+	}
+	t.rowsWidth = availW
+	t.rowsValid = true
+}
+
+// rowOf returns the visual row the caret renders on: at a wrap
+// boundary (a column that ends one row and starts the next) it is the
+// start of the following row, which keeps downward motion progressing
+// and matches the caret rendering.
+func (t *TextArea) rowOf(col pos) int {
+	first, withStart, last := -1, -1, -1
+	for i, r := range t.rows {
+		if r.line != col.line {
+			if last >= 0 {
+				break
+			}
+			continue
+		}
+		if first < 0 {
+			first = i
+		}
+		last = i
+		if col.col >= r.startCol {
+			withStart = i
+		}
+	}
+	if withStart >= 0 {
+		return withStart
+	}
+	if first >= 0 {
+		return first
+	}
+	return len(t.rows) - 1
+}
 
 // Insert inserts s at the cursor; an active selection is replaced.
 func (t *TextArea) Insert(s string) {
@@ -178,6 +297,7 @@ func (t *TextArea) Insert(s string) {
 	}
 	t.anchor = t.cursor
 	t.hasPref = false
+	t.rowsValid = false
 }
 
 // Delete removes the selection, or one rune/line break forward.
@@ -197,6 +317,7 @@ func (t *TextArea) Delete() {
 		t.lines = append(t.lines[:c.line+1], t.lines[c.line+2:]...)
 	}
 	t.anchor = t.clamp(t.cursor)
+	t.rowsValid = false
 }
 
 // Backspace removes the selection, or one rune/line break backward.
@@ -244,8 +365,10 @@ func (t *TextArea) move(delta pos, extend bool) {
 	t.hasPref = false
 }
 
-// moveVertical moves the cursor line-wise, honoring the preferred
-// visual column set by a prior horizontal motion or click.
+// moveVertical moves the cursor one visual row up or down, honoring
+// the preferred visual column set by a prior horizontal motion or
+// click. With wrap on, a visual row is a wrapped segment of a logical
+// line.
 func (t *TextArea) moveVertical(dline int, extend bool) {
 	if _, _, active := t.Selection(); active && !extend {
 		start, _ := t.ordered()
@@ -253,14 +376,38 @@ func (t *TextArea) moveVertical(dline int, extend bool) {
 	}
 	c := t.clamp(t.cursor)
 	if !t.hasPref {
-		t.prefX = t.face.Shape(string(t.lines[c.line][:c.col]), t.sizePx).Advance()
+		t.prefX = t.spanWidth(c.line, 0, c.col)
 		t.hasPref = true
 	}
-	nl := max(min(c.line+dline, len(t.lines)-1), 0)
-	t.cursor = pos{nl, t.colForX(nl, t.prefX)}
+	if t.wrap {
+		t.ensureRows(t.wrapWidth())
+		row := max(min(t.rowOf(c)+dline, len(t.rows)-1), 0)
+		r := t.rows[row]
+		t.cursor = pos{r.line, r.startCol + t.caretIn(r, t.prefX)}
+	} else {
+		nl := max(min(c.line+dline, len(t.lines)-1), 0)
+		t.cursor = pos{nl, t.colForX(nl, t.prefX)}
+	}
 	if !extend {
 		t.anchor = t.cursor
 	}
+}
+
+// wrapWidth returns the pixel width available for wrapping inside the
+// current bounds.
+func (t *TextArea) wrapWidth() int {
+	if t.bounds.W < 16 {
+		return 0
+	}
+	return t.bounds.W - 16
+}
+
+// caretIn maps a visual x offset to a column within the rune range of
+// one visual row, returning a row-relative column.
+func (t *TextArea) caretIn(r visualRow, x float64) int {
+	line := t.lines[r.line]
+	k := t.face.Shape(string(line[r.startCol:r.endCol]), t.sizePx).CaretAt(x)
+	return min(k, r.endCol-r.startCol)
 }
 
 // colForX maps a visual x offset within line l to a rune column.
@@ -271,9 +418,14 @@ func (t *TextArea) colForX(l int, x float64) int {
 	return t.face.Shape(string(t.lines[l]), t.sizePx).CaretAt(x)
 }
 
-// Measure wants the widest line's advance by the total line height.
+// Measure reports the natural widest-line size, or, when wrapping and
+// a width is offered, the offered width by the wrapped row count.
 func (t *TextArea) Measure(con Constraints) Size {
 	lineH := t.face.Shape("lg", t.sizePx).LineHeight()
+	if t.wrap && con.Max.W > 16 {
+		t.ensureRows(con.Max.W - 16)
+		return clampSize(Size{W: con.Max.W, H: lineH*len(t.rows) + 12}, con)
+	}
 	w := 16
 	for _, l := range t.lines {
 		if adv := int(t.face.Shape(string(l), t.sizePx).Advance() + 0.5); adv > w {
@@ -290,58 +442,70 @@ func (t *TextArea) lineHeight() int {
 	return t.face.Shape("lg", t.sizePx).LineHeight()
 }
 
-// Paint draws the lines, the selection highlight, and the cursor.
+// Paint draws the wrapped rows, the selection highlight, and the
+// cursor.
 func (t *TextArea) Paint(cv *render.Canvas) {
 	th := Current()
 	cv.RoundedRect(t.bounds, th.Radius, th.Surface)
 	lineH := t.lineHeight()
 	start, end, active := t.Selection()
+	t.ensureRows(t.wrapWidth())
 
 	if len(t.lines) == 1 && len(t.lines[0]) == 0 && t.placeholder != "" {
 		t.face.DrawAligned(cv, t.placeholder, t.bounds, t.sizePx, th.Border, render.AlignStart)
 		return
 	}
-	if active {
-		sel := th.Accent
-		hl := render.RGBA(sel.R(), sel.G(), sel.B(), 90)
-		for l := start.line; l <= end.line; l++ {
-			from, to := 0, len(t.lines[l])
-			if l == start.line {
-				from = start.col
-			}
-			if l == end.line {
-				to = end.col
-			}
-			x0 := 8 + int(t.face.Shape(string(t.lines[l][:from]), t.sizePx).Advance()+0.5)
-			x1 := 8 + int(t.face.Shape(string(t.lines[l][:to]), t.sizePx).Advance()+0.5)
-			y := 6 + l*lineH
-			cv.FillRect(render.Rect{X: t.bounds.X + x0, Y: t.bounds.Y + y, W: x1 - x0, H: lineH}, hl)
-		}
-	}
-	for l, line := range t.lines {
-		if len(line) == 0 {
+	for i, r := range t.rows {
+		line := t.lines[r.line]
+		y := 6 + i*lineH
+		if len(line) == 0 || r.startCol >= r.endCol {
 			continue
 		}
-		y := 6 + l*lineH
+		// Selection band for the portion of this row inside the
+		// selection.
+		if active {
+			from, to := r.startCol, r.endCol
+			if r.line == start.line {
+				from = max(from, start.col)
+			}
+			if r.line == end.line {
+				to = min(to, end.col)
+			}
+			if from < to {
+				sel := th.Accent
+				hl := render.RGBA(sel.R(), sel.G(), sel.B(), 90)
+				x0 := 8 + int(t.spanWidth(r.line, r.startCol, from)+0.5)
+				x1 := 8 + int(t.spanWidth(r.line, r.startCol, to)+0.5)
+				cv.FillRect(render.Rect{X: t.bounds.X + x0, Y: t.bounds.Y + y, W: x1 - x0, H: lineH}, hl)
+			}
+		}
 		box := render.Rect{X: t.bounds.X + 8, Y: t.bounds.Y + y, W: t.bounds.W - 16, H: lineH}
 		prev := cv.PushClip(box)
-		t.face.DrawAligned(cv, string(line), box, t.sizePx, t.color, render.AlignStart)
+		t.face.DrawAligned(cv, string(line[r.startCol:r.endCol]), box, t.sizePx, t.color, render.AlignStart)
 		cv.PopClip(prev)
 	}
-	// Cursor bar at the cursor position.
-	x := 8 + int(t.face.Shape(string(t.lines[t.cursor.line][:t.cursor.col]), t.sizePx).Advance()+0.5)
-	y := 6 + t.cursor.line*lineH
+	// Cursor bar on the cursor's visual row.
+	crow := t.rows[t.rowOf(t.cursor)]
+	x := 8 + int(t.spanWidth(t.cursor.line, crow.startCol, t.cursor.col)+0.5)
+	y := 6 + t.rowOf(t.cursor)*lineH
 	cv.FillRect(render.Rect{X: t.bounds.X + x, Y: t.bounds.Y + y + 2, W: 2, H: lineH - 4}, t.color)
 }
 
 // HitTest returns the area when p is inside its bounds.
 func (t *TextArea) HitTest(p Point) Widget { return t.HitLeaf(t, p) }
 
-// posAt maps a root-space point to a document position.
+// posAt maps a root-space point to a document position, resolving
+// through the visual rows when wrapping.
 func (t *TextArea) posAt(p Point) pos {
 	lineH := t.lineHeight()
-	l := max(min((p.Y-t.bounds.Y-6)/lineH, len(t.lines)-1), 0)
-	return pos{line: l, col: t.colForX(l, float64(p.X-t.bounds.X-8))}
+	t.ensureRows(t.wrapWidth())
+	row := max(min((p.Y-t.bounds.Y-6)/lineH, len(t.rows)-1), 0)
+	r := t.rows[row]
+	if !t.wrap {
+		return pos{line: r.line, col: t.colForX(r.line, float64(p.X-t.bounds.X-8))}
+	}
+	col := r.startCol + t.caretIn(r, float64(p.X-t.bounds.X-8))
+	return pos{line: r.line, col: col}
 }
 
 // ClickAt places the cursor (and anchor) at the clicked position.
@@ -447,14 +611,24 @@ func (t *TextArea) KeyAction(a KeyAction, mods Mods) {
 	case KeyDown:
 		t.moveVertical(1, shift)
 	case KeyHome:
-		t.cursor.col = 0
+		if t.wrap {
+			t.ensureRows(t.wrapWidth())
+			t.cursor.col = t.rows[t.rowOf(t.clamp(t.cursor))].startCol
+		} else {
+			t.cursor.col = 0
+		}
 		t.cursor = t.clamp(t.cursor)
 		if !shift {
 			t.anchor = t.cursor
 		}
 		t.hasPref = false
 	case KeyEnd:
-		t.cursor.col = len(t.lines[t.clamp(t.cursor).line])
+		if t.wrap {
+			t.ensureRows(t.wrapWidth())
+			t.cursor.col = t.rows[t.rowOf(t.clamp(t.cursor))].endCol
+		} else {
+			t.cursor.col = len(t.lines[t.clamp(t.cursor).line])
+		}
 		if !shift {
 			t.anchor = t.cursor
 		}

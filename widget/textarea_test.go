@@ -69,6 +69,7 @@ func TestTextAreaEditing(t *testing.T) {
 
 	t.Run("vertical motion keeps the preferred column", func(t *testing.T) {
 		ta := newTextArea(t, "abcdef\nx\nlonger line")
+		ta.Arrange(render.Rect{X: 0, Y: 0, W: 300, H: 100})
 		ta.SetCursor(0, 4)
 		ta.KeyAction(KeyDown, 0)
 		line, col := ta.CursorPos()

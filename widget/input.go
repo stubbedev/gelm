@@ -93,6 +93,15 @@ const (
 	ModAlt
 )
 
+// TabTrapper lets a focused widget absorb a plain Tab press as
+// indentation. When the focused widget implements it and TrapTab
+// returns true, focus stays; ctrl+Tab and shift+Tab always move focus
+// regardless of this interface.
+type TabTrapper interface {
+	// TrapTab inserts the widget's tab or indent and reports true.
+	TrapTab(ctrl bool) bool
+}
+
 // KeyAction is an editing or activation action derived from a keyboard
 // event.
 type KeyAction uint8

@@ -112,8 +112,25 @@ shift+right and shift+click anchor).
   widget's selection when a clipboard is configured; Escape is an app
   keybinding (`Config.OnKey`).
 - Key repeat is synthesized on the compositor's reported rate/delay.
+- Tab trap: a plain Tab is indentation inside a widget that implements
+  `widget.TabTrapper` (multi-line text areas); ctrl+Tab and shift+Tab
+  always move focus, so a focused TextArea can contain tab characters
+  while Tab-based traversal keeps working everywhere else.
+- shift+click extends a text selection (`Entry` / `TextArea` handle
+  shift+left / shift+right and shift+click anchor).
 - Keyboard input is seat-wide (one focused window), unlike pointer
   input which routes per surface.
+
+## Text wrapping
+
+`TextArea` soft-wraps by default. All painting, vertical motion, click
+mapping, and Home/End resolve through a visual-row cache
+(`line, startCol, endCol` per painted row) built from shaped advance
+widths at the offered width; Left/Right and every edit operation stay
+in logical coordinates, which remain canonical for `Text()`. A row
+always holds at least one rune, so an unbreakable token wider than the
+viewport wraps rune-by-rune instead of vanishing, and a zero wrap
+width degenerates to one rune per row.
 
 ## Seat capability churn
 
