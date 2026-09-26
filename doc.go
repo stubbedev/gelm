@@ -1,11 +1,22 @@
-// Package gelm is a retained-mode, CSS-themed widget kit for Wayland,
-// written in pure Go (no cgo).
+// Package gelm is a retained-mode widget kit for Wayland, written in
+// pure Go (no cgo).
 //
-// The root package will carry the public widget API from M2 on. Today the
-// tree is:
+// The public API lives in two packages:
 //
-//	wlr       - generated wlr-layer-shell-unstable-v1 bindings
-//	render    - pure rectangle and damage algebra
-//	internal  - session, buffer pool, and layer surface plumbing
-//	cmd       - milestone demos, starting with the M0 bar
+//	app       - the parked event loop, windows (xdg toplevels and
+//	              layer surfaces), popovers, dialogs, and input wiring
+//	widget    - the retained widget tree: labels, buttons, entries,
+//	              text areas, lists, notebooks, menus, icons, themes
+//
+// Supporting it:
+//
+//	render    - premultiplied-alpha canvas, shaped text, icons
+//	wlr       - generated Wayland protocol bindings
+//	internal  - session, buffer arena, scale, popup, and drag-drop
+//	            plumbing
+//	cmd       - the demos (gelm-hello showcase, gelm-multi, panel, bar)
+//
+// The docs/ directory carries the design contracts: architecture,
+// input model, application model, accessibility decision, and icon
+// theming.
 package gelm
