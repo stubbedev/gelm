@@ -163,16 +163,21 @@ func openTooltip(sess *wlsession.Session, host Host, cfg *Config, frac120 uint32
 	box.Paint(cv)
 	surf := tp.HostSurface()
 	if err := surf.Attach(b.WL, 0, 0); err != nil {
+		buffer.Cancel(b)
 		tp.Close()
 		return nil
 	}
 	if err := surf.DamageBuffer(0, 0, int32(b.Width), int32(b.Height)); err != nil {
+		buffer.Cancel(b)
 		tp.Close()
 		return nil
 	}
 	if err := surf.Commit(); err != nil {
+		buffer.Cancel(b)
 		tp.Close()
 		return nil
 	}
+	// One-shot: the commit was the buffer's only user. Its arena slot
+	// returns when the compositor releases the buffer.
 	return tp
 }

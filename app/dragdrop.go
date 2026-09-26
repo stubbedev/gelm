@@ -98,6 +98,7 @@ func renderDragIcon(sess *wlsession.Session, w widget.Widget, frac120 uint32) *w
 	w.Paint(cv)
 	surf, err := sess.Compositor().CreateSurface()
 	if err != nil {
+		buffer.Cancel(b)
 		debug.Log("frame", "dnd icon surface: %v", err)
 		return nil
 	}
@@ -107,6 +108,7 @@ func renderDragIcon(sess *wlsession.Session, w widget.Widget, frac120 uint32) *w
 		if err != nil {
 			debug.Log("frame", "dnd icon %s: %v", what, err)
 			_ = surf.Destroy()
+			buffer.Cancel(b)
 			return false
 		}
 		return true
@@ -116,6 +118,9 @@ func renderDragIcon(sess *wlsession.Session, w widget.Widget, frac120 uint32) *w
 		!attach(surf.Commit(), "commit") {
 		return nil
 	}
+	// One-shot: the commit was the buffer's only user. Its arena slot
+	// returns when the compositor releases the buffer (the icon surface
+	// itself is destroyed at drag end).
 	return surf
 }
 

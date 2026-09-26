@@ -220,7 +220,6 @@ func run() error {
 		if err != nil {
 			return fmt.Errorf("gelm-bar: acquire buffer: %w", err)
 		}
-		wlclient.BufferAddListener(b.WL, buffer.ReleaseHandler{B: b})
 
 		cv := render.New(b.Data, b.Stride, b.Width, b.Height)
 		for _, r := range dirty {
@@ -256,13 +255,16 @@ func run() error {
 	return nil
 }
 
-// frameDone flips ready when the compositor reports the frame as taken.
+// frameDone flips ready when the compositor reports the frame as taken
+// and unregisters the callback (done is a destructor event; skipping
+// the unregister leaks a proxy per frame).
 type frameDone struct {
 	ready *bool
 }
 
 // HandleCallbackDone implements wl.CallbackDoneHandler.
-func (f frameDone) HandleCallbackDone(wl.CallbackDoneEvent) {
+func (f frameDone) HandleCallbackDone(ev wl.CallbackDoneEvent) {
+	ev.C.Unregister()
 	*f.ready = true
 }
 

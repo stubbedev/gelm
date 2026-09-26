@@ -18,6 +18,7 @@ import (
 	"github.com/neurlang/wayland/xdg"
 	"github.com/unxed/xkb-go"
 
+	"github.com/stubbedev/gelm/internal/buffer"
 	"github.com/stubbedev/gelm/internal/debug"
 	"github.com/stubbedev/gelm/wlr"
 )
@@ -854,6 +855,11 @@ func (s *Session) Roundtrip() error {
 	if err != nil {
 		return err
 	}
+	// done is a destructor event: once it lands (or the wait fails) the
+	// callback is dead on both sides, so its id must rejoin the
+	// client's pool. Skipping this leaks a proxy per roundtrip - and
+	// some loops roundtrip per frame.
+	defer cb.Unregister()
 	err = s.Display.Context().RunTill(cb)
 	for errors.Is(err, wl.ErrContextRunProxyNil) {
 		err = s.Display.Context().RunTill(cb)
@@ -874,19 +880,21 @@ func (s *Session) Step() error {
 }
 
 // kickHandler unregisters its sync callback once the wakeup fired, so
-// parked-loop kicks do not leak proxies.
+// parked-loop kicks do not leak proxies. (wlclient.CallbackDestroy is a
+// no-op in the binding; Unregister is the real teardown - done is a
+// destructor event, so no wire request is needed.)
 type kickHandler struct{ cb *wl.Callback }
 
 // HandleCallbackDone implements wl.CallbackDoneHandler.
 func (k kickHandler) HandleCallbackDone(wl.CallbackDoneEvent) {
-	wlclient.CallbackDestroy(k.cb)
+	k.cb.Unregister()
 }
 
 // WakeAfter arranges for a loop parked in Step to return by waiting d:
 // a timer sends a wl_display.sync, and its done event ends the blocking
-// read. The sync callback may occasionally leak its registration if the
-// event is dispatched before the listener attaches; the wake itself is
-// unaffected because dispatching the event is what ends Step.
+// read. If the event is dispatched before the listener attaches, the
+// callback's registration leaks - the wake itself is unaffected because
+// dispatching the event is what ends Step.
 func (s *Session) WakeAfter(d time.Duration) {
 	if d < 0 {
 		d = 0
@@ -909,9 +917,11 @@ func (s *Session) Run() error {
 	return err
 }
 
-// Close disconnects from the display.
+// Close disconnects from the display and releases the session's shared
+// buffer arena: the pool proxy, mapping, and the session's one fd.
 func (s *Session) Close() {
 	s.stopCursorAnim()
+	buffer.CloseArenas(s.shm)
 	if s.Display != nil {
 		_ = s.Display.Context().Close()
 	}

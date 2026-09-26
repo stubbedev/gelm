@@ -172,12 +172,11 @@ func (p *Popup) HandlePopupConfigure(ev xdg.PopupConfigureEvent) {
 	}
 }
 
-// HandlePopupDone implements dismissal: the user clicked away.
+// HandlePopupDone implements dismissal: the user clicked away. The
+// popup's surfaces are destroyed here too, so its buffers return to the
+// session pool instead of leaking with the dead surface.
 func (p *Popup) HandlePopupPopupDone(xdg.PopupPopupDoneEvent) {
-	p.closed = true
-	if p.onClosed != nil {
-		p.onClosed()
-	}
+	p.Close()
 }
 
 // EnsureUsable gates drawing until the first configure completed and the
@@ -204,10 +203,23 @@ func (p *Popup) HostSurface() *wl.Surface { return p.WLSurface }
 // SetOnClosed runs f when the popup is dismissed.
 func (p *Popup) SetOnClosed(f func()) { p.onClosed = f }
 
-// Close dismisses the popup from the client side.
+// Close dismisses the popup from the client side and destroys its wire
+// objects - xdg_popup, xdg_surface, wl_surface - so the compositor can
+// drop the popup's buffers and release them back to the session pool.
+// Runs on compositor dismissal too (popup_done): after it, the popup is
+// dead and HostSurface is no longer valid.
 func (p *Popup) Close() {
 	if p.XdgPopup != nil {
 		_ = p.XdgPopup.Destroy()
+		p.XdgPopup = nil
+	}
+	if p.XdgSurface != nil {
+		_ = p.XdgSurface.Destroy()
+		p.XdgSurface = nil
+	}
+	if p.WLSurface != nil {
+		_ = p.WLSurface.Destroy()
+		p.WLSurface = nil
 	}
 	p.closed = true
 	if p.onClosed != nil {
@@ -271,8 +283,6 @@ func Run(sess *wlsession.Session, p *Popup, frac120 uint32, root widget.Widget, 
 			} else if err != nil {
 				return fmt.Errorf("popup: acquire buffer: %w", err)
 			} else {
-				wlclient.BufferAddListener(b.WL, buffer.ReleaseHandler{B: b})
-
 				w, h := p.Size()
 				_ = p.sc.Apply(frac120, w, h)
 				root.Measure(widget.Constraints{Max: widget.Size{W: w, H: h}})
@@ -309,13 +319,17 @@ func Run(sess *wlsession.Session, p *Popup, frac120 uint32, root widget.Widget, 
 	return ErrClosed
 }
 
-// frameDone flips ready when the compositor reports the frame as taken.
+// frameDone flips ready when the compositor reports the frame as taken
+// and unregisters the callback: done is a destructor event, so the
+// object is dead on both sides and its id must rejoin the client's
+// pool. A frame loop that skips this leaks a proxy per frame.
 type frameDone struct {
 	ready *bool
 }
 
 // HandleCallbackDone implements wl.CallbackDoneHandler.
-func (f frameDone) HandleCallbackDone(wl.CallbackDoneEvent) {
+func (f frameDone) HandleCallbackDone(ev wl.CallbackDoneEvent) {
+	ev.C.Unregister()
 	*f.ready = true
 }
 

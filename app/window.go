@@ -188,27 +188,28 @@ func newHostWindow(sess *wlsession.Session, host Host, initialScale int, root wi
 	return w
 }
 
-// release unregisters the window's input handlers; called when the
-// loop drops the window.
+// release tears down the window's loop state: input handlers are
+// unregistered and the buffer pool's storage returns to the session
+// arena (held buffers wait for the compositor's release), so closing
+// windows leaves no fds, mappings, or slots behind.
 func (w *hostWindow) release() {
-	w.sess.SetSurfaceInput(w.host.HostSurface(), nil)
+	if w.sess != nil {
+		w.sess.SetSurfaceInput(w.host.HostSurface(), nil)
+	}
 	if w.dnd != nil {
 		w.dnd.Bind(w.host.HostSurface(), nil)
+	}
+	if w.pool != nil {
+		w.pool.Close()
 	}
 }
 
 // create builds one buffer at the window's current logical size and
-// device scale and wires its release event into the pool, once per
-// buffer lifetime.
+// device scale. The session arena owns the release-event wiring.
 func (w *hostWindow) create() (*buffer.Buffer, error) {
 	bw, bh := w.layoutSize()
-	b, err := buffer.NewFile(w.sess.Shm(),
+	return buffer.NewFile(w.sess.Shm(),
 		scale.DeviceSize(bw, w.frac120), scale.DeviceSize(bh, w.frac120), w.scale)
-	if err != nil {
-		return nil, err
-	}
-	wlclient.BufferAddListener(b.WL, buffer.ReleaseHandler{B: b})
-	return b, nil
 }
 
 // scaleWire is the surface-scale seam beside surfaceHandle: the requests
@@ -268,8 +269,9 @@ func (w *hostWindow) layoutSize() (int, int) {
 }
 
 // syncSize picks up a configure-driven size change: the pool resizes
-// (dropping every buffer - Resize must run before the next Acquire)
-// and a full repaint schedules, so the FIRST frame at the new size is
+// (retiring the free buffers, keeping those the compositor still holds
+// until their release - Resize must run before the next Acquire) and a
+// full repaint schedules, so the FIRST frame at the new size is
 // already correct: Measure/Arrange run at the new size below, and the
 // fresh buffers' full staleness forces a full repaint. Run polls this
 // between events - a configure alone, with no widget damage pending,
@@ -385,12 +387,12 @@ func (w *hostWindow) frameOwed(animating bool, now time.Time) bool {
 // arming. It reports whether the loop may continue; drawErr carries the
 // failure.
 func (w *hostWindow) draw() bool {
-	// Resize before acquiring: Resize destroys every buffered
-	// wl_buffer, so running it after Acquire would hand back a
-	// destroyed buffer and the compositor kills the connection on the
-	// attach. A late configure therefore also marks the frame dirty
-	// even without input, and the fresh buffers are fully stale, so
-	// the frame repaints everything.
+	// Resize before acquiring: Resize retires the free buffers at the
+	// new size and keeps the ones the compositor still holds until
+	// their release, so running it after Acquire would retire the very
+	// buffer the frame is about to attach. A late configure therefore
+	// also marks the frame dirty even without input, and the fresh
+	// buffers are fully stale, so the frame repaints everything.
 	w.syncSize()
 	bw, bh := w.lastW, w.lastH
 	// Publish the wire scale state on the first draw with a real size:

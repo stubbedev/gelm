@@ -397,11 +397,18 @@ func (a *Application) updateTips(now time.Time) {
 			if a.tooltipFace == nil {
 				return nil
 			}
-			return openTooltip(w.sess, w.host, &Config{
+			// A nil *popup.Popup must not be wrapped: the interface
+			// would carry a typed nil that the nil checks below let
+			// through to a dereference.
+			tp := openTooltip(w.sess, w.host, &Config{
 				Session:     w.sess,
 				Host:        w.host,
 				TooltipFace: a.tooltipFace,
 			}, w.frac120, int(w.input.x), int(w.input.y), text)
+			if tp == nil {
+				return nil
+			}
+			return tp
 		})
 	}
 }

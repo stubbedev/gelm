@@ -365,14 +365,18 @@ func shouldDraw(w *hostWindow, animating bool, now time.Time, resized bool) bool
 	return w.dirty && (resized || w.frameOwed(animating, now))
 }
 
-// frameDone flips ready when the compositor reports the frame as taken.
+// frameDone flips ready when the compositor reports the frame as taken
+// and unregisters the callback: done is a destructor event, so the
+// object is dead on both sides and its id must rejoin the client's
+// pool. A frame loop that skips this leaks a proxy per frame.
 type frameDone struct {
 	ready *bool
 }
 
 // HandleCallbackDone implements wl.CallbackDoneHandler.
-func (f frameDone) HandleCallbackDone(wl.CallbackDoneEvent) {
+func (f frameDone) HandleCallbackDone(ev wl.CallbackDoneEvent) {
 	debug.Log("frame", "frame callback done")
+	ev.C.Unregister()
 	*f.ready = true
 }
 
