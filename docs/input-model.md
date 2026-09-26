@@ -132,6 +132,38 @@ always holds at least one rune, so an unbreakable token wider than the
 viewport wraps rune-by-rune instead of vanishing, and a zero wrap
 width degenerates to one rune per row.
 
+## Input methods (zwp_text_input_v3)
+
+When the compositor advertises `zwp_text_input_manager_v3` the session
+binds one text input per seat; the global is optional, so compositors
+without it keep the pre-IME keyboard path untouched — every text-input
+call is a no-op.
+
+`app.Application` drives the input method from the focused widget once
+per loop iteration: focusing an editable widget (Entry, TextArea) sends
+enable with the widget's surrounding text (caret and anchor as byte
+offsets, composing text excluded) and caret rectangle (surface
+coordinates, for the candidate window); focusing anything else sends
+disable. Pushes are deduped against the last state; local changes (all
+routing, not just keys) carry `set_text_change_cause: other` to ask the
+input method to drop its composing state.
+
+done events assemble the double-buffered batch and the controller
+applies it to the focused widget in protocol order: IMEDelete removes
+the requested bytes around the caret, IMECommit inserts the commit
+string through the widget's normal Insert path, and IMEPreedit shows
+the next composing text. A stale done serial still applies — committed
+text is never dropped — but skips the state re-push.
+
+While composing, the composing text is display-only: `Text()` and
+`OnChanged` stay untouched until a commit lands, and surrounding text
+keeps excluding it. It renders at the caret with an accent underline;
+backspace trims its last rune; any other edit or reposition drops the
+local display (the cause=other resync tells the input method).
+Composing over a selection removes the selection, as the protocol's
+done ordering prescribes. TextArea builds its visual-row cache from
+the composed display, so soft wrap stays consistent while composing.
+
 ## Seat capability churn
 
 Capabilities are state, not a one-shot: when the compositor reports a

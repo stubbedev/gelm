@@ -27,6 +27,14 @@ type TextArea struct {
 	prefX   float64 // preferred visual column for vertical motion
 	hasPref bool
 
+	// Composing (input-method preedit) display: peText shows at peAt
+	// with the composing caret peCur runes into it (-1 hidden). It
+	// lives outside the lines until a commit; displayLine splices it
+	// in so the row cache and painting see what is on show.
+	peText []rune
+	peAt   pos
+	peCur  int
+
 	// Visual row cache, built lazily for the wrap width it was built
 	// with. rows always covers the document: with wrap off it is the
 	// identity mapping (one row per logical line).
@@ -101,8 +109,9 @@ func (t *TextArea) Text() string {
 }
 
 // SetText replaces the contents, splitting on newlines, and clears the
-// selection.
+// selection and composing display.
 func (t *TextArea) SetText(s string) {
+	t.clearPreedit()
 	t.lines = nil
 	for part := range strings.SplitSeq(s, "\n") {
 		t.lines = append(t.lines, []rune(part))
@@ -119,6 +128,7 @@ func (t *TextArea) SetText(s string) {
 // SetCursor places the cursor and anchor at a line/column, clearing any
 // selection. Columns beyond the line clamp.
 func (t *TextArea) SetCursor(line, col int) {
+	t.clearPreedit()
 	t.cursor = t.clamp(pos{line, col})
 	t.anchor = t.cursor
 	t.hasPref = false
@@ -180,6 +190,7 @@ func (t *TextArea) SelectedText() (string, bool) {
 
 // collapse removes the selected text and leaves both ends at its start.
 func (t *TextArea) collapse() {
+	t.clearPreedit()
 	start, end, active := t.Selection()
 	if !active {
 		t.cursor, t.anchor = t.clamp(t.cursor), t.clamp(t.cursor)
@@ -219,7 +230,8 @@ func (t *TextArea) ensureRows(availW int) {
 		return
 	}
 	t.rows = t.rows[:0]
-	for l, line := range t.lines {
+	for l := range t.lines {
+		line := t.displayLine(l)
 		if !t.wrap {
 			t.rows = append(t.rows, visualRow{l, 0, len(line)})
 			continue
@@ -273,6 +285,7 @@ func (t *TextArea) rowOf(col pos) int {
 
 // Insert inserts s at the cursor; an active selection is replaced.
 func (t *TextArea) Insert(s string) {
+	t.clearPreedit()
 	t.collapse()
 	for _, r := range s {
 		switch r {
@@ -302,6 +315,7 @@ func (t *TextArea) Insert(s string) {
 
 // Delete removes the selection, or one rune/line break forward.
 func (t *TextArea) Delete() {
+	t.clearPreedit()
 	if _, _, active := t.Selection(); active {
 		t.collapse()
 		return
@@ -322,6 +336,7 @@ func (t *TextArea) Delete() {
 
 // Backspace removes the selection, or one rune/line break backward.
 func (t *TextArea) Backspace() {
+	t.clearPreedit()
 	if _, _, active := t.Selection(); active {
 		t.collapse()
 		return
@@ -346,6 +361,7 @@ func (t *TextArea) CursorPos() (line, col int) { return t.cursor.line, t.cursor.
 // move collapses the selection, then moves the cursor without touching
 // the anchor when extend is set.
 func (t *TextArea) move(delta pos, extend bool) {
+	t.clearPreedit()
 	if !extend {
 		if _, _, active := t.Selection(); active {
 			start, _ := t.ordered()
@@ -370,6 +386,7 @@ func (t *TextArea) move(delta pos, extend bool) {
 // click. With wrap on, a visual row is a wrapped segment of a logical
 // line.
 func (t *TextArea) moveVertical(dline int, extend bool) {
+	t.clearPreedit()
 	if _, _, active := t.Selection(); active && !extend {
 		start, _ := t.ordered()
 		t.cursor, t.anchor = start, start
@@ -420,6 +437,7 @@ func (t *TextArea) colForX(l int, x float64) int {
 
 // Measure reports the natural widest-line size, or, when wrapping and
 // a width is offered, the offered width by the wrapped row count.
+// Composing text counts toward the widest line and the row count.
 func (t *TextArea) Measure(con Constraints) Size {
 	lineH := t.face.Shape("lg", t.sizePx).LineHeight()
 	if t.wrap && con.Max.W > 16 {
@@ -427,8 +445,8 @@ func (t *TextArea) Measure(con Constraints) Size {
 		return clampSize(Size{W: con.Max.W, H: lineH*len(t.rows) + 12}, con)
 	}
 	w := 16
-	for _, l := range t.lines {
-		if adv := int(t.face.Shape(string(l), t.sizePx).Advance() + 0.5); adv > w {
+	for l := range t.lines {
+		if adv := int(t.face.Shape(string(t.displayLine(l)), t.sizePx).Advance() + 0.5); adv > w {
 			w = adv
 		}
 	}
@@ -442,8 +460,8 @@ func (t *TextArea) lineHeight() int {
 	return t.face.Shape("lg", t.sizePx).LineHeight()
 }
 
-// Paint draws the wrapped rows, the selection highlight, and the
-// cursor.
+// Paint draws the wrapped rows, the selection highlight, the composing
+// text with its underline, and the cursor.
 func (t *TextArea) Paint(cv *render.Canvas) {
 	th := Current()
 	cv.RoundedRect(t.bounds, th.Radius, th.Surface)
@@ -451,12 +469,12 @@ func (t *TextArea) Paint(cv *render.Canvas) {
 	start, end, active := t.Selection()
 	t.ensureRows(t.wrapWidth())
 
-	if len(t.lines) == 1 && len(t.lines[0]) == 0 && t.placeholder != "" {
+	if len(t.lines) == 1 && len(t.lines[0]) == 0 && !t.composing() && t.placeholder != "" {
 		t.face.DrawAligned(cv, t.placeholder, t.bounds, t.sizePx, th.Border, render.AlignStart)
 		return
 	}
 	for i, r := range t.rows {
-		line := t.lines[r.line]
+		line := t.displayLine(r.line)
 		y := 6 + i*lineH
 		if len(line) == 0 || r.startCol >= r.endCol {
 			continue
@@ -484,11 +502,32 @@ func (t *TextArea) Paint(cv *render.Canvas) {
 		t.face.DrawAligned(cv, string(line[r.startCol:r.endCol]), box, t.sizePx, t.color, render.AlignStart)
 		cv.PopClip(prev)
 	}
-	// Cursor bar on the cursor's visual row.
-	crow := t.rows[t.rowOf(t.cursor)]
-	x := 8 + int(t.spanWidth(t.cursor.line, crow.startCol, t.cursor.col)+0.5)
-	y := 6 + t.rowOf(t.cursor)*lineH
-	cv.FillRect(render.Rect{X: t.bounds.X + x, Y: t.bounds.Y + y + 2, W: 2, H: lineH - 4}, t.color)
+	if t.composing() {
+		// Accent underline under the composing range, across every
+		// visual row it touches.
+		pb, pe := t.peAt.col, t.peAt.col+len(t.peText)
+		a := th.Accent
+		ul := render.RGBA(a.R(), a.G(), a.B(), 200)
+		for i, r := range t.rows {
+			if r.line != t.peAt.line || r.endCol <= pb || r.startCol >= pe {
+				continue
+			}
+			x0 := 8 + int(t.spanWidthDisp(r.line, r.startCol, max(r.startCol, pb))+0.5)
+			x1 := 8 + int(t.spanWidthDisp(r.line, r.startCol, min(r.endCol, pe))+0.5)
+			y := 6 + i*lineH
+			cv.FillRect(render.Rect{X: t.bounds.X + x0, Y: t.bounds.Y + y + lineH - 4, W: max(x1-x0, 2), H: 2}, ul)
+		}
+	}
+	// Cursor bar on the caret's visual row; hidden while the input
+	// method hides its composing caret.
+	caret := t.caretPos()
+	if !t.composing() || t.peCur >= 0 {
+		row := t.rowOf(caret)
+		crow := t.rows[row]
+		x := 8 + int(t.spanWidthDisp(crow.line, crow.startCol, caret.col)+0.5)
+		y := 6 + row*lineH
+		cv.FillRect(render.Rect{X: t.bounds.X + x, Y: t.bounds.Y + y + 2, W: 2, H: lineH - 4}, t.color)
+	}
 }
 
 // HitTest returns the area when p is inside its bounds.
@@ -508,21 +547,26 @@ func (t *TextArea) posAt(p Point) pos {
 	return pos{line: r.line, col: col}
 }
 
-// ClickAt places the cursor (and anchor) at the clicked position.
+// ClickAt places the cursor (and anchor) at the clicked position,
+// dropping the composing display.
 func (t *TextArea) ClickAt(p Point) {
+	t.clearPreedit()
 	t.cursor = t.posAt(p)
 	t.anchor = t.cursor
 	t.hasPref = false
 }
 
-// DragMove extends the selection to the dragged position.
+// DragMove extends the selection to the dragged position, dropping the
+// composing display.
 func (t *TextArea) DragMove(p Point) {
+	t.clearPreedit()
 	t.cursor = t.posAt(p)
 	t.hasPref = false
 }
 
 // DoubleClickAt selects the same-class run under the pointer.
 func (t *TextArea) DoubleClickAt(p Point) {
+	t.clearPreedit()
 	at := t.posAt(p)
 	line := t.lines[at.line]
 	if len(line) == 0 {
@@ -549,6 +593,7 @@ func (t *TextArea) DoubleClickAt(p Point) {
 
 // SelectAll selects the entire document.
 func (t *TextArea) SelectAll() {
+	t.clearPreedit()
 	t.anchor = pos{0, 0}
 	t.cursor = pos{len(t.lines) - 1, len(t.lines[len(t.lines)-1])}
 	t.hasPref = false
@@ -557,9 +602,21 @@ func (t *TextArea) SelectAll() {
 // InsertRune implements RuneHandler.
 func (t *TextArea) InsertRune(r rune) { t.Insert(string(r)) }
 
-// KeyAction implements KeyActionHandler.
+// KeyAction implements KeyActionHandler. While composing, the input
+// method owns the text: backspace trims its last rune, and every other
+// edit drops the composing display and applies to the contents.
 func (t *TextArea) KeyAction(a KeyAction, mods Mods) {
 	shift := mods&ModShift != 0
+	if a == KeyBackspace && t.composing() {
+		t.peText = t.peText[:len(t.peText)-1]
+		t.peCur = min(t.peCur, len(t.peText))
+		if len(t.peText) == 0 {
+			t.clearPreedit()
+		}
+		return
+	}
+	// Every action except the trim above drops the composing display.
+	t.clearPreedit()
 	switch a {
 	case KeyBackspace:
 		t.Backspace()

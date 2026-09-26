@@ -23,6 +23,13 @@ type Entry struct {
 	runes  []rune
 	cursor int
 	anchor int // selection anchor; equals cursor when nothing is selected
+
+	// Composing (input-method preedit) display: peText shows at the
+	// caret position peAt with the composing caret peCur runes into
+	// it (-1 hidden). It lives outside the contents until a commit.
+	peText []rune
+	peAt   int
+	peCur  int
 }
 
 // NewEntry returns an empty entry painted with face at sizePx.
@@ -61,6 +68,7 @@ func (e *Entry) SelectedText() (string, bool) {
 
 // SetText replaces the contents and moves the cursor to the end.
 func (e *Entry) SetText(s string) {
+	e.clearPreedit()
 	if s == e.Text() {
 		return
 	}
@@ -89,6 +97,7 @@ func (e *Entry) Selection() (start, end int, active bool) {
 // cursor rests at their start. Without a selection it only resets the
 // anchor.
 func (e *Entry) collapse() {
+	e.clearPreedit()
 	start, end, active := e.Selection()
 	if active {
 		e.runes = append(e.runes[:start], e.runes[end:]...)
@@ -99,6 +108,7 @@ func (e *Entry) collapse() {
 
 // Insert inserts s at the cursor. An active selection is replaced.
 func (e *Entry) Insert(s string) {
+	e.clearPreedit()
 	e.collapse()
 	r := []rune(s)
 	e.runes = append(e.runes[:e.cursor], append(append([]rune{}, r...), e.runes[e.cursor:]...)...)
@@ -110,6 +120,7 @@ func (e *Entry) Insert(s string) {
 // Backspace deletes the selection, or the rune before the cursor when
 // nothing is selected.
 func (e *Entry) Backspace() {
+	e.clearPreedit()
 	if _, _, active := e.Selection(); active {
 		e.collapse()
 		e.changed()
@@ -127,6 +138,7 @@ func (e *Entry) Backspace() {
 // Delete deletes the selection, or the rune at the cursor when nothing
 // is selected.
 func (e *Entry) Delete() {
+	e.clearPreedit()
 	if _, _, active := e.Selection(); active {
 		e.collapse()
 		e.changed()
@@ -143,6 +155,7 @@ func (e *Entry) Delete() {
 // active selection collapses to the edge the motion points at first,
 // without moving further - the standard first-press behavior.
 func (e *Entry) MoveCursor(delta int) {
+	e.clearPreedit()
 	if _, _, active := e.Selection(); active {
 		start, end, _ := e.Selection()
 		edge := start
@@ -160,6 +173,7 @@ func (e *Entry) MoveCursor(delta int) {
 // MoveCursorExtending moves the cursor by delta runes, growing or
 // shrinking the selection from its anchor (shift+arrow behavior).
 func (e *Entry) MoveCursorExtending(delta int) {
+	e.clearPreedit()
 	e.cursor += delta
 	e.clampCursor()
 }
@@ -174,17 +188,19 @@ func (e *Entry) clampCursor() {
 }
 
 // MoveHome puts the cursor at the start, dropping any selection.
-func (e *Entry) MoveHome() { e.cursor, e.anchor = 0, 0 }
+func (e *Entry) MoveHome() { e.clearPreedit(); e.cursor, e.anchor = 0, 0 }
 
 // MoveEnd puts the cursor after the last rune, dropping any selection.
 func (e *Entry) MoveEnd() {
+	e.clearPreedit()
 	e.cursor, e.anchor = len(e.runes), len(e.runes)
 }
 
 // Measure wants the text advance (or the placeholder's) plus padding; an
 // empty field keeps its padding so the box stays visible. Clamped to con.
+// Composing text counts toward the wanted width.
 func (e *Entry) Measure(con Constraints) Size {
-	text := e.Text()
+	text := string(e.displayRunes())
 	if text == "" {
 		text = e.placeholder
 	}
@@ -197,12 +213,12 @@ func (e *Entry) Measure(con Constraints) Size {
 }
 
 // Paint draws the field: placeholder when empty, text otherwise, the
-// selection highlight, and the cursor bar. Zero color fields fall back
-// to the theme.
+// selection highlight, the composing text with its underline, and the
+// cursor bar. Zero color fields fall back to the theme.
 func (e *Entry) Paint(cv *render.Canvas) {
 	t := Current()
 	cv.RoundedRect(e.bounds, t.Radius, t.Surface)
-	if len(e.runes) == 0 && e.placeholder != "" {
+	if len(e.runes) == 0 && !e.composing() && e.placeholder != "" {
 		e.face.DrawAligned(cv, e.placeholder, e.bounds, e.sizePx, t.Border, render.AlignStart)
 		return
 	}
@@ -213,11 +229,25 @@ func (e *Entry) Paint(cv *render.Canvas) {
 		cv.FillRect(render.Rect{X: x0, Y: e.bounds.Y + 4, W: x1 - x0, H: e.bounds.H - 8},
 			render.RGBA(a.R(), a.G(), a.B(), 90))
 	}
-	e.face.DrawAligned(cv, e.Text(), e.bounds, e.sizePx, e.color, render.AlignStart)
-
-	// Cursor bar after the text before the cursor.
-	x := e.bounds.X + 8 + int(e.face.Shape(e.Text(), e.sizePx).CaretX(e.cursor)+0.5)
-	cv.FillRect(render.Rect{X: x, Y: e.bounds.Y + 6, W: 2, H: e.bounds.H - 12}, e.color)
+	disp := string(e.displayRunes())
+	e.face.DrawAligned(cv, disp, e.bounds, e.sizePx, e.color, render.AlignStart)
+	sh := e.face.Shape(disp, e.sizePx)
+	if e.composing() {
+		// Accent underline under the composing range.
+		a := t.Accent
+		x0 := 8 + int(sh.CaretX(e.peAt)+0.5)
+		x1 := 8 + int(sh.CaretX(e.peAt+len(e.peText))+0.5)
+		cv.FillRect(render.Rect{
+			X: e.bounds.X + x0, Y: e.bounds.Y + e.bounds.H - 8,
+			W: max(x1-x0, 2), H: 2,
+		}, render.RGBA(a.R(), a.G(), a.B(), 200))
+	}
+	// Cursor bar after the text before the caret; hidden while the
+	// input method hides its composing caret.
+	if caret := e.caretRune(); caret >= 0 {
+		x := 8 + int(sh.CaretX(caret)+0.5)
+		cv.FillRect(render.Rect{X: e.bounds.X + x, Y: e.bounds.Y + 6, W: 2, H: e.bounds.H - 12}, e.color)
+	}
 }
 
 // HitTest returns the entry when p is inside its bounds.
@@ -226,8 +256,9 @@ func (e *Entry) HitTest(p Point) Widget {
 }
 
 // ClickAt places the cursor (and the selection anchor) at the clicked
-// text position.
+// text position, dropping the composing display.
 func (e *Entry) ClickAt(p Point) {
+	e.clearPreedit()
 	x := float64(p.X - e.bounds.X - 8)
 	e.cursor = e.face.Shape(e.Text(), e.sizePx).CaretAt(x)
 	e.anchor = e.cursor
@@ -236,6 +267,7 @@ func (e *Entry) ClickAt(p Point) {
 // DragMove extends the selection while the pointer drags; the anchor
 // stays where the press landed.
 func (e *Entry) DragMove(p Point) {
+	e.clearPreedit()
 	x := float64(p.X - e.bounds.X - 8)
 	e.cursor = e.face.Shape(e.Text(), e.sizePx).CaretAt(x)
 }
@@ -243,6 +275,7 @@ func (e *Entry) DragMove(p Point) {
 // DoubleClickAt selects the run of same-class runes (word or whitespace)
 // under the clicked position.
 func (e *Entry) DoubleClickAt(p Point) {
+	e.clearPreedit()
 	if len(e.runes) == 0 {
 		return
 	}
@@ -268,6 +301,7 @@ func (e *Entry) DoubleClickAt(p Point) {
 
 // SelectAll selects the entire contents.
 func (e *Entry) SelectAll() {
+	e.clearPreedit()
 	e.anchor = 0
 	e.cursor = len(e.runes)
 }
@@ -278,9 +312,21 @@ func (e *Entry) InsertRune(r rune) {
 }
 
 // KeyAction implements KeyActionHandler for editing keys. Shift-extended
-// motion grows the selection from its anchor.
+// motion grows the selection from its anchor. While composing, the
+// input method owns the text: backspace trims its last rune, and every
+// other edit drops the composing display and applies to the contents.
 func (e *Entry) KeyAction(a KeyAction, mods Mods) {
 	shift := mods&ModShift != 0
+	if a == KeyBackspace && e.composing() {
+		e.peText = e.peText[:len(e.peText)-1]
+		e.peCur = min(e.peCur, len(e.peText))
+		if len(e.peText) == 0 {
+			e.clearPreedit()
+		}
+		return
+	}
+	// Every action except the trim above drops the composing display.
+	e.clearPreedit()
 	switch a {
 	case KeyBackspace:
 		e.Backspace()

@@ -28,6 +28,7 @@ type Application struct {
 	clip        *clipboard.Clipboard
 	tooltipFace *render.Typeface
 	onKey       func(r *widget.Router, keycode uint32, mods wlsession.Mods)
+	ime         *imeController
 
 	windows  []*hostWindow
 	dialogs  []*Dialog
@@ -43,6 +44,7 @@ func NewApplication(sess *wlsession.Session) *Application {
 		sess:   sess,
 		rep:    newKeyRepeater(sess.RepeatInfo()),
 		kicker: &loopKicker{},
+		ime:    newIMEController(sess),
 	}
 }
 
@@ -261,6 +263,8 @@ func outputWire(o *wlsession.Output) *wl.Output {
 func (a *Application) Run() error {
 	a.sess.OnKey = a.routeKey
 	a.sess.OnKeyUp = a.rep.release
+	a.sess.OnIME = a.imeEvent
+	a.sess.OnIMEFocus = a.ime.reset
 	for {
 		if a.quit || len(a.windows) == 0 {
 			return ErrClosed
@@ -269,6 +273,15 @@ func (a *Application) Run() error {
 
 		if code, mods, ok := a.rep.tick(); ok {
 			a.deliverKey(code, mods)
+			// Repeat keys are deliveries too: keep the state fresh.
+		}
+		// Push the focused widget's text-input state; this is what
+		// enables the input method on an editable focus, updates the
+		// surrounding text and caret as it types, and disables on
+		// focus moving elsewhere. The previous dispatch's changes are
+		// picked up here, one event later.
+		if w := a.focused(); w != nil {
+			a.ime.sync(w.router, w.input.scale, true)
 		}
 		if anim.Active() {
 			anim.Tick(now)
@@ -376,6 +389,20 @@ func (a *Application) deliverKey(keycode uint32, mods wlsession.Mods) {
 		return
 	}
 	routeKey(a.sess, target.router, keycode, mods, a.clip, a.onKey)
+}
+
+// imeEvent applies one input-method batch into the focused window's
+// focused widget and repaints; the controller re-pushes state when the
+// batch was current.
+func (a *Application) imeEvent(ev wlsession.IMEEvent) {
+	target := a.focused()
+	if target == nil {
+		return
+	}
+	a.ime.deliver(target.router, target.input.scale, ev)
+	for _, w := range a.windows {
+		w.dirty = true
+	}
 }
 
 // focused picks the window that should receive keyboard input: the one

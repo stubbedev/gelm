@@ -11,6 +11,7 @@ import (
 	"os"
 	"time"
 
+	text "github.com/neurlang/wayland/unstable/text-input-v3"
 	deco "github.com/neurlang/wayland/unstable/xdg-decoration-v1"
 	"github.com/neurlang/wayland/wl"
 	"github.com/neurlang/wayland/wlclient"
@@ -79,6 +80,10 @@ type Session struct {
 	dataDevice        *wl.DataDevice
 	keyboardSerial    uint32
 	decorationManager *deco.ZxdgDecorationManagerV1
+	textInputMgr      *text.ZwpInputManagerV3
+	textInput         *text.ZwpInputV3
+	tiSerial          uint32 // commits sent on textInput; done events compare against it
+	tiPending         tiPending
 
 	desiredCursor      string
 	pointerEnterSerial uint32
@@ -116,6 +121,15 @@ type Session struct {
 	// OnWmBasePing fires when the compositor pings liveness; reply
 	// through Window.Pong.
 	OnWmBasePing func(serial uint32)
+	// OnIME fires when the input method applies a batch of changes (a
+	// done event) — commit, preedit, and surrounding-text deletion in
+	// protocol order. Nil without the text-input protocol, or when no
+	// host consumes the events.
+	OnIME func(IMEEvent)
+	// OnIMEFocus fires when text-input focus enters or leaves a
+	// surface; committed state is invalidated and must be re-pushed
+	// for whichever surface the input method now targets.
+	OnIMEFocus func()
 }
 
 // SurfacePointerHandler receives the pointer events whose compositor
@@ -233,6 +247,7 @@ func (s *Session) HandleRegistryGlobal(ev wl.RegistryGlobalEvent) {
 		s.seat = wlclient.RegistryBindSeatInterface(s.registry, ev.Name, bindVersion(ev.Version, 7))
 		wlclient.SeatAddListener(s.seat, s)
 		s.ensureDataDevice()
+		s.ensureTextInput()
 	case "xdg_wm_base":
 		ctx, _ := wl.GetUserData[wl.Context](s.registry)
 		wmBase := xdg.NewShell(ctx)
@@ -248,6 +263,8 @@ func (s *Session) HandleRegistryGlobal(ev wl.RegistryGlobalEvent) {
 		ctx, _ := wl.GetUserData[wl.Context](s.registry)
 		s.decorationManager = deco.NewZxdgDecorationManagerV1(ctx)
 		_ = s.registry.Bind(ev.Name, ev.Interface, bindVersion(ev.Version, 2), s.decorationManager)
+	case "zwp_text_input_manager_v3":
+		s.bindTextInputManager(ev)
 	}
 }
 
