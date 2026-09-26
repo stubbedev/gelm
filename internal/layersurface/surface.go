@@ -63,6 +63,10 @@ type Config struct {
 	// enforces this locally so the error surfaces before the wire.
 	Width, Height uint32
 
+	// Margin distances the surface from the edges it is anchored to,
+	// in surface (logical) pixels.
+	Margin Margins
+
 	// ExclusiveZone reserves space along the anchored edge, in surface
 	// pixels. Negative values distance the surface from the edge by the
 	// given amount. 0 requests no reservation.
@@ -70,6 +74,16 @@ type Config struct {
 
 	Keyboard  KeyboardMode
 	Namespace string
+}
+
+// Margins is the space between the surface and the anchored edges.
+type Margins struct {
+	Top, Right, Bottom, Left int32
+}
+
+// Set applies the margins to the layer surface.
+func (m Margins) Set(ls *wlr.ZwlrLayerSurfaceV1) {
+	_ = ls.SetMargin(m.Top, m.Right, m.Bottom, m.Left)
 }
 
 // Surface is one layer surface and its configure handshake.
@@ -108,6 +122,7 @@ func New(shell *wlr.ZwlrLayerShellV1, surf *wl.Surface, output *wl.Output, cfg C
 	if err := ls.SetExclusiveZone(cfg.ExclusiveZone); err != nil {
 		return nil, fmt.Errorf("layersurface: set_exclusive_zone: %w", err)
 	}
+	cfg.Margin.Set(ls)
 	if err := ls.SetKeyboardInteractivity(uint32(cfg.Keyboard)); err != nil {
 		return nil, fmt.Errorf("layersurface: set_keyboard_interactivity: %w", err)
 	}
@@ -167,6 +182,13 @@ func (s *Surface) EnsureUsable() error {
 // Closed reports whether the compositor closed the surface.
 func (s *Surface) Closed() bool {
 	return s.closed
+}
+
+// Close destroys the layer surface from the client side. The closed
+// flag turns on immediately so the owning loop drops the window.
+func (s *Surface) Close() {
+	_ = s.Layer.Destroy()
+	s.closed = true
 }
 
 // Size returns the last configured size in surface (logical) pixels. An

@@ -38,6 +38,11 @@ type Window struct {
 	wmBase     *xdg.WmBase
 	decoration *xdeco.ZxdgToplevelDecorationV1
 
+	// onCloseRequest vetoes the compositor's close request when it
+	// returns false (an unsaved-changes prompt, for instance); nil
+	// means every close request is accepted.
+	onCloseRequest func() bool
+
 	closed     bool
 	configured bool
 	width      uint32
@@ -108,8 +113,18 @@ func (w *Window) HandleToplevelConfigure(ev xdg.ToplevelConfigureEvent) {
 	}
 }
 
-// HandleToplevelClose marks the window closed.
+// SetCloseRequest installs a veto callback: returning false keeps the
+// window open when the compositor asks it to close (an unsaved-changes
+// prompt decides itself when to call Window.Close). Nil accepts every
+// close request.
+func (w *Window) SetCloseRequest(veto func() bool) { w.onCloseRequest = veto }
+
+// HandleToplevelClose marks the window closed unless a close-request
+// veto rejects it.
 func (w *Window) HandleToplevelClose(xdg.ToplevelCloseEvent) {
+	if w.onCloseRequest != nil && !w.onCloseRequest() {
+		return
+	}
 	w.closed = true
 }
 

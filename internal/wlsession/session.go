@@ -33,6 +33,12 @@ const minCompositorVersion = 3
 type Output struct {
 	WL    *wl.Output
 	Scale int
+
+	// ModeW and ModeH are the current mode's pixel size.
+	ModeW, ModeH int
+
+	// name is the registry global name, for hotplug removal.
+	name uint32
 }
 
 // Mods is a bitmask of held keyboard modifiers, mirroring the low bits
@@ -78,6 +84,12 @@ type Session struct {
 	pointerEnterSerial uint32
 	cursorSurface      *wl.Surface
 
+	// OnOutputAdded fires when a wl_output global appears, including
+	// after Connect for hotplug; OnOutputRemoved fires when its global
+	// goes away. Set them after Connect to drive per-output windows.
+	OnOutputAdded   func(*Output)
+	OnOutputRemoved func(*Output)
+
 	// Pointer routing state. surfaceHandlers maps a wl_surface to the
 	// handler that receives pointer events targeting it; pointerFocus
 	// is the surface the compositor says the pointer is over, and
@@ -85,6 +97,10 @@ type Session struct {
 	surfaceHandlers map[*wl.Surface]SurfacePointerHandler
 	pointerFocus    *wl.Surface
 	grabSurface     *wl.Surface
+
+	// keyboardFocus is the surface the compositor gives keyboard input
+	// to; keyboard events route through KeyboardFocus().
+	keyboardFocus *wl.Surface
 
 	// OnKey fires on key presses (never releases) with the evdev
 	// keycode and the held modifiers. Keyboard focus is seat-wide,
@@ -197,9 +213,10 @@ func (s *Session) HandleRegistryGlobal(ev wl.RegistryGlobalEvent) {
 		s.shm = wlclient.RegistryBindShmInterface(s.registry, ev.Name, 1)
 		wlclient.ShmAddListener(s.shm, s)
 	case "wl_output":
-		out := &Output{WL: wlclient.RegistryBindOutputInterface(s.registry, ev.Name, bindVersion(ev.Version, 2)), Scale: 1}
-		s.outputs = append(s.outputs, out)
-		wlclient.OutputAddListener(out.WL, &outputEvents{sess: s, out: out})
+		wlo := wlclient.RegistryBindOutputInterface(s.registry, ev.Name, bindVersion(ev.Version, 2))
+		out := &Output{WL: wlo, Scale: 1, name: ev.Name}
+		wlclient.OutputAddListener(wlo, &outputEvents{sess: s, out: out})
+		s.trackOutput(out)
 	case "zwlr_layer_shell_v1":
 		ctx, _ := wl.GetUserData[wl.Context](s.registry)
 		shell := wlr.NewZwlrLayerShellV1(ctx)
@@ -240,14 +257,39 @@ func (s *Session) ensureDataDevice() {
 	s.dataDevice = dev
 }
 
-// HandleRegistryGlobalRemove implements wl.RegistryGlobalRemoveHandler.
+// HandleRegistryGlobalRemove implements wl.RegistryGlobalRemoveHandler:
+// drop the global and, for outputs, run the hotplug hook so hosts on
+// that output can tear themselves down.
 func (s *Session) HandleRegistryGlobalRemove(ev wl.RegistryGlobalRemoveEvent) {
 	iface, ok := s.ifaceNames[ev.Name]
 	if !ok {
 		return
 	}
+	if iface == "wl_output" {
+		for i, out := range s.outputs {
+			if out.name != ev.Name {
+				continue
+			}
+			s.outputs = append(s.outputs[:i], s.outputs[i+1:]...)
+			delete(s.ifaceNames, ev.Name)
+			if s.OnOutputRemoved != nil {
+				s.OnOutputRemoved(out)
+			}
+			return
+		}
+	}
 	delete(s.globals, iface)
 	delete(s.ifaceNames, ev.Name)
+}
+
+// trackOutput records a discovered output in arrival order and fires
+// the hotplug hook. Separated from the registry bind so the
+// bookkeeping is testable without a live connection.
+func (s *Session) trackOutput(out *Output) {
+	s.outputs = append(s.outputs, out)
+	if s.OnOutputAdded != nil {
+		s.OnOutputAdded(out)
+	}
 }
 
 // HandleShmFormat implements wl.ShmFormatHandler.
@@ -274,8 +316,15 @@ func (e *outputEvents) HandleOutputScale(ev wl.OutputScaleEvent) {
 // HandleOutputGeometry implements wl.OutputGeometryHandler.
 func (e *outputEvents) HandleOutputGeometry(wl.OutputGeometryEvent) {}
 
-// HandleOutputMode implements wl.OutputModeHandler.
-func (e *outputEvents) HandleOutputMode(wl.OutputModeEvent) {}
+// HandleOutputMode implements wl.OutputModeHandler: the current mode
+// (flag bit 0) records the output's pixel size, the fallback for layer
+// surfaces with automatic axes.
+func (e *outputEvents) HandleOutputMode(ev wl.OutputModeEvent) {
+	if ev.Flags&1 != 0 {
+		e.out.ModeW = int(ev.Width)
+		e.out.ModeH = int(ev.Height)
+	}
+}
 
 // HandleOutputDone implements wl.OutputDoneHandler.
 func (e *outputEvents) HandleOutputDone(wl.OutputDoneEvent) {}
@@ -483,11 +532,20 @@ func (s *Session) HandleKeyboardKeymap(ev wl.KeyboardKeymapEvent) {
 	s.xkbState = km.NewState()
 }
 
-// HandleKeyboardEnter implements wl.KeyboardEnterHandler.
-func (s *Session) HandleKeyboardEnter(wl.KeyboardEnterEvent) {}
+// HandleKeyboardEnter implements wl.KeyboardEnterHandler: the named
+// surface receives keyboard input until a leave or another enter.
+func (s *Session) HandleKeyboardEnter(ev wl.KeyboardEnterEvent) {
+	s.keyboardFocus = ev.Surface
+}
 
 // HandleKeyboardLeave implements wl.KeyboardLeaveHandler.
-func (s *Session) HandleKeyboardLeave(wl.KeyboardLeaveEvent) {}
+func (s *Session) HandleKeyboardLeave(wl.KeyboardLeaveEvent) {
+	s.keyboardFocus = nil
+}
+
+// KeyboardFocus returns the surface currently holding keyboard input,
+// or nil when the compositor gives the seat no keyboard focus.
+func (s *Session) KeyboardFocus() *wl.Surface { return s.keyboardFocus }
 
 // HandleKeyboardKey implements wl.KeyboardKeyHandler.
 func (s *Session) HandleKeyboardKey(ev wl.KeyboardKeyEvent) {

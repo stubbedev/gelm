@@ -6,16 +6,12 @@ package app
 
 import (
 	"errors"
-	"fmt"
 	"time"
 	"unicode/utf8"
 
 	"github.com/neurlang/wayland/wl"
-	"github.com/neurlang/wayland/wlclient"
 	"github.com/unxed/xkb-go"
 
-	"github.com/stubbedev/gelm/internal/anim"
-	"github.com/stubbedev/gelm/internal/buffer"
 	"github.com/stubbedev/gelm/internal/clipboard"
 	"github.com/stubbedev/gelm/internal/debug"
 	"github.com/stubbedev/gelm/internal/wlsession"
@@ -167,180 +163,24 @@ func (in *surfaceInput) HandlePointerLeave() {
 	in.request()
 }
 
-// Run drives the host until it closes: acquire a buffer, measure and
+// Run drives one host until it closes: acquire a buffer, measure and
 // arrange the tree, paint, commit full-frame damage, pace on the frame
-// callback, and dispatch input into a router meanwhile. The loop parks
-// in Session.Step between events: timers (key repeat, animation, tooltip
-// dwell) schedule wakeups, and with nothing pending the process holds no
-// CPU — even when the compositor stops sending frame callbacks for an
-// occluded surface. It returns ErrClosed when the surface ended.
+// callback, and dispatch input into a router meanwhile. It is the
+// single-window convenience over Application; the loop parks in
+// Session.Step between events, so with nothing pending the process
+// holds no CPU — even when the compositor stops sending frame callbacks
+// for an occluded surface. It returns ErrClosed when the surface ended.
 func Run(cfg Config) error {
-	host := cfg.Host
-	if err := host.EnsureUsable(); err != nil {
-		return fmt.Errorf("app: %w", err)
-	}
-
-	surf := host.HostSurface()
-	create := func() (*buffer.Buffer, error) {
-		bw, bh := host.Size()
-		return buffer.NewFile(cfg.Session.Shm(), bw*cfg.Scale, bh, cfg.Scale)
-	}
-	pool := buffer.New(create, 3)
-
-	router := &widget.Router{Root: cfg.Root}
-	dirty := true
-	markDirty := func() { dirty = true }
-	lastW, lastH := host.Size()
-	tip := &tooltipCtl{since: time.Now()}
-
-	input := &surfaceInput{
-		sess: cfg.Session, surf: surf, scale: cfg.Scale,
-		router: router, tip: tip,
-		onPress: cfg.OnPress, onMove: cfg.OnPointerMove,
-		request: markDirty,
-	}
-	cfg.Session.SetSurfaceInput(surf, input)
-	defer cfg.Session.SetSurfaceInput(surf, nil)
-
-	sess := cfg.Session
-
-	// Key repeat: the compositor tells us its rate and delay; repeats
-	// fire from timer wakeups, not loop polling.
-	routeKey := func(keycode uint32, mods wlsession.Mods) {
-		routeKey(sess, router, keycode, mods, cfg.Clipboard, cfg.OnKey)
-	}
-	rep := newKeyRepeater(sess.RepeatInfo())
-	sess.OnKey = func(keycode uint32, mods wlsession.Mods) {
-		rep.press(keycode, mods)
-		routeKey(keycode, mods)
-		markDirty()
-	}
-	sess.OnKeyUp = rep.release
-
-	frameReady := false
-	framePending := false
-	var drawErr error
-	kicker := &loopKicker{}
-	opener := func(h widget.Widget, text string) tooltipWindow {
-		return openTooltip(sess, host, &cfg, int(input.x), int(input.y), text)
-	}
-
-	draw := func() bool {
-		// Resize before acquiring: Resize destroys every buffered
-		// wl_buffer, so running it after Acquire would hand back a
-		// destroyed buffer and the compositor kills the connection on
-		// the attach. A late configure therefore also marks the frame
-		// dirty even without input.
-		bw, bh := host.Size()
-		if bw != lastW || bh != lastH {
-			lastW, lastH = bw, bh
-			pool.Resize(create)
-			dirty = true
-		}
-		b, err := pool.Acquire()
-		if errors.Is(err, buffer.ErrBusy) {
-			// The release event wakes the park below; stay dirty.
-			dirty = true
-			return true
-		}
-		if err != nil {
-			return false
-		}
-		wlclient.BufferAddListener(b.WL, buffer.ReleaseHandler{B: b})
-
-		cfg.Root.Measure(widget.Constraints{Max: widget.Size{W: bw, H: bh}})
-		cfg.Root.Arrange(render.Rect{X: 0, Y: 0, W: bw, H: bh})
-
-		cv := render.New(b.Data, b.Stride, b.Width, b.Height)
-		cv.Clear(cv.Rect(), cfg.Background)
-		cfg.Root.Paint(cv)
-
-		// Keyboard focus ring around the focused widget.
-		if f := router.Focused(); f != nil {
-			if bs, ok := f.(widget.Boundser); ok {
-				if fb := bs.Bounds(); fb.W > 0 && fb.H > 0 {
-					cv.BorderRect(render.Rect{X: fb.X - 2, Y: fb.Y - 2, W: fb.W + 4, H: fb.H + 4},
-						2, widget.Current().Accent)
-				}
-			}
-		}
-
-		if err := surf.Attach(b.WL, 0, 0); err != nil {
-			drawErr = fmt.Errorf("app: attach: %w", err)
-			return false
-		}
-		debug.Log("frame", "main surface %d attached", surf.Id())
-		if err := surf.DamageBuffer(0, 0, int32(b.Width), int32(b.Height)); err != nil {
-			drawErr = fmt.Errorf("app: damage: %w", err)
-			return false
-		}
-		if err := surf.Commit(); err != nil {
-			drawErr = fmt.Errorf("app: commit: %w", err)
-			return false
-		}
-
-		cb, err := surf.Frame()
-		if err != nil {
-			drawErr = fmt.Errorf("app: frame callback: %w", err)
-			return false
-		}
-		wlclient.CallbackAddListener(cb, frameDone{ready: &frameReady})
-		debug.Log("frame", "frame committed, waiting for callback")
-		framePending = true
-		return true
-	}
-
-	for !host.Closed() {
-		now := time.Now()
-
-		if frameReady {
-			frameReady = false
-			framePending = false
-		}
-		if code, mods, ok := rep.tick(); ok {
-			routeKey(code, mods)
-			dirty = true
-		}
-		if anim.Active() {
-			anim.Tick(now)
-			dirty = true
-		}
-		tip.update(router, now, opener)
-
-		// Draw when something changed and pacing allows: either the
-		// previous frame's callback returned, or an animation keeps
-		// producing frames even when the compositor stopped scheduling
-		// them (occlusion). An input-only redraw always goes out; if a
-		// frame is still pending the loop simply waits for its event.
-		if dirty && (!framePending || anim.Active()) {
-			dirty = false
-			if !draw() {
-				return drawErr
-			}
-		}
-
-		if host.Closed() {
-			break
-		}
-
-		tipNext, _ := tip.next()
-		repNext, repOK := rep.nextDeadline()
-		animEnd, animOK := anim.Next()
-		if !repOK {
-			repNext = time.Time{}
-		}
-		if !animOK {
-			animEnd = time.Time{}
-		}
-		wakeAt, ok := nextWake(repNext, animEnd, tipNext, now)
-		if ok {
-			kicker.schedule(sess, wakeAt)
-		}
-		if err := sess.Step(); err != nil {
-			return fmt.Errorf("app: dispatch: %w", err)
-		}
-	}
-	return ErrClosed
+	app := NewApplication(cfg.Session)
+	app.SetClipboard(cfg.Clipboard)
+	app.SetTooltipFace(cfg.TooltipFace)
+	app.newWindow(cfg.Host, cfg.Scale, cfg.Root, windowHooks{
+		background: cfg.Background,
+		onPress:    cfg.OnPress,
+		onMove:     cfg.OnPointerMove,
+		onKey:      cfg.OnKey,
+	}, nil)
+	return app.Run()
 }
 
 // loopKicker coalesces timer wakeups: one outstanding WakeAfter per

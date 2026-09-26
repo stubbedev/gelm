@@ -51,6 +51,27 @@ demo-headless GOELM_DEBUG="input,frame": test-env test-build
         echo "demo died:"; cat "$dir/demo.log"; exit 1
     fi
 
+# Run the application-model demo (gelm-multi): per-output bars,
+# on-demand windows, close-request veto, Escape quits.
+multi:
+    go run ./cmd/gelm-multi
+
+# Run the application-model demo inside the headless test compositor.
+multi-headless GOELM_DEBUG="input,frame": test-env test-build
+    #!/bin/sh
+    dir="{{test_dir}}"
+    . "$dir/client.env"
+    export WAYLAND_DISPLAY XDG_RUNTIME_DIR="$dir" GOELM_DEBUG="{{GOELM_DEBUG}}"
+    go build -tags gelmdebug -o "$dir/gelm-multi" ./cmd/gelm-multi || exit 1
+    "$dir/gelm-multi" >"$dir/demo.log" 2>&1 &
+    echo $! >"$dir/demo.pid"
+    sleep 1
+    if kill -0 "$(cat "$dir/demo.pid")" 2>/dev/null; then
+        echo "gelm-multi running (pid $(cat "$dir/demo.pid")); traces: just test-log"
+    else
+        echo "gelm-multi died:"; cat "$dir/demo.log"; exit 1
+    fi
+
 # Build the headless test binaries: the traced showcase and wlpointer.
 test-build:
     go build -tags gelmdebug -o {{test_dir}}/gelm-hello ./cmd/gelm-hello

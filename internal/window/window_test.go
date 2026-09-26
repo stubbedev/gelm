@@ -91,3 +91,51 @@ func TestDecorateNilManager(t *testing.T) {
 		}
 	})
 }
+
+// TestCloseRequestVeto pins the veto semantics: a nil veto accepts
+// every close request, a false return keeps the window open, and a
+// true return (or an explicit Close) closes it.
+func TestCloseRequestVeto(t *testing.T) {
+	t.Run("nil veto accepts the close", func(t *testing.T) {
+		w := &Window{}
+		w.HandleToplevelClose(xdg.ToplevelCloseEvent{})
+		if !w.Closed() {
+			t.Error("close request did not close the window")
+		}
+	})
+
+	t.Run("a vetoing callback keeps the window open", func(t *testing.T) {
+		w := &Window{}
+		w.SetCloseRequest(func() bool { return false })
+		w.HandleToplevelClose(xdg.ToplevelCloseEvent{})
+		if w.Closed() {
+			t.Error("vetoed close request closed the window")
+		}
+	})
+
+	t.Run("an accepting callback closes", func(t *testing.T) {
+		w := &Window{}
+		count := 0
+		w.SetCloseRequest(func() bool {
+			count++
+			return count >= 2
+		})
+		w.HandleToplevelClose(xdg.ToplevelCloseEvent{})
+		if w.Closed() {
+			t.Error("first close should have been vetoed")
+		}
+		w.HandleToplevelClose(xdg.ToplevelCloseEvent{})
+		if !w.Closed() {
+			t.Error("second close should have been accepted")
+		}
+	})
+
+	t.Run("explicit Close ignores the veto", func(t *testing.T) {
+		w := &Window{}
+		w.SetCloseRequest(func() bool { return false })
+		w.Close()
+		if !w.Closed() {
+			t.Error("client-side Close was vetoed")
+		}
+	})
+}

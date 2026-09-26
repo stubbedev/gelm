@@ -119,7 +119,7 @@ func main() {
 	if err != nil {
 		die("connect: %v", err)
 	}
-	defer d.Context().Close()
+	defer func() { _ = d.Context().Close() }()
 	reg, _ := d.GetRegistry()
 	g := &registry{}
 	wlclient.RegistryAddListener(reg, g)
