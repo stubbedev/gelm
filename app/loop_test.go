@@ -280,4 +280,35 @@ func TestTooltipNext(t *testing.T) {
 			t.Errorf("tooltip without hover scheduled a wakeup")
 		}
 	})
+
+	t.Run("failed open backs off a full delay", func(t *testing.T) {
+		t0 := time.Now()
+		router.Move(widget.Point{X: 5, Y: 5})
+		attempts := 0
+		tip := &tooltipCtl{}
+		tip.update(router, t0.Add(-time.Second), func(widget.Widget, string) tooltipWindow { return nil })
+		// The dwell has elapsed; the opener fails (no tooltip face,
+		// compositor rejection). The dwell clock must restart, or every
+		// loop iteration retries the open - once a live protocol-error
+		// storm against a compositor that kept rejecting the popup.
+		tip.update(router, t0, func(widget.Widget, string) tooltipWindow {
+			attempts++
+			return nil
+		})
+		if attempts != 1 {
+			t.Fatalf("opener ran %d times, want 1", attempts)
+		}
+		tip.update(router, t0.Add(10*time.Millisecond), func(widget.Widget, string) tooltipWindow {
+			attempts++
+			return nil
+		})
+		if attempts != 1 {
+			t.Errorf("failed open retried after 10ms; want a full-delay back-off")
+		}
+		if wake, ok := tip.next(); !ok {
+			t.Error("backed-off tooltip did not schedule a retry")
+		} else if d := wake.Sub(t0); d != tooltipDelay {
+			t.Errorf("retry due in %v after the failed attempt, want %v", d, tooltipDelay)
+		}
+	})
 }

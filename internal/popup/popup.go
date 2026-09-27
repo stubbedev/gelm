@@ -129,6 +129,21 @@ func New(sess *wlsession.Session, cfg Config) (*Popup, error) {
 	pop.AddConfigureHandler(p)
 	pop.AddPopupDoneHandler(p)
 
+	// The grab goes out before the initial commit: compositors treat a
+	// grab on an already-committed popup as xdg_popup.error
+	// invalid_grab (sway never engages it; wlroots-based ones kill the
+	// connection over it), so the commit - which maps the popup - must
+	// come second.
+	// The grab goes out before the initial commit: compositors treat a
+	// grab on an already-committed popup as xdg_popup.error
+	// invalid_grab (sway never engages it; wlroots-based ones kill the
+	// connection over it), so the commit - which maps the popup - must
+	// come second.
+	if !cfg.NoGrab {
+		if err := pop.Grab(sess.Seat(), cfg.Serial); err != nil {
+			return nil, fmt.Errorf("popup: grab: %w", err)
+		}
+	}
 	if err := surf.Commit(); err != nil {
 		return nil, fmt.Errorf("popup: commit: %w", err)
 	}
@@ -142,14 +157,6 @@ func New(sess *wlsession.Session, cfg Config) (*Popup, error) {
 	}
 	if err := p.EnsureUsable(); err != nil {
 		return nil, fmt.Errorf("popup: %w", err)
-	}
-	if !cfg.NoGrab {
-		if err := pop.Grab(sess.Seat(), cfg.Serial); err != nil {
-			return nil, fmt.Errorf("popup: grab: %w", err)
-		}
-		if err := sess.Roundtrip(); err != nil {
-			return nil, fmt.Errorf("popup: grab roundtrip: %w", err)
-		}
 	}
 	return p, nil
 }
@@ -197,6 +204,12 @@ func (p *Popup) Closed() bool { return p.closed }
 // Size returns the placed popup size.
 func (p *Popup) Size() (int, int) { return int(p.w), int(p.h) }
 
+// Scale returns the popup's scale controller. A surface can hold only
+// one wp_viewport (a second get_viewport is a fatal protocol error),
+// so every caller that rescales the popup must go through this one -
+// building another controller on HostSurface kills the client.
+func (p *Popup) Scale() *scale.Controller { return p.sc }
+
 // HostSurface returns the underlying wl_surface.
 func (p *Popup) HostSurface() *wl.Surface { return p.WLSurface }
 
@@ -209,6 +222,9 @@ func (p *Popup) SetOnClosed(f func()) { p.onClosed = f }
 // Runs on compositor dismissal too (popup_done): after it, the popup is
 // dead and HostSurface is no longer valid.
 func (p *Popup) Close() {
+	if p.WLSurface != nil {
+		debug.Log("input", "popup %d closed", p.WLSurface.Id())
+	}
 	if p.XdgPopup != nil {
 		_ = p.XdgPopup.Destroy()
 		p.XdgPopup = nil
@@ -232,12 +248,14 @@ func (p *Popup) Close() {
 // popup surface registers its own pointer handler, so events land here
 // only while the compositor routes focus (or the popup grab) to it -
 // the host surface keeps receiving nothing and no hooks are swapped.
-// A non-nil keys router receives seat keyboard events translated to
-// KeyActions, which menus need for arrow and Enter navigation.
+// A non-nil keys handler receives seat keyboard events translated to
+// KeyActions, which menus need for arrow and Enter navigation. It is
+// the handler itself, not a Router: a fresh menu has no focused widget,
+// so a Router would swallow every action before the menu saw it.
 // frac120 is the parent window's 120-based device scale; the popup's
 // buffers are built at that device scale while its widget tree stays
 // logical.
-func Run(sess *wlsession.Session, p *Popup, frac120 uint32, root widget.Widget, bg render.Color, keys *widget.Router) error {
+func Run(sess *wlsession.Session, p *Popup, frac120 uint32, root widget.Widget, bg render.Color, keys widget.KeyActionHandler) error {
 	if frac120 == 0 {
 		frac120 = scale.Denom
 	}

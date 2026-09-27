@@ -51,6 +51,12 @@ type Controller struct {
 // falls back to integer wl_surface.set_buffer_scale and fn never fires.
 // A missing protocol object (bind or creation failure) degrades the same
 // way, per-feature.
+//
+// Only one Controller may exist per surface: wp_viewporter allows a
+// single wp_viewport per wl_surface, and a second get_viewport is a
+// fatal protocol error that kills the connection (it once took down
+// every tooltip, via a duplicate controller on the popup surface).
+// Surfaces owned by popup.Popup get their controller from Popup.Scale.
 func New(sess *wlsession.Session, surf *wl.Surface, fn func(frac120 uint32)) *Controller {
 	c := &Controller{surf: surf, onPreferred: fn}
 	if sess == nil || surf == nil {

@@ -92,14 +92,18 @@ func (t *tooltipCtl) update(router *widget.Router, now time.Time, opener func(wi
 		t.hover, t.since = h, now
 	}
 	if tooltipShouldClose(t.open != nil, changed, text != "") {
+		debug.Log("input", "tooltip closed")
 		t.open.Close()
 		t.open = nil
 	}
 	if tooltipShouldOpen(t.open != nil, h, text, t.since, now) {
 		if p := opener(h, text); p != nil {
 			t.open = p
-			t.since = now
 		}
+		// Advance the dwell clock even when the open failed, so a
+		// tooltip that cannot open (host without a face, compositor
+		// rejection) retries after a full delay instead of every loop.
+		t.since = now
 	}
 }
 
@@ -150,7 +154,9 @@ func openTooltip(sess *wlsession.Session, host Host, cfg *Config, frac120 uint32
 	w, h := tp.Size()
 	box.Measure(widget.Constraints{Max: widget.Size{W: w, H: h}})
 	box.Arrange(render.Rect{X: 0, Y: 0, W: w, H: h})
-	sc := scale.New(sess, tp.HostSurface(), nil)
+	// Reuse the popup's controller: a second scale.New on this surface
+	// would create a second wp_viewport, a fatal protocol error.
+	sc := tp.Scale()
 	_ = sc.Apply(frac120, w, h)
 	b, err := buffer.NewFile(sess.Shm(),
 		scale.DeviceSize(w, frac120), scale.DeviceSize(h, frac120), scale.IntegerScale(frac120))
@@ -179,5 +185,6 @@ func openTooltip(sess *wlsession.Session, host Host, cfg *Config, frac120 uint32
 	}
 	// One-shot: the commit was the buffer's only user. Its arena slot
 	// returns when the compositor releases the buffer.
+	debug.Log("input", "tooltip open %q at (%d,%d)", text, pointerX, pointerY)
 	return tp
 }

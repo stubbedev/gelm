@@ -188,7 +188,6 @@ func (a *Application) OpenPopover(host Host, cfg PopoverConfig) (*Popover, error
 
 	p := &Popover{}
 	keyRoot := &popoverKeyRoot{onDismiss: p.Dismiss, content: cfg.Content}
-	keys := &widget.Router{Root: keyRoot}
 
 	pcfg := popup.Config{
 		X: x, Y: y,
@@ -219,7 +218,7 @@ func (a *Application) OpenPopover(host Host, cfg PopoverConfig) (*Popover, error
 
 	a.popovers.openOrReplace(host, p)
 	go func() {
-		_ = popup.Run(a.sess, pop, a.fracFor(host), keyRoot, widget.Current().Surface, keys)
+		_ = popup.Run(a.sess, pop, a.fracFor(host), keyRoot, widget.Current().Surface, keyRoot)
 		a.popovers.take(host)
 		fireClosed()
 	}()

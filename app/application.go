@@ -473,13 +473,28 @@ func (a *Application) routeKey(keycode uint32, mods wlsession.Mods) {
 	}
 }
 
-// deliverKey routes one key press through the focused window's router.
+// deliverKey routes one key press through the focused window's
+// router, then its bindings: the window's own OnKey hook (per-window
+// bindings such as Escape closes this window) runs before the
+// application-wide one. The hook chain must hang off the FOCUSED
+// window - consulting only the app-level hook silently dropped every
+// Config.OnKey a client passed to Run, so Escape-to-close never fired.
 func (a *Application) deliverKey(keycode uint32, mods wlsession.Mods) {
 	target := a.focused()
 	if target == nil {
 		return
 	}
-	routeKey(a.sess, target.router, keycode, mods, a.clip, a.accels, a.onKey)
+	extra := target.cfg.onKey
+	if extra == nil {
+		extra = a.onKey
+	} else if a.onKey != nil {
+		windowKey, appKey := extra, a.onKey
+		extra = func(r *widget.Router, code uint32, m wlsession.Mods) {
+			windowKey(r, code, m)
+			appKey(r, code, m)
+		}
+	}
+	routeKey(a.sess, target.router, keycode, mods, a.clip, a.accels, extra)
 }
 
 // imeEvent applies one input-method batch into the focused window's

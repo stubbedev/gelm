@@ -133,6 +133,11 @@ type Session struct {
 	// whole-notch scroll deltas.
 	wheel120 [2]int32
 
+	// protoErr carries the compositor's fatal wl_display.error, if one
+	// arrived, so dispatch failures name the compositor's verdict
+	// instead of a bare connection reset.
+	protoErr error
+
 	// OnKey fires on key presses (never releases) with the evdev
 	// keycode and the held modifiers. Keyboard focus is seat-wide,
 	// unlike pointer events which route per surface.
@@ -216,6 +221,9 @@ func Connect() (*Session, error) {
 		return nil, fmt.Errorf("wlsession: registry: %w", err)
 	}
 	s.registry = reg
+	// Record the compositor's fatal protocol errors, so a killed
+	// connection reports what the compositor objected to.
+	d.AddErrorHandler(s)
 	wlclient.RegistryAddListener(reg, s)
 
 	if err := s.Roundtrip(); err != nil {
@@ -724,6 +732,7 @@ func (s *Session) HandleKeyboardKeymap(ev wl.KeyboardKeymapEvent) {
 // surface receives keyboard input until a leave or another enter.
 func (s *Session) HandleKeyboardEnter(ev wl.KeyboardEnterEvent) {
 	s.keyboardFocus = ev.Surface
+	s.keyboardSerial = ev.Serial
 }
 
 // HandleKeyboardLeave implements wl.KeyboardLeaveHandler.
@@ -737,6 +746,8 @@ func (s *Session) KeyboardFocus() *wl.Surface { return s.keyboardFocus }
 
 // HandleKeyboardKey implements wl.KeyboardKeyHandler.
 func (s *Session) HandleKeyboardKey(ev wl.KeyboardKeyEvent) {
+	debug.Log("input", "wire key code=%d state=%d", ev.Key, ev.State)
+	s.keyboardSerial = ev.Serial
 	switch ev.State {
 	case 1:
 		if s.OnKey != nil {
@@ -751,6 +762,7 @@ func (s *Session) HandleKeyboardKey(ev wl.KeyboardKeyEvent) {
 
 // HandleKeyboardModifiers implements wl.KeyboardModifiersHandler.
 func (s *Session) HandleKeyboardModifiers(ev wl.KeyboardModifiersEvent) {
+	s.keyboardSerial = ev.Serial
 	s.mods = ev.ModsDepressed
 	if s.xkbState != nil {
 		s.xkbState.UpdateMask(xkb.ModMask(ev.ModsDepressed), xkb.ModMask(ev.ModsLatched),
@@ -847,8 +859,8 @@ func (s *Session) PrimarySelectionManager() *wlr.ZwpPrimarySelectionDeviceManage
 	return s.primarySelectionMgr
 }
 
-// KeyboardSerial returns the serial of the last keyboard enter, needed
-// by selection requests.
+// KeyboardSerial returns the serial of the most recent keyboard event
+// (enter, key or modifiers), needed by selection requests.
 func (s *Session) KeyboardSerial() uint32 { return s.keyboardSerial }
 
 // DecorationManager returns the bound xdg-decoration manager, or nil
@@ -876,7 +888,7 @@ func (s *Session) Roundtrip() error {
 	for errors.Is(err, wl.ErrContextRunProxyNil) {
 		err = s.Display.Context().RunTill(cb)
 	}
-	return err
+	return s.withProtoErr(err)
 }
 
 // Step dispatches exactly one event, blocking until one arrives. It is
@@ -887,6 +899,26 @@ func (s *Session) Step() error {
 	err := s.Display.Context().Run()
 	for errors.Is(err, wl.ErrContextRunProxyNil) {
 		err = s.Display.Context().Run()
+	}
+	return s.withProtoErr(err)
+}
+
+// HandleDisplayError implements wl.DisplayErrorHandler: record the
+// compositor's fatal protocol error so the dispatch failure that ends
+// the run names the compositor's verdict, and trace it. Registered in
+// Connect; a closed connection without an error event leaves protoErr
+// nil, which is itself diagnostic (the compositor dropped us without
+// saying why).
+func (s *Session) HandleDisplayError(ev wl.DisplayErrorEvent) {
+	s.protoErr = fmt.Errorf("object %T: %s", ev.ObjectId, ev.Message)
+	debug.Log("wire", "compositor fatal: %v", s.protoErr)
+}
+
+// withProtoErr decorates a dispatch failure with the recorded protocol
+// error, if any.
+func (s *Session) withProtoErr(err error) error {
+	if err != nil && s.protoErr != nil {
+		return fmt.Errorf("%w (compositor: %w)", err, s.protoErr)
 	}
 	return err
 }
