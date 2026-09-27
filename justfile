@@ -183,6 +183,10 @@ test-env-stop dir=test_dir:
         done
         kill -9 "$pid" 2>/dev/null
     fi
+    # The recorded pid can be a parent whose forked child is the real
+    # compositor holding the display socket; sweep anything still bound
+    # to this dir's config so no survivor outlives the teardown.
+    pkill -9 -f "$dir/sway.cfg" 2>/dev/null
     pkill -f "$dir/gelm-hello" 2>/dev/null
     pkill -f "$dir/gelm-multi" 2>/dev/null
     pkill -f "$dir/gelm-states" 2>/dev/null
