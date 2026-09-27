@@ -141,6 +141,10 @@ test-env dir=test_dir:
         exit 0
     fi
     rm -rf "$dir"
+    # A daemonizing compositor can outlive its pid file: sweep anything
+    # still bound to this dir's config before booting a fresh sway, or
+    # the new socket and the old one race for clients.
+    pkill -9 -f "$dir/sway.cfg" 2>/dev/null
     mkdir -p "$dir" && chmod 700 "$dir"
     printf '%s\n' 'output * mode 1280x800 scale 1' \
         'default_border none' \
