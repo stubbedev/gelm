@@ -72,9 +72,11 @@ func (u *undoStack[T]) record(before, after T) {
 
 // recordTyping adds one typed rune. It extends the open run on top of
 // the stack when the rune continues it: same word class as the run's
-// last rune, within the idle gap, and no intervening edit — the state
-// before this insert still matches what the run produced. Otherwise the
-// rune opens a fresh run.
+// last rune — or a grapheme continuation of it (a combining mark
+// completing a base rune, a skin-tone modifier, a ZWJ join: one
+// cluster, one unit, #57) — within the idle gap, and no intervening
+// edit — the state before this insert still matches what the run
+// produced. Otherwise the rune opens a fresh run.
 func (u *undoStack[T]) recordTyping(before, after T, r rune) {
 	if before.same(after) {
 		return
@@ -82,7 +84,7 @@ func (u *undoStack[T]) recordTyping(before, after T, r rune) {
 	now := u.clock()
 	if n := len(u.done); n > 0 {
 		top := &u.done[n-1]
-		if top.typing && text.IsWordRune(top.last) == text.IsWordRune(r) && now.Sub(top.at) <= undoIdleGap && top.after.same(before) {
+		if top.typing && (text.IsWordRune(top.last) == text.IsWordRune(r) || text.ContinuesCluster(top.last, r)) && now.Sub(top.at) <= undoIdleGap && top.after.same(before) {
 			top.after = after
 			top.last = r
 			top.at = now

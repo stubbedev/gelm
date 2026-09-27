@@ -202,7 +202,11 @@ func (e *Entry) SetText(s string) {
 	e.changed()
 }
 
-// Cursor returns the cursor position as a rune index.
+// Cursor returns the cursor position as a rune index — the internal
+// position representation stays rune-based (#57); cluster segmentation
+// (internal/text) maps the editing steps, which move one grapheme
+// cluster at a time, onto those indexes. Every position the widget
+// itself produces is a cluster boundary.
 func (e *Entry) Cursor() int {
 	return e.cursor
 }
@@ -231,15 +235,18 @@ func (e *Entry) collapse() {
 }
 
 // splice is the insert primitive: it drops the composing display,
-// replaces any selection, and puts s at the caret. History recording
-// is the callers' business — Insert lands as one entry, InsertRune as
-// a coalescable typing run.
+// replaces any selection, and puts s at the caret. The caret advances
+// past what was inserted, snapped forward to a grapheme cluster
+// boundary — appending runes, counting clusters (#57) — so a caret
+// never lands inside the character it just typed. History recording is
+// the callers' business — Insert lands as one entry, InsertRune as a
+// coalescable typing run.
 func (e *Entry) splice(s string) {
 	e.clearPreedit()
 	e.collapse()
 	r := []rune(s)
 	e.runes = append(e.runes[:e.cursor], append(append([]rune{}, r...), e.runes[e.cursor:]...)...)
-	e.cursor += len(r)
+	e.cursor = text.SnapClusterForward(e.runes, e.cursor+len(r))
 	e.anchor = e.cursor
 	e.panToCaret()
 	e.InvalidateLayout()
@@ -258,9 +265,10 @@ func (e *Entry) Insert(s string) {
 	e.hist.record(before, e.snapshot())
 }
 
-// Backspace deletes the selection, or the rune before the cursor when
-// nothing is selected; one undo entry per call. Blocked while disabled
-// or read-only.
+// Backspace deletes the selection, or the grapheme cluster before the
+// cursor when nothing is selected — an emoji family, a flag, a base
+// rune with its combining marks go as one whole (#57); one undo entry
+// per call. Blocked while disabled or read-only.
 func (e *Entry) Backspace() {
 	if !e.editable() {
 		return
@@ -271,10 +279,9 @@ func (e *Entry) Backspace() {
 		e.collapse()
 		e.InvalidateLayout()
 		e.changed()
-	} else if e.cursor > 0 {
-		e.runes = append(e.runes[:e.cursor-1], e.runes[e.cursor:]...)
-		e.cursor--
-		e.anchor = e.cursor
+	} else if start := text.PrevCluster(e.runes, e.cursor); start < e.cursor {
+		e.runes = append(e.runes[:start], e.runes[e.cursor:]...)
+		e.cursor, e.anchor = start, start
 		e.panToCaret()
 		e.InvalidateLayout()
 		e.changed()
@@ -282,9 +289,9 @@ func (e *Entry) Backspace() {
 	e.hist.record(before, e.snapshot())
 }
 
-// Delete deletes the selection, or the rune at the cursor when nothing
-// is selected; one undo entry per call. This is the cut half of
-// ctrl+x; blocked while disabled or read-only.
+// Delete deletes the selection, or the grapheme cluster at the cursor
+// when nothing is selected (#57); one undo entry per call. This is the
+// cut half of ctrl+x; blocked while disabled or read-only.
 func (e *Entry) Delete() {
 	if !e.editable() {
 		return
@@ -295,8 +302,8 @@ func (e *Entry) Delete() {
 		e.collapse()
 		e.InvalidateLayout()
 		e.changed()
-	} else if e.cursor < len(e.runes) {
-		e.runes = append(e.runes[:e.cursor], e.runes[e.cursor+1:]...)
+	} else if end := text.NextCluster(e.runes, e.cursor); end > e.cursor {
+		e.runes = append(e.runes[:e.cursor], e.runes[end:]...)
 		e.panToCaret()
 		e.InvalidateLayout()
 		e.changed()
@@ -352,9 +359,25 @@ func (e *Entry) DeleteWordForward() {
 	e.hist.record(before, e.snapshot())
 }
 
-// MoveCursor moves the cursor by delta runes, clamped to [0, len]. An
-// active selection collapses to the edge the motion points at first,
-// without moving further - the standard first-press behavior.
+// stepClusters moves the cursor delta grapheme clusters — the editing
+// unit (#57): an emoji family, a flag, or a base rune with its marks
+// steps as one. Positions stay rune indexes; segmentation maps the
+// steps.
+func (e *Entry) stepClusters(delta int) {
+	step := max(min(delta, 1), -1)
+	for range max(delta, -delta) {
+		if step > 0 {
+			e.cursor = text.NextCluster(e.runes, e.cursor)
+		} else {
+			e.cursor = text.PrevCluster(e.runes, e.cursor)
+		}
+	}
+}
+
+// MoveCursor moves the cursor by delta grapheme clusters, clamped to
+// [0, len] (#57: one emoji, one step). An active selection collapses to
+// the edge the motion points at first, without moving further - the
+// standard first-press behavior.
 func (e *Entry) MoveCursor(delta int) {
 	e.clearPreedit()
 	if _, _, active := e.Selection(); active {
@@ -368,30 +391,20 @@ func (e *Entry) MoveCursor(delta int) {
 		e.Invalidate()
 		return
 	}
-	e.cursor += delta
-	e.clampCursor()
+	e.stepClusters(delta)
 	e.anchor = e.cursor
 	e.panToCaret()
 	e.Invalidate()
 }
 
-// MoveCursorExtending moves the cursor by delta runes, growing or
-// shrinking the selection from its anchor (shift+arrow behavior).
+// MoveCursorExtending moves the cursor by delta grapheme clusters,
+// growing or shrinking the selection from its anchor (shift+arrow
+// behavior); selection edges land on cluster boundaries.
 func (e *Entry) MoveCursorExtending(delta int) {
 	e.clearPreedit()
-	e.cursor += delta
-	e.clampCursor()
+	e.stepClusters(delta)
 	e.panToCaret()
 	e.Invalidate()
-}
-
-func (e *Entry) clampCursor() {
-	if e.cursor < 0 {
-		e.cursor = 0
-	}
-	if e.cursor > len(e.runes) {
-		e.cursor = len(e.runes)
-	}
 }
 
 // wordTo moves the cursor to the word edge delta points at — the
@@ -622,26 +635,27 @@ func (e *Entry) HitTest(p Point) Widget {
 // ClickAt places the cursor (and the selection anchor) at the clicked
 // text position, dropping the composing display. The mapping runs
 // through the display shape and the pan — x + scrollX — so a click on
-// a half-visible rune lands on that rune. Masked modes keep the
-// cursor a logical rune index.
+// a half-visible rune lands on that rune, snapped to the start of its
+// grapheme cluster (#57). Masked modes keep the cursor a logical index.
 func (e *Entry) ClickAt(p Point) {
 	e.clearPreedit()
 	x := float64(p.X - e.bounds.X - 8 + e.scrollX)
-	e.cursor = e.face.Shape(e.displayText(), e.sizePx).CaretAt(x)
+	e.cursor = text.SnapCluster(e.runes, e.face.Shape(e.displayText(), e.sizePx).CaretAt(x))
 	e.anchor = e.cursor
 	e.Invalidate()
 }
 
 // DragMove extends the selection while the pointer drags; the anchor
 // stays where the press landed. A motion past either edge auto-pans
-// one step so the drag can reach text outside the viewport.
+// one step so the drag can reach text outside the viewport. Drag edges
+// snap to cluster starts like ClickAt.
 func (e *Entry) DragMove(p Point) {
 	e.clearPreedit()
 	inner := e.innerRect()
 	e.scrollX = edgePan(p.X, inner.X, inner.X+inner.W, e.scrollX)
 	e.clampPan()
 	x := float64(p.X - e.bounds.X - 8 + e.scrollX)
-	e.cursor = e.face.Shape(e.displayText(), e.sizePx).CaretAt(x)
+	e.cursor = text.SnapCluster(e.runes, e.face.Shape(e.displayText(), e.sizePx).CaretAt(x))
 	e.Invalidate()
 }
 
@@ -686,10 +700,14 @@ func (e *Entry) InsertRune(r rune) {
 // KeyAction implements KeyActionHandler for editing keys. Shift-extended
 // motion grows the selection from its anchor; ctrl turns arrows and
 // backspace/delete word-wise, alt+backspace aliasing ctrl+backspace.
-// While composing, the input method owns the text: the bare backspace
-// trims its last rune, and every other key — word-wise ones included —
-// drops the composing display and applies to the contents. A disabled
-// entry ignores keys outright; a read-only one keeps the motion and
+// The bare keys edit one grapheme cluster per press (#57), so emoji
+// and accented pairs edit whole. Interaction order: while composing,
+// the input method owns the text and the bare backspace unwinds the
+// composing display one rune first — that is compose state (#54),
+// orthogonal to committed text; after it, ctrl/alt make backspace and
+// delete word-wise over the cluster-refined words (#56); the bare keys
+// apply to the contents one cluster at a time. A disabled entry
+// ignores keys outright; a read-only one keeps the motion and
 // selection keys and drops only the mutating ones.
 func (e *Entry) KeyAction(a KeyAction, mods Mods) {
 	if !e.Enabled() {
