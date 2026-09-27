@@ -23,6 +23,10 @@ theme overrides (see [docs/architecture.md](docs/architecture.md),
 
 ## Feature matrix
 
+A capability-by-capability audit against relm4/GTK — including the
+deliberate non-goals and the honest, deferred gaps — lives in
+[docs/completeness.md](docs/completeness.md).
+
 ### Widgets
 
 | Widget | Status | Notes and caveats |
@@ -217,6 +221,7 @@ ends the loop. This exact program is kept compiling (and honest) as
 | [docs/threading.md](docs/threading.md) | the threading contract: `app.Invoke`, `app.Every`, goroutine rules, and the relm4 Component/Worker/Command/Factory mapping |
 | [docs/a11y.md](docs/a11y.md) | the accessibility decision and the recorded AT-SPI path |
 | [docs/icons.md](docs/icons.md) | icon theme lookup and symbolic recoloring |
+| [docs/completeness.md](docs/completeness.md) | the relm4/GTK coverage map: shipped, deliberate non-goals, known gaps |
 
 ## Demos
 

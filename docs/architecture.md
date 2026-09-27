@@ -6,7 +6,8 @@ were paid for by a real bug, and each cites where the code and its test
 pins live. Companion documents: [input-model.md](input-model.md) (the
 input contract), [application-model.md](application-model.md) (many
 windows, one process), [threading.md](threading.md) (the goroutine
-rules and `Invoke`/`Every`), [a11y.md](a11y.md), and [icons.md](icons.md).
+rules and `Invoke`/`Every`), [a11y.md](a11y.md), [icons.md](icons.md),
+and [completeness.md](completeness.md) (the relm4/GTK coverage map).
 
 ## Layers
 
@@ -279,3 +280,16 @@ out of prod builds with the rest of the trace facility.
   the derivation rules live in the theming section above.
 - **No actor model or component framework** — widgets are retained
   objects with plain Go callbacks (docs/application-model.md).
+- **No RTL/bidirectional text** — no wayle use case; revisit if ever
+  needed.
+- **No clipboard images** — wayle is text-only for clipboard;
+  internal/clipboard offers and accepts text mime types only.
+- **No window icons** — Wayland has no client window icons.
+- **No GtkCss analog** — rejected on cost; styling is scoped to the
+  typed `Theme` struct (theming section above), and per-widget
+  overrides stay out with it.
+- **No Paned (draggable splitter)** — no wayle layout needs it; file
+  it later if the settings UI wants one.
+- **No color picker, calendar, or font chooser** — application-dialog
+  territory gelm does not aim at. The full capability map lives in
+  [completeness.md](completeness.md).
