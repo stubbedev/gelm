@@ -19,6 +19,7 @@ import (
 	"github.com/unxed/xkb-go"
 
 	"github.com/stubbedev/gelm/internal/buffer"
+	"github.com/stubbedev/gelm/internal/compose"
 	"github.com/stubbedev/gelm/internal/debug"
 	"github.com/stubbedev/gelm/wlr"
 )
@@ -121,6 +122,9 @@ type Session struct {
 	tiPending           tiPending
 	primarySelectionMgr *wlr.ZwpPrimarySelectionDeviceManagerV1
 	primarySelectionDev *wlr.ZwpPrimarySelectionDeviceV1
+	// comp is the seat's dead-key compose state (compose.go); nil
+	// without a compose file, which disables compose entirely.
+	comp *compose.State
 
 	// Shell-integration protocols (toplevel.go, activation.go,
 	// idleinhibit.go, shortinhibit.go, xdgoutput.go), each seen
@@ -265,6 +269,7 @@ func Connect() (*Session, error) {
 		surfaceHandlers: make(map[*wl.Surface]SurfacePointerHandler),
 		dropHandlers:    make(map[*wl.Surface]SurfaceDropHandler),
 	}
+	s.loadCompose()
 
 	reg, err := d.GetRegistry()
 	if err != nil {
@@ -704,6 +709,7 @@ func (s *Session) keyboardLost() {
 	}
 	s.mods = 0
 	s.keyboardFocus = nil
+	s.comp.Cancel()
 }
 
 // SetSurfaceInput registers h as the receiver of pointer events
@@ -955,6 +961,9 @@ func (s *Session) HandleKeyboardEnter(ev wl.KeyboardEnterEvent) {
 // HandleKeyboardLeave implements wl.KeyboardLeaveHandler.
 func (s *Session) HandleKeyboardLeave(wl.KeyboardLeaveEvent) {
 	s.keyboardFocus = nil
+	// A sequence half-typed when focus moves must not commit into the
+	// next surface's widgets.
+	s.comp.Cancel()
 }
 
 // KeyboardFocus returns the surface currently holding keyboard input,

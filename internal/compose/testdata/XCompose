@@ -1,0 +1,6 @@
+# Fixture compose table for the gelm compose tests: an accent pair, a
+# spacing accent, and a three-key sequence. Deliberately tiny and
+# disjoint from any system table.
+<dead_acute> <e>     : "é"
+<dead_acute> <space> : "´"
+<s> <t> <r>          : "★"

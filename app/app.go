@@ -18,6 +18,7 @@ import (
 	"github.com/unxed/xkb-go"
 
 	"github.com/stubbedev/gelm/internal/clipboard"
+	"github.com/stubbedev/gelm/internal/compose"
 	"github.com/stubbedev/gelm/internal/debug"
 	"github.com/stubbedev/gelm/internal/surfx"
 	"github.com/stubbedev/gelm/internal/wlsession"
@@ -468,6 +469,27 @@ type keyTranslator interface {
 	KeySym(code uint32) xkb.Keysym
 }
 
+// composeFeeder is the dead-key compose half of the key translator:
+// the seat's compose state machine (internal/compose, wired by
+// wlsession). Translators without one — test stubs, or a machine with
+// no compose file — simply do not implement it, and routeKey's text
+// path runs unchanged.
+type composeFeeder interface {
+	ComposePending() bool
+	FeedCompose(sym xkb.Keysym) (compose.Result, string)
+	ComposeBackspace() bool
+}
+
+// feedCompose feeds one keysym to the translator's compose machine,
+// reporting none for translators without one.
+func feedCompose(sess keyTranslator, sym xkb.Keysym) (compose.Result, string) {
+	cf, ok := sess.(composeFeeder)
+	if !ok {
+		return compose.None, ""
+	}
+	return cf.FeedCompose(sym)
+}
+
 // primarySelectionSource is the clipboard-facing slice the
 // primary-selection behavior needs: read the current primary
 // selection and claim it with the triggering event's serial.
@@ -491,7 +513,10 @@ type primarySelectionSource interface {
 //     app-wide; a fired accelerator consumes the event;
 //  3. text routing: typed characters and remaining editing keysyms
 //     into the focused widget. Alt is never text; ctrl combos skip
-//     text and still act on editing keys;
+//     text and still act on editing keys. Dead-key compose sits at
+//     this edge: keysyms feeding a sequence reach nothing else, the
+//     committed string lands when the sequence completes (X11 style,
+//     no preedit), and backspace unwinds a level instead of deleting;
 //  4. extra (OnKey), which observes every press either way.
 func routeKey(sess keyTranslator, router *widget.Router, keycode uint32, mods wlsession.Mods, clip *clipboard.Clipboard, accels *accelTable, extra func(*widget.Router, uint32, wlsession.Mods)) {
 	sym := sess.KeySym(keycode)
@@ -552,7 +577,17 @@ func routeKey(sess keyTranslator, router *widget.Router, keycode uint32, mods wl
 	}
 	if !handled {
 		if !isCtrl && mods&wlsession.ModAlt == 0 {
-			if txt := sess.KeyUTF8(keycode); txt != "" {
+			// Compose consumes backspace ONLY while a sequence is in
+			// flight (one level per press); every other time backspace
+			// falls through to the widget's delete action below.
+			if cf, ok := sess.(composeFeeder); ok && sym == xkb.KeyBackSpace && cf.ComposePending() {
+				cf.ComposeBackspace()
+			} else if res, text := feedCompose(sess, sym); res == compose.Pending {
+				// Mid-sequence: nothing is emitted yet. Compose commits
+				// on completion only, like most X11 apps.
+			} else if res == compose.Done {
+				insertText(router, text)
+			} else if txt := sess.KeyUTF8(keycode); txt != "" {
 				if r, _ := utf8.DecodeRuneInString(txt); r != utf8.RuneError && r != 0 {
 					router.Type(r)
 				}
@@ -604,8 +639,7 @@ func focusedSelection(router *widget.Router) (string, bool) {
 }
 
 // pasteSelection inserts the clipboard text at the focused widget's
-// cursor — one Insert, so the paste lands as one undo entry. Widgets
-// that cannot take a bulk insert fall back to typed runes.
+// cursor.
 //
 // Every error rejects the paste: besides an empty selection this
 // covers a hostile peer — a payload past xfer.MaxPayload, or one that
@@ -617,6 +651,13 @@ func pasteSelection(router *widget.Router, clip *clipboard.Clipboard) {
 	if err != nil {
 		return
 	}
+	insertText(router, text)
+}
+
+// insertText puts text at the focused widget's cursor — one Insert, so
+// a paste or a multi-rune compose result lands as one undo entry.
+// Widgets that cannot take a bulk insert fall back to typed runes.
+func insertText(router *widget.Router, text string) {
 	if ins, ok := router.Focused().(widget.TextInserter); ok {
 		ins.Insert(text)
 		return
