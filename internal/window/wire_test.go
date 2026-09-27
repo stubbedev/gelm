@@ -7,12 +7,13 @@ package window
 import (
 	"encoding/binary"
 	"io"
-	"net"
 	"testing"
 	"time"
 
 	"github.com/neurlang/wayland/wl"
 	"github.com/neurlang/wayland/xdg"
+
+	"github.com/stubbedev/gelm/internal/headlesstest"
 )
 
 // xdg_toplevel request opcodes the tests match on.
@@ -40,14 +41,8 @@ type wireFrame struct {
 // endianness-native, so the decoder is too.
 func startWireServer(t *testing.T) <-chan wireFrame {
 	t.Helper()
-	dir := t.TempDir()
-	ln, err := net.ListenUnix("unix", &net.UnixAddr{Name: dir + "/wayland-test", Net: "unix"})
-	if err != nil {
-		t.Fatal(err)
-	}
+	ln, _ := headlesstest.LoopbackDisplay(t, "wayland-test")
 	t.Cleanup(func() { ln.Close() })
-	t.Setenv("XDG_RUNTIME_DIR", dir)
-	t.Setenv("WAYLAND_DISPLAY", "wayland-test")
 
 	frames := make(chan wireFrame, 64)
 	go func() {

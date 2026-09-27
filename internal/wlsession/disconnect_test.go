@@ -4,14 +4,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
-	"path/filepath"
 	"strings"
 	"syscall"
 	"testing"
 	"time"
 
 	"github.com/neurlang/wayland/wl"
+
+	"github.com/stubbedev/gelm/internal/headlesstest"
 )
 
 // deadSocketSession returns a Session wired to a real unix socket whose
@@ -19,14 +19,7 @@ import (
 // compositor needed. The caller must Close the session.
 func deadSocketSession(t *testing.T) *Session {
 	t.Helper()
-	dir := t.TempDir()
-	t.Setenv("XDG_RUNTIME_DIR", dir)
-	t.Setenv("WAYLAND_DISPLAY", "wayland-dead")
-	addr := filepath.Join(dir, "wayland-dead")
-	ln, err := net.ListenUnix("unix", &net.UnixAddr{Name: addr, Net: "unix"})
-	if err != nil {
-		t.Fatal(err)
-	}
+	ln, _ := headlesstest.LoopbackDisplay(t, "wayland-dead")
 	d, err := wl.Connect("")
 	if err != nil {
 		ln.Close()

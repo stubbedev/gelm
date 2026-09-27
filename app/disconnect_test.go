@@ -8,9 +8,7 @@ package app
 import (
 	"errors"
 	"fmt"
-	"net"
 	"os"
-	"path/filepath"
 	"runtime"
 	"strings"
 	"syscall"
@@ -21,6 +19,7 @@ import (
 
 	"github.com/stubbedev/gelm/internal/anim"
 	"github.com/stubbedev/gelm/internal/buffer"
+	"github.com/stubbedev/gelm/internal/headlesstest"
 	"github.com/stubbedev/gelm/internal/wlsession"
 	"github.com/stubbedev/gelm/widget"
 )
@@ -30,14 +29,7 @@ import (
 // state a SIGKILLed compositor leaves. The caller must Close it.
 func deadPeerSession(t *testing.T) (*wlsession.Session, string) {
 	t.Helper()
-	dir := t.TempDir()
-	t.Setenv("XDG_RUNTIME_DIR", dir)
-	t.Setenv("WAYLAND_DISPLAY", "wayland-dead")
-	sock := filepath.Join(dir, "wayland-dead")
-	ln, err := net.ListenUnix("unix", &net.UnixAddr{Name: sock, Net: "unix"})
-	if err != nil {
-		t.Fatal(err)
-	}
+	ln, sock := headlesstest.LoopbackDisplay(t, "wayland-dead")
 	d, err := wl.Connect("")
 	if err != nil {
 		ln.Close()
