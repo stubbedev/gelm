@@ -8,6 +8,8 @@ import (
 	"github.com/neurlang/wayland/wl"
 	"github.com/neurlang/wayland/wlcursor"
 	"github.com/neurlang/wayland/xdg"
+
+	"github.com/stubbedev/gelm/internal/window"
 )
 
 // resizer is the interactive-resize slice of a toplevel host; layer
@@ -28,6 +30,12 @@ type sizeLimiter interface {
 // keeps its own edge handles passive.
 type serverDecorated interface {
 	ServerDecorated() bool
+}
+
+// stateReporter exposes a host's compositor-confirmed toplevel state;
+// layer surfaces are compositor-sized and never implement it.
+type stateReporter interface {
+	State() window.State
 }
 
 // resizeBorder is how many logical pixels along each edge act as a
@@ -86,11 +94,19 @@ func resizeCursor(edges uint32) string {
 }
 
 // resizeEdgeAt is surfaceInput's edge probe: the resize_edge bits under
-// the pointer, 0 when the point is interior or the window is
-// server-decorated (the compositor owns the handles then).
+// the pointer, 0 when the point is interior. A server-decorated window
+// reports none (the compositor owns the handles), and so does a
+// compositor-confirmed maximized or fullscreen window: a window filling
+// the screen edge-to-edge has no edges to grab, whether the compositor
+// kept its decorations or dropped them in fullscreen.
 func (w *hostWindow) resizeEdgeAt(x, y float64) uint32 {
 	if w.decorated != nil && w.decorated() {
 		return 0
+	}
+	if w.state != nil {
+		if st := w.state(); st.Maximized || st.Fullscreen {
+			return 0
+		}
 	}
 	bw, bh := w.layoutSize()
 	return resizeEdge(bw, bh, x, y)

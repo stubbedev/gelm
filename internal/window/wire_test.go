@@ -17,9 +17,14 @@ import (
 
 // xdg_toplevel request opcodes the tests match on.
 const (
-	opResize     = 6
-	opSetMaxSize = 7
-	opSetMinSize = 8
+	opResize          = 6
+	opSetMaxSize      = 7
+	opSetMinSize      = 8
+	opSetMaximized    = 9
+	opUnsetMaximized  = 10
+	opSetFullscreen   = 11
+	opUnsetFullscreen = 12
+	opSetMinimized    = 13
 )
 
 // wireFrame is one request as it hit the wire: object id, opcode, and
@@ -259,6 +264,87 @@ func TestConfigureDispatchUpdatesSize(t *testing.T) {
 	if gw, gh := w.Size(); gw != 640 || gh != 400 {
 		t.Errorf("zero configure clobbered size: %dx%d", gw, gh)
 	}
+}
+
+// TestConfigureDispatchParsesStates drives a configure with a state
+// array through the real proxy dispatch path - the wire encoding a
+// compositor sends - and pins that the array decodes into the
+// confirmed state set alongside the size.
+func TestConfigureDispatchParsesStates(t *testing.T) {
+	startWireServer(t)
+	w := newWireWindow(t, Config{Title: "t", AppID: "t"})
+
+	data := make([]byte, 20)
+	binary.NativeEndian.PutUint32(data[0:4], 800)
+	binary.NativeEndian.PutUint32(data[4:8], 600)
+	// states: array of 32-bit values, byte length first.
+	binary.NativeEndian.PutUint32(data[8:12], 8)
+	binary.NativeEndian.PutUint32(data[12:16], xdg.ToplevelStateActivated)
+	binary.NativeEndian.PutUint32(data[16:20], xdg.ToplevelStateMaximized)
+	w.Toplevel.Dispatch(&wl.Event{Opcode: 0, Data: data})
+
+	s := w.State()
+	if !s.Activated || !s.Maximized || s.Fullscreen {
+		t.Errorf("state = %s, want activated+maximized", s)
+	}
+	if gw, gh := w.Size(); gw != 800 || gh != 600 {
+		t.Errorf("size = %dx%d, want 800x600", gw, gh)
+	}
+}
+
+// TestWindowStateRequests pins the state requests by their bytes: the
+// set/unset pairs go out as the protocol numbers them, and
+// set_fullscreen carries a nil output (compositor's choice).
+func TestWindowStateRequests(t *testing.T) {
+	frames := startWireServer(t)
+	w := newWireWindow(t, Config{Title: "t", AppID: "t"})
+	drain := func() {
+		for {
+			select {
+			case <-frames:
+			default:
+				return
+			}
+		}
+	}
+	drain()
+
+	requests := []struct {
+		name    string
+		opcode  uint32
+		send    func() error
+		words   int
+		payload int32
+	}{
+		{"set_maximized", opSetMaximized, w.Maximize, 0, 0},
+		{"unset_maximized", opUnsetMaximized, w.Unmaximize, 0, 0},
+		{"set_fullscreen", opSetFullscreen, func() error { return w.Fullscreen(nil) }, 1, 0},
+		{"unset_fullscreen", opUnsetFullscreen, w.Unfullscreen, 0, 0},
+		{"set_minimized", opSetMinimized, w.SetMinimized, 0, 0},
+	}
+	for _, req := range requests {
+		t.Run(req.name+" carries the protocol opcode", func(t *testing.T) {
+			drain()
+			if err := req.send(); err != nil {
+				t.Fatal(err)
+			}
+			f := waitForFrame(t, frames, req.name, func(f wireFrame) bool {
+				return f.opcode == req.opcode
+			})
+			if len(f.body) != 4*req.words {
+				t.Fatalf("%s payload %v, want %d word(s)", req.name, f.body, req.words)
+			}
+			if req.words == 1 && word(f.body, 0) != req.payload {
+				t.Errorf("%s output = %d, want %d (nil: compositor picks)", req.name, word(f.body, 0), req.payload)
+			}
+		})
+	}
+
+	t.Run("the requests never touch the reported state", func(t *testing.T) {
+		if s := w.State(); s != (State{}) {
+			t.Errorf("state = %s after requests, want empty until a configure confirms", s)
+		}
+	})
 }
 
 // TestProtocolCloseRoutesThroughVeto pins the veto on the actual

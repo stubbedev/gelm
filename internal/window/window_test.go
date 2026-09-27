@@ -49,6 +49,136 @@ func TestConfigureHandshake(t *testing.T) {
 	})
 }
 
+// TestConfigureStateTracking pins the confirmed-state model: the state
+// array of each configure is the truth, requests are only hints. A
+// configure without a state the client asked for reports the request as
+// refused - what the compositor confirms wins, never what we asked for.
+func TestConfigureStateTracking(t *testing.T) {
+	t.Run("the state array decodes into the confirmed set", func(t *testing.T) {
+		w := &Window{}
+		w.HandleToplevelConfigure(xdg.ToplevelConfigureEvent{
+			Width: 800, Height: 600,
+			States: []int32{xdg.ToplevelStateActivated, xdg.ToplevelStateMaximized},
+		})
+		s := w.State()
+		if !s.Activated || !s.Maximized || s.Fullscreen {
+			t.Errorf("state = %s, want activated+maximized", s)
+		}
+	})
+
+	t.Run("the tiled and suspended bits decode", func(t *testing.T) {
+		w := &Window{}
+		w.HandleToplevelConfigure(xdg.ToplevelConfigureEvent{
+			States: []int32{
+				xdg.ToplevelStateTiledLeft, xdg.ToplevelStateTiledRight,
+				xdg.ToplevelStateTiledTop, xdg.ToplevelStateTiledBottom,
+				xdg.ToplevelStateSuspended, xdg.ToplevelStateResizing,
+				99, // unknown: newer compositors carry states we do not know
+			},
+		})
+		s := w.State()
+		if !s.TiledLeft || !s.TiledRight || !s.TiledTop || !s.TiledBottom || !s.Suspended || !s.Resizing {
+			t.Errorf("state = %s, want the tiled, suspended, and resizing bits", s)
+		}
+	})
+
+	t.Run("each configure replaces the state wholesale", func(t *testing.T) {
+		w := &Window{}
+		w.HandleToplevelConfigure(xdg.ToplevelConfigureEvent{
+			States: []int32{xdg.ToplevelStateMaximized},
+		})
+		w.HandleToplevelConfigure(xdg.ToplevelConfigureEvent{
+			States: []int32{xdg.ToplevelStateFullscreen},
+		})
+		s := w.State()
+		if s.Maximized || !s.Fullscreen {
+			t.Errorf("state = %s, want fullscreen only: a stale state must not survive", s)
+		}
+	})
+
+	t.Run("a stateless configure reports the request refused", func(t *testing.T) {
+		w := &Window{}
+		if err := w.Maximize(); err != nil {
+			t.Fatal(err)
+		}
+		w.HandleToplevelConfigure(xdg.ToplevelConfigureEvent{
+			Width: 800, Height: 600,
+		}) // no states: the compositor said no
+		if w.State() != (State{}) {
+			t.Errorf("state = %s, want empty: the confirmed set never carries a request", w.State())
+		}
+	})
+
+	t.Run("a configure confirms the state only after the request", func(t *testing.T) {
+		w := &Window{}
+		if err := w.Maximize(); err != nil {
+			t.Fatal(err)
+		}
+		if w.State().Maximized {
+			t.Fatal("the request itself leaked into the reported state")
+		}
+		w.HandleToplevelConfigure(xdg.ToplevelConfigureEvent{
+			States: []int32{xdg.ToplevelStateMaximized},
+		})
+		if !w.State().Maximized {
+			t.Errorf("state = %s, want the compositor-confirmed maximized", w.State())
+		}
+	})
+
+	t.Run("an empty configure withdraws a previously confirmed state", func(t *testing.T) {
+		w := &Window{}
+		w.HandleToplevelConfigure(xdg.ToplevelConfigureEvent{
+			States: []int32{xdg.ToplevelStateFullscreen},
+		})
+		w.HandleToplevelConfigure(xdg.ToplevelConfigureEvent{})
+		if w.State().Fullscreen {
+			t.Errorf("state = %s, want fullscreen withdrawn by the empty configure", w.State())
+		}
+	})
+
+	t.Run("zero size axes still keep the size across state updates", func(t *testing.T) {
+		w := &Window{}
+		w.HandleToplevelConfigure(xdg.ToplevelConfigureEvent{Width: 320, Height: 200})
+		w.HandleToplevelConfigure(xdg.ToplevelConfigureEvent{
+			States: []int32{xdg.ToplevelStateFullscreen},
+		})
+		if gw, gh := w.Size(); gw != 320 || gh != 200 {
+			t.Errorf("size = %dx%d, want the previous 320x200", gw, gh)
+		}
+	})
+
+	t.Run("the state renders in a fixed order", func(t *testing.T) {
+		got := parseStates([]int32{
+			xdg.ToplevelStateTiledBottom, xdg.ToplevelStateFullscreen,
+			xdg.ToplevelStateActivated, xdg.ToplevelStateMaximized,
+		}).String()
+		if got != "activated+maximized+fullscreen+tiled-bottom" {
+			t.Errorf("String = %q, want activated+maximized+fullscreen+tiled-bottom", got)
+		}
+		if s := (State{}).String(); s != "normal" {
+			t.Errorf("empty String = %q, want normal", s)
+		}
+	})
+}
+
+// TestStateRequestsOnWirelessWindow pins the wire-free guards: a
+// window without a wire records the request as a no-op instead of
+// panicking, exactly like Resize and the size limits.
+func TestStateRequestsOnWirelessWindow(t *testing.T) {
+	w := &Window{}
+	for name, fn := range map[string]func() error{
+		"maximize":      w.Maximize,
+		"unmaximize":    w.Unmaximize,
+		"fullscreen":    func() error { return w.Fullscreen(nil) },
+		"unfullscreen":  w.Unfullscreen,
+		"set_minimized": w.SetMinimized,
+	} {
+		if err := fn(); err != nil {
+			t.Errorf("wire-free %s = %v, want nil", name, err)
+		}
+	}
+}
+
 func TestEnsureUsable(t *testing.T) {
 	t.Run("fresh window is not usable", func(t *testing.T) {
 		if err := (&Window{}).EnsureUsable(); !errors.Is(err, ErrNotConfigured) {

@@ -39,21 +39,27 @@ func ModuleDir() (string, error) {
 // (its trace calls are compiled out otherwise) into dir/gelm-hello and
 // returns the binary path.
 func BuildShowcase(dir string) (string, error) {
+	return BuildClient(dir, "./cmd/gelm-hello", "gelm-hello")
+}
+
+// BuildClient compiles one gelm command package with the gelmdebug tag
+// (trace calls are compiled out otherwise) into dir/bin and returns the
+// binary path.
+func BuildClient(dir, pkg, bin string) (string, error) {
 	root, err := ModuleDir()
 	if err != nil {
 		return "", err
 	}
-	bin := filepath.Join(dir, "gelm-hello")
 	// goTool and dir come from the module tree this test binary runs in,
 	// not from any untrusted source.
-	cmd := exec.Command(goTool(), "build", "-tags", "gelmdebug", "-o", bin, "./cmd/gelm-hello") //nolint:gosec // fixed subcommand, module-local paths
+	cmd := exec.Command(goTool(), "build", "-tags", "gelmdebug", "-o", filepath.Join(dir, bin), pkg) //nolint:gosec // fixed subcommand, module-local paths
 	cmd.Dir = root
 	cmd.Env = append(os.Environ(), "CGO_ENABLED=0")
 	out, err := runWithTimeout(cmd, buildTimeout)
 	if err != nil {
-		return "", fmt.Errorf("build showcase: %w\n%s", err, out)
+		return "", fmt.Errorf("build %s: %w\n%s", pkg, err, out)
 	}
-	return bin, nil
+	return filepath.Join(dir, bin), nil
 }
 
 // goTool prefers the go in PATH; GOROOT-built test binaries (go test
@@ -84,6 +90,14 @@ type Client struct {
 // frame, seat, wire and demo tracing on, and returns the handle. The
 // caller must Stop it (or Wait it after a close request).
 func (e *Env) StartShowcase(bin, name string) (*Client, error) {
+	return e.StartClient(bin, name, "input,frame,demo,seat,wire")
+}
+
+// StartClient runs a built client binary inside the env with the given
+// GOELM_DEBUG categories, its stdout and stderr going to a log file a
+// LogWatcher can follow. The caller must Stop it (or Wait it after a
+// close request).
+func (e *Env) StartClient(bin, name, categories string) (*Client, error) {
 	logPath := filepath.Join(e.Dir, name+".log")
 	// The path is the harness's own runtime dir, built from the test's
 	// name; nothing user-controlled reaches it.
@@ -97,7 +111,7 @@ func (e *Env) StartShowcase(bin, name string) (*Client, error) {
 	cmd.Env = privateEnv(
 		"WAYLAND_DISPLAY="+e.Display,
 		"XDG_RUNTIME_DIR="+e.Dir,
-		"GOELM_DEBUG=input,frame,demo,seat,wire",
+		"GOELM_DEBUG="+categories,
 	)
 	if err := cmd.Start(); err != nil {
 		_ = log.Close()

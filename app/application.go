@@ -243,7 +243,7 @@ func (a *Application) newWindowWindow(cfg WindowConfig, animKind surfx.Kind) (*W
 	if scale == 0 {
 		scale = 1
 	}
-	w := &Window{app: a}
+	w := &Window{app: a, win: win}
 	hw := a.newWindow(win, scale, cfg.Root, windowHooks{
 		background: cfg.Background,
 		opaque:     opaqueFor(cfg.Background, cfg.Opaque),
@@ -707,6 +707,62 @@ func (w *Window) SetMaxSize(width, height uint32) {
 	if w.win != nil {
 		_ = w.win.SetMaxSize(width, height)
 	}
+}
+
+// Maximize asks the compositor to maximize the window. Like every
+// state request it is a hint: the compositor may refuse it, and the
+// visible truth is whatever a later configure confirms - read that
+// through State, never assume the request landed. The confirmed
+// maximize usually arrives as an output-sized configure, which rides
+// the same relayout path as any other resize.
+func (w *Window) Maximize() {
+	if w.win != nil {
+		// A failed request means the connection is dying; the next
+		// frame fails with the same cause.
+		_ = w.win.Maximize()
+	}
+}
+
+// Unmaximize asks the compositor to restore the window. See Maximize.
+func (w *Window) Unmaximize() {
+	if w.win != nil {
+		_ = w.win.Unmaximize()
+	}
+}
+
+// Fullscreen asks the compositor to show the window fullscreen; the
+// compositor picks the output. See Maximize.
+func (w *Window) Fullscreen() {
+	if w.win != nil {
+		_ = w.win.Fullscreen(nil)
+	}
+}
+
+// Unfullscreen asks the compositor to leave fullscreen. See Maximize.
+func (w *Window) Unfullscreen() {
+	if w.win != nil {
+		_ = w.win.Unfullscreen()
+	}
+}
+
+// SetMinimized asks the compositor to minimize the window. The
+// protocol reports no state for a minimized window, so State keeps
+// what was confirmed before; treat the window as invisible from here
+// on.
+func (w *Window) SetMinimized() {
+	if w.win != nil {
+		_ = w.win.SetMinimized()
+	}
+}
+
+// State returns the compositor-confirmed window state: the state array
+// of the last configure, not the set of requests the client sent. A
+// refused request never shows up here.
+func (w *Window) State() window.State {
+	if w.win == nil {
+		return window.State{}
+	}
+	return w.win.State()
 }
 
 // LayerWindow is the application's handle on one layer surface.

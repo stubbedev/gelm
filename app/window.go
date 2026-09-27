@@ -34,6 +34,7 @@ import (
 	"github.com/stubbedev/gelm/internal/inspect"
 	"github.com/stubbedev/gelm/internal/scale"
 	"github.com/stubbedev/gelm/internal/surfx"
+	"github.com/stubbedev/gelm/internal/window"
 	"github.com/stubbedev/gelm/internal/wlsession"
 	"github.com/stubbedev/gelm/render"
 	"github.com/stubbedev/gelm/widget"
@@ -107,6 +108,10 @@ type hostWindow struct {
 	// decorated reports compositor-owned decorations, which disables
 	// the client's own edge handles; nil means never decorated.
 	decorated func() bool
+	// state reports the compositor-confirmed toplevel state, so the
+	// edge handles also go passive while maximized/fullscreen; nil for
+	// hosts without states (layer surfaces).
+	state func() window.State
 	// inspector is the window's debug overlay (internal/inspect) the
 	// tree wraps in; nil only in wire-free tests that build hostWindow
 	// by hand. The app toggles it through setInspect.
@@ -207,6 +212,9 @@ func newHostWindow(sess *wlsession.Session, host Host, initialScale int, root wi
 	}
 	if sd, ok := host.(serverDecorated); ok {
 		w.decorated = sd.ServerDecorated
+	}
+	if st, ok := host.(stateReporter); ok {
+		w.state = st.State
 	}
 	w.lastW, w.lastH = w.layoutSize()
 	w.newBuffer = w.create

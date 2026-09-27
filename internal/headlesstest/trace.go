@@ -105,20 +105,80 @@ func (w *LogWatcher) Wait(category, substr string, timeout time.Duration) (Trace
 	}
 }
 
+// WaitAll is Wait for a set: it waits until each substr has arrived
+// (one trace per substr, in ANY order) since this call began. State
+// transitions produce two racing traces - the confirmed-state line and
+// the relayout draw - and a sequential Wait would consume whichever
+// came first, starving the other. Unconsumed traces left over from
+// earlier waits are discarded at the start, so a phase can only be
+// satisfied by its own window.
+func (w *LogWatcher) WaitAll(category string, timeout time.Duration, substrs ...string) error {
+	w.mu.Lock()
+	w.pending = nil
+	w.mu.Unlock()
+	deadline := time.Now().Add(timeout)
+	pending := append([]string(nil), substrs...)
+	scanned := 0
+	for {
+		w.readNew()
+		w.mu.Lock()
+		for _, tr := range w.seen[scanned:] {
+			scanned++
+			if category != "" && tr.Category != category {
+				continue
+			}
+			for i, p := range pending {
+				if strings.Contains(tr.Message, p) {
+					pending = append(pending[:i], pending[i+1:]...)
+					break
+				}
+			}
+		}
+		w.mu.Unlock()
+		if len(pending) == 0 {
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("timeout (%s) waiting for %v; log tail:\n%s",
+				timeout, pending, w.Tail(25))
+		}
+		time.Sleep(pollInterval)
+	}
+}
+
 // step pulls newly complete lines into the pending queue, then serves
 // the first match from it.
 func (w *LogWatcher) step(category, substr string) (Trace, bool) {
+	w.readNew()
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	for i, pt := range w.pending {
+		if category != "" && pt.tr.Category != category {
+			continue
+		}
+		if strings.Contains(pt.tr.Message, substr) {
+			w.pending = w.pending[i+1:]
+			return pt.tr, true
+		}
+	}
+	return Trace{}, false
+}
+
+// readNew reads newly complete lines of the log into seen and pending.
+// Wait reads only the first match; WaitAll scans everything it has not
+// examined yet, so the reading half lives here.
+func (w *LogWatcher) readNew() {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
 	f, err := os.Open(w.path)
 	if err != nil {
-		return Trace{}, false
+		return
 	}
 	defer f.Close()
 
 	if _, err := f.Seek(w.readPos, 0); err != nil {
-		return Trace{}, false
+		return
 	}
 	// Read whole lines with their exact file extents: only complete
 	// lines are consumed (a writer mid-line stays for the next poll).
@@ -143,16 +203,6 @@ func (w *LogWatcher) step(category, substr string) (Trace, bool) {
 		w.seen = append(w.seen, tr)
 		w.pending = append(w.pending, pendingTrace{tr: tr, end: w.readPos})
 	}
-	for i, pt := range w.pending {
-		if category != "" && pt.tr.Category != category {
-			continue
-		}
-		if strings.Contains(pt.tr.Message, substr) {
-			w.pending = w.pending[i+1:]
-			return pt.tr, true
-		}
-	}
-	return Trace{}, false
 }
 
 // parseLine turns one log line into a Trace; non-trace lines keep the
