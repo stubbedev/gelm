@@ -51,8 +51,24 @@ type Output struct {
 	// output publish it with wl_surface.set_buffer_transform.
 	Transform int32
 
+	// Name and Description are the output's stable xdg-output identity
+	// (DP-1, HDMI-A-1) — what compositor configs are written against.
+	// Empty when the compositor lacks xdg_output or advertises it
+	// below version 2, in which case outputs are only identifiable by
+	// registry order.
+	Name, Description string
+
+	// LogicalX/Y and LogicalW/H are the output's position and size in
+	// the global compositor space, as xdg_output.logical_position and
+	// logical_size report them.
+	LogicalX, LogicalY, LogicalW, LogicalH int32
+
 	// name is the registry global name, for hotplug removal.
 	name uint32
+
+	// xdg is the output's xdg_output object (see xdgoutput.go), nil
+	// until the manager is bound or the object is created.
+	xdg xdgOutputAPI
 }
 
 // Mods is a bitmask of held keyboard modifiers, mirroring the low bits
@@ -102,6 +118,18 @@ type Session struct {
 	tiPending           tiPending
 	primarySelectionMgr *wlr.ZwpPrimarySelectionDeviceManagerV1
 	primarySelectionDev *wlr.ZwpPrimarySelectionDeviceV1
+
+	// Shell-integration protocols (toplevel.go, activation.go,
+	// idleinhibit.go, shortinhibit.go, xdgoutput.go), each seen
+	// through a narrow interface so tests can substitute recorders;
+	// nil on the no-protocol path.
+	foreignToplevelMgr  foreignToplevelManagerAPI
+	toplevels           []*Toplevel
+	activation          activationAPI
+	activationTokens    []*activationToken
+	idleInhibitMgr      idleInhibitAPI
+	shortcutsInhibitMgr shortcutsInhibitAPI
+	xdgOutputMgr        xdgOutputMaker
 
 	pointerEnterSerial uint32
 
@@ -156,6 +184,25 @@ type Session struct {
 	// surface; committed state is invalidated and must be re-pushed
 	// for whichever surface the input method now targets.
 	OnIMEFocus func()
+
+	// OnToplevelAdded fires when the compositor advertises a foreign
+	// toplevel — including our own windows; OnToplevelRemoved fires
+	// when one closes, OnToplevelUpdated when a batch (title, app-id,
+	// state) applied. Nil without the foreign-toplevel protocol or
+	// when no host consumes the events.
+	OnToplevelAdded   func(*Toplevel)
+	OnToplevelRemoved func(*Toplevel)
+	OnToplevelUpdated func(*Toplevel)
+
+	// OnActivationToken fires when a token requested through
+	// RequestActivationToken is issued; the string is what a spawned
+	// app expects in XDG_ACTIVATION_TOKEN.
+	OnActivationToken func(token string)
+
+	// OnOutputIdentity fires when an output's stable xdg-output name
+	// arrives or changes — the point where an `output "DP-1"` config
+	// section can be matched to a hotplugged monitor.
+	OnOutputIdentity func(*Output)
 }
 
 // SurfacePointerHandler receives the pointer events whose compositor
@@ -288,6 +335,7 @@ func (s *Session) HandleRegistryGlobal(ev wl.RegistryGlobalEvent) {
 		out := &Output{WL: wlo, Scale: 1, name: ev.Name}
 		wlclient.OutputAddListener(wlo, &outputEvents{sess: s, out: out})
 		s.trackOutput(out)
+		s.ensureXdgOutputs()
 	case "zwlr_layer_shell_v1":
 		ctx, _ := wl.GetUserData[wl.Context](s.registry)
 		shell := wlr.NewZwlrLayerShellV1(ctx)
@@ -329,6 +377,16 @@ func (s *Session) HandleRegistryGlobal(ev wl.RegistryGlobalEvent) {
 		s.bindTextInputManager(ev)
 	case "zwp_primary_selection_device_manager_v1":
 		s.bindPrimarySelectionManager(ev)
+	case "zwlr_foreign_toplevel_manager_v1":
+		s.bindForeignToplevelManager(ev)
+	case "xdg_activation_v1":
+		s.bindActivation(ev)
+	case "zwp_idle_inhibit_manager_v1":
+		s.bindIdleInhibitManager(ev)
+	case "zwp_keyboard_shortcuts_inhibit_manager_v1":
+		s.bindShortcutsInhibitManager(ev)
+	case "zxdg_output_manager_v1":
+		s.bindXdgOutputManager(ev)
 	}
 }
 
