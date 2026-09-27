@@ -155,6 +155,7 @@ func (e *Entry) IMEPreedit(text string, cursorBegin, cursorEnd int) {
 	e.peText = []rune(text)
 	e.peAt = e.cursor
 	e.peCur = imePreeditCaret(text, cursorBegin, cursorEnd)
+	e.panToCaret()
 }
 
 // IMEDelete implements IMEClient: input-method deletion of up to
@@ -169,6 +170,7 @@ func (e *Entry) IMEDelete(before, after int) {
 	}
 	e.runes = append(e.runes[:start], e.runes[end:]...)
 	e.cursor, e.anchor = start, start
+	e.panToCaret()
 	e.hist.record(snap, e.snapshot())
 	e.changed()
 }
@@ -188,13 +190,14 @@ func (e *Entry) IMESurrounding() (string, int, int) {
 }
 
 // IMECursorRect implements IMETracker: the caret band in root
-// coordinates, for the input method's candidate window.
+// coordinates, for the input method's candidate window. Pan-aware, so
+// the window tracks the caret inside a panning field.
 func (e *Entry) IMECursorRect() render.Rect {
 	caret := e.caretRune()
 	if caret < 0 {
 		caret = e.peAt + len(e.peText)
 	}
-	x := 8 + int(e.face.Shape(e.displayText(), e.sizePx).CaretX(caret)+0.5)
+	x := 8 + int(e.face.Shape(e.displayText(), e.sizePx).CaretX(caret)+0.5) - e.scrollX
 	return render.Rect{X: e.bounds.X + x, Y: e.bounds.Y + 6, W: 2, H: max(e.bounds.H-12, 0)}
 }
 
@@ -269,6 +272,7 @@ func (t *TextArea) IMEPreedit(text string, cursorBegin, cursorEnd int) {
 	t.peCur = imePreeditCaret(text, cursorBegin, cursorEnd)
 	t.hasPref = false
 	t.rowsValid = false
+	t.panToCaret()
 }
 
 // IMEDelete implements IMEClient: input-method deletion of up to
@@ -328,6 +332,7 @@ func (t *TextArea) setDoc(s string, at int) {
 	t.cursor, t.anchor = t.clamp(p), t.clamp(p)
 	t.hasPref = false
 	t.rowsValid = false
+	t.panToCaret()
 	t.InvalidateLayout()
 }
 
@@ -348,7 +353,8 @@ func (t *TextArea) byteOffset(p pos) int {
 }
 
 // IMECursorRect implements IMETracker: the caret rectangle in root
-// coordinates, for the input method's candidate window.
+// coordinates, for the input method's candidate window. Pan-aware so
+// the window tracks the caret on a panned unwrapped line.
 func (t *TextArea) IMECursorRect() render.Rect {
 	t.ensureRows(t.wrapWidth())
 	caret := t.caretPos()
@@ -357,7 +363,7 @@ func (t *TextArea) IMECursorRect() render.Rect {
 	}
 	row := t.rowOf(caret)
 	r := t.rows[row]
-	x := 8 + int(t.spanWidthDisp(r.line, r.startCol, caret.col)+0.5)
+	x := 8 + int(t.spanWidthDisp(r.line, r.startCol, caret.col)+0.5) - t.linePan(r.line)
 	return render.Rect{
 		X: t.bounds.X + x,
 		Y: t.bounds.Y + 6 + row*t.lineHeight(),
