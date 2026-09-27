@@ -102,3 +102,16 @@ func (t *Theme) or(a Color, b Color) Color {
 func (t *Theme) resolve(a Color, role Color) Color {
 	return t.or(a, role)
 }
+
+// scaleAlpha fades a premultiplied color toward transparent by p in
+// [0, 1]. Premultiplied channels scale linearly, so multiplying the
+// packed value fades alpha, red, green, and blue together.
+func scaleAlpha(c Color, p float64) Color {
+	if p >= 1 {
+		return c
+	}
+	if p <= 0 {
+		return 0
+	}
+	return Color(uint32(float64(c) * p))
+}

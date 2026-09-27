@@ -274,14 +274,22 @@ func Next() (time.Time, bool) {
 	return next, found
 }
 
-// Tick advances every running tween to now, calling fn with eased
-// progress, and drops finished or canceled ones. It reports whether
-// any callback ran, so the caller knows a frame is owed. Call it once
-// per loop pass before painting.
+// Tick advances every running tween to now and drops finished or
+// canceled ones. Callbacks run after the pass settles, with the lock
+// released, so a callback may Start, Play, or Cancel freely — a
+// landing tick that tears down or relaunches is the intended shape.
+// A callback that cancels its own group still stops that group's
+// later steps in the same tick. It reports whether any callback ran,
+// so the caller knows a frame is owed. Call it once per loop pass
+// before painting.
 func Tick(now time.Time) bool {
+	type firing struct {
+		fn    func(float64)
+		eased float64
+		grp   *group
+	}
 	mu.Lock()
-	defer mu.Unlock()
-	ran := false
+	var due []firing
 	keep := active[:0]
 	for _, t := range active {
 		if t.done || t.grp.dead {
@@ -296,15 +304,47 @@ func Tick(now time.Time) bool {
 			p = 1
 			t.done = true
 		}
-		t.fn(t.easing(p))
-		ran = true
+		due = append(due, firing{fn: t.fn, eased: t.easing(p), grp: t.grp})
 		if !t.done {
 			keep = append(keep, t)
 		}
 	}
 	active = keep
 	lastTick = now
+	mu.Unlock()
+	ran := false
+	for _, f := range due {
+		mu.Lock()
+		dead := f.grp.dead
+		mu.Unlock()
+		if dead {
+			continue
+		}
+		f.fn(f.eased)
+		ran = true
+	}
 	return ran
+}
+
+// SetClock replaces the time source launches and deadlines read and
+// returns the restore function. Passing nil restores time.Now. Tests
+// pin it — usually to a mutable variable they advance by hand, so a
+// launch between ticks still lands on the current test instant and
+// tick schedules stay exact (see pinClock in this package's tests and
+// the widget/app suites that drive the same clock from outside).
+func SetClock(fn func() time.Time) (restore func()) {
+	mu.Lock()
+	old := clock
+	if fn == nil {
+		fn = time.Now
+	}
+	clock = fn
+	mu.Unlock()
+	return func() {
+		mu.Lock()
+		clock = old
+		mu.Unlock()
+	}
 }
 
 // Reset drops every timeline; tests use it between cases.

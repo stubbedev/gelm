@@ -44,9 +44,11 @@ type Application struct {
 	windows  []*hostWindow
 	dialogs  []*Dialog
 	popovers popoverRegistry
-	quit     bool
-	rep      *keyRepeater
-	kicker   *loopKicker
+	// toasts tracks each window's toast stack (see toast.go).
+	toasts toastRegistry
+	quit   bool
+	rep    *keyRepeater
+	kicker *loopKicker
 	// queues is the Invoke/Every plumbing and wake the loop-kick call;
 	// wake is a field so tests can drive Invoke without a session.
 	queues loopQueues
@@ -368,6 +370,9 @@ func (a *Application) Run() error {
 		kept := a.windows[:0]
 		for _, w := range a.windows {
 			if w.host.Closed() {
+				// Stop the window's toast timers before the surface
+				// they paint on disappears.
+				a.toasts.closeHost(w.host)
 				w.release()
 				if w.cfg.onClosed != nil {
 					w.cfg.onClosed()

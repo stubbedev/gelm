@@ -1,0 +1,316 @@
+package widget
+
+import (
+	"math"
+	"time"
+
+	"github.com/stubbedev/gelm/internal/anim"
+	"github.com/stubbedev/gelm/render"
+)
+
+const (
+	// expanderDuration is the reveal/collapse tween length.
+	expanderDuration = 180 * time.Millisecond
+	// headerPadX/headerPadY inset the header row's content.
+	headerPadX = 8
+	headerPadY = 5
+	// chevronSize is the rotate glyph's box; headerGap spaces it from
+	// the title.
+	chevronSize = 12
+	headerGap   = 6
+	// bodyPadX insets the child from the expander's sides.
+	bodyPadX = 2
+)
+
+// Expander is a collapsible section: a header row (rotating chevron
+// plus title) toggles the child beneath it. Toggling animates the
+// height over the animation clock, with the chevron turning on the
+// same progress, and the open state is remembered — a collapsed
+// expander reopens to where it was, and state survives being hidden
+// by a parent. Children exposes the child only while open, so focus
+// traversal never lands inside a closed section.
+type Expander struct {
+	node
+	face   *render.Typeface
+	title  string
+	sizePx float64
+	child  Widget
+	open   bool
+	// progress is the reveal fraction: 0 closed, 1 open, animated
+	// between on toggle. The painted height and the chevron angle hang
+	// off it.
+	progress float64
+	cancel   anim.Cancel
+	hovered  bool
+	// childRect is where the last Arrange put the child, the clip the
+	// painter reveals through.
+	childRect render.Rect
+
+	// OnToggled fires after every open-state change, including
+	// programmatic ones.
+	OnToggled func(open bool)
+}
+
+// NewExpander returns a collapsed section titled title wrapping child,
+// painted with face at the theme's text size.
+func NewExpander(face *render.Typeface, title string, child Widget) *Expander {
+	return &Expander{face: face, title: title, sizePx: Current().TextSize, child: child}
+}
+
+// Open reports the toggle state (the settled layout, not the animated
+// progress).
+func (e *Expander) Open() bool { return e.open }
+
+// SetTitle replaces the header text.
+func (e *Expander) SetTitle(title string) {
+	if e.title == title {
+		return
+	}
+	e.title = title
+	e.InvalidateLayout()
+}
+
+// Title returns the header text.
+func (e *Expander) Title() string { return e.title }
+
+// SetOpen opens or closes the section, animating the height. Fires
+// OnToggled when the state flipped.
+func (e *Expander) SetOpen(open bool) {
+	if open == e.open {
+		return
+	}
+	e.open = open
+	if e.OnToggled != nil {
+		e.OnToggled(open)
+	}
+	e.animate()
+}
+
+// Toggle flips the open state.
+func (e *Expander) Toggle() { e.SetOpen(!e.open) }
+
+// Children exposes the child only while open, so keyboard traversal
+// and tree walks skip a closed section's content.
+func (e *Expander) Children() []Widget {
+	if e.open && e.child != nil {
+		return []Widget{e.child}
+	}
+	return nil
+}
+
+// animate moves progress toward the open state over expanderDuration.
+// A hidden expander — nothing arranged — settles instantly and
+// schedules no timer: nothing animates while hidden.
+func (e *Expander) animate() {
+	if e.cancel != nil {
+		e.cancel()
+		e.cancel = nil
+	}
+	if e.progress == e.target() {
+		e.InvalidateLayout()
+		return
+	}
+	if e.bounds.Empty() {
+		e.progress = e.target()
+		e.InvalidateLayout()
+		return
+	}
+	from := e.progress
+	e.cancel = anim.Play(anim.Animate(expanderDuration, func(t float64) {
+		if t >= 1 {
+			e.progress = e.target() // the landing lands exactly
+		} else {
+			e.progress = from + (e.target()-from)*t
+		}
+		// The height change re-measures the branch; the repaint is
+		// this expander's own bounds.
+		e.InvalidateLayout()
+	}))
+}
+
+// target is the progress the open state asks for.
+func (e *Expander) target() float64 {
+	if e.open {
+		return 1
+	}
+	return 0
+}
+
+// Arrange records the rect, positions the child under the header at
+// the animated height, and stops the reveal cold when the expander
+// went off screen (a hidden widget holds no timer; the state keeps
+// whatever it reached).
+func (e *Expander) Arrange(r render.Rect) {
+	e.node.Arrange(r)
+	if r.Empty() {
+		if e.cancel != nil {
+			e.cancel()
+			e.cancel = nil
+		}
+		e.childRect = render.Rect{}
+		e.arrangeChild(r)
+		return
+	}
+	e.arrangeChild(r)
+}
+
+// arrangeChild places the child in the revealed strip below the
+// header, or off-tree when nothing is revealed.
+func (e *Expander) arrangeChild(r render.Rect) {
+	if e.child == nil {
+		return
+	}
+	h := e.bodyH(r)
+	if h <= 0 {
+		e.child.Arrange(render.Rect{})
+		e.childRect = render.Rect{}
+		return
+	}
+	e.childRect = render.Rect{
+		X: r.X + bodyPadX,
+		Y: r.Y + e.headerH(),
+		W: max(0, r.W-2*bodyPadX),
+		H: h,
+	}
+	e.child.Arrange(e.childRect)
+	setParents(e, e.child)
+}
+
+// headerH is the header row's height.
+func (e *Expander) headerH() int {
+	if e.face == nil {
+		return 2 * headerPadY
+	}
+	return e.face.Shape("lg", e.sizePx).LineHeight() + 2*headerPadY
+}
+
+// bodyH maps the animated progress onto pixels of child height.
+func (e *Expander) bodyH(r render.Rect) int {
+	if e.child == nil || e.progress <= 0 {
+		return 0
+	}
+	nat := e.child.Measure(Constraints{Max: Size{W: max(0, r.W), H: max(0, r.H-e.headerH())}})
+	return min(max(0, r.H-e.headerH()), int(float64(nat.H)*e.progress+0.5))
+}
+
+// headerRect is the clickable strip.
+func (e *Expander) headerRect() render.Rect {
+	return render.Rect{X: e.bounds.X, Y: e.bounds.Y, W: e.bounds.W, H: min(e.bounds.H, e.headerH())}
+}
+
+// Measure reports the header plus the revealed fraction of the child.
+func (e *Expander) Measure(con Constraints) Size {
+	if sz, ok := e.measureHit(con); ok {
+		return sz
+	}
+	headH := e.headerH()
+	w := 2*headerPadX + chevronSize + headerGap
+	if e.face != nil {
+		w += int(e.face.Shape(e.title, e.sizePx).Advance() + 0.5)
+	}
+	body := Size{}
+	if e.child != nil {
+		body = e.child.Measure(Constraints{
+			Max: Size{W: max(0, con.Max.W), H: max(0, con.Max.H-headH)},
+		})
+		w = max(w, body.W+2*bodyPadX)
+	}
+	h := headH + int(float64(body.H)*e.progress+0.5)
+	return e.measureStore(con, clampSize(Size{W: w, H: h}, con))
+}
+
+// Paint draws the header — hover shade, chevron at the reveal angle,
+// title — then the child, clipped to the revealed strip.
+func (e *Expander) Paint(cv *render.Canvas) {
+	th := Current()
+	head := e.headerRect()
+	if head.Empty() {
+		return
+	}
+	if e.hovered {
+		cv.RoundedRect(head, th.Radius, th.SurfaceHover)
+	}
+	cx := head.X + headerPadX + chevronSize/2
+	cy := head.Y + head.H/2
+	paintChevron(cv, cx, cy, chevronSize, e.progress, th.TextMuted)
+	if e.face != nil {
+		sh := e.face.Shape(e.title, e.sizePx)
+		baseline := head.Y + (head.H-sh.LineHeight())/2 + int(sh.Ascent()+0.5)
+		col := th.Text
+		if e.title == "" {
+			col = th.TextMuted
+		}
+		e.face.Draw(cv, sh, head.X+headerPadX+chevronSize+headerGap, baseline, col)
+	}
+	if e.progress > 0 && e.child != nil && !e.childRect.Empty() {
+		prev := cv.PushClip(e.childRect)
+		e.child.Paint(cv)
+		cv.PopClip(prev)
+	}
+}
+
+// paintChevron draws the reveal glyph: a triangle turning from
+// right-pointing (closed) to down-pointing (open) with progress.
+func paintChevron(cv *render.Canvas, cx, cy, size int, progress float64, col render.Color) {
+	ang := (math.Pi / 2) * math01(progress)
+	r := float64(size) / 2
+	rot := func(px, py float64) (int, int) {
+		c, s := math.Cos(ang), math.Sin(ang)
+		return cx + int(px*c-py*s+0.5), cy + int(px*s+py*c+0.5)
+	}
+	tipX, tipY := rot(r, 0)
+	lx, ly := rot(-r*0.4, -r*0.7)
+	rx, ry := rot(-r*0.4, r*0.7)
+	cv.Line(tipX, tipY, lx, ly, 1, col)
+	cv.Line(tipX, tipY, rx, ry, 1, col)
+	cv.Line(lx, ly, rx, ry, 1, col)
+}
+
+// HitTest resolves the header into the expander (clicks toggle) and
+// otherwise delegates to the revealed child.
+func (e *Expander) HitTest(p Point) Widget {
+	if !e.bounds.Contains(p.X, p.Y) {
+		return nil
+	}
+	if e.headerRect().Contains(p.X, p.Y) {
+		return e
+	}
+	if e.progress > 0 && e.child != nil {
+		if hit := e.child.HitTest(p); hit != nil {
+			return hit
+		}
+	}
+	return e
+}
+
+// ClickAt toggles when the release landed on the header.
+func (e *Expander) ClickAt(p Point) {
+	if e.headerRect().Contains(p.X, p.Y) {
+		e.Toggle()
+	}
+}
+
+// SetHovered implements HoverSetter; the header shade repaints.
+func (e *Expander) SetHovered(on bool) {
+	if e.hovered == on {
+		return
+	}
+	e.hovered = on
+	e.Invalidate()
+}
+
+// KeyAction implements KeyActionHandler: Enter toggles when focused,
+// which makes the section reachable and operable by keyboard only.
+func (e *Expander) KeyAction(a KeyAction, _ Mods) {
+	if a == KeyEnter {
+		e.Toggle()
+	}
+}
+
+// InsertRune implements RuneHandler: Space toggles, the other half of
+// the GTK activation pair.
+func (e *Expander) InsertRune(r rune) {
+	if r == ' ' {
+		e.Toggle()
+	}
+}

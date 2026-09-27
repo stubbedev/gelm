@@ -1,0 +1,63 @@
+package widget
+
+import "github.com/stubbedev/gelm/render"
+
+// Orientation is the main direction an oriented widget runs along.
+type Orientation uint8
+
+const (
+	// Horizontal runs left to right.
+	Horizontal Orientation = iota
+	// Vertical runs top to bottom.
+	Vertical
+)
+
+// sepThickness is the rule's width in pixels.
+const sepThickness = 1
+
+// Separator is the standalone one-pixel theme rule: horizontal between
+// stacked rows, vertical between side-by-side panes. Menus paint the
+// same rule inline for their ItemSeparator rows; layouts reach for
+// this widget. The natural size is one pixel square along both axes —
+// boxes stretch the cross axis, and expand stretches the main axis —
+// and the rule paints through whatever it was allocated.
+type Separator struct {
+	node
+	orientation Orientation
+}
+
+// NewSeparator returns a separator along orientation.
+func NewSeparator(orientation Orientation) *Separator {
+	return &Separator{orientation: orientation}
+}
+
+// Orientation returns the axis the rule runs along.
+func (s *Separator) Orientation() Orientation { return s.orientation }
+
+// Measure wants one pixel; allocation decides the rest.
+func (s *Separator) Measure(con Constraints) Size {
+	if sz, ok := s.measureHit(con); ok {
+		return sz
+	}
+	return s.measureStore(con, clampSize(Size{W: sepThickness, H: sepThickness}, con))
+}
+
+// Paint draws the rule centered in the allocated rect, in the theme
+// border color menus use for their inline separators.
+func (s *Separator) Paint(cv *render.Canvas) {
+	b := s.bounds
+	if b.Empty() {
+		return
+	}
+	col := Current().Border
+	if s.orientation == Horizontal {
+		y := b.Y + max(0, (b.H-sepThickness)/2)
+		cv.Line(b.X, y, b.X+b.W-sepThickness, y, sepThickness, col)
+		return
+	}
+	x := b.X + max(0, (b.W-sepThickness)/2)
+	cv.Line(x, b.Y, x, b.Y+b.H-sepThickness, sepThickness, col)
+}
+
+// HitTest returns the separator when p is inside its bounds.
+func (s *Separator) HitTest(p Point) Widget { return s.HitLeaf(s, p) }

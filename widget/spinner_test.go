@@ -1,0 +1,128 @@
+package widget
+
+import (
+	"math"
+	"testing"
+	"time"
+
+	"github.com/stubbedev/gelm/internal/anim"
+	"github.com/stubbedev/gelm/render"
+)
+
+func TestSpinnerNeedsSpinningAndVisible(t *testing.T) {
+	c := pinAnimClock(t)
+	s := NewSpinner(24)
+	con := Constraints{Max: Size{W: 100, H: 100}}
+
+	t.Run("spinning but unarranged holds no timer", func(t *testing.T) {
+		s.SetSpinning(true)
+		if animActiveNow(t) {
+			t.Error("hidden spinner scheduled rotation work")
+		}
+	})
+
+	t.Run("visible and spinning ticks", func(t *testing.T) {
+		s.Measure(con)
+		s.Arrange(render.Rect{X: 0, Y: 0, W: 24, H: 24})
+		if !animActiveNow(t) {
+			t.Fatal("visible spinning spinner scheduled nothing")
+		}
+		before := s.angle
+		if !c.step() {
+			t.Fatal("no frame scheduled")
+		}
+		if s.angle <= before || s.angle >= 2*math.Pi {
+			t.Errorf("angle = %v after one frame, want forward and wrapped", s.angle)
+		}
+	})
+
+	t.Run("SetSpinning(false) stops cleanly", func(t *testing.T) {
+		s.SetSpinning(false)
+		if s.Spinning() {
+			t.Error("Spinning() still true")
+		}
+		if animActiveNow(t) {
+			t.Error("stopped spinner kept its tween")
+		}
+		frozen := s.angle
+		c.set(c.now().Add(time.Second))
+		anim.Tick(c.now())
+		if s.angle != frozen {
+			t.Errorf("angle moved after stop: %v -> %v", frozen, s.angle)
+		}
+	})
+
+	t.Run("restarting resumes", func(t *testing.T) {
+		s.SetSpinning(true)
+		if !animActiveNow(t) {
+			t.Fatal("restarted spinner scheduled nothing")
+		}
+		if !c.step() {
+			t.Fatal("no frame scheduled after restart")
+		}
+	})
+
+	t.Run("hiding stops the rotation", func(t *testing.T) {
+		s.Arrange(render.Rect{})
+		if animActiveNow(t) {
+			t.Error("hidden spinner kept its tween")
+		}
+		// Back on screen, still spinning: it resumes without a
+		// SetSpinning round-trip.
+		s.Arrange(render.Rect{X: 0, Y: 0, W: 24, H: 24})
+		if !animActiveNow(t) {
+			t.Error("re-shown spinner did not resume")
+		}
+	})
+}
+
+func TestSpinnerAngleWraps(t *testing.T) {
+	c := pinAnimClock(t)
+	s := NewSpinner(24)
+	s.SetSpinning(true)
+	s.Measure(Constraints{Max: Size{W: 100, H: 100}})
+	s.Arrange(render.Rect{X: 0, Y: 0, W: 24, H: 24})
+
+	// Drive a little past one revolution: the angle must have wrapped
+	// while staying inside [0, 2π) throughout.
+	prev := s.angle
+	wrapped := false
+	for range 62 { // 62 frames > 1s at 60Hz
+		if !c.step() {
+			t.Fatal("rotation stopped mid-spin")
+		}
+		if s.angle < 0 || s.angle >= 2*math.Pi {
+			t.Fatalf("angle out of range: %v", s.angle)
+		}
+		if s.angle < prev {
+			wrapped = true
+		}
+		prev = s.angle
+	}
+	if !wrapped {
+		t.Error("angle never wrapped over one revolution")
+	}
+}
+
+func TestSpinnerPaint(t *testing.T) {
+	pinAnimClock(t)
+	cv := render.New(make([]byte, render.Stride(24)*24), render.Stride(24), 24, 24)
+
+	t.Run("at rest and mid-rotation", func(t *testing.T) {
+		s := NewSpinner(24)
+		s.Measure(Constraints{Max: Size{W: 100, H: 100}})
+		s.Arrange(render.Rect{X: 0, Y: 0, W: 24, H: 24})
+		s.Paint(cv)
+		s.angle = math.Pi
+		s.Paint(cv)
+	})
+
+	t.Run("degenerate sizes do not panic", func(t *testing.T) {
+		s := NewSpinner(2)
+		s.Measure(Constraints{Max: Size{W: 100, H: 100}})
+		s.Arrange(render.Rect{X: 0, Y: 0, W: 2, H: 2})
+		s.Paint(cv)
+		s.Arrange(render.Rect{})
+		s.Paint(cv)
+	})
+}

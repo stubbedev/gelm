@@ -344,3 +344,90 @@ func TestPlayWithoutSteps(t *testing.T) {
 	cancel = Play(nil)
 	cancel()
 }
+
+// TestCallbackReentrancy pins the Tick contract the widgets lean on:
+// callbacks run with the clock's lock released, so a landing tick may
+// relaunch (a spinner's next revolution) or tear down (a toast's
+// finish) without deadlocking, and a callback that cancels its own
+// group still stops the group's later steps in that same tick.
+func TestCallbackReentrancy(t *testing.T) {
+	t0 := time.Unix(0, 0)
+	pinClock(t, t0)
+	Reset()
+
+	t.Run("a landing tick may relaunch", func(t *testing.T) {
+		// A mutable clock, not a constant pin: a relaunch reads the
+		// clock at its landing instant, and linear easing keeps the
+		// landing single (a curve's eased value can touch 1 a frame
+		// before the raw end).
+		cur := t0
+		restore := SetClock(func() time.Time { return cur })
+		t.Cleanup(restore)
+		Reset()
+		generations := 0
+		var spin *Tween
+		spin = Animate(50*time.Millisecond, func(p float64) {
+			if p >= 1 {
+				generations++
+				if generations < 3 {
+					Play(spin) // launches at cur
+				}
+			}
+		}).Easing(Linear)
+		Play(spin)
+		for Active() {
+			wake, ok := Next()
+			if !ok {
+				t.Fatal("relaunched tween scheduled no wake")
+			}
+			cur = wake
+			Tick(wake)
+		}
+		if generations != 3 {
+			t.Errorf("generations = %d, want 3 relaunches then a stop", generations)
+		}
+	})
+
+	t.Run("a landing tick may cancel", func(t *testing.T) {
+		Reset()
+		finished := false
+		var cancelMid Cancel
+		Start(100*time.Millisecond, func(p float64) {
+			if p >= 1 {
+				finished = true
+				cancelMid() // teardown from inside the tick
+			}
+		})
+		cancelMid = Start(10*time.Second, func(float64) {})
+		Tick(t0.Add(100 * time.Millisecond))
+		if !finished {
+			t.Fatal("the landing never ran")
+		}
+		if Active() {
+			t.Error("the canceled tween outlived its cancel")
+		}
+	})
+
+	t.Run("canceling from a callback stops later steps in the same tick", func(t *testing.T) {
+		Reset()
+		second := 0
+		var cancelTimeline Cancel
+		cancelTimeline = Play(Sequence(
+			Animate(50*time.Millisecond, func(p float64) {
+				if p >= 1 {
+					cancelTimeline()
+				}
+			}),
+			Animate(50*time.Millisecond, func(float64) { second++ }),
+		))
+		// One tick lands both tweens' ends; the first's cancel must
+		// skip the second's callback in that same tick.
+		Tick(t0.Add(2 * time.Second))
+		if second != 0 {
+			t.Errorf("canceled timeline's later step fired %d times, want 0", second)
+		}
+		if Active() {
+			t.Error("canceled timeline still counts as active")
+		}
+	})
+}

@@ -1,0 +1,343 @@
+package widget
+
+import (
+	"time"
+
+	"github.com/stubbedev/gelm/internal/anim"
+	"github.com/stubbedev/gelm/render"
+)
+
+const (
+	// toastEnter/toastExit pace the slide-and-fade entrance and the
+	// exit fade; toastSlide is the entrance rise in pixels, masked to
+	// the card's own bounds so the motion stays inside its damage
+	// rect.
+	toastEnter = 180 * time.Millisecond
+	toastExit  = 160 * time.Millisecond
+	toastSlide = 12
+	// toastPadX/toastPadY inset the card's content; toastGap separates
+	// text from the action button, whose own insets follow.
+	toastPadX = 14
+	toastPadY = 10
+	toastGap  = 12
+	// toastBtnPadX insets the action label inside its hit rect.
+	toastBtnPadX = 10
+	toastBtnPadY = 4
+)
+
+// Toast is a transient feedback card: one line of text, an optional
+// action button, an auto-dismiss timer that hover pauses (hovering
+// cancels the pending dismissal — even a mid-exit toast snaps back —
+// and leaving arms a fresh full timeout), and a slide-and-fade
+// entrance plus fade-out exit, all on the animation clock. A toast out
+// of the tree is inert: it holds no timer, so a detached toast costs
+// no wakeups.
+//
+// The host learns the toast is gone from OnDismissed, which fires
+// exactly once when the exit fade lands, and detaches it there.
+type Toast struct {
+	node
+	face    *render.Typeface
+	text    string
+	sizePx  float64
+	timeout time.Duration
+
+	action   string
+	OnAction func()
+
+	// OnDismissed fires once when the toast finished going away — the
+	// exit fade landed, or Dismiss hit a toast that was out of the
+	// tree. The host detaches it inside.
+	OnDismissed func()
+
+	// progress is the visual reveal: 0 hidden, 1 shown. The entrance
+	// raises it, the exit lowers it, hover rescue snaps it back.
+	progress float64
+	hovered  bool
+	hoverPt  Point
+	// leaving marks an exit fade in flight — the rescue path on hover.
+	leaving     bool
+	actionRect  render.Rect
+	cancelSlide anim.Cancel
+	cancelTimer anim.Cancel
+	visible     bool
+	dismissed   bool
+}
+
+// NewToast returns a toast showing text. A positive timeout
+// auto-dismisses the card once it is on screen; zero or negative
+// keeps it until Dismiss.
+func NewToast(face *render.Typeface, text string, timeout time.Duration) *Toast {
+	return &Toast{face: face, text: text, sizePx: Current().TextSize, timeout: timeout}
+}
+
+// Text returns the card's text.
+func (t *Toast) Text() string { return t.text }
+
+// SetText replaces the card's text.
+func (t *Toast) SetText(text string) {
+	if t.text == text {
+		return
+	}
+	t.text = text
+	t.InvalidateLayout()
+}
+
+// SetAction attaches the optional action button; an empty label
+// removes it. Firing the action dismisses the toast, the standard
+// toast contract.
+func (t *Toast) SetAction(label string, fn func()) {
+	t.action = label
+	t.OnAction = fn
+	t.InvalidateLayout()
+}
+
+// Action returns the action label, empty when there is none.
+func (t *Toast) Action() string { return t.action }
+
+// Closed reports whether the toast is permanently gone.
+func (t *Toast) Closed() bool { return t.dismissed }
+
+// SetHovered implements HoverSetter: hover cancels the pending
+// dismissal — the timer goes away and a mid-exit toast snaps back —
+// and leaving arms a fresh full timeout.
+func (t *Toast) SetHovered(on bool) {
+	if on == t.hovered {
+		return
+	}
+	t.hovered = on
+	if on {
+		t.stopTimer()
+		if t.leaving {
+			// Rescue: the card comes back, the entrance (if one is
+			// still running) must not fight the restored value.
+			t.leaving = false
+			t.stopSlide()
+			t.progress = 1
+			t.Invalidate()
+		}
+		return
+	}
+	t.armTimer()
+}
+
+// HoverMove tracks the pointer for the action button's hover shade.
+func (t *Toast) HoverMove(p Point) {
+	if t.hoverPt == p {
+		return
+	}
+	t.hoverPt = p
+	t.Invalidate()
+}
+
+// armTimer schedules the exit: hold for the timeout minus the fade,
+// then fade out. It launches only on a visible toast — a hidden one
+// holds no timer.
+func (t *Toast) armTimer() {
+	if t.timeout <= 0 || t.dismissed || !t.visible {
+		return
+	}
+	t.stopTimer()
+	fade := min(toastExit, t.timeout)
+	t.cancelTimer = anim.Play(
+		anim.Delay(t.timeout-fade),
+		anim.Animate(fade, t.fadeOut).Easing(anim.Linear),
+	)
+}
+
+// stopTimer cancels a pending dismissal.
+func (t *Toast) stopTimer() {
+	if t.cancelTimer != nil {
+		t.cancelTimer()
+		t.cancelTimer = nil
+	}
+}
+
+// stopSlide cancels the entrance tween.
+func (t *Toast) stopSlide() {
+	if t.cancelSlide != nil {
+		t.cancelSlide()
+		t.cancelSlide = nil
+	}
+}
+
+// fadeOut is the exit tween: progress back to zero, then the toast is
+// gone and the host detaches it. The first call marks the exit as in
+// flight, so a timeout-driven fade is rescuable exactly like an
+// explicit Dismiss.
+func (t *Toast) fadeOut(p float64) {
+	if p >= 1 {
+		t.progress = 0
+		t.leaving = false
+		t.Invalidate()
+		t.finish()
+		return
+	}
+	t.leaving = true
+	t.progress = 1 - p
+	t.Invalidate()
+}
+
+// finish marks the toast gone and fires OnDismissed exactly once.
+func (t *Toast) finish() {
+	if t.dismissed {
+		return
+	}
+	t.dismissed = true
+	t.stopSlide()
+	t.stopTimer()
+	if t.OnDismissed != nil {
+		t.OnDismissed()
+	}
+}
+
+// Dismiss starts the exit fade now. A toast out of the tree has no
+// pixels to fade, so it finishes on the spot.
+func (t *Toast) Dismiss() {
+	if t.dismissed || t.leaving {
+		return
+	}
+	if !t.visible {
+		t.finish()
+		return
+	}
+	t.leaving = true
+	t.stopTimer()
+	t.cancelTimer = anim.Play(anim.Animate(toastExit, t.fadeOut).Easing(anim.Linear))
+}
+
+// Close tears the toast down without a fade and without firing
+// OnDismissed — the host calling this is already detaching it.
+func (t *Toast) Close() {
+	t.dismissed = true
+	t.leaving = false
+	t.progress = 0
+	t.stopSlide()
+	t.stopTimer()
+	t.Invalidate()
+}
+
+// Arrange records the rect. The first visible arrangement starts the
+// entrance and arms the auto-dismiss timer; going off screen stops
+// both — nothing animates while hidden.
+func (t *Toast) Arrange(r render.Rect) {
+	t.node.Arrange(r)
+	vis := !r.Empty()
+	if vis == t.visible {
+		t.layoutAction()
+		return
+	}
+	t.visible = vis
+	switch {
+	case vis && !t.dismissed:
+		t.stopSlide()
+		t.stopTimer()
+		t.progress = 0
+		t.cancelSlide = anim.Play(anim.Animate(toastEnter, func(p float64) {
+			t.progress = min(p, 1)
+			t.Invalidate()
+		}))
+		t.armTimer()
+	default:
+		// Out of the tree (or already gone): hold nothing.
+		t.stopSlide()
+		t.stopTimer()
+		t.leaving = false
+		t.progress = 0
+	}
+	t.layoutAction()
+}
+
+// layoutAction places the action button's hit rect inside the card.
+func (t *Toast) layoutAction() {
+	t.actionRect = render.Rect{}
+	if t.action == "" || t.bounds.Empty() || t.face == nil {
+		return
+	}
+	h := min(t.bounds.H, t.face.Shape("lg", t.sizePx).LineHeight()+2*toastBtnPadY)
+	t.actionRect = render.Rect{
+		X: t.bounds.X + t.bounds.W - toastPadX - t.actionWidth(),
+		Y: t.bounds.Y + max(0, (t.bounds.H-h)/2),
+		W: t.actionWidth(),
+		H: h,
+	}
+}
+
+// actionWidth is the action hit rect's width.
+func (t *Toast) actionWidth() int {
+	if t.face == nil {
+		return 0
+	}
+	return 2*toastBtnPadX + int(t.face.Shape(t.action, t.sizePx).Advance()+0.5)
+}
+
+// Measure wants the text plus the action at the theme text size,
+// padded to a card; the host clamps the width.
+func (t *Toast) Measure(con Constraints) Size {
+	if sz, ok := t.measureHit(con); ok {
+		return sz
+	}
+	w := 2 * toastPadX
+	h := 2 * toastPadY
+	if t.face != nil {
+		sh := t.face.Shape(t.text, t.sizePx)
+		w += int(sh.Advance() + 0.5)
+		h += sh.LineHeight()
+	}
+	if t.action != "" {
+		w += toastGap + t.actionWidth()
+		if t.face != nil {
+			h = max(h, t.face.Shape("lg", t.sizePx).LineHeight()+2*toastBtnPadY+2*toastPadY)
+		}
+	}
+	return t.measureStore(con, clampSize(Size{W: w, H: h}, con))
+}
+
+// Paint draws the card, its text, and the action button at the current
+// reveal: alpha fades with progress, and the entrance rise is masked
+// to the card's own bounds so the animation never paints outside its
+// damage rect.
+func (t *Toast) Paint(cv *render.Canvas) {
+	p := math01(t.progress)
+	if p <= 0 || t.bounds.Empty() {
+		return
+	}
+	th := Current()
+	prev := cv.PushClip(t.bounds)
+	dy := int((1 - p) * toastSlide)
+	card := t.bounds
+	card.Y += dy
+	cv.RoundedRect(card, th.Radius, scaleAlpha(th.Surface, p))
+	if t.face != nil {
+		sh := t.face.Shape(t.text, t.sizePx)
+		baseline := card.Y + (card.H-sh.LineHeight())/2 + int(sh.Ascent()+0.5)
+		t.face.Draw(cv, sh, card.X+toastPadX, baseline, scaleAlpha(th.Text, p))
+	}
+	if t.action != "" && t.face != nil {
+		rect := t.actionRect
+		rect.Y += dy
+		if t.hovered && rect.Contains(t.hoverPt.X, t.hoverPt.Y) {
+			cv.RoundedRect(rect, th.Radius, scaleAlpha(th.SurfaceHover, p))
+		}
+		sh := t.face.Shape(t.action, t.sizePx)
+		baseline := rect.Y + (rect.H-sh.LineHeight())/2 + int(sh.Ascent()+0.5)
+		t.face.Draw(cv, sh, rect.X+toastBtnPadX, baseline, scaleAlpha(th.Accent, p))
+	}
+	cv.PopClip(prev)
+}
+
+// HitTest returns the toast when p is inside its bounds; the toast
+// handles its own action clicks.
+func (t *Toast) HitTest(p Point) Widget { return t.HitLeaf(t, p) }
+
+// ClickAt fires the action when the release landed on it, dismissing
+// the toast; clicks elsewhere are inert.
+func (t *Toast) ClickAt(p Point) {
+	if t.action == "" || !t.actionRect.Contains(p.X, p.Y) {
+		return
+	}
+	if t.OnAction != nil {
+		t.OnAction()
+	}
+	t.Dismiss()
+}
