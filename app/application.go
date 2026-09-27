@@ -57,7 +57,7 @@ type Application struct {
 
 // NewApplication binds an application to a connected session.
 func NewApplication(sess *wlsession.Session) *Application {
-	return &Application{
+	a := &Application{
 		sess:    sess,
 		accels:  newAccelTable(),
 		primary: &primarySelection{},
@@ -67,6 +67,10 @@ func NewApplication(sess *wlsession.Session) *Application {
 		ime:     newIMEController(sess),
 		wake:    sess.WakeAfter,
 	}
+	// Async image loads (widget.Image file/URL sources) deliver through
+	// the loop queue - the only sanctioned bridge (docs/threading.md).
+	widget.SetInvoker(a.Invoke)
+	return a
 }
 
 // SetClipboard enables ctrl+c/x/v on every window's focused widget,

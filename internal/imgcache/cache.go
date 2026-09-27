@@ -1,0 +1,266 @@
+// Package imgcache caches decoded raster images and the resampled
+// rasters widget.Image paints from, under one shared LRU budget. It is
+// the raster-image counterpart of internal/icons: same shape (a keyed
+// map with sticky decode failures behind a mutex), but entries evict
+// least-recently-used under an entry cap and a byte cap, because media
+// widgets swap album art and avatars far more often than themes move.
+package imgcache
+
+import (
+	"container/list"
+	"image"
+	"image/draw"
+	"sync"
+)
+
+// DefaultEntryLimit is the process-wide entry budget. A bar holds a
+// handful of album covers and avatars at one or two sizes, so the
+// default is generous without being unbounded.
+const DefaultEntryLimit = 512
+
+// DefaultByteLimit is the byte half of the default budget: 64 MiB of
+// decoded/resampled pixels.
+const DefaultByteLimit = 64 << 20
+
+// RasterKey identifies one resampled raster: the source it was derived
+// from, the source rectangle that was sampled, and the device-pixel
+// size it was resampled into. The device scale is implied by W and H:
+// identical keys want identical pixels.
+type RasterKey struct {
+	Source string
+	Src    image.Rectangle
+	W, H   int
+}
+
+// entryKey is a cache key: a string for decoded sources, a RasterKey
+// for resampled rasters. Both are comparable, so one map holds both.
+type entryKey = any
+
+type entry struct {
+	key   entryKey
+	img   image.Image // decoded source, or the resampled *image.RGBA
+	err   error       // sticky decode failure (sources only)
+	bytes int
+	el    *list.Element // the LRU list node; front is most recent
+}
+
+// Cache memoizes decoded sources and resampled rasters under one LRU
+// budget. It is safe for concurrent use: the decode goroutine of an
+// async image load consults it off the loop goroutine, while paints
+// read it on the loop.
+//
+// Failures stick: a source that failed to decode keeps its error until
+// InvalidateSource, Reset, or eviction drops it, so a corrupt file
+// costs one decode attempt, not one per frame.
+type Cache struct {
+	mu    sync.Mutex
+	items map[entryKey]*entry
+	lru   *list.List // of *entry, front = most recently used
+
+	bytes      int
+	maxEntries int
+	maxBytes   int
+	hits       int
+	misses     int
+}
+
+// New returns a cache with the default limits.
+func New() *Cache {
+	return newWithLimits(DefaultEntryLimit, DefaultByteLimit)
+}
+
+func newWithLimits(maxEntries, maxBytes int) *Cache {
+	return &Cache{
+		items:      map[entryKey]*entry{},
+		lru:        list.New(),
+		maxEntries: maxEntries,
+		maxBytes:   maxBytes,
+	}
+}
+
+var (
+	defaultCache *Cache
+	defaultOnce  sync.Once
+)
+
+// Default returns the process-wide cache widget.Image resolves through.
+func Default() *Cache {
+	defaultOnce.Do(func() { defaultCache = New() })
+	return defaultCache
+}
+
+// SetLimits changes the entry and byte budgets. It does not evict
+// anything by itself; the next insert trims back under the new limits.
+func (c *Cache) SetLimits(maxEntries, maxBytes int) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.maxEntries, c.maxBytes = maxEntries, maxBytes
+}
+
+// Source returns the decoded form of the source called key, calling
+// decode once on a miss. Whatever decode returns is normalized into an
+// *image.RGBA (premultiplied, the canvas's format) so the byte
+// accounting is exact and every consumer blends uniformly. An empty key
+// skips the cache and decodes every call.
+func (c *Cache) Source(key string, decode func() (image.Image, error)) (image.Image, error) {
+	if key == "" {
+		return decode()
+	}
+	c.mu.Lock()
+	if e, ok := c.items[key]; ok {
+		c.touchLocked(e)
+		c.hits++
+		c.mu.Unlock()
+		return e.img, e.err
+	}
+	c.misses++
+	c.mu.Unlock()
+
+	img, err := decode()
+	rgba, size := normalize(img)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.storeLocked(&entry{key: key, img: rgba, err: err, bytes: size})
+	return rgba, err
+}
+
+// Raster returns the resampled raster for key, calling build once on a
+// miss. Resampling cannot fail, so neither does this.
+func (c *Cache) Raster(key RasterKey, build func() *image.RGBA) *image.RGBA {
+	c.mu.Lock()
+	if e, ok := c.items[key]; ok {
+		c.touchLocked(e)
+		c.hits++
+		c.mu.Unlock()
+		raster, _ := e.img.(*image.RGBA)
+		return raster
+	}
+	c.misses++
+	c.mu.Unlock()
+
+	img := build()
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.storeLocked(&entry{key: key, img: img, bytes: pixelBytes(img.Rect)})
+	return img
+}
+
+// InvalidateSource drops the decoded source called key and every
+// raster derived from it. SetImage calls it so a swapped source cannot
+// leave stale pixels behind.
+func (c *Cache) InvalidateSource(key string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if e, ok := c.items[key]; ok {
+		c.removeLocked(e)
+	}
+	for k, e := range c.items {
+		if rk, ok := k.(RasterKey); ok && rk.Source == key {
+			c.removeLocked(e)
+		}
+	}
+}
+
+// HasSource reports whether the source called key is cached (tests).
+func (c *Cache) HasSource(key string) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	_, ok := c.items[key]
+	return ok
+}
+
+// HasRaster reports whether the raster key is cached (tests).
+func (c *Cache) HasRaster(key RasterKey) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	_, ok := c.items[key]
+	return ok
+}
+
+// Reset drops every entry.
+func (c *Cache) Reset() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.items = map[entryKey]*entry{}
+	c.lru.Init()
+	c.bytes = 0
+}
+
+// Stats returns the cumulative hit and miss counts. A paint that hits
+// the cache must not re-resample; tests read the miss counter to pin
+// that.
+func (c *Cache) Stats() (hits, misses int) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.hits, c.misses
+}
+
+// Len returns the number of cached sources and rasters (tests).
+func (c *Cache) Len() (sources, rasters int) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	n := 0
+	for k := range c.items {
+		if _, ok := k.(RasterKey); ok {
+			n++
+		}
+	}
+	return len(c.items) - n, n
+}
+
+// Bytes returns the budgeted byte total of everything cached (tests).
+func (c *Cache) Bytes() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.bytes
+}
+
+// touchLocked marks e most recently used.
+func (c *Cache) touchLocked(e *entry) { c.lru.MoveToFront(e.el) }
+
+// storeLocked inserts e and trims the LRU from the back until the
+// budgets hold again. The newest entry always survives: a budget
+// smaller than one image degrades to no caching, not to churn.
+func (c *Cache) storeLocked(e *entry) {
+	e.el = c.lru.PushFront(e)
+	c.items[e.key] = e
+	c.bytes += e.bytes
+	for c.bytes > c.maxBytes || c.lru.Len() > c.maxEntries {
+		back := c.lru.Back()
+		if back == nil || back.Value == e {
+			break
+		}
+		if victim, ok := back.Value.(*entry); ok {
+			c.removeLocked(victim)
+		}
+	}
+}
+
+func (c *Cache) removeLocked(e *entry) {
+	c.lru.Remove(e.el)
+	c.bytes -= e.bytes
+	delete(c.items, e.key)
+}
+
+// normalize converts a decoded image into a premultiplied *image.RGBA
+// and reports its byte cost. A nil input (a decode failure) costs zero.
+func normalize(img image.Image) (image.Image, int) {
+	if img == nil {
+		return nil, 0
+	}
+	rgba, ok := img.(*image.RGBA)
+	if !ok {
+		b := img.Bounds()
+		rgba = image.NewRGBA(image.Rect(0, 0, b.Dx(), b.Dy()))
+		draw.Draw(rgba, rgba.Bounds(), img, b.Min, draw.Src)
+	}
+	return rgba, pixelBytes(rgba.Rect)
+}
+
+func pixelBytes(r image.Rectangle) int {
+	if r.Empty() {
+		return 0
+	}
+	// RGBA packs 4 bytes per pixel, Dx per row.
+	return r.Dy() * 4 * r.Dx()
+}
