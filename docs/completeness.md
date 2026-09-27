@@ -87,9 +87,11 @@ declared use cases:
   mnemonics either, and a typed character collides with Space-opens in
   the text router (documented on the type, widget/dropdown.go).
 - **Menu accelerators are display-only**; no mnemonics (README matrix).
-- **No live theme-change or xsettings signal** — desktop-setting
-  following would add a dependency; switches are explicit
-  ([icons.md](icons.md), widget/theme.go).
+- **Icon themes do not follow live setting changes** — the lookup is
+  explicit ([icons.md](icons.md), widget/theme.go); the system
+  dark/light preference itself is observable since #53
+  ([appearance.md](appearance.md)) but wiring it to a palette swap is
+  the app's call, never the toolkit's.
 - **No in-process AT-SPI** — the integration path is recorded, not
   built ([a11y.md](a11y.md)).
 - **Compositor-in-the-loop tests run on headless sway only** — the

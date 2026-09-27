@@ -123,6 +123,17 @@ built yet, so the need has to prove itself first. `Worker`-style
 patterns are likewise app-level: a goroutine with an input channel
 whose loop `Invoke`s results (cmd/gelm-invoke is the 20-line version).
 
+The shipped example is `internal/appearance` (#53): it watches the
+desktop's dark/light preference on its own dbus goroutine and delivers
+`OnChange` callbacks there — deliberately NOT pre-bridged onto the
+loop. The wiring example in [appearance.md](appearance.md) is the
+Worker→`Invoke` pattern above, applied: a background watcher whose
+result crosses onto the loop in exactly one visible place. That doc
+also records why the callback does not fire on the loop goroutine
+(hiding the crossing would invert the layering) and why it does not
+fire on the caller's either (the monitor outlives the registration
+site).
+
 ## Acceptance
 
 - `cmd/gelm-invoke` updates a label twice a second from a goroutine;
