@@ -14,6 +14,7 @@ package headlesstest
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"strconv"
@@ -30,6 +31,113 @@ import (
 // in milliseconds; the budget is for a loaded CI machine, not for the
 // detection itself.
 const killTimeout = 30 * time.Second
+
+// liveCompositorProcs lists the surviving compositor-tree processes
+// (sway, swaybg, any leftover holding the display), read from procfs
+// cmdlines so the failure names its suspects.
+func liveCompositorProcs() string {
+	entries, err := os.ReadDir("/proc")
+	if err != nil {
+		return fmt.Sprintf("procfs: %v", err)
+	}
+	var names []string
+	for _, e := range entries {
+		if !e.IsDir() || !isDigits(e.Name()) {
+			continue
+		}
+		cmd, err := os.ReadFile("/proc/" + e.Name() + "/cmdline")
+		if err != nil {
+			continue
+		}
+		line := strings.ReplaceAll(string(cmd), "\x00", " ")
+		if strings.Contains(line, "sway") {
+			names = append(names, e.Name()+"="+strings.TrimSpace(line))
+		}
+	}
+	if len(names) == 0 {
+		return "none"
+	}
+	return strings.Join(names, "; ")
+}
+
+func isDigits(s string) bool {
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return s != ""
+}
+
+// clientSocketPeers reports, for every unix socket the client holds
+// open, which other processes share that same socket (its peer end).
+// A read parked forever means no EOF arrived, which means some process
+// still holds the far end: this names it.
+func clientSocketPeers(clientPid int) string {
+	descriptors, err := os.ReadDir(fmt.Sprintf("/proc/%d/fd", clientPid))
+	if err != nil {
+		return fmt.Sprintf("client fds: %v", err)
+	}
+	sockets := map[string]bool{}
+	for _, d := range descriptors {
+		target, err := os.Readlink(fmt.Sprintf("/proc/%d/fd/%s", clientPid, d.Name()))
+		if err == nil && strings.HasPrefix(target, "socket:[") {
+			sockets[strings.TrimSuffix(strings.TrimPrefix(target, "socket:["), "]")] = true
+		}
+	}
+	if len(sockets) == 0 {
+		return "client holds no unix sockets"
+	}
+	entries, err := os.ReadDir("/proc")
+	if err != nil {
+		return fmt.Sprintf("procfs: %v", err)
+	}
+	var holders []string
+	for _, e := range entries {
+		pid := e.Name()
+		if !e.IsDir() || !isDigits(pid) {
+			continue
+		}
+		fds, err := os.ReadDir("/proc/" + pid + "/fd")
+		if err != nil {
+			continue
+		}
+		for _, fd := range fds {
+			target, err := os.Readlink("/proc/" + pid + "/fd/" + fd.Name())
+			if err != nil {
+				continue
+			}
+			for inode := range sockets {
+				if target == "socket:["+inode+"]" {
+					holders = append(holders, "socket "+inode+" held by pid "+pid)
+				}
+			}
+		}
+	}
+	if len(holders) == 0 {
+		return "no process holds the client's sockets (peer gone, EOF owed)"
+	}
+	return strings.Join(holders, "; ")
+}
+
+// mainGoroutineStack extracts goroutine 1's frames from a runtime
+// SIGQUIT dump: the park point of the client's loop.
+func mainGoroutineStack(logPath string) string {
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		return fmt.Sprintf("client log: %v", err)
+	}
+	text := string(data)
+	start := strings.Index(text, "goroutine 1 ")
+	if start < 0 {
+		return "no goroutine 1 in dump; last 40 lines:\n" + tailFile(logPath, 40)
+	}
+	rest := text[start:]
+	if end := strings.Index(rest, "\ngoroutine "); end >= 0 {
+		rest = rest[:end]
+	}
+	return rest
+}
 
 // TestHeadlessCompositorKillExitsCleanly drives the clean-exit policy
 // end to end: real compositor, real client, real death.
@@ -64,15 +172,18 @@ func TestHeadlessCompositorKillExitsCleanly(t *testing.T) {
 	case <-c.Exited():
 	case <-time.After(killTimeout):
 		// Evidence before failing: did the SIGKILL actually take sway
-		// down (kill(2) with signal 0 only probes), and where is the
-		// client parked? SIGQUIT makes the Go runtime dump every
-		// goroutine's stack into the client log, which names the park
-		// point instead of leaving the failure to guesswork.
+		// down (kill(2) with signal 0 only probes), where is the client
+		// parked (SIGQUIT makes the Go runtime dump every goroutine's
+		// stack into the client log), and who still holds the socket
+		// ends (a blocked read means no EOF arrived, i.e. the peer fd
+		// is still open in some process). The dump's tail is runtime
+		// workers, so pull goroutine 1's frames out explicitly.
 		swayAlive := syscall.Kill(pid, 0) == nil
 		_ = c.cmd.Process.Signal(syscall.SIGQUIT)
 		time.Sleep(2 * time.Second)
-		t.Fatalf("showcase outlived the compositor: no disconnect policy ran; sway pid %d still alive: %v; client stacks:\n\t%s",
-			pid, swayAlive, strings.ReplaceAll(tailFile(c.LogPath, 100), "\n", "\n\t"))
+		t.Fatalf("showcase outlived the compositor: no disconnect policy ran; sway pid %d still alive: %v; procs: %s; client fd peers: %s; goroutine 1:\n\t%s",
+			pid, swayAlive, liveCompositorProcs(), clientSocketPeers(c.cmd.Process.Pid),
+			strings.ReplaceAll(mainGoroutineStack(c.LogPath), "\n", "\n\t"))
 	}
 	waitErr := c.Wait()
 	var ee *exec.ExitError
