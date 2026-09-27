@@ -148,10 +148,16 @@ test-env dir=test_dir:
         'for_window [app_id="dev.stubbe.gelm.hello"] floating enable, move position 0 0, resize set 640 470' \
         'for_window [app_id="dev.stubbe.gelm.states"] floating enable, move position 40 40, resize set 420 280' \
         > "$dir/sway.cfg"
+    # The pid file must hold sway itself, not the nix develop wrapper:
+    # newer nix runs the -c command through a shell without exec'ing,
+    # so $! can name a wrapper that dies with the kill test's SIGKILL
+    # while sway lives on holding the display socket - the client never
+    # sees an EOF and parks forever. A shell that writes its own pid
+    # and then execs sway records the process that owns the socket,
+    # whatever the nix version's fork/exec choice is.
     XDG_RUNTIME_DIR="$dir" WLR_BACKENDS=headless WLR_LIBINPUT_NO_DEVICES=1 \
-        WLR_RENDERER=pixman nix develop -c sway -c "$dir/sway.cfg" \
+        WLR_RENDERER=pixman nix develop -c sh -c "echo \$\$ > '$dir/sway.pid'; exec sway -c '$dir/sway.cfg'" \
         >"$dir/sway.log" 2>&1 &
-    echo $! >"$dir/sway.pid"
     sock=""
     for i in $(seq 1 50); do
         sock=$(ls "$dir"/wayland-[0-9]* 2>/dev/null | head -1)
