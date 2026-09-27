@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -70,11 +71,17 @@ func killTree(pid int) {
 		children[ppid] = append(children[ppid], self)
 	}
 	pending := []int{pid}
+	var order []int
 	for len(pending) > 0 {
 		current := pending[0]
 		pending = pending[1:]
+		order = append(order, current)
 		pending = append(pending, children[current]...)
-		_ = syscall.Kill(current, syscall.SIGKILL)
+	}
+	// Kill deepest first and the recorded pid last: the walk above ran
+	// while the parent was still alive, so nothing has reparented yet.
+	for _, p := range slices.Backward(order) {
+		_ = syscall.Kill(p, syscall.SIGKILL)
 	}
 }
 
@@ -215,14 +222,13 @@ func TestHeadlessCompositorKillExitsCleanly(t *testing.T) {
 	if err != nil {
 		t.Fatalf("bad compositor pid %q: %v", data, err)
 	}
-	if err := syscall.Kill(pid, syscall.SIGKILL); err != nil {
-		t.Fatalf("SIGKILL compositor (pid %d): %v", pid, err)
-	}
 	// The recorded pid is not always the socket holder: some setups wrap
 	// sway in a parent that forks the real compositor, and killing only
 	// the parent orphans the child still holding the display socket -
-	// the client would wait forever for an EOF that never comes. Kill
-	// the whole tree.
+	// the client would wait forever for an EOF that never comes. Snapshot
+	// and kill the whole tree, descendants before the parent: once the
+	// parent dies the children reparent to init and a walk would find
+	// nothing under it.
 	killTree(pid)
 
 	// The client must exit on its own — the zombie scenario this issue
