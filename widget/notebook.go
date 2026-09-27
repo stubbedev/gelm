@@ -11,7 +11,7 @@ import (
 // instead of selecting - hosts remove the page themselves.
 type Notebook struct {
 	node
-	face     *render.Typeface
+	face     render.Font
 	tabs     []notebookTab
 	selected int
 
@@ -33,8 +33,8 @@ const tabBarHeight = 26
 const tabWidth = 96
 
 // NewNotebook returns an empty notebook with tab labels painted in the
-// given face.
-func NewNotebook(face *render.Typeface) *Notebook { return &Notebook{face: face} }
+// given face; a render.Chain adds mixed-script fallback.
+func NewNotebook(face render.Font) *Notebook { return &Notebook{face: face} }
 
 // AppendTab adds a page under name; the first page added becomes the
 // selected one.

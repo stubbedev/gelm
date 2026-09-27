@@ -8,7 +8,7 @@ import (
 // itself but has no interaction behavior.
 type Label struct {
 	node
-	face    *render.Typeface
+	face    render.Font
 	text    string
 	sizePx  float64
 	color   render.Color
@@ -18,7 +18,8 @@ type Label struct {
 }
 
 // NewLabel returns a label that paints text with face at sizePx pixels.
-func NewLabel(face *render.Typeface, text string, sizePx float64, color render.Color) *Label {
+// Face may be a render.Chain for mixed-script fallback.
+func NewLabel(face render.Font, text string, sizePx float64, color render.Color) *Label {
 	l := &Label{face: face, text: text, sizePx: sizePx, color: color}
 	l.retext()
 	return l

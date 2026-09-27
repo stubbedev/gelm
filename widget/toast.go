@@ -37,7 +37,7 @@ const (
 // exactly once when the exit fade lands, and detaches it there.
 type Toast struct {
 	node
-	face    *render.Typeface
+	face    render.Font
 	text    string
 	sizePx  float64
 	timeout time.Duration
@@ -66,8 +66,9 @@ type Toast struct {
 
 // NewToast returns a toast showing text. A positive timeout
 // auto-dismisses the card once it is on screen; zero or negative
-// keeps it until Dismiss.
-func NewToast(face *render.Typeface, text string, timeout time.Duration) *Toast {
+// keeps it until Dismiss. Face may be a render.Chain for mixed-script
+// fallback.
+func NewToast(face render.Font, text string, timeout time.Duration) *Toast {
 	return &Toast{face: face, text: text, sizePx: Current().TextSize, timeout: timeout}
 }
 

@@ -31,7 +31,7 @@ const (
 // traversal never lands inside a closed section.
 type Expander struct {
 	node
-	face   *render.Typeface
+	face   render.Font
 	title  string
 	sizePx float64
 	child  Widget
@@ -52,8 +52,9 @@ type Expander struct {
 }
 
 // NewExpander returns a collapsed section titled title wrapping child,
-// painted with face at the theme's text size.
-func NewExpander(face *render.Typeface, title string, child Widget) *Expander {
+// painted with face at the theme's text size. Face may be a
+// render.Chain for mixed-script fallback.
+func NewExpander(face render.Font, title string, child Widget) *Expander {
 	return &Expander{face: face, title: title, sizePx: Current().TextSize, child: child}
 }
 

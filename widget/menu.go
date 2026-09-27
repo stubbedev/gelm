@@ -44,7 +44,7 @@ func MenuSeparator() MenuItem { return MenuItem{Kind: ItemSeparator} }
 // rows, accelerator labels, and nested submenus through OnSubmenu.
 type Menu struct {
 	node
-	face      *render.Typeface
+	face      render.Font
 	sizePx    float64
 	items     []MenuItem
 	hovered   int
@@ -56,7 +56,8 @@ type Menu struct {
 }
 
 // NewMenu returns a menu showing items, painted with face at sizePx.
-func NewMenu(face *render.Typeface, sizePx float64, items ...MenuItem) *Menu {
+// Face may be a render.Chain for mixed-script fallback.
+func NewMenu(face render.Font, sizePx float64, items ...MenuItem) *Menu {
 	return &Menu{
 		face:    face,
 		sizePx:  sizePx,

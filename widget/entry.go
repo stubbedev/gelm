@@ -9,7 +9,7 @@ import (
 // these methods.
 type Entry struct {
 	node
-	face        *render.Typeface
+	face        render.Font
 	sizePx      float64
 	color       render.Color
 	placeholder string
@@ -39,8 +39,9 @@ type Entry struct {
 	peCur  int
 }
 
-// NewEntry returns an empty entry painted with face at sizePx.
-func NewEntry(face *render.Typeface, sizePx float64, color render.Color) *Entry {
+// NewEntry returns an empty entry painted with face at sizePx. Face
+// may be a render.Chain for mixed-script fallback.
+func NewEntry(face render.Font, sizePx float64, color render.Color) *Entry {
 	return &Entry{face: face, sizePx: sizePx, color: color}
 }
 

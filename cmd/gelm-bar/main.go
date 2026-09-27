@@ -66,14 +66,15 @@ func dumpFrame(path string) error {
 	if err != nil {
 		return err
 	}
+	font := sysfont.Fallback(tf)
 	const (
 		w, h, scale = 800, 32, 1
 	)
-	left := buildLeftModule(tf, scale)
+	left := buildLeftModule(font, scale)
 	data := make([]byte, render.Stride(w)*h)
 	cv := render.New(data, render.Stride(w), w, h)
 	cv.Clear(cv.Rect(), bgColor)
-	paintElements(cv, cv.Rect(), "09:41", 17, w, h, scale, tf, left)
+	paintElements(cv, cv.Rect(), "09:41", 17, w, h, scale, font, left)
 
 	img := image.NewNRGBA(image.Rect(0, 0, w, h))
 	for y := range h {
@@ -93,14 +94,14 @@ func dumpFrame(path string) error {
 
 // buildLeftModule assembles the left bar module: a button holding the
 // logo icon and the gelm label.
-func buildLeftModule(tf *render.Typeface, scale int) *widget.Button {
+func buildLeftModule(font render.Font, scale int) *widget.Button {
 	icon, err := render.LoadSVG([]byte(gelmLogoSVG), 16*scale, 16*scale)
 	if err != nil {
 		panic(err)
 	}
 	inner := widget.NewBox(widget.Row, 6*scale, 0)
 	inner.Append(widget.NewIcon(icon), false)
-	inner.Append(widget.NewLabel(tf, "gelm", float64(14*scale), labelColor), false)
+	inner.Append(widget.NewLabel(font, "gelm", float64(14*scale), labelColor), false)
 	btn := widget.NewButton(inner, 4*scale, 6*scale)
 	btn.Bg = pillColor
 	btn.BgHover = render.RGB(0x18, 0x18, 0x25)
@@ -127,6 +128,7 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	font := sysfont.Fallback(tf)
 	log.Printf("gelm-bar: font %q", tf.Family())
 
 	outputs := sess.Outputs()
@@ -174,7 +176,7 @@ func run() error {
 	log.Printf("gelm-bar: mapped at %dx%d, scale %d", w, h, out.Scale)
 
 	var frameReady bool
-	leftBtn := buildLeftModule(tf, out.Scale)
+	leftBtn := buildLeftModule(font, out.Scale)
 	lastSecond := -1
 	lastClock := ""
 	lastBufW, lastBufH, lastScale := 0, 0, out.Scale
@@ -186,7 +188,7 @@ func run() error {
 				return fmt.Errorf("gelm-bar: set buffer scale: %w", err)
 			}
 			lastScale = out.Scale
-			leftBtn = buildLeftModule(tf, out.Scale)
+			leftBtn = buildLeftModule(font, out.Scale)
 			full = true
 		}
 		bufW, bufH := w*out.Scale, h*out.Scale
@@ -205,7 +207,7 @@ func run() error {
 			continue
 		}
 
-		dirty := dirtyRects(full, lastClock, lastSecond, clock, second, bufW, bufH, out.Scale, tf)
+		dirty := dirtyRects(full, lastClock, lastSecond, clock, second, bufW, bufH, out.Scale, font)
 		lastSecond = second
 		lastClock = clock
 		full = false
@@ -224,7 +226,7 @@ func run() error {
 		cv := render.New(b.Data, b.Stride, b.Width, b.Height)
 		for _, r := range dirty {
 			cv.Clear(r, bgColor)
-			paintElements(cv, r, clock, second, bufW, bufH, out.Scale, tf, leftBtn)
+			paintElements(cv, r, clock, second, bufW, bufH, out.Scale, font, leftBtn)
 		}
 
 		if err := surf.Attach(b.WL, 0, 0); err != nil {
@@ -269,8 +271,8 @@ func (f frameDone) HandleCallbackDone(ev wl.CallbackDoneEvent) {
 }
 
 // clockRect is the pill region on the right holding the clock text.
-func clockRect(clock string, bufW, bufH, scale int, tf *render.Typeface) render.Rect {
-	clockText := tf.Shape(clock, float64(14*scale))
+func clockRect(clock string, bufW, bufH, scale int, font render.Font) render.Rect {
+	clockText := font.Shape(clock, float64(14*scale))
 	w := int(clockText.Advance()) + 12*scale
 	return render.Rect{X: bufW - w - 8*scale, Y: 0, W: w, H: bufH}
 }
@@ -289,19 +291,19 @@ func notchRect(second, bufW, bufH, scale int) render.Rect {
 // dirtyRects returns the regions to repaint: everything on the first or
 // resized frame, otherwise the union of the old and new clock and notch
 // regions.
-func dirtyRects(full bool, lastClock string, lastSecond int, clock string, second, bufW, bufH, scale int, tf *render.Typeface) []render.Rect {
+func dirtyRects(full bool, lastClock string, lastSecond int, clock string, second, bufW, bufH, scale int, font render.Font) []render.Rect {
 	if full {
 		return []render.Rect{{X: 0, Y: 0, W: bufW, H: bufH}}
 	}
-	old := render.UnionAll([]render.Rect{clockRect(lastClock, bufW, bufH, scale, tf), notchRect(lastSecond, bufW, bufH, scale)})
-	new := render.UnionAll([]render.Rect{clockRect(clock, bufW, bufH, scale, tf), notchRect(second, bufW, bufH, scale)})
+	old := render.UnionAll([]render.Rect{clockRect(lastClock, bufW, bufH, scale, font), notchRect(lastSecond, bufW, bufH, scale)})
+	new := render.UnionAll([]render.Rect{clockRect(clock, bufW, bufH, scale, font), notchRect(second, bufW, bufH, scale)})
 	return append(old.Subtract(new), new.Subtract(old)...)
 }
 
 // paintElements draws the left module, clock pill, and notch, confined to
 // r. The left module only changes on resize, so its widget tree is laid
 // out here for every call that could paint it.
-func paintElements(cv *render.Canvas, r render.Rect, clock string, second, bufW, bufH, scale int, tf *render.Typeface, left *widget.Button) {
+func paintElements(cv *render.Canvas, r render.Rect, clock string, second, bufW, bufH, scale int, font render.Font, left *widget.Button) {
 	prev := cv.PushClip(r)
 	defer cv.PopClip(prev)
 
@@ -311,9 +313,9 @@ func paintElements(cv *render.Canvas, r render.Rect, clock string, second, bufW,
 	}
 
 	textPx := float64(14 * scale)
-	pill := clockRect(clock, bufW, bufH, scale, tf)
+	pill := clockRect(clock, bufW, bufH, scale, font)
 	cv.RoundedRect(pill, 6*scale, pillColor)
-	tf.DrawAligned(cv, clock, pill, textPx, textColor, render.AlignCenter)
+	font.DrawAligned(cv, clock, pill, textPx, textColor, render.AlignCenter)
 
 	cv.LinearGradient(notchRect(second, bufW, bufH, scale), accentColor, pillColor, false)
 }

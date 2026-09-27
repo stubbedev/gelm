@@ -46,6 +46,9 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	// Fallback chains cover what the default sans lacks: CJK, emoji,
+	// Cyrillic — anything the system store has a face for.
+	font := sysfont.Fallback(tf)
 
 	surf, err := sess.Compositor().CreateSurface()
 	if err != nil {
@@ -61,7 +64,7 @@ func run() error {
 		return err
 	}
 
-	show := buildUI(tf)
+	show := buildUI(font)
 
 	if err := surf.Commit(); err != nil {
 		return fmt.Errorf("gelm-hello: initial commit: %w", err)
@@ -150,7 +153,7 @@ func run() error {
 				{},
 				{Label: "Close window", OnClick: win.Close},
 			}
-			menu := widget.NewMenu(tf, 13, items...)
+			menu := widget.NewMenu(font, 13, items...)
 			mSize := menu.Measure(widget.Constraints{Max: widget.Size{W: 200, H: 400}})
 			debug.Log("demo", "menu open %dx%d at (%d,%d)", mSize.W, mSize.H, posX, posY)
 			p, err := popup.New(sess, popup.Config{
@@ -206,10 +209,11 @@ type showcase struct {
 }
 
 // buildUI assembles the full widget showcase: controls on the left,
-// text and a scrollable list on the right, an event line below.
-func buildUI(tf *render.Typeface) showcase {
+// text and a scrollable list on the right, an event line below. Font is
+// a fallback chain, so mixed-script demo text renders past .notdef.
+func buildUI(font render.Font) showcase {
 	t := widget.Current()
-	status := widget.NewLabel(tf, "events land here", 12, t.TextMuted)
+	status := widget.NewLabel(font, "events land here", 12, t.TextMuted)
 	note := func(format string, args ...any) {
 		status.SetText(fmt.Sprintf(format, args...))
 		// Trace what the demo did, so the headless input tests can assert
@@ -218,11 +222,11 @@ func buildUI(tf *render.Typeface) showcase {
 	}
 
 	count := 0
-	countLabel := widget.NewLabel(tf, "clicked 0 times", 15, t.Text)
+	countLabel := widget.NewLabel(font, "clicked 0 times", 15, t.Text)
 	progress := widget.NewProgressBar(0)
 	button := widget.NewButton(
 		widget.NewBox(widget.Row, 8, 0).
-			Append(widget.NewLabel(tf, "click me", 15, t.Text), false),
+			Append(widget.NewLabel(font, "click me", 15, t.Text), false),
 		10, 8)
 	bump := func() {
 		count++
@@ -249,25 +253,25 @@ func buildUI(tf *render.Typeface) showcase {
 	sw := widget.NewSwitch(true)
 	sw.OnChanged = func(on bool) { note("switch %v", on) }
 	sw.SetTooltip("toggles a boolean")
-	swLabel := widget.NewLabel(tf, "notifications", 14, t.Text)
+	swLabel := widget.NewLabel(font, "notifications", 14, t.Text)
 
 	check := widget.NewCheckButton(false)
 	check.OnChanged = func(c bool) { note("checkbox %v", c) }
 	check.SetTooltip("checkbox state")
-	checkLabel := widget.NewLabel(tf, "remember me", 14, t.Text)
+	checkLabel := widget.NewLabel(font, "remember me", 14, t.Text)
 
-	entry := widget.NewEntry(tf, 14, t.Text)
+	entry := widget.NewEntry(font, 14, t.Text)
 	entry.SetPlaceholder("type here; ctrl+c/x/v work")
 	entry.SetTooltip("single-line entry; double-click selects a word")
 	entry.OnChanged = func(s string) { note("entry: %q", s) }
 
-	area := widget.NewTextArea(tf, 13, t.Text)
+	area := widget.NewTextArea(font, 13, t.Text)
 	area.SetText("multi-line text area:\nenter splits, backspace joins,\nselection spans lines.")
 	area.SetTooltip("multi-line editing")
 
 	list := widget.NewBox(widget.Column, 4, 0)
 	for i := 1; i <= 48; i++ {
-		list.Append(widget.NewLabel(tf,
+		list.Append(widget.NewLabel(font,
 			fmt.Sprintf("server-%02d.example   up   41ms", i), 12, t.Text), false)
 	}
 	scrolled := widget.NewScroll(list)
@@ -278,8 +282,9 @@ func buildUI(tf *render.Typeface) showcase {
 	}
 
 	header := widget.NewBox(widget.Column, 2, 0)
-	header.Append(widget.NewLabel(tf, "gelm showcase", 18, t.Accent), false)
-	header.Append(widget.NewLabel(tf, "every widget in one window; drag the chrome to move, esc closes", 11, t.TextMuted), false)
+	header.Append(widget.NewLabel(font, "gelm showcase", 18, t.Accent), false)
+	header.Append(widget.NewLabel(font, "every widget in one window; drag the chrome to move, esc closes", 11, t.TextMuted), false)
+	header.Append(widget.NewLabel(font, "fallback check: 你好 world 😀 Привет", 13, t.Text), false)
 
 	left := widget.NewBox(widget.Column, 10, 0)
 	left.Append(button, false)
@@ -292,11 +297,11 @@ func buildUI(tf *render.Typeface) showcase {
 		Append(check, false).Append(checkLabel, false), false)
 
 	right := widget.NewBox(widget.Column, 6, 0)
-	right.Append(widget.NewLabel(tf, "entry", 11, t.TextMuted), false)
+	right.Append(widget.NewLabel(font, "entry", 11, t.TextMuted), false)
 	right.Append(entry, false)
-	right.Append(widget.NewLabel(tf, "text area", 11, t.TextMuted), false)
+	right.Append(widget.NewLabel(font, "text area", 11, t.TextMuted), false)
 	right.Append(area, false)
-	right.Append(widget.NewLabel(tf, "list", 11, t.TextMuted), false)
+	right.Append(widget.NewLabel(font, "list", 11, t.TextMuted), false)
 	right.Append(scrolled, true)
 
 	columns := widget.NewBox(widget.Row, 24, 0)

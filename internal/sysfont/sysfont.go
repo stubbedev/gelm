@@ -2,13 +2,21 @@
 // selection rules, replacing per-app guesswork. Family matching here
 // understands generic families, so "sans-serif" can never resolve to a
 // serif face.
+//
+// The system store is scanned once per process and its coverage map is
+// reused for every resolution after that; Fallback builds on it to
+// shape mixed-script text (CJK, emoji, Cyrillic in a latin face) by
+// picking a covering face per rune instead of drawing .notdef boxes.
 package sysfont
 
 import (
 	"fmt"
+	"os"
+	"sync"
 
 	"github.com/go-text/typesetting/font"
 	"github.com/go-text/typesetting/fontscan"
+	"github.com/go-text/typesetting/language"
 
 	"github.com/stubbedev/gelm/render"
 )
@@ -19,20 +27,161 @@ type quietLogger struct{}
 // Printf implements fontscan.Logger.
 func (quietLogger) Printf(string, ...any) {}
 
+// regAspect is the regular aspect every default resolution asks for.
+var regAspect = font.Aspect{Style: font.StyleNormal, Weight: font.WeightNormal}
+
+// The process-wide font store: one fontscan scan, one face cache. The
+// FontMap is stateful (query, script, LRU) and not safe for concurrent
+// use, so every lookup holds the mutex; like render.Typeface, the
+// resolved fonts are for single-threaded UI use.
+var (
+	storeOnce sync.Once
+	storeFM   *fontscan.FontMap
+	storeErr  error
+	storeMu   sync.Mutex
+	faceCache = map[*font.Face]*render.Typeface{}
+	// directFaces caches the faces loaded outside the matcher's
+	// coverage filter (see lookup); a nil value marks an unreadable
+	// file so failures are not retried on every lookup.
+	directFaces = map[string]*render.Typeface{}
+)
+
+// fontmap builds the shared store once; the first error sticks.
+func fontmap() (*fontscan.FontMap, error) {
+	storeOnce.Do(func() {
+		fm := fontscan.NewFontMap(quietLogger{})
+		// An empty cache path lets fontscan pick its platform default.
+		if err := fm.UseSystemFonts(""); err != nil {
+			storeErr = fmt.Errorf("sysfont: scan system fonts: %w", err)
+			return
+		}
+		storeFM = fm
+	})
+	return storeFM, storeErr
+}
+
+// lookup resolves family+aspect to a face covering r, shaped under the
+// given script hint (0 for none). The CSS matcher applies fallback
+// rules, so the result honors the user's font configuration; an empty
+// database resolves to nil and errors.
+func lookup(family string, aspect font.Aspect, script language.Script, r rune) (*render.Typeface, error) {
+	fm, err := fontmap()
+	if err != nil {
+		return nil, err
+	}
+	storeMu.Lock()
+	defer storeMu.Unlock()
+	fm.SetQuery(fontscan.Query{Families: []string{family}, Aspect: aspect})
+	fm.SetScript(script)
+	face := fm.ResolveFace(r)
+	if face == nil {
+		return nil, fmt.Errorf("sysfont: no %s face found", family)
+	}
+	// A per-rune lookup (script hint set) intentionally crosses
+	// families: return whatever covering face the matcher found. A
+	// family lookup probes with 'x', and the matcher filters its
+	// candidates by the probe rune's coverage - a filter that symbol
+	// faces (color emoji, icon fonts, no latin glyphs) can never
+	// pass. When such a lookup fell through to another family and
+	// the exact family is installed, load its face directly.
+	if script == 0 && font.NormalizeFamily(face.Describe().Family) != font.NormalizeFamily(family) {
+		if direct := faceForFamily(family); direct != nil {
+			return direct, nil
+		}
+	}
+	return typeface(face)
+}
+
+// faceForFamily loads the first system face of family outside the
+// matcher's coverage filter, caching per file. Caller holds storeMu.
+// nil when the family is not installed or its file is unreadable.
+func faceForFamily(family string) *render.Typeface {
+	loc, ok := storeFM.FindSystemFont(family)
+	if !ok {
+		return nil
+	}
+	if tf, ok := directFaces[loc.File]; ok {
+		return tf
+	}
+	tf, err := loadFaceFile(loc.File, loc.Index)
+	if err != nil {
+		tf = nil // cache the failure
+	}
+	directFaces[loc.File] = tf
+	return tf
+}
+
+// loadFaceFile parses and wraps the face at path:index.
+func loadFaceFile(path string, index uint16) (*render.Typeface, error) {
+	face, err := faceFromFile(path, index)
+	if err != nil {
+		return nil, err
+	}
+	return render.NewTypeface(face)
+}
+
+// faceFromFile parses a font file into the face at index (0 for plain
+// single-font files). ParseTTC handles plain files too. The path comes
+// from fontscan's system font index, never from user input.
+func faceFromFile(path string, index uint16) (*font.Face, error) {
+	f, err := os.Open(path) //nolint:gosec // path is fontscan's trusted font index, not user input
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	faces, err := font.ParseTTC(f)
+	if err != nil {
+		return nil, err
+	}
+	if int(index) >= len(faces) {
+		return nil, fmt.Errorf("sysfont: %s has no face %d", path, index)
+	}
+	return faces[index], nil
+}
+
+// typeface wraps face in a render.Typeface, sharing one instance per
+// underlying face so chains can group runs by identity and shaping
+// state stays warm.
+func typeface(face *font.Face) (*render.Typeface, error) {
+	if tf, ok := faceCache[face]; ok {
+		return tf, nil
+	}
+	tf, err := render.NewTypeface(face)
+	if err != nil {
+		return nil, err
+	}
+	faceCache[face] = tf
+	return tf, nil
+}
+
 // Sans returns the system's default sans-serif face, resolved with the
 // same rules a browser applies to font-family: sans-serif.
 func Sans() (*render.Typeface, error) {
-	return resolve(fontscan.SansSerif)
+	return lookup(fontscan.SansSerif, regAspect, 0, 'x')
 }
 
 // Monospace returns the system's default monospace face.
 func Monospace() (*render.Typeface, error) {
-	return resolve(fontscan.Monospace)
+	return lookup(fontscan.Monospace, regAspect, 0, 'x')
 }
 
 // Serif returns the system's default serif face.
 func Serif() (*render.Typeface, error) {
-	return resolve(fontscan.Serif)
+	return lookup(fontscan.Serif, regAspect, 0, 'x')
+}
+
+// Best resolves the family a widget asks for: any installed family
+// name (symbol and emoji faces included, even though they lack latin
+// coverage), or a CSS generic - sans-serif, serif, monospace. Size is
+// the pixel size the face will shape at; resolution itself is
+// size-independent, because outlines scale at shape time and the
+// rasterizer scales to the canvas's device scale (see render.Canvas).
+// A non-positive size is a caller bug and errors.
+func Best(family string, size float64) (*render.Typeface, error) {
+	if size <= 0 {
+		return nil, fmt.Errorf("sysfont: Best(%q, %v): size must be positive", family, size)
+	}
+	return lookup(family, regAspect, 0, 'x')
 }
 
 // Variant resolves a bold, italic, or bold-italic face of the same
@@ -48,40 +197,46 @@ func Variant(base *render.Typeface, bold, italic bool) (*render.Typeface, error)
 	if italic {
 		aspect.Style = font.StyleItalic
 	}
-	fm := fontscan.NewFontMap(quietLogger{})
-	// An empty cache path lets fontscan pick its platform default.
-	if err := fm.UseSystemFonts(""); err != nil {
-		return nil, fmt.Errorf("sysfont: scan system fonts: %w", err)
-	}
-	fm.SetQuery(fontscan.Query{Families: []string{base.Family()}, Aspect: aspect})
-	face := fm.ResolveFace('x')
-	tf, err := render.NewTypeface(face)
+	tf, err := lookup(base.Family(), aspect, 0, 'x')
 	if err != nil {
 		return nil, fmt.Errorf("sysfont: no %s variant (bold=%v, italic=%v) found", base.Family(), bold, italic)
 	}
 	return tf, nil
 }
 
-// resolve asks the font map for the best regular face of a generic
-// family; the matcher applies CSS fallback rules, so the result honors
-// the user's font configuration.
-func resolve(family string) (*render.Typeface, error) {
-	fm := fontscan.NewFontMap(quietLogger{})
-	// An empty cache path lets fontscan pick its platform default.
-	if err := fm.UseSystemFonts(""); err != nil {
-		return nil, fmt.Errorf("sysfont: scan system fonts: %w", err)
-	}
-	fm.SetQuery(fontscan.Query{
-		Families: []string{family},
-		Aspect: font.Aspect{
-			Style:  font.StyleNormal,
-			Weight: font.WeightNormal,
-		},
+// Fallback returns a chain that shapes with base and, for runes it
+// lacks, first the standard Linux fallback families fontconfig itself
+// prefers (Noto Sans CJK for Han, Noto Color Emoji for emoji), then
+// the system store per rune and script. Pass the chain anywhere a
+// render.Font is expected; a base with full coverage never consults
+// the fallbacks. Runes nothing covers render .notdef, as before.
+func Fallback(base *render.Typeface) *render.Chain {
+	family := base.Family()
+	chain := render.NewChain(base, preferenceFaces()...)
+	return chain.WithResolver(func(r rune) *render.Typeface {
+		tf, err := lookup(family, regAspect, language.LookupScript(r), r)
+		if err != nil {
+			return nil
+		}
+		return tf
 	})
-	face := fm.ResolveFace('x')
-	tf, err := render.NewTypeface(face)
-	if err != nil {
-		return nil, fmt.Errorf("sysfont: no %s face found", family)
+}
+
+// preferenceFaces returns the installed faces of the standard Linux
+// fallback families, in preference order. Their proper CJK and color
+// emoji glyphs beat whatever else the store's script fallback digs up
+// (bitmap-style Unifont, monochrome emoji outlines).
+func preferenceFaces() []*render.Typeface {
+	if _, err := fontmap(); err != nil {
+		return nil
 	}
-	return tf, nil
+	storeMu.Lock()
+	defer storeMu.Unlock()
+	var out []*render.Typeface
+	for _, fam := range []string{"Noto Sans CJK JP", "Noto Color Emoji"} {
+		if tf := faceForFamily(fam); tf != nil {
+			out = append(out, tf)
+		}
+	}
+	return out
 }

@@ -13,7 +13,7 @@ import (
 // widths; editing and Text stay logical regardless.
 type TextArea struct {
 	node
-	face        *render.Typeface
+	face        render.Font
 	sizePx      float64
 	color       render.Color
 	placeholder string
@@ -79,8 +79,9 @@ func (t *TextArea) TrapTab(bool) bool {
 	return true
 }
 
-// NewTextArea returns an empty area painted with face at sizePx.
-func NewTextArea(face *render.Typeface, sizePx float64, color render.Color) *TextArea {
+// NewTextArea returns an empty area painted with face at sizePx. Face
+// may be a render.Chain for mixed-script fallback.
+func NewTextArea(face render.Font, sizePx float64, color render.Color) *TextArea {
 	return &TextArea{
 		face:   face,
 		sizePx: sizePx,

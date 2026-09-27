@@ -83,17 +83,22 @@ func writePNG(data []byte, w, h int, path string) error {
 	return os.WriteFile(path, buf.Bytes(), 0o600)
 }
 
-// loadFont resolves the system sans-serif face.
-func loadFont() (*render.Typeface, error) {
-	return sysfont.Sans()
+// loadFont resolves the system sans-serif face behind a fallback
+// chain, so CJK and emoji text in the panel renders past .notdef.
+func loadFont() (*render.Chain, error) {
+	tf, err := sysfont.Sans()
+	if err != nil {
+		return nil, err
+	}
+	return sysfont.Fallback(tf), nil
 }
 
 // buildPanel assembles the panel widget tree with all the interactive
 // wiring.
-func buildPanel(tf *render.Typeface) *widget.Box {
+func buildPanel(font render.Font) *widget.Box {
 	progress := widget.NewProgressBar(0.5)
-	status := widget.NewLabel(tf, "50%", 12, muted)
-	entry := widget.NewEntry(tf, 13, textColor)
+	status := widget.NewLabel(font, "50%", 12, muted)
+	entry := widget.NewEntry(font, 13, textColor)
 
 	slider := widget.NewSlider(0, 100, 1, 50)
 	slider.OnChanged = func(v float64) {
@@ -103,7 +108,7 @@ func buildPanel(tf *render.Typeface) *widget.Box {
 
 	list := widget.NewBox(widget.Column, 2, 4)
 	for i := range 14 {
-		list.Append(widget.NewLabel(tf, fmt.Sprintf("server-%02d.example", i+1), 13, textColor), false)
+		list.Append(widget.NewLabel(font, fmt.Sprintf("server-%02d.example", i+1), 13, textColor), false)
 	}
 	scroll := widget.NewScroll(list)
 	scroll.ShowBars = true
@@ -119,21 +124,21 @@ func buildPanel(tf *render.Typeface) *widget.Box {
 		return b
 	}
 	root := widget.NewBox(widget.Column, 12, 12)
-	root.Append(widget.NewLabel(tf, "gelm panel", 17, accent), false)
-	root.Append(widget.NewLabel(tf, "Brightness", 12, muted), false)
+	root.Append(widget.NewLabel(font, "gelm panel", 17, accent), false)
+	root.Append(widget.NewLabel(font, "Brightness", 12, muted), false)
 	root.Append(slider, false)
 	root.Append(progress, false)
 	root.Append(status, false)
-	root.Append(widget.NewLabel(tf, "Preferences", 12, muted), false)
-	root.Append(row(notif, widget.NewLabel(tf, "Enable notifications", 13, textColor)), false)
-	root.Append(row(night, widget.NewLabel(tf, "Night light", 13, textColor)), false)
-	root.Append(widget.NewLabel(tf, "Quick note", 12, muted), false)
+	root.Append(widget.NewLabel(font, "Preferences", 12, muted), false)
+	root.Append(row(notif, widget.NewLabel(font, "Enable notifications", 13, textColor)), false)
+	root.Append(row(night, widget.NewLabel(font, "Night light", 13, textColor)), false)
+	root.Append(widget.NewLabel(font, "Quick note", 12, muted), false)
 	root.Append(entry, false)
-	root.Append(widget.NewLabel(tf, "Notes", 12, muted), false)
-	notes := widget.NewTextArea(tf, 13, textColor)
+	root.Append(widget.NewLabel(font, "Notes", 12, muted), false)
+	notes := widget.NewTextArea(font, 13, textColor)
 	notes.SetPlaceholder("multi-line...")
 	root.Append(notes, false)
-	root.Append(widget.NewLabel(tf, "Servers (scroll me)", 12, muted), false)
+	root.Append(widget.NewLabel(font, "Servers (scroll me)", 12, muted), false)
 	root.Append(scroll, true)
 	entry.SetPlaceholder("type here")
 	return root

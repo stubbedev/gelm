@@ -34,7 +34,7 @@ const dropdownMaxListH = 600
 // nothing to shape the rows with.
 type Dropdown struct {
 	node
-	face     *render.Typeface
+	face     render.Font
 	sizePx   float64
 	items    []string
 	selected int
@@ -60,11 +60,12 @@ func NewDropdown(items []string, selected int) *Dropdown {
 	return &Dropdown{items: items, selected: sel, enabled: true}
 }
 
-// SetFace sets the typeface and pixel size the closed face and the
-// item rows shape with. Call it once, right after construction, before
+// SetFace sets the font and pixel size the closed face and the
+// item rows shape with; a render.Chain adds mixed-script fallback.
+// Call it once, right after construction, before
 // the first open: the item list builds lazily from the face and is not
 // rebuilt afterwards.
-func (d *Dropdown) SetFace(face *render.Typeface, sizePx float64) {
+func (d *Dropdown) SetFace(face render.Font, sizePx float64) {
 	d.face = face
 	d.sizePx = sizePx
 	d.InvalidateLayout()

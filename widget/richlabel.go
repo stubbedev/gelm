@@ -33,7 +33,7 @@ func BaseVariants(base *render.Typeface) VariantFunc {
 // OnLinkClick makes them clickable with a hand cursor.
 type RichLabel struct {
 	node
-	base     *render.Typeface
+	base     render.Font
 	variants VariantFunc
 	markup   string
 	sizePx   float64
@@ -67,7 +67,7 @@ type RichLabel struct {
 // richRun is one shaped markup run.
 type richRun struct {
 	sh    *render.ShapedText
-	face  *render.Typeface
+	face  render.Font
 	style TextStyle
 	start int // rune offset of the run's first rune within Text()
 }
@@ -121,7 +121,7 @@ func (l *RichLabel) SetAlignment(a render.Alignment) {
 // faceFor resolves the face a run shapes with: bold and italic runs
 // use the variants when one is installed, and every other run - and
 // any variant the provider cannot supply - uses the base face.
-func (l *RichLabel) faceFor(st TextStyle) *render.Typeface {
+func (l *RichLabel) faceFor(st TextStyle) render.Font {
 	if l.variants != nil && (st.Bold || st.Italic) {
 		if f := l.variants(st.Bold, st.Italic); f != nil {
 			return f
