@@ -146,7 +146,11 @@ Anti-aliased primitives (signed-distance RoundedRect and Line)
 multiply the *coverage into all premultiplied channels*, not just
 alpha — scaling alpha alone leaves full-strength source color on edge
 pixels and halos around every rounded control (render/canvas.go, pinned
-by TestRoundedRectEdgeBlending and TestLine).
+by TestRoundedRectEdgeBlending and TestLine). Every primitive is held
+to a shared source-over conformance table in render/blend_test.go:
+when you add a primitive, add a row there — paint, probe points, and a
+tolerance rationale — so its blending stays pinned against the suite's
+independent reference compositor.
 
 ### 8. A widget's Measure and Paint must agree
 
