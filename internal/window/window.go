@@ -1,15 +1,19 @@
 // Package window maps the xdg-shell role onto a wl_surface: real
-// toplevel windows with titles, the configure handshake, ping/pong
-// liveness, and the close signal.
+// toplevel windows with titles, the configure handshake, the
+// compositor-confirmed state set, ping/pong liveness, and the close
+// signal.
 package window
 
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	xdeco "github.com/neurlang/wayland/unstable/xdg-decoration-v1"
 	"github.com/neurlang/wayland/wl"
 	"github.com/neurlang/wayland/xdg"
+
+	"github.com/stubbedev/gelm/internal/debug"
 )
 
 // ErrNotConfigured reports a draw attempt before the first configure
@@ -37,6 +41,81 @@ type Config struct {
 	MaxWidth, MaxHeight uint32
 }
 
+// State is the compositor-confirmed toplevel state: the state array of
+// the most recent configure event, never the set of requests the client
+// sent. A request (Maximize and friends) is a hint the compositor may
+// refuse, delay, or undo in a later configure; only what arrives in the
+// state array is true, so UI chrome reads this, not the requests.
+//
+// There is no minimized bit: the protocol reports no state for a
+// minimized (unmapped) window, and State keeps reporting what was last
+// confirmed before it.
+type State struct {
+	Activated  bool // keyboard focus
+	Maximized  bool
+	Fullscreen bool
+	Resizing   bool // an interactive resize (Resize grab) is streaming
+	Suspended  bool // the compositor stopped the window (not visible)
+	// The tiled_* bits: the compositor snapped the window to an edge.
+	TiledLeft, TiledRight, TiledTop, TiledBottom bool
+}
+
+// String renders the confirmed state set ("activated+maximized"),
+// "normal" when it is empty. The order is fixed so traces and dumps
+// are comparable.
+func (s State) String() string {
+	parts := make([]string, 0, 9)
+	add := func(on bool, name string) {
+		if on {
+			parts = append(parts, name)
+		}
+	}
+	add(s.Activated, "activated")
+	add(s.Maximized, "maximized")
+	add(s.Fullscreen, "fullscreen")
+	add(s.Resizing, "resizing")
+	add(s.Suspended, "suspended")
+	add(s.TiledLeft, "tiled-left")
+	add(s.TiledRight, "tiled-right")
+	add(s.TiledTop, "tiled-top")
+	add(s.TiledBottom, "tiled-bottom")
+	if len(parts) == 0 {
+		return "normal"
+	}
+	return strings.Join(parts, "+")
+}
+
+// parseStates decodes a configure event's state array (one 32-bit
+// xdg_toplevel.state value per entry) into the confirmed set. Unknown
+// values are ignored: newer compositors may carry states this build
+// does not know.
+func parseStates(states []int32) State {
+	var s State
+	for _, v := range states {
+		switch uint32(v) {
+		case xdg.ToplevelStateActivated:
+			s.Activated = true
+		case xdg.ToplevelStateMaximized:
+			s.Maximized = true
+		case xdg.ToplevelStateFullscreen:
+			s.Fullscreen = true
+		case xdg.ToplevelStateResizing:
+			s.Resizing = true
+		case xdg.ToplevelStateSuspended:
+			s.Suspended = true
+		case xdg.ToplevelStateTiledLeft:
+			s.TiledLeft = true
+		case xdg.ToplevelStateTiledRight:
+			s.TiledRight = true
+		case xdg.ToplevelStateTiledTop:
+			s.TiledTop = true
+		case xdg.ToplevelStateTiledBottom:
+			s.TiledBottom = true
+		}
+	}
+	return s
+}
+
 // Window is one toplevel window and its configure handshake.
 type Window struct {
 	WLSurface  *wl.Surface
@@ -57,6 +136,9 @@ type Window struct {
 	height     uint32
 	minW, minH uint32
 	maxW, maxH uint32
+	// state is the compositor-confirmed set from the last configure;
+	// requests never write it.
+	state State
 }
 
 // New assigns the xdg_toplevel role and sends the initial state. The
@@ -120,7 +202,10 @@ func (w *Window) HandleSurfaceConfigure(ev xdg.SurfaceConfigureEvent) {
 }
 
 // HandleToplevelConfigure records the new size; a zero axis keeps the
-// previous choice, per the protocol.
+// previous choice, per the protocol. The state array is authoritative:
+// it replaces the confirmed set wholesale, so a configure without a
+// state the client asked for reports the request as refused (or
+// withdrawn).
 func (w *Window) HandleToplevelConfigure(ev xdg.ToplevelConfigureEvent) {
 	if ev.Width != 0 {
 		w.width = uint32(ev.Width)
@@ -128,6 +213,72 @@ func (w *Window) HandleToplevelConfigure(ev xdg.ToplevelConfigureEvent) {
 	if ev.Height != 0 {
 		w.height = uint32(ev.Height)
 	}
+	state := parseStates(ev.States)
+	if state != w.state {
+		w.state = state
+		debug.Log("shell", "toplevel state %s, %dx%d", state, w.width, w.height)
+	}
+}
+
+// State returns the compositor-confirmed state: what the last
+// configure's state array said, not what the client asked for.
+func (w *Window) State() State { return w.state }
+
+// Maximize asks the compositor to maximize the window. Like every
+// state request it is a hint: it becomes visible only through a
+// configure carrying the maximized state, which the compositor is free
+// to refuse - judge the outcome through State. A wireless window
+// (tests) sends nothing.
+func (w *Window) Maximize() error {
+	if w.Toplevel == nil {
+		return nil
+	}
+	return w.Toplevel.SetMaximized()
+}
+
+// Unmaximize asks the compositor to restore the window. See Maximize.
+func (w *Window) Unmaximize() error {
+	if w.Toplevel == nil {
+		return nil
+	}
+	return w.Toplevel.UnsetMaximized()
+}
+
+// Fullscreen asks the compositor to show the window fullscreen; a nil
+// output lets the compositor pick (the usual choice). The confirmed
+// fullscreen state arrives with the output-sized configure. See
+// Maximize.
+func (w *Window) Fullscreen(output *wl.Output) error {
+	if w.Toplevel == nil {
+		return nil
+	}
+	if output == nil {
+		// The protocol's NULL: the compositor picks the output. A plain
+		// typed nil cannot ride SendRequest (its ordering pass calls
+		// Id() on every proxy argument and panics on a nil receiver), so
+		// the zero-value stand-in writes the 0 object word instead.
+		output = &wl.Output{}
+	}
+	return w.Toplevel.SetFullscreen(output)
+}
+
+// Unfullscreen asks the compositor to leave fullscreen. See Maximize.
+func (w *Window) Unfullscreen() error {
+	if w.Toplevel == nil {
+		return nil
+	}
+	return w.Toplevel.UnsetFullscreen()
+}
+
+// SetMinimized asks the compositor to minimize the window. The
+// protocol defines no minimized state event, so State keeps reporting
+// whatever was confirmed before; treat the window as invisible from
+// here on. See Maximize.
+func (w *Window) SetMinimized() error {
+	if w.Toplevel == nil {
+		return nil
+	}
+	return w.Toplevel.SetMinimized()
 }
 
 // SetCloseRequest installs a veto callback: returning false keeps the

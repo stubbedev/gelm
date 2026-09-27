@@ -37,3 +37,20 @@ const (
 	showcaseW = 640
 	showcaseH = 470
 )
+
+// StatesAppID is the Wayland app_id of the window-state client
+// (cmd/gelm-states). The recipe's sway rule pins it to a floating
+// 420x280 window, so the confirmed maximize/fullscreen configure sizes
+// are deterministic: the 1280x800 output mode for the state-sized
+// configure, the pinned 420x280 for the restored one.
+const StatesAppID = "dev.stubbe.gelm.states"
+
+// statesW and statesH mirror the states client's requested (and
+// recipe-pinned) floating size; outputW and outputH mirror the
+// recipe's output mode.
+const (
+	statesW = 420
+	statesH = 280
+	outputW = 1280
+	outputH = 800
+)

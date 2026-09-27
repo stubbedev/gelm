@@ -58,6 +58,11 @@ const traceTimeout = 8 * time.Second
 // test: past app's 500ms tooltip delay, short of test patience.
 const dwellTime = 900 * time.Millisecond
 
+// attemptTimeout bounds one tap's effect in tests that retry taps:
+// synthetic input on a loaded compositor can be lost, so a few short
+// attempts beat one long wait.
+const attemptTimeout = 3 * time.Second
+
 func requireEnv(t *testing.T) {
 	t.Helper()
 	if os.Getenv("GELM_HEADLESS") == "" {
@@ -495,5 +500,130 @@ func TestHeadlessClipboardRoundtrip(t *testing.T) {
 	}
 	if _, err := w.Wait("demo", `entry: "abcabc"`, traceTimeout); err != nil {
 		t.Errorf("clipboard roundtrip failed: text never came back doubled: %v", err)
+	}
+}
+
+// startStatesClient launches the window-state client (cmd/gelm-states)
+// with demo (the client's confirmed-state traces) and shell (the
+// window's own state-change traces) on, and attaches a watcher.
+func startStatesClient(t *testing.T) (*Client, *LogWatcher) {
+	t.Helper()
+	bin, err := BuildClient(testEnv.Dir, "./cmd/gelm-states", "gelm-states")
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := testEnv.StartClient(bin, "client-"+t.Name(), "input,frame,demo,shell")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(c.Stop)
+	w, err := c.Watch()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return c, w
+}
+
+// TestHeadlessWindowStates is the acceptance proof for the window
+// state model (#47) against a live compositor: each chord's request is
+// judged only by the state the compositor CONFIRMS in a configure -
+// including a refusal (sway, like i3, ignores set_maximized on a
+// floating window, and the reported state must stay what was confirmed
+// before) - the maximize/fullscreen confirmations arrive as
+// output-sized configures whose frames draw at the new size through the
+// one relayout path, and a compositor-initiated close while fullscreen
+// tears the client down cleanly.
+func TestHeadlessWindowStates(t *testing.T) {
+	requireEnv(t)
+	c, w := startStatesClient(t)
+	exited := c.Exited()
+	var in *VirtualInput
+	tap := func(rs ...rune) {
+		t.Helper()
+		for _, r := range rs {
+			code, _, err := KeyFor(r)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := in.Tap(code); err != nil {
+				t.Fatalf("tap %q: %v", r, err)
+			}
+		}
+	}
+	// tapUntil taps r until the expected effect traces appear (each
+	// substr matched by one line, in any order), retrying a few times:
+	// synthetic input on a loaded compositor can be lost, and the
+	// assertions here judge confirmed state, not first-attempt delivery.
+	// Halfway through, the virtual seat is re-dialed: a fresh keyboard
+	// re-arms focus delivery when the old device stops producing keys.
+	tapUntil := func(r rune, want ...string) {
+		t.Helper()
+		for attempt := 0; ; attempt++ {
+			if attempt == 4 {
+				t.Fatalf("tap %q never produced %v: %s", r, want, tailTraces(w, 15))
+			}
+			if attempt == 2 {
+				in = newInput(t)
+			}
+			tap(r)
+			if err := w.WaitAll("", attemptTimeout, want...); err == nil {
+				return
+			}
+		}
+	}
+	// Confirmed-state traces read "state maximized=<bool> fullscreen=<bool>
+	// <w>x<h>" (flag-form, so one bit matches regardless of the tiled_*/
+	// activated bits sway carries alongside); the poll chord reads
+	// "polled ...". The waits match the bare flag pair, since maximized=
+	// always precedes fullscreen= in the print order.
+
+	// The recipe pins the client to a floating 420x280 window; that size
+	// in the first confirmed-state trace is the pin assertion. The
+	// virtual seat is dialed only after the map, so keyboard delivery
+	// starts from a mapped, focused surface.
+	if _, err := w.Wait("demo", "420x280", traceTimeout); err != nil {
+		t.Fatalf("states client never mapped at the pinned %dx%d: %v", statesW, statesH, err)
+	}
+	in = newInput(t)
+	// A refusing compositor, pinned live: sway 1.11 never honors
+	// set_maximized - its request handler only schedules a configure
+	// that carries the state UNCHANGED, which is exactly the issue's
+	// rule that a configure without the requested state reports the
+	// request unconfirmed. The on-demand poll reads the reported state
+	// after the refused request, and a short negative wait fails if a
+	// confirm ever sneaks in (update this test if sway changes).
+	tapUntil('m', "requested maximize")
+	tapUntil('p', "polled maximized=false")
+	if _, err := w.Wait("demo", "maximized=true", time.Second); err == nil {
+		t.Errorf("the maximize was confirmed; the suite expected sway to refuse it")
+	}
+
+	// Fullscreen from floating: the output-sized configure is a REAL
+	// relayout (420x280 -> 1280x800), so the first frame drawn at the
+	// fullscreen size is the live proof of the syncSize path.
+	tapUntil('f', "fullscreen=true", fmt.Sprintf("draw %dx%d", outputW, outputH))
+	select {
+	case <-exited:
+		t.Fatalf("client died during the fullscreen transition; log tail:\n%s", tailTraces(w, 15))
+	default:
+	}
+
+	// Unfullscreen restores the pinned floating size.
+	tapUntil('g', fmt.Sprintf("fullscreen=false %dx%d", statesW, statesH))
+
+	// Close while fullscreen: fullscreen again, then the COMPOSITOR
+	// closes the window (sway kill, the real xdg_toplevel.close event).
+	// The client must tear down cleanly - no panic, exit 0.
+	tapUntil('f', "fullscreen=true")
+	if err := testEnv.SwayCommand(`[app_id="` + StatesAppID + `"] kill`); err != nil {
+		t.Fatalf("sway close: %v", err)
+	}
+	select {
+	case <-exited:
+		if err := c.Wait(); err != nil {
+			t.Errorf("close while fullscreen did not exit cleanly: %v\nlog tail:\n%s", err, tailTraces(w, 15))
+		}
+	case <-time.After(traceTimeout):
+		t.Errorf("client outlived the compositor close while fullscreen; log tail:\n%s", tailTraces(w, 25))
 	}
 }

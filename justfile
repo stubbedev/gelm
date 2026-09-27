@@ -129,8 +129,10 @@ test-build dir=test_dir:
 # in a private XDG_RUNTIME_DIR, so synthetic-input runs never touch the
 # real desktop. Idempotent: a second call reports and exits. The sway
 # config pins the showcase (dev.stubbe.gelm.hello) to a floating
-# 640x470 window at the output's origin - keep that in sync with
-# internal/headlesstest (TestSwayRecipePinsTheShowcase guards it).
+# 640x470 window at the output's origin and the states client
+# (dev.stubbe.gelm.states) to a floating 420x280 window - keep those in
+# sync with internal/headlesstest (TestSwayRecipePinsTheShowcase and
+# the state test guard them).
 test-env dir=test_dir:
     #!/bin/sh
     dir="{{dir}}"
@@ -144,6 +146,7 @@ test-env dir=test_dir:
         'default_border none' \
         'default_floating_border none' \
         'for_window [app_id="dev.stubbe.gelm.hello"] floating enable, move position 0 0, resize set 640 470' \
+        'for_window [app_id="dev.stubbe.gelm.states"] floating enable, move position 40 40, resize set 420 280' \
         > "$dir/sway.cfg"
     XDG_RUNTIME_DIR="$dir" WLR_BACKENDS=headless WLR_LIBINPUT_NO_DEVICES=1 \
         WLR_RENDERER=pixman nix develop -c sway -c "$dir/sway.cfg" \
@@ -176,6 +179,7 @@ test-env-stop dir=test_dir:
     fi
     pkill -f "$dir/gelm-hello" 2>/dev/null
     pkill -f "$dir/gelm-multi" 2>/dev/null
+    pkill -f "$dir/gelm-states" 2>/dev/null
     rm -rf "$dir"
     echo "test compositor stopped"
 

@@ -144,7 +144,8 @@ func TestLogWatcherTimeoutCarriesTail(t *testing.T) {
 // justfile against drifting from this package: the recipe must pin the
 // showcase (AppID, showcaseW/H live here) to a floating window at the
 // output's origin, or every traced control center goes stale and the
-// clicks below land on chrome.
+// clicks below land on chrome. The states client's floating pin keeps
+// the confirmed maximize/fullscreen configure sizes deterministic.
 func TestSwayRecipePinsTheShowcase(t *testing.T) {
 	root, err := ModuleDir()
 	if err != nil {
@@ -160,6 +161,8 @@ func TestSwayRecipePinsTheShowcase(t *testing.T) {
 		`for_window [app_id="` + AppID + `"] floating enable`,
 		"move position 0 0",
 		fmt.Sprintf("resize set %d %d", showcaseW, showcaseH),
+		`for_window [app_id="` + StatesAppID + `"] floating enable`,
+		fmt.Sprintf("resize set %d %d", statesW, statesH),
 	} {
 		if !strings.Contains(cfg, want) {
 			t.Errorf("test-env sway config lacks %q; keep it in sync with internal/headlesstest:\n%s", want, cfg)
