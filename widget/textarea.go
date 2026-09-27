@@ -3,6 +3,7 @@ package widget
 import (
 	"strings"
 
+	"github.com/stubbedev/gelm/internal/text"
 	"github.com/stubbedev/gelm/render"
 )
 
@@ -539,6 +540,62 @@ func (t *TextArea) Backspace() {
 	t.hist.record(before, t.snapshot())
 }
 
+// DeleteWordBackward removes the word before the cursor — ctrl+
+// backspace, with alt+backspace as the macOS alias — or the selection
+// when one is active; the whole word is one undo entry. At a line
+// start it is a no-op: word deletion stays inside the line, it never
+// joins the previous one. Blocked while disabled or read-only.
+func (t *TextArea) DeleteWordBackward() {
+	if !t.editable() {
+		return
+	}
+	before := t.snapshot()
+	t.clearPreedit()
+	if _, _, active := t.Selection(); active {
+		t.collapse()
+		t.hist.record(before, t.snapshot())
+		return
+	}
+	c := t.clamp(t.cursor)
+	start := text.WordStart(t.lines[c.line], c.col)
+	if start == c.col {
+		return // line start: nothing behind the caret on this line
+	}
+	t.cursor = pos{c.line, start}
+	t.anchor = c
+	t.panToCaret()
+	t.Invalidate()
+	t.deleteAt()
+	t.hist.record(before, t.snapshot())
+}
+
+// DeleteWordForward removes the word after the cursor — ctrl+delete —
+// or the selection when one is active; the whole word is one undo
+// entry. At a line end it is a no-op, the mirror of
+// DeleteWordBackward at a line start. Blocked while disabled or
+// read-only.
+func (t *TextArea) DeleteWordForward() {
+	if !t.editable() {
+		return
+	}
+	before := t.snapshot()
+	t.clearPreedit()
+	if _, _, active := t.Selection(); active {
+		t.collapse()
+		t.hist.record(before, t.snapshot())
+		return
+	}
+	c := t.clamp(t.cursor)
+	end := text.WordEnd(t.lines[c.line], c.col)
+	if end == c.col {
+		return // line end: nothing ahead of the caret on this line
+	}
+	t.anchor = t.cursor
+	t.cursor = pos{c.line, end}
+	t.collapse()
+	t.hist.record(before, t.snapshot())
+}
+
 // CursorPos returns the cursor as line/column.
 func (t *TextArea) CursorPos() (line, col int) { return t.cursor.line, t.cursor.col }
 
@@ -599,6 +656,57 @@ func (t *TextArea) moveVertical(dline int, extend bool) {
 	t.panToCaret()
 	t.Invalidate()
 }
+
+// wordTo moves the cursor to the word edge delta points at, inside
+// the cursor's line: word start for negative delta, word end for
+// positive, over the shared word segmentation (internal/text), so
+// motion, deletion, and double-click agree on what a word is. Word
+// motion stays inside the line — a line start or end is a no-op, it
+// never jumps across the line break. With extend the selection grows
+// or shrinks from its anchor; without it an active selection first
+// collapses to the edge the motion points at.
+func (t *TextArea) wordTo(delta int, extend bool) {
+	t.clearPreedit()
+	if !extend {
+		if _, _, active := t.Selection(); active {
+			start, end := t.ordered()
+			edge := start
+			if delta > 0 {
+				edge = end
+			}
+			t.cursor, t.anchor = edge, edge
+			t.hasPref = false
+			t.panToCaret()
+			t.Invalidate()
+			return
+		}
+	}
+	c := t.clamp(t.cursor)
+	col := text.WordEnd(t.lines[c.line], c.col)
+	if delta < 0 {
+		col = text.WordStart(t.lines[c.line], c.col)
+	}
+	if col == c.col {
+		return // line boundary: nothing to step to on this line
+	}
+	t.cursor = pos{c.line, col}
+	if !extend {
+		t.anchor = t.cursor
+	}
+	t.hasPref = false
+	t.panToCaret()
+	t.Invalidate()
+}
+
+// MoveWord moves the cursor one word within its line: word start
+// moving left, word end moving right, gaps (whitespace, punctuation
+// runs) skipped whole. An active selection collapses to the direction
+// edge first, without moving; the line boundaries are no-ops.
+func (t *TextArea) MoveWord(delta int) { t.wordTo(delta, false) }
+
+// MoveWordExtending is MoveWord with shift held: the selection
+// extends from its anchor to the word edge.
+func (t *TextArea) MoveWordExtending(delta int) { t.wordTo(delta, true) }
 
 // wrapWidth returns the pixel width available for wrapping inside the
 // current bounds.
@@ -865,7 +973,9 @@ func (t *TextArea) autoPan(p Point) {
 	t.setPan(l, edgePan(p.X, left, right, t.linePan(l)))
 }
 
-// DoubleClickAt selects the same-class run under the pointer.
+// DoubleClickAt selects the same-class run under the pointer, over
+// the shared word segmentation — the same words the ctrl+arrows steps
+// land on.
 func (t *TextArea) DoubleClickAt(p Point) {
 	t.clearPreedit()
 	at := t.posAt(p)
@@ -874,19 +984,7 @@ func (t *TextArea) DoubleClickAt(p Point) {
 		t.cursor, t.anchor = at, at
 		return
 	}
-	col := at.col
-	if col >= len(line) {
-		col = len(line) - 1
-	}
-	want := wordRune(line[col])
-	start := col
-	for start > 0 && wordRune(line[start-1]) == want {
-		start--
-	}
-	end := col + 1
-	for end < len(line) && wordRune(line[end]) == want {
-		end++
-	}
+	start, end := text.WordRun(line, at.col)
 	t.cursor, t.anchor = pos{at.line, end}, pos{at.line, start}
 	t.hasPref = false
 	t.panToCaret()
@@ -916,17 +1014,21 @@ func (t *TextArea) InsertRune(r rune) {
 	t.hist.recordTyping(before, t.snapshot(), r)
 }
 
-// KeyAction implements KeyActionHandler. While composing, the input
-// method owns the text: backspace trims its last rune, and every other
-// edit drops the composing display and applies to the contents. A
-// disabled area ignores keys outright; a read-only one keeps the
-// motion and selection keys and drops only the mutating ones.
+// KeyAction implements KeyActionHandler. Shift-extended motion grows
+// the selection from its anchor; ctrl turns arrows and backspace/delete
+// word-wise, alt+backspace aliasing ctrl+backspace. While composing,
+// the input method owns the text: the bare backspace trims its last
+// rune, and every other key — word-wise ones included — drops the
+// composing display and applies to the contents. A disabled area
+// ignores keys outright; a read-only one keeps the motion and
+// selection keys and drops only the mutating ones.
 func (t *TextArea) KeyAction(a KeyAction, mods Mods) {
 	if !t.Enabled() {
 		return
 	}
 	shift := mods&ModShift != 0
-	if a == KeyBackspace && t.composing() && t.editable() {
+	ctrl := mods&ModCtrl != 0
+	if a == KeyBackspace && mods&(ModCtrl|ModAlt) == 0 && t.composing() && t.editable() {
 		t.peText = t.peText[:len(t.peText)-1]
 		t.peCur = min(t.peCur, len(t.peText))
 		if len(t.peText) == 0 {
@@ -939,13 +1041,25 @@ func (t *TextArea) KeyAction(a KeyAction, mods Mods) {
 	switch a {
 	case KeyBackspace:
 		if t.editable() {
-			t.Backspace()
+			if ctrl || mods&ModAlt != 0 {
+				t.DeleteWordBackward()
+			} else {
+				t.Backspace()
+			}
 		}
 	case KeyDelete:
 		if t.editable() {
-			t.Delete()
+			if ctrl {
+				t.DeleteWordForward()
+			} else {
+				t.Delete()
+			}
 		}
 	case KeyLeft:
+		if ctrl {
+			t.wordTo(-1, shift)
+			return
+		}
 		c := t.clamp(t.cursor)
 		if !shift {
 			if _, _, active := t.Selection(); active {
@@ -968,6 +1082,10 @@ func (t *TextArea) KeyAction(a KeyAction, mods Mods) {
 			t.Invalidate()
 		}
 	case KeyRight:
+		if ctrl {
+			t.wordTo(1, shift)
+			return
+		}
 		c := t.clamp(t.cursor)
 		if !shift {
 			if _, _, active := t.Selection(); active {

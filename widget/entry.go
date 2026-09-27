@@ -1,6 +1,7 @@
 package widget
 
 import (
+	"github.com/stubbedev/gelm/internal/text"
 	"github.com/stubbedev/gelm/render"
 )
 
@@ -303,6 +304,54 @@ func (e *Entry) Delete() {
 	e.hist.record(before, e.snapshot())
 }
 
+// DeleteWordBackward removes the word before the cursor — ctrl+
+// backspace, with alt+backspace as the macOS alias — or the selection
+// when one is active; the whole word is one undo entry. Blocked while
+// disabled or read-only.
+func (e *Entry) DeleteWordBackward() {
+	if !e.editable() {
+		return
+	}
+	before := e.snapshot()
+	e.clearPreedit()
+	if _, _, active := e.Selection(); active {
+		e.collapse()
+		e.InvalidateLayout()
+		e.changed()
+	} else if start := text.WordStart(e.runes, e.cursor); start < e.cursor {
+		e.runes = append(e.runes[:start], e.runes[e.cursor:]...)
+		e.cursor, e.anchor = start, start
+		e.panToCaret()
+		e.InvalidateLayout()
+		e.changed()
+	}
+	e.hist.record(before, e.snapshot())
+}
+
+// DeleteWordForward removes the word after the cursor — ctrl+delete —
+// or the selection when one is active; the whole word is one undo
+// entry. Blocked while disabled or read-only.
+func (e *Entry) DeleteWordForward() {
+	if !e.editable() {
+		return
+	}
+	before := e.snapshot()
+	e.clearPreedit()
+	if _, _, active := e.Selection(); active {
+		e.collapse()
+		e.InvalidateLayout()
+		e.changed()
+	} else if end := text.WordEnd(e.runes, e.cursor); end > e.cursor {
+		e.anchor = e.cursor
+		e.cursor = end
+		e.collapse()
+		e.panToCaret()
+		e.InvalidateLayout()
+		e.changed()
+	}
+	e.hist.record(before, e.snapshot())
+}
+
 // MoveCursor moves the cursor by delta runes, clamped to [0, len]. An
 // active selection collapses to the edge the motion points at first,
 // without moving further - the standard first-press behavior.
@@ -344,6 +393,50 @@ func (e *Entry) clampCursor() {
 		e.cursor = len(e.runes)
 	}
 }
+
+// wordTo moves the cursor to the word edge delta points at — the
+// start of the word before the caret for negative delta, the end of
+// the word after it for positive — over the shared word segmentation
+// (internal/text), so motion, deletion, and double-click agree on
+// what a word is. With extend the selection grows or shrinks from its
+// anchor; without it an active selection first collapses to the edge
+// the motion points at, the standard first-press behavior.
+func (e *Entry) wordTo(delta int, extend bool) {
+	e.clearPreedit()
+	if !extend {
+		if _, _, active := e.Selection(); active {
+			start, end, _ := e.Selection()
+			edge := start
+			if delta > 0 {
+				edge = end
+			}
+			e.cursor, e.anchor = edge, edge
+			e.panToCaret()
+			e.Invalidate()
+			return
+		}
+	}
+	if delta > 0 {
+		e.cursor = text.WordEnd(e.runes, e.cursor)
+	} else {
+		e.cursor = text.WordStart(e.runes, e.cursor)
+	}
+	if !extend {
+		e.anchor = e.cursor
+	}
+	e.panToCaret()
+	e.Invalidate()
+}
+
+// MoveWord moves the cursor one word: word start moving left, word end
+// moving right, gaps (whitespace, punctuation runs) skipped whole. An
+// active selection collapses to the direction edge first, without
+// moving.
+func (e *Entry) MoveWord(delta int) { e.wordTo(delta, false) }
+
+// MoveWordExtending is MoveWord with shift held: the selection
+// extends from its anchor to the word edge.
+func (e *Entry) MoveWordExtending(delta int) { e.wordTo(delta, true) }
 
 // MoveHome puts the cursor at the start, dropping any selection; the
 // pan follows, back to zero.
@@ -552,8 +645,9 @@ func (e *Entry) DragMove(p Point) {
 	e.Invalidate()
 }
 
-// DoubleClickAt selects the run of same-class runes (word or whitespace)
-// under the clicked position.
+// DoubleClickAt selects the run of same-class runes (word or
+// whitespace) under the clicked position, over the shared word
+// segmentation — the same words the ctrl+arrows steps land on.
 func (e *Entry) DoubleClickAt(p Point) {
 	e.clearPreedit()
 	if len(e.runes) == 0 {
@@ -561,18 +655,7 @@ func (e *Entry) DoubleClickAt(p Point) {
 	}
 	x := float64(p.X - e.bounds.X - 8 + e.scrollX)
 	c := e.face.Shape(e.displayText(), e.sizePx).CaretAt(x)
-	if c >= len(e.runes) {
-		c = len(e.runes) - 1
-	}
-	wantWord := wordRune(e.runes[c])
-	start := c
-	for start > 0 && wordRune(e.runes[start-1]) == wantWord {
-		start--
-	}
-	end := c + 1
-	for end < len(e.runes) && wordRune(e.runes[end]) == wantWord {
-		end++
-	}
+	start, end := text.WordRun(e.runes, c)
 	e.cursor, e.anchor = end, start
 	e.panToCaret()
 	e.Invalidate()
@@ -601,17 +684,20 @@ func (e *Entry) InsertRune(r rune) {
 }
 
 // KeyAction implements KeyActionHandler for editing keys. Shift-extended
-// motion grows the selection from its anchor. While composing, the
-// input method owns the text: backspace trims its last rune, and every
-// other edit drops the composing display and applies to the contents.
-// A disabled entry ignores keys outright; a read-only one keeps the
-// motion and selection keys and drops only the mutating ones.
+// motion grows the selection from its anchor; ctrl turns arrows and
+// backspace/delete word-wise, alt+backspace aliasing ctrl+backspace.
+// While composing, the input method owns the text: the bare backspace
+// trims its last rune, and every other key — word-wise ones included —
+// drops the composing display and applies to the contents. A disabled
+// entry ignores keys outright; a read-only one keeps the motion and
+// selection keys and drops only the mutating ones.
 func (e *Entry) KeyAction(a KeyAction, mods Mods) {
 	if !e.Enabled() {
 		return
 	}
 	shift := mods&ModShift != 0
-	if a == KeyBackspace && e.composing() && e.editable() {
+	ctrl := mods&ModCtrl != 0
+	if a == KeyBackspace && mods&(ModCtrl|ModAlt) == 0 && e.composing() && e.editable() {
 		e.peText = e.peText[:len(e.peText)-1]
 		e.peCur = min(e.peCur, len(e.peText))
 		if len(e.peText) == 0 {
@@ -624,20 +710,40 @@ func (e *Entry) KeyAction(a KeyAction, mods Mods) {
 	switch a {
 	case KeyBackspace:
 		if e.editable() {
-			e.Backspace()
+			if ctrl || mods&ModAlt != 0 {
+				e.DeleteWordBackward()
+			} else {
+				e.Backspace()
+			}
 		}
 	case KeyDelete:
 		if e.editable() {
-			e.Delete()
+			if ctrl {
+				e.DeleteWordForward()
+			} else {
+				e.Delete()
+			}
 		}
 	case KeyLeft:
-		if shift {
+		if ctrl {
+			if shift {
+				e.MoveWordExtending(-1)
+			} else {
+				e.MoveWord(-1)
+			}
+		} else if shift {
 			e.MoveCursorExtending(-1)
 		} else {
 			e.MoveCursor(-1)
 		}
 	case KeyRight:
-		if shift {
+		if ctrl {
+			if shift {
+				e.MoveWordExtending(1)
+			} else {
+				e.MoveWord(1)
+			}
+		} else if shift {
 			e.MoveCursorExtending(1)
 		} else {
 			e.MoveCursor(1)
