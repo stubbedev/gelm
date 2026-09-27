@@ -32,6 +32,52 @@ import (
 // detection itself.
 const killTimeout = 30 * time.Second
 
+// killTree SIGKILLs pid and every descendant, read from procfs: the
+// compositor tree is sway plus whatever it forked (swaybg, a wrapped
+// self), and a survivor keeps the display socket open past the kill.
+func killTree(pid int) {
+	children := map[int][]int{}
+	entries, err := os.ReadDir("/proc")
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		if !e.IsDir() || !isDigits(e.Name()) {
+			continue
+		}
+		stat, err := os.ReadFile("/proc/" + e.Name() + "/stat")
+		if err != nil {
+			continue
+		}
+		// The comm field can contain spaces; everything after its
+		// closing paren is fixed-format, and the fourth field is ppid.
+		rest, ok := strings.CutPrefix(string(stat), ") ")
+		if !ok {
+			continue
+		}
+		fields := strings.Fields(rest)
+		if len(fields) < 2 {
+			continue
+		}
+		ppid, err := strconv.Atoi(fields[1])
+		if err != nil {
+			continue
+		}
+		self, err := strconv.Atoi(e.Name())
+		if err != nil {
+			continue
+		}
+		children[ppid] = append(children[ppid], self)
+	}
+	pending := []int{pid}
+	for len(pending) > 0 {
+		current := pending[0]
+		pending = pending[1:]
+		pending = append(pending, children[current]...)
+		_ = syscall.Kill(current, syscall.SIGKILL)
+	}
+}
+
 // liveCompositorProcs lists the surviving compositor-tree processes
 // (sway, swaybg, any leftover holding the display), read from procfs
 // cmdlines and parent pids so the failure names its suspects and how
@@ -172,6 +218,12 @@ func TestHeadlessCompositorKillExitsCleanly(t *testing.T) {
 	if err := syscall.Kill(pid, syscall.SIGKILL); err != nil {
 		t.Fatalf("SIGKILL compositor (pid %d): %v", pid, err)
 	}
+	// The recorded pid is not always the socket holder: some setups wrap
+	// sway in a parent that forks the real compositor, and killing only
+	// the parent orphans the child still holding the display socket -
+	// the client would wait forever for an EOF that never comes. Kill
+	// the whole tree.
+	killTree(pid)
 
 	// The client must exit on its own — the zombie scenario this issue
 	// kills is a client that parks forever on a dead fd.
@@ -186,10 +238,11 @@ func TestHeadlessCompositorKillExitsCleanly(t *testing.T) {
 		// is still open in some process). The dump's tail is runtime
 		// workers, so pull goroutine 1's frames out explicitly.
 		swayAlive := syscall.Kill(pid, 0) == nil
+		peers := clientSocketPeers(c.cmd.Process.Pid)
 		_ = c.cmd.Process.Signal(syscall.SIGQUIT)
 		time.Sleep(2 * time.Second)
 		t.Fatalf("showcase outlived the compositor: no disconnect policy ran; sway pid %d still alive: %v; procs: %s; client fd peers: %s; sway.log tail:\n\t%s; goroutine 1:\n\t%s",
-			pid, swayAlive, liveCompositorProcs(), clientSocketPeers(c.cmd.Process.Pid),
+			pid, swayAlive, liveCompositorProcs(), peers,
 			strings.ReplaceAll(tailFile(testEnv.Dir+"/sway.log", 40), "\n", "\n\t"),
 			strings.ReplaceAll(mainGoroutineStack(c.LogPath), "\n", "\n\t"))
 	}
