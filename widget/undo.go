@@ -7,7 +7,8 @@ package widget
 
 import (
 	"time"
-	"unicode"
+
+	"github.com/stubbedev/gelm/internal/text"
 )
 
 // undoLimit caps the undo stack; pushing past it drops the oldest
@@ -81,7 +82,7 @@ func (u *undoStack[T]) recordTyping(before, after T, r rune) {
 	now := u.clock()
 	if n := len(u.done); n > 0 {
 		top := &u.done[n-1]
-		if top.typing && wordRune(top.last) == wordRune(r) && now.Sub(top.at) <= undoIdleGap && top.after.same(before) {
+		if top.typing && text.IsWordRune(top.last) == text.IsWordRune(r) && now.Sub(top.at) <= undoIdleGap && top.after.same(before) {
 			top.after = after
 			top.last = r
 			top.at = now
@@ -132,12 +133,4 @@ func (u *undoStack[T]) redo(apply func(T)) bool {
 func (u *undoStack[T]) reset() {
 	u.done = nil
 	u.undone = nil
-}
-
-// wordRune reports whether r counts as a word character, for
-// double-click selection and undo coalescing alike: letters, digits,
-// and underscore. A boundary between word and non-word breaks a typing
-// run.
-func wordRune(r rune) bool {
-	return r == '_' || unicode.IsLetter(r) || unicode.IsDigit(r)
 }
