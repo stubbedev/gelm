@@ -12,7 +12,7 @@ matrix, docs/*.md, and `git log`. The first-pass ladder lives in
 
 | relm4/GTK area | gelm's answer | Where |
 | --- | --- | --- |
-| Label, styled text | `widget.Label`; markup runs with optional links in `widget.RichLabel`; wrap/ellipsize on the typeface | widget/label.go, widget/richlabel.go |
+| Label, styled text | `widget.Label` with `SetWrap` (UAX #14 word wrap) and `SetEllipsize` (start/middle/end) keyed to the offered width; markup runs with optional links in `widget.RichLabel` | widget/label.go, widget/richlabel.go |
 | Button, toggle, check | `Button` (any child, Enter+Space), `Switch`, `CheckButton` | widget/button.go, widget/toggle.go |
 | Range, progress | `Slider` (drag/arrows/Home/End), `ProgressBar` | widget/slider.go, widget/toggle.go |
 | Entry | `Entry`: selection, clipboard, IME preedit; masked echo `EchoPassword`/`EchoNone` with app-driven reveal (#29) | widget/entry.go, widget/echo.go |

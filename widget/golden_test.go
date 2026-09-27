@@ -189,7 +189,8 @@ func TestGoldenLabel(t *testing.T) {
 }
 
 // TestGoldenLabelWrapped covers wrapped text presentation through the
-// toolkit's wrapping text widget; a single-line Label never wraps.
+// toolkit's wrapping text widget; Label's own wrap mode is pinned by
+// TestGoldenLabelModes.
 func TestGoldenLabelWrapped(t *testing.T) {
 	face := goldenFace(t)
 	th := DarkTheme()
@@ -198,6 +199,45 @@ func TestGoldenLabelWrapped(t *testing.T) {
 	ta.SetText("Wrapped text breaks on spaces to fit the width it is given, " +
 		"so the same string lands on different rows as the field resizes.")
 	NewGolden(t, ta, "label-wrapped", goldenTheme(th), goldenFrame(200, 76))
+}
+
+// TestGoldenLabelModes pins the label layout modes: the ellipsis at
+// each cut point (end for status lines, middle for paths), wrapped
+// rows, and the wrap+ellipsize interaction - only the final row
+// truncates. The light theme rides along on the status-line cases,
+// which are the ones paired with tooltips.
+func TestGoldenLabelModes(t *testing.T) {
+	face := goldenFace(t)
+	dark, light := DarkTheme(), LightTheme()
+	const px = 14
+	lineH := face.Shape("x", px).LineHeight()
+
+	ellipsize := func(mode EllipsizeMode, text, name string, th *Theme) {
+		l := NewLabel(face, text, px, th.Text)
+		l.SetEllipsize(mode)
+		NewGolden(t, l, name, goldenTheme(th), goldenFrame(150, lineH+3))
+	}
+	const status = "server-02.example.com: syncing"
+	ellipsize(EllipsizeEnd, status, "label-ellipsize-end", dark)
+	ellipsize(EllipsizeEnd, status, "label-ellipsize-end-light", light)
+	const path = "/var/lib/gelm/cache/sessions.bin"
+	ellipsize(EllipsizeMiddle, path, "label-ellipsize-middle", dark)
+	ellipsize(EllipsizeMiddle, path, "label-ellipsize-middle-light", light)
+
+	wrapShot := func(l *Label, name string, width int) {
+		NewGolden(t, l, name, goldenTheme(dark),
+			goldenFrame(width, len(l.wrapped(float64(width)))*lineH))
+	}
+	wrapped := NewLabel(face, "Settings panes and toast bodies wrap their description "+
+		"text to the width the panel offers", px, dark.Text)
+	wrapped.SetWrap(true)
+	wrapShot(wrapped, "label-wrap-rows", 180)
+
+	both := NewLabel(face, "wrap fills rows and the ellipsis lands only on the "+
+		"final row: unbreakabletokenthatcannotfitanywhere", px, dark.Text)
+	both.SetWrap(true)
+	both.SetEllipsize(EllipsizeEnd)
+	wrapShot(both, "label-wrap-ellipsize", 180)
 }
 
 func TestGoldenButtonStates(t *testing.T) {
