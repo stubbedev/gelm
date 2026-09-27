@@ -34,7 +34,8 @@ const killTimeout = 30 * time.Second
 
 // liveCompositorProcs lists the surviving compositor-tree processes
 // (sway, swaybg, any leftover holding the display), read from procfs
-// cmdlines so the failure names its suspects.
+// cmdlines and parent pids so the failure names its suspects and how
+// they relate.
 func liveCompositorProcs() string {
 	entries, err := os.ReadDir("/proc")
 	if err != nil {
@@ -51,7 +52,13 @@ func liveCompositorProcs() string {
 		}
 		line := strings.ReplaceAll(string(cmd), "\x00", " ")
 		if strings.Contains(line, "sway") {
-			names = append(names, e.Name()+"="+strings.TrimSpace(line))
+			stat, _ := os.ReadFile("/proc/" + e.Name() + "/stat")
+			fields := strings.Fields(string(stat))
+			parent := "?"
+			if len(fields) > 3 {
+				parent = fields[3]
+			}
+			names = append(names, e.Name()+"(ppid "+parent+")="+strings.TrimSpace(line))
 		}
 	}
 	if len(names) == 0 {
@@ -181,8 +188,9 @@ func TestHeadlessCompositorKillExitsCleanly(t *testing.T) {
 		swayAlive := syscall.Kill(pid, 0) == nil
 		_ = c.cmd.Process.Signal(syscall.SIGQUIT)
 		time.Sleep(2 * time.Second)
-		t.Fatalf("showcase outlived the compositor: no disconnect policy ran; sway pid %d still alive: %v; procs: %s; client fd peers: %s; goroutine 1:\n\t%s",
+		t.Fatalf("showcase outlived the compositor: no disconnect policy ran; sway pid %d still alive: %v; procs: %s; client fd peers: %s; sway.log tail:\n\t%s; goroutine 1:\n\t%s",
 			pid, swayAlive, liveCompositorProcs(), clientSocketPeers(c.cmd.Process.Pid),
+			strings.ReplaceAll(tailFile(testEnv.Dir+"/sway.log", 40), "\n", "\n\t"),
 			strings.ReplaceAll(mainGoroutineStack(c.LogPath), "\n", "\n\t"))
 	}
 	waitErr := c.Wait()
