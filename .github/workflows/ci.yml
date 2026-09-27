@@ -1,0 +1,27 @@
+# gelm CI: the release gates plus the compositor-in-the-loop input
+# suite. The headless tests are required here - GELM_HEADLESS=1 makes
+# any skip a failure - so a change that breaks live input/protocol
+# behavior breaks CI before it can break a real desktop.
+#
+# Everything runs through nix develop (flake.nix): the Go toolchain,
+# golangci-lint, just, and sway for the headless compositor. The whole
+# job needs no display server and no GPU: sway runs on wlroots'
+# headless backend with the software (pixman) renderer.
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cachix/install-nix-action@v31
+        with:
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Release gates (vet, lint, test, build)
+        run: nix develop -c just check
+      - name: Headless compositor input gate
+        run: nix develop -c just headless

@@ -16,6 +16,8 @@ import (
 
 	"github.com/stubbedev/gelm/app"
 	"github.com/stubbedev/gelm/internal/anim"
+	"github.com/stubbedev/gelm/internal/clipboard"
+	"github.com/stubbedev/gelm/internal/debug"
 	"github.com/stubbedev/gelm/internal/popup"
 	"github.com/stubbedev/gelm/internal/scale"
 	"github.com/stubbedev/gelm/internal/sysfont"
@@ -83,10 +85,46 @@ func run() error {
 	}
 	log.Printf("gelm-hello: mapped at %dx%d", w, h)
 
+	// Deterministic geometry for the headless input tests
+	// (internal/headlesstest): lay the tree out at the mapped size and
+	// trace each control's center, so the harness clicks real widgets
+	// instead of hardcoded coordinates. app.Run re-arranges at the same
+	// size on every draw, so this pre-arrange changes nothing.
+	debug.Log("demo", "mapped %dx%d", w, h)
+	show.root.Measure(widget.Constraints{Max: widget.Size{W: w, H: h}})
+	show.root.Arrange(render.Rect{X: 0, Y: 0, W: w, H: h})
+	for _, c := range []struct {
+		name string
+		w    interface {
+			Bounds() render.Rect
+		}
+	}{
+		{"button", show.button},
+		{"slider", show.slider},
+		{"switch", show.sw},
+		{"checkbox", show.check},
+		{"entry", show.entry},
+		{"textarea", show.area},
+		{"scroll", show.scrolled},
+	} {
+		b := c.w.Bounds()
+		debug.Log("demo", "control %s center (%d,%d)", c.name, b.X+b.W/2, b.Y+b.H/2)
+	}
+
 	sess.OnWmBasePing = win.Pong
 
 	posX, posY := 0, 0
+	var menuPopup *popup.Popup
 	onPress := func(btn, serial uint32, over widget.Widget) {
+		// A press landing on the window while the menu's grab is live is
+		// an outside click: sway passes same-client presses through an
+		// xdg_popup grab without a popup_done, so the dismissal is ours
+		// to make. Closing the popup ends popup.Run and unwinds the grab.
+		if menuPopup != nil && !menuPopup.Closed() {
+			menuPopup.Close()
+			menuPopup = nil
+			return
+		}
 		switch btn {
 		case widget.BTNLeft:
 			// Presses on plain chrome move the window; presses on or
@@ -99,13 +137,22 @@ func run() error {
 		case widget.BTNRight:
 			items := []widget.MenuItem{
 				{Label: "Say hello", OnClick: show.bump},
-				{Label: "Light theme", OnClick: func() { widget.SetTheme(widget.LightTheme()) }},
-				{Label: "Dark theme", OnClick: func() { widget.SetTheme(widget.DarkTheme()) }},
+				{Label: "Light theme", OnClick: func() {
+					widget.SetTheme(widget.LightTheme())
+					// Traced for the headless input tests, which assert
+					// keyboard activation through the popup grab on it.
+					debug.Log("demo", "theme light")
+				}},
+				{Label: "Dark theme", OnClick: func() {
+					widget.SetTheme(widget.DarkTheme())
+					debug.Log("demo", "theme dark")
+				}},
 				{},
 				{Label: "Close window", OnClick: win.Close},
 			}
 			menu := widget.NewMenu(tf, 13, items...)
 			mSize := menu.Measure(widget.Constraints{Max: widget.Size{W: 200, H: 400}})
+			debug.Log("demo", "menu open %dx%d at (%d,%d)", mSize.W, mSize.H, posX, posY)
 			p, err := popup.New(sess, popup.Config{
 				Parent: win.XdgSurface,
 				X:      posX, Y: posY,
@@ -117,8 +164,9 @@ func run() error {
 				return
 			}
 			menu.OnDismiss = p.Close
-			keyRouter := &widget.Router{Root: menu}
-			_ = popup.Run(sess, p, scale.Denom, menu, widget.Current().Surface, keyRouter)
+			menuPopup = p
+			_ = popup.Run(sess, p, scale.Denom, menu, widget.Current().Surface, menu)
+			menuPopup = nil
 		}
 	}
 
@@ -131,7 +179,9 @@ func run() error {
 		OnPress:       onPress,
 		OnPointerMove: func(x, y float64) { posX, posY = int(x), int(y) },
 		TooltipFace:   tf,
+		Clipboard:     clipboard.New(sess),
 		OnKey: func(_ *widget.Router, code uint32, _ wlsession.Mods) {
+			debug.Log("demo", "app key code=%d sym=%v", code, sess.KeySym(code))
 			if sess.KeySym(code) == xkb.KeyEscape {
 				win.Close()
 			}
@@ -162,6 +212,9 @@ func buildUI(tf *render.Typeface) showcase {
 	status := widget.NewLabel(tf, "events land here", 12, t.TextMuted)
 	note := func(format string, args ...any) {
 		status.SetText(fmt.Sprintf(format, args...))
+		// Trace what the demo did, so the headless input tests can assert
+		// on the showcase's own reactions (gelmdebug builds only).
+		debug.Log("demo", format, args...)
 	}
 
 	count := 0
@@ -220,6 +273,9 @@ func buildUI(tf *render.Typeface) showcase {
 	scrolled := widget.NewScroll(list)
 	scrolled.ShowBars = true
 	scrolled.SetTooltip("scrollable list")
+	scrolled.OnScrolled = func(x, y int) {
+		note("list scrolled to %d,%d", x, y)
+	}
 
 	header := widget.NewBox(widget.Column, 2, 0)
 	header.Append(widget.NewLabel(tf, "gelm showcase", 18, t.Accent), false)

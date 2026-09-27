@@ -7,8 +7,33 @@ default:
 # Directory for headless test sessions: compositor socket, client logs, pids.
 test_dir := "/tmp/gelm-test-env"
 
+# Directory for the compositor-in-the-loop test suite, separate from
+# the interactive demo dir so the two never clobber each other.
+headless_test_dir := "/tmp/gelm-test-env-24"
+
 # Run every release gate in order: vet, lint, test, build.
 check: vet lint test build
+
+# Run the compositor-in-the-loop input tests (internal/headlesstest):
+# boots a private headless sway with the test-env recipe, then runs
+# the suite against it with GELM_HEADLESS=1 - the tests attach to the
+# running compositor, launch the showcase, and drive a synthetic seat
+# through pointer and keyboard while asserting on the client's trace
+# log. The env is always torn down, pass or fail. Runs under nix
+# develop so sway is on PATH; needs no display and never touches the
+# desktop session.
+headless:
+    #!/bin/sh
+    dir="{{headless_test_dir}}"
+    just test-env "$dir" || exit 1
+    trap 'just test-env-stop "$dir"' EXIT INT TERM
+    . "$dir/client.env"
+    export WAYLAND_DISPLAY XDG_RUNTIME_DIR="$dir" GELM_HEADLESS=1
+    go test ./internal/headlesstest -count=1
+
+# `check` plus the headless input gate - what CI runs. The gate is
+# required there: GELM_HEADLESS=1 turns every skip into a failure.
+check-headless: check headless
 
 # Static analysis of every package with go vet.
 vet:
@@ -79,25 +104,30 @@ multi-headless GOELM_DEBUG="input,frame": test-env test-build
     fi
 
 # Build the headless test binaries: the traced showcase and wlpointer.
-test-build:
-    go build -tags gelmdebug -o {{test_dir}}/gelm-hello ./cmd/gelm-hello
-    go build -o {{test_dir}}/wlpointer ./cmd/wlpointer
+test-build dir=test_dir:
+    go build -tags gelmdebug -o {{dir}}/gelm-hello ./cmd/gelm-hello
+    go build -o {{dir}}/wlpointer ./cmd/wlpointer
 
 # Start the headless test compositor: sway on wlroots' headless backend
 # in a private XDG_RUNTIME_DIR, so synthetic-input runs never touch the
-# real desktop. Idempotent: a second call reports and exits.
-test-env:
+# real desktop. Idempotent: a second call reports and exits. The sway
+# config pins the showcase (dev.stubbe.gelm.hello) to a floating
+# 640x470 window at the output's origin - keep that in sync with
+# internal/headlesstest (TestSwayRecipePinsTheShowcase guards it).
+test-env dir=test_dir:
     #!/bin/sh
-    dir="{{test_dir}}"
+    dir="{{dir}}"
     if [ -f "$dir/sway.pid" ] && kill -0 "$(cat "$dir/sway.pid")" 2>/dev/null; then
         echo "test compositor already running in $dir"
         exit 0
     fi
     rm -rf "$dir"
     mkdir -p "$dir" && chmod 700 "$dir"
-    printf '%s\n' 'output * mode 1280x800' \
+    printf '%s\n' 'output * mode 1280x800 scale 1' \
         'default_border none' \
-        'default_floating_border none' > "$dir/sway.cfg"
+        'default_floating_border none' \
+        'for_window [app_id="dev.stubbe.gelm.hello"] floating enable, move position 0 0, resize set 640 470' \
+        > "$dir/sway.cfg"
     XDG_RUNTIME_DIR="$dir" WLR_BACKENDS=headless WLR_LIBINPUT_NO_DEVICES=1 \
         WLR_RENDERER=pixman nix develop -c sway -c "$dir/sway.cfg" \
         >"$dir/sway.log" 2>&1 &
@@ -115,9 +145,9 @@ test-env:
     echo "test compositor up: $(cat "$dir/client.env") XDG_RUNTIME_DIR=$dir"
 
 # Stop the headless test compositor and wipe its runtime dir.
-test-env-stop:
+test-env-stop dir=test_dir:
     #!/bin/sh
-    dir="{{test_dir}}"
+    dir="{{dir}}"
     if [ -f "$dir/sway.pid" ]; then
         pid="$(cat "$dir/sway.pid")"
         kill "$pid" 2>/dev/null

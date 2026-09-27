@@ -188,6 +188,10 @@ type Scroll struct {
 
 	// ShowBars enables the auto-hiding scrollbar indicators.
 	ShowBars bool
+	// OnScrolled fires when a wheel, bar drag, or keyboard scroll lands
+	// at a NEW offset (same-offset scrolls stay silent). Nil means
+	// nobody listens.
+	OnScrolled func(x, y int)
 	// FillX and FillY stretch a smaller child across the viewport
 	// instead of centering it.
 	FillX, FillY bool
@@ -252,6 +256,9 @@ func (s *Scroll) SetOffset(x, y int) {
 	}
 	s.offX, s.offY = x, y
 	s.Invalidate()
+	if s.OnScrolled != nil {
+		s.OnScrolled(x, y)
+	}
 }
 
 // ShowBarsOnce marks the bars visible now and schedules their fade-out:

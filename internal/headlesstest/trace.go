@@ -1,0 +1,191 @@
+package headlesstest
+
+import (
+	"bytes"
+	"fmt"
+	"os"
+	"regexp"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+)
+
+// Trace is one line of the client's GOELM_DEBUG output: "<secs>s
+// <category>: <message>" (see internal/debug). Lines that do not parse
+// as traces (plain log.Fatal output, Go panics) keep Category empty
+// and carry the whole line as Message, so the watcher can also wait
+// for them.
+type Trace struct {
+	Secs     float64
+	Category string
+	Message  string
+}
+
+func (t Trace) String() string {
+	if t.Category == "" {
+		return t.Message
+	}
+	return fmt.Sprintf("%.3fs %s: %s", t.Secs, t.Category, t.Message)
+}
+
+var traceRe = regexp.MustCompile(`^\s*([0-9]+\.[0-9]+)s\s+([A-Za-z0-9_-]+): (.*)$`)
+
+// ParseTraces extracts the trace lines from a log snapshot.
+func ParseTraces(data []byte) []Trace {
+	var out []Trace
+	for line := range strings.SplitSeq(string(bytes.TrimSuffix(data, []byte("\n"))), "\n") {
+		if m := traceRe.FindStringSubmatch(line); m != nil {
+			secs, _ := strconv.ParseFloat(m[1], 64)
+			out = append(out, Trace{Secs: secs, Category: m[2], Message: m[3]})
+			continue
+		}
+		if strings.TrimSpace(line) != "" {
+			out = append(out, Trace{Message: line})
+		}
+	}
+	return out
+}
+
+// pollInterval is how often the watcher re-reads the log. Traces are
+// assertions, not latency measurements; 15ms keeps suites fast without
+// busy-spinning.
+const pollInterval = 15 * time.Millisecond
+
+// LogWatcher follows one client log from its current end, handing out
+// only traces that arrived after the previous Wait: consecutive Waits
+// assert order without re-matching older lines. Lines read but not yet
+// matched stay pending, so a burst written between two polls is
+// delivered one Wait at a time instead of being swallowed by whichever
+// Wait ran first. It is safe for one goroutine at a time (the tests
+// are sequential).
+type LogWatcher struct {
+	path string
+	mu   sync.Mutex
+	// readPos is how far the file has been read; lines read but not
+	// matched yet sit in pending.
+	readPos int64
+	pending []pendingTrace
+	seen    []Trace
+}
+
+// pendingTrace is a parsed line waiting to be matched, with the file
+// offset just past its newline so consumption can advance precisely.
+type pendingTrace struct {
+	tr  Trace
+	end int64
+}
+
+// Watch starts following the log at path from its current size, so a
+// watcher only sees what happens after it was attached.
+func Watch(path string) (*LogWatcher, error) {
+	st, err := os.Stat(path)
+	if err != nil {
+		return nil, err
+	}
+	return &LogWatcher{path: path, readPos: st.Size()}, nil
+}
+
+// Wait polls the log until a trace in category containing substr
+// arrives, and returns it. category "" matches any line (including
+// non-trace output). On timeout the error carries the tail of what did
+// arrive, which is the failure evidence for the suite.
+func (w *LogWatcher) Wait(category, substr string, timeout time.Duration) (Trace, error) {
+	deadline := time.Now().Add(timeout)
+	for {
+		t, ok := w.step(category, substr)
+		if ok {
+			return t, nil
+		}
+		if time.Now().After(deadline) {
+			return Trace{}, fmt.Errorf("timeout (%s) waiting for [%s] %q; log tail:\n%s",
+				timeout, category, substr, w.Tail(25))
+		}
+		time.Sleep(pollInterval)
+	}
+}
+
+// step pulls newly complete lines into the pending queue, then serves
+// the first match from it.
+func (w *LogWatcher) step(category, substr string) (Trace, bool) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	f, err := os.Open(w.path)
+	if err != nil {
+		return Trace{}, false
+	}
+	defer f.Close()
+
+	if _, err := f.Seek(w.readPos, 0); err != nil {
+		return Trace{}, false
+	}
+	// Read whole lines with their exact file extents: only complete
+	// lines are consumed (a writer mid-line stays for the next poll).
+	var raw []byte
+	buf := make([]byte, 0, 64*1024)
+	for {
+		n, err := f.Read(buf[:cap(buf)])
+		raw = append(raw, buf[:n]...)
+		if err != nil {
+			break
+		}
+	}
+	for len(raw) > 0 {
+		i := bytes.IndexByte(raw, '\n')
+		if i < 0 {
+			break
+		}
+		line := raw[:i]
+		raw = raw[i+1:]
+		w.readPos += int64(i) + 1
+		tr := parseLine(line)
+		w.seen = append(w.seen, tr)
+		w.pending = append(w.pending, pendingTrace{tr: tr, end: w.readPos})
+	}
+	for i, pt := range w.pending {
+		if category != "" && pt.tr.Category != category {
+			continue
+		}
+		if strings.Contains(pt.tr.Message, substr) {
+			w.pending = w.pending[i+1:]
+			return pt.tr, true
+		}
+	}
+	return Trace{}, false
+}
+
+// parseLine turns one log line into a Trace; non-trace lines keep the
+// whole line as Message with an empty Category.
+func parseLine(line []byte) Trace {
+	if m := traceRe.FindSubmatch(line); m != nil {
+		secs, _ := strconv.ParseFloat(string(m[1]), 64)
+		return Trace{Secs: secs, Category: string(m[2]), Message: string(m[3])}
+	}
+	return Trace{Message: string(line)}
+}
+
+// Tail returns up to n most recent traces seen so far, oldest first,
+// for failure messages.
+func (w *LogWatcher) Tail(n int) []Trace {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if len(w.seen) > n {
+		return append([]Trace(nil), w.seen[len(w.seen)-n:]...)
+	}
+	return append([]Trace(nil), w.seen...)
+}
+
+// tailFile is a standalone last-n-lines helper for files the watcher
+// is not attached to (sway's own log).
+func tailFile(path string, n int) string {
+	data, err := os.ReadFile(path) //nolint:gosec // the path is the harness's own runtime dir
+	if err != nil {
+		return fmt.Sprintf("(unreadable: %v)", err)
+	}
+	lines := strings.Split(strings.TrimRight(string(data), "\n"), "\n")
+	if len(lines) > n {
+		lines = lines[len(lines)-n:]
+	}
+	return strings.Join(lines, "\n")
+}
