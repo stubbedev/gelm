@@ -81,6 +81,13 @@ type Config struct {
 	// GELM_INSPECT=1 arms it for every app; this field is the
 	// in-code opt-in. See docs/inspector.md.
 	Inspect bool
+	// OnDisconnect observes the compositor connection dying (restart,
+	// crash, reload): it fires exactly once on the loop goroutine
+	// before Run releases the windows and closes the session, with the
+	// classified reason. Run then returns an error matching
+	// ErrDisconnected; exit with DisconnectExitCode so a supervisor
+	// respawns on the new session. See docs/application-model.md.
+	OnDisconnect func(DisconnectedEvent)
 }
 
 // surfaceInput routes one host surface's pointer events into the
@@ -326,6 +333,9 @@ func Run(cfg Config) error {
 	app.SetClipboard(cfg.Clipboard)
 	app.SetCopyOnSelect(cfg.CopyOnSelect)
 	app.SetTooltipFace(cfg.TooltipFace)
+	if cfg.OnDisconnect != nil {
+		app.OnDisconnect(cfg.OnDisconnect)
+	}
 	app.newWindow(cfg.Host, cfg.Scale, cfg.Root, windowHooks{
 		background: cfg.Background,
 		onPress:    cfg.OnPress,

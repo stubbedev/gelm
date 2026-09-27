@@ -21,6 +21,80 @@ deliberately drops.
 - `app.Run(Config)` — the single-window convenience, implemented on the
   same loop and hostWindow machinery as Application.
 
+## Compositor disconnects
+
+Wayland has no reconnection: when the compositor restarts (crash,
+reload, upgrade), the kernel kills every client's socket and every
+proxy object on the connection dies with it. gelm turns that from
+"whatever a dead socket read does" into a defined story.
+
+**Detection.** Every dispatch surface — the loop's park
+(`Session.Step`), `Session.Roundtrip`, and the frame path's
+attach/damage/commit — maps wire failures onto one typed error,
+`*wlsession.DisconnectError` (matchable as `app.ErrDisconnected` via
+`errors.Is`), carrying a classified reason:
+
+| wire shape | reason |
+| --- | --- |
+| EOF on the socket read (`ErrContextRunConnectionClosed`) | `DisconnectConnectionLost` — the compositor went away |
+| dead-socket errno on read or write (EPIPE, ECONNRESET, ENOTCONN, EBADF, …) | `DisconnectConnectionLost` |
+| fatal `wl_display.error` recorded, or a protocol-error marker in the dispatch failure | `DisconnectProtocol` |
+| anything else (timeout, decode failure with no verdict) | not classified — returned as-is; not every wire hiccup is a disconnect |
+
+The destroyed-proxy retry inside dispatch (`ErrContextRunProxyNil`, a
+normal mid-queue abort) is bounded, so no error shape — a dead fd chief
+among them — can turn a roundtrip or the park into a spin.
+
+**Policy.** `Application.OnDisconnect` (or `Config.OnDisconnect` on the
+single-window `Run`) fires exactly once, on the loop goroutine, before
+teardown, with `DisconnectedEvent{Reason, Err}`. After it returns, Run
+releases every window (buffer pools included), closes the session — the
+shared arena's memfd, mapping, and fd, and the display — and shuts the
+invoke queues, so the exiting process leaves nothing mapped and no
+timer or queued fn reaches for a dead connection. Run then returns the
+disconnect error.
+
+The sanctioned behavior is a **clean exit**: `main` matches
+`errors.Is(err, app.ErrDisconnected)` and exits with
+`app.DisconnectExitCode` (75, EX_TEMPFAIL), which systemd
+`Restart=on-failure` — or a wayle supervisor — treats as respawn-us on
+the new session. The hook itself is optional observation (flush state
+before the teardown, never block indefinitely); without it the same
+clean exit runs.
+
+**Reconnect (design sketch, deliberately not built).** A
+reconnect-with-rebuild mode would reuse the same policy hook point and
+go roughly like this:
+
+1. In `OnDisconnect`, request reconnect instead of exit. The teardown
+   above still runs — on a dead connection there is nothing to keep:
+   every proxy (surfaces, seat, clipboard, outputs) is dead regardless.
+2. `wlsession.Connect` a fresh session (the registry re-runs inside
+   it), then rebuild every window from its declarative config:
+   `WindowConfig`/`LayerConfig` are already values, so the application
+   keeps a factory per window and re-runs `newWindow`/`NewLayer` on the
+   new session. Widget trees, application state, `Invoke`/`Every`
+   queues, accelerators, and keymaps survive — they were never
+   wire-owned. The one-way state is compositor-side: clipboard contents,
+   drag sessions, and pending configure serials are gone; focus is the
+   new compositor's to give.
+3. Output identity (`xdg_output` names) re-resolves on the new registry
+   before layer surfaces pin themselves, so a panel lands on the same
+   `DP-1` it came from.
+
+The sketch is honest but unproven: it needs the window factory
+plumbing (step 2), a buffer arena re-seeded per session, and tests for
+every protocol re-binding. Clean exit plus a supervisor covers the
+restart story with the machinery that already exists, so reconnect
+stays a stretch goal until an embedder needs state-preserving restarts
+wayle cannot get by respawning.
+
+**Testing.** Unit: dead-socket classification, the bounded retry, the
+exactly-once hook, the pool/queue/fd teardown, and the goroutine budget
+(app and wlsession packages). Live: `internal/headlesstest`'s kill test
+boots the headless session, runs the showcase, SIGKILLs sway mid-run,
+and asserts one policy trace and exit code 75.
+
 ## Loop sharing
 
 All windows live on one connection and one parked loop (see

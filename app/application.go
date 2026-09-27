@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"sync/atomic"
 	"time"
 
 	"github.com/neurlang/wayland/wl"
@@ -30,6 +31,13 @@ type Application struct {
 	sess        *wlsession.Session
 	tooltipFace *render.Typeface
 	onKey       func(r *widget.Router, keycode uint32, mods wlsession.Mods)
+	// onDisconnect is the compositor-disconnect policy hook; see
+	// app/disconnect.go. disconnectOnce makes it fire exactly once, and
+	// step is the dispatch seam (sess.Step in production) tests drive
+	// without a compositor.
+	onDisconnect   func(DisconnectedEvent)
+	disconnectOnce atomic.Bool
+	step           func() error
 	// accels is the accelerator table: named actions plus keysym+mods
 	// bindings, consulted by routeKey before text routing.
 	accels *accelTable
@@ -74,6 +82,7 @@ func NewApplication(sess *wlsession.Session) *Application {
 		kicker:  &loopKicker{},
 		ime:     newIMEController(sess),
 		wake:    sess.WakeAfter,
+		step:    sess.Step,
 	}
 	// Async image loads (widget.Image file/URL sources) deliver through
 	// the loop queue - the only sanctioned bridge (docs/threading.md).
@@ -348,13 +357,19 @@ func (a *Application) Run() error {
 	defer func() {
 		widget.UnmarkLoop()
 		// Discard queued invokes and stop the pollers: nothing will run
-		// them, and later Invokes drop instead of accumulating.
+		// them, and later Invokes drop instead of accumulating. This runs
+		// on the disconnect path too — timers and invokes die with the
+		// loop, whatever killed it.
 		a.queues.shutdown()
 	}()
 	a.sess.OnKey = a.routeKey
 	a.sess.OnKeyUp = a.rep.release
 	a.sess.OnIME = a.imeEvent
 	a.sess.OnIMEFocus = a.ime.reset
+	step := a.step
+	if step == nil {
+		step = a.sess.Step
+	}
 	for {
 		if a.quit || len(a.windows) == 0 {
 			return ErrClosed
@@ -436,7 +451,9 @@ func (a *Application) Run() error {
 			if shouldDraw(w, animating, now, resized) {
 				w.dirty = false
 				if !w.draw() {
-					return w.drawErr
+					// A wire failure mid-frame (attach/commit on a dead
+					// socket) classifies exactly like a dispatch one.
+					return a.loopError(w.drawErr)
 				}
 			}
 		}
@@ -460,8 +477,11 @@ func (a *Application) Run() error {
 		if ok {
 			a.kicker.schedule(a.sess, wakeAt)
 		}
-		if err := a.sess.Step(); err != nil {
-			return fmt.Errorf("app: dispatch: %w", err)
+		if err := step(); err != nil {
+			// A dead connection (compositor restart, protocol verdict)
+			// runs the disconnect policy here; other dispatch failures
+			// come back as they are.
+			return a.loopError(fmt.Errorf("app: dispatch: %w", err))
 		}
 	}
 }

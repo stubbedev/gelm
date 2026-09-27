@@ -935,22 +935,23 @@ func (s *Session) DecorationManager() *deco.ZxdgDecorationManagerV1 {
 // Roundtrip issues a display sync and dispatches until it completes.
 // Proxies destroyed mid-queue (a done frame callback, a dismissed
 // popup) abort a dispatch pass with ErrContextRunProxyNil; retrying is
-// safe and finishes the roundtrip.
+// safe and finishes the roundtrip. The retry is bounded
+// (runThroughProxyNil), and a dead connection classifies as a
+// DisconnectError instead of looping: a sync to a dead socket fails on
+// the read, never spins.
 func (s *Session) Roundtrip() error {
 	cb, err := s.Display.Sync()
 	if err != nil {
-		return err
+		return s.asDisconnect(err)
 	}
 	// done is a destructor event: once it lands (or the wait fails) the
 	// callback is dead on both sides, so its id must rejoin the
 	// client's pool. Skipping this leaks a proxy per roundtrip - and
 	// some loops roundtrip per frame.
 	defer cb.Unregister()
-	err = s.Display.Context().RunTill(cb)
-	for errors.Is(err, wl.ErrContextRunProxyNil) {
-		err = s.Display.Context().RunTill(cb)
-	}
-	return s.withProtoErr(err)
+	return s.asDisconnect(runThroughProxyNil(func() error {
+		return s.Display.Context().RunTill(cb)
+	}))
 }
 
 // Step dispatches exactly one event, blocking until one arrives. It is
@@ -958,11 +959,9 @@ func (s *Session) Roundtrip() error {
 // calling Step holds no CPU and wakes only when the compositor sends
 // something or a WakeAfter kick fires.
 func (s *Session) Step() error {
-	err := s.Display.Context().Run()
-	for errors.Is(err, wl.ErrContextRunProxyNil) {
-		err = s.Display.Context().Run()
-	}
-	return s.withProtoErr(err)
+	return s.asDisconnect(runThroughProxyNil(func() error {
+		return s.Display.Context().Run()
+	}))
 }
 
 // HandleDisplayError implements wl.DisplayErrorHandler: record the
@@ -1014,13 +1013,12 @@ func (s *Session) WakeAfter(d time.Duration) {
 	})
 }
 
-// Run dispatches events forever; it returns when the connection dies.
+// Run dispatches events forever; it returns when the connection dies —
+// classified as a DisconnectError, like Step.
 func (s *Session) Run() error {
-	err := s.Display.Context().Run()
-	for errors.Is(err, wl.ErrContextRunProxyNil) {
-		err = s.Display.Context().Run()
-	}
-	return err
+	return s.asDisconnect(runThroughProxyNil(func() error {
+		return s.Display.Context().Run()
+	}))
 }
 
 // Close disconnects from the display and releases the session's shared

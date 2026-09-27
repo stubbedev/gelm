@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"os"
 	"time"
 
 	"github.com/unxed/xkb-go"
@@ -193,8 +194,19 @@ func run() error {
 				win.Close()
 			}
 		},
-	}); err != nil && !errors.Is(err, app.ErrClosed) {
-		return err
+	}); err != nil {
+		switch {
+		case errors.Is(err, app.ErrClosed):
+			// Normal close: a window ended the loop.
+		case errors.Is(err, app.ErrDisconnected):
+			// The compositor went away (restart, crash, reload). Exit
+			// with the distinct disconnect code so a supervisor
+			// (systemd Restart=on-failure, a wayle supervisor) respawns
+			// us on the new session.
+			os.Exit(app.DisconnectExitCode)
+		default:
+			return err
+		}
 	}
 	return nil
 }
