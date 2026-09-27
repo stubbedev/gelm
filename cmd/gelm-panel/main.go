@@ -97,7 +97,7 @@ func loadFont() (*render.Chain, error) {
 // wiring.
 func buildPanel(font render.Font) *widget.Box {
 	progress := widget.NewProgressBar(0.5)
-	status := widget.NewLabel(font, "50%", 12, muted)
+	status := widget.NewLabel(font, 12, "50%", muted)
 	entry := widget.NewEntry(font, 13, textColor)
 
 	slider := widget.NewSlider(0, 100, 1, 50)
@@ -108,7 +108,7 @@ func buildPanel(font render.Font) *widget.Box {
 
 	list := widget.NewBox(widget.Column, 2, 4)
 	for i := range 14 {
-		list.Append(widget.NewLabel(font, fmt.Sprintf("server-%02d.example", i+1), 13, textColor), false)
+		list.Append(widget.NewLabel(font, 13, fmt.Sprintf("server-%02d.example", i+1), textColor), false)
 	}
 	scroll := widget.NewScroll(list)
 	scroll.ShowBars = true
@@ -124,21 +124,21 @@ func buildPanel(font render.Font) *widget.Box {
 		return b
 	}
 	root := widget.NewBox(widget.Column, 12, 12)
-	root.Append(widget.NewLabel(font, "gelm panel", 17, accent), false)
-	root.Append(widget.NewLabel(font, "Brightness", 12, muted), false)
+	root.Append(widget.NewLabel(font, 17, "gelm panel", accent), false)
+	root.Append(widget.NewLabel(font, 12, "Brightness", muted), false)
 	root.Append(slider, false)
 	root.Append(progress, false)
 	root.Append(status, false)
-	root.Append(widget.NewLabel(font, "Preferences", 12, muted), false)
-	root.Append(row(notif, widget.NewLabel(font, "Enable notifications", 13, textColor)), false)
-	root.Append(row(night, widget.NewLabel(font, "Night light", 13, textColor)), false)
-	root.Append(widget.NewLabel(font, "Quick note", 12, muted), false)
+	root.Append(widget.NewLabel(font, 12, "Preferences", muted), false)
+	root.Append(row(notif, widget.NewLabel(font, 13, "Enable notifications", textColor)), false)
+	root.Append(row(night, widget.NewLabel(font, 13, "Night light", textColor)), false)
+	root.Append(widget.NewLabel(font, 12, "Quick note", muted), false)
 	root.Append(entry, false)
-	root.Append(widget.NewLabel(font, "Notes", 12, muted), false)
+	root.Append(widget.NewLabel(font, 12, "Notes", muted), false)
 	notes := widget.NewTextArea(font, 13, textColor)
 	notes.SetPlaceholder("multi-line...")
 	root.Append(notes, false)
-	root.Append(widget.NewLabel(font, "Servers (scroll me)", 12, muted), false)
+	root.Append(widget.NewLabel(font, 12, "Servers (scroll me)", muted), false)
 	root.Append(scroll, true)
 	entry.SetPlaceholder("type here")
 	return root

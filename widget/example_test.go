@@ -91,8 +91,7 @@ func ExampleDropdown() {
 	// arrows move the highlight, Enter picks, Esc cancels without
 	// changing anything. Here the list opens from the keyboard, Down
 	// walks to the second row, and Enter commits it exactly once.
-	dd := widget.NewDropdown([]string{"Light", "Dark", "System"}, 0)
-	dd.SetFace(face(), 13)
+	dd := widget.NewDropdown(face(), 13, []string{"Light", "Dark", "System"}, 0)
 
 	var picked string
 	dd.OnSelect = func(int) { picked = dd.Selection() }
@@ -107,7 +106,7 @@ func ExampleDropdown() {
 		{Label: "eDP-1", Value: "/dev/drm0"},
 		{Label: "HDMI-A-1", Value: "/dev/drm1"},
 	}
-	selector := widget.NewDropdownOf(outputs, 0)
+	selector := widget.NewDropdownOf(face(), 13, outputs, 0)
 	selector.OnSelect = func(i int, dev string) {
 		fmt.Println("output", i, "->", dev)
 	}

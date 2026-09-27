@@ -200,6 +200,9 @@ type TabTrapper interface {
 // event.
 type KeyAction uint8
 
+// Editing and activation actions, derived from keysyms by
+// KeyActionForSym. KeyBackspace is zero, so the zero KeyAction is the
+// common delete-backward edit.
 const (
 	KeyBackspace KeyAction = iota
 	KeyDelete

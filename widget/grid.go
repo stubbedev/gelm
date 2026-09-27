@@ -105,6 +105,20 @@ func (g *Grid) SetRowHomogeneous(h bool) *Grid {
 	return g
 }
 
+// ColumnSpacing returns the gap between columns.
+func (g *Grid) ColumnSpacing() int { return g.colSpacing }
+
+// RowSpacing returns the gap between rows.
+func (g *Grid) RowSpacing() int { return g.rowSpacing }
+
+// ColumnHomogeneous reports whether every column takes the widest
+// column's extent.
+func (g *Grid) ColumnHomogeneous() bool { return g.colHomog }
+
+// RowHomogeneous reports whether every row takes the tallest row's
+// extent.
+func (g *Grid) RowHomogeneous() bool { return g.rowHomog }
+
 // Attach puts w at (col, row) with the given spans and returns the grid
 // for chaining. Spans below one and negative coordinates clamp to one
 // and zero respectively.

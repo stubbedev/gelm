@@ -184,8 +184,8 @@ func goldenFace(tb testing.TB) *render.Typeface {
 func TestGoldenLabel(t *testing.T) {
 	face := goldenFace(t)
 	th := DarkTheme()
-	NewGolden(t, NewLabel(face, "Save", 14, th.Text), "label-short", goldenTheme(th))
-	NewGolden(t, NewLabel(face, "The quick brown fox jumps over the lazy dog while the compositor waits for a frame", 14, th.Text), "label-long", goldenTheme(th))
+	NewGolden(t, NewLabel(face, 14, "Save", th.Text), "label-short", goldenTheme(th))
+	NewGolden(t, NewLabel(face, 14, "The quick brown fox jumps over the lazy dog while the compositor waits for a frame", th.Text), "label-long", goldenTheme(th))
 }
 
 // TestGoldenLabelWrapped covers wrapped text presentation through the
@@ -213,7 +213,7 @@ func TestGoldenLabelModes(t *testing.T) {
 	lineH := face.Shape("x", px).LineHeight()
 
 	ellipsize := func(mode EllipsizeMode, text, name string, th *Theme) {
-		l := NewLabel(face, text, px, th.Text)
+		l := NewLabel(face, px, text, th.Text)
 		l.SetEllipsize(mode)
 		NewGolden(t, l, name, goldenTheme(th), goldenFrame(150, lineH+3))
 	}
@@ -228,13 +228,17 @@ func TestGoldenLabelModes(t *testing.T) {
 		NewGolden(t, l, name, goldenTheme(dark),
 			goldenFrame(width, len(l.wrapped(float64(width)))*lineH))
 	}
-	wrapped := NewLabel(face, "Settings panes and toast bodies wrap their description "+
-		"text to the width the panel offers", px, dark.Text)
+	wrapped := NewLabel(face,
+		px, "Settings panes and toast bodies wrap their description "+
+			"text to the width the panel offers", dark.Text)
+
 	wrapped.SetWrap(true)
 	wrapShot(wrapped, "label-wrap-rows", 180)
 
-	both := NewLabel(face, "wrap fills rows and the ellipsis lands only on the "+
-		"final row: unbreakabletokenthatcannotfitanywhere", px, dark.Text)
+	both := NewLabel(face,
+		px, "wrap fills rows and the ellipsis lands only on the "+
+			"final row: unbreakabletokenthatcannotfitanywhere", dark.Text)
+
 	both.SetWrap(true)
 	both.SetEllipsize(EllipsizeEnd)
 	wrapShot(both, "label-wrap-ellipsize", 180)
@@ -244,7 +248,7 @@ func TestGoldenButtonStates(t *testing.T) {
 	face := goldenFace(t)
 	th := DarkTheme()
 	newButton := func() *Button {
-		return NewButton(NewLabel(face, "Open", 14, th.Text), 10, 8)
+		return NewButton(NewLabel(face, 14, "Open", th.Text), 10, 8)
 	}
 	NewGolden(t, newButton(), "button-idle", goldenTheme(th))
 	hover := newButton()
@@ -314,9 +318,9 @@ func TestGoldenScrollBars(t *testing.T) {
 	for line := range strings.SplitSeq(
 		"Scrolling content taller and wider than its viewport draws the auto-hiding bars",
 		" ") {
-		content.Append(NewLabel(face, line, 14, th.Text), false)
+		content.Append(NewLabel(face, 14, line, th.Text), false)
 	}
-	content.Append(NewLabel(face, "a-very-long-unbreakable-token-that-overflows-the-viewport", 14, th.Text), false)
+	content.Append(NewLabel(face, 14, "a-very-long-unbreakable-token-that-overflows-the-viewport", th.Text), false)
 	sc := NewScroll(content)
 	sc.ShowBars = true
 	NewGolden(t, sc, "scroll-bars", goldenFrame(180, 120), goldenAfterArrange(func() {
@@ -356,10 +360,10 @@ func TestGoldenProgressBar(t *testing.T) {
 func TestGoldenFocusRing(t *testing.T) {
 	face := goldenFace(t)
 	th := DarkTheme()
-	button := NewButton(NewLabel(face, "Focused", 14, th.Text), 10, 8)
+	button := NewButton(NewLabel(face, 14, "Focused", th.Text), 10, 8)
 	column := NewBox(Column, 10, 4).
 		Append(button, false).
-		Append(NewLabel(face, "unfocused label", 14, th.TextMuted), false)
+		Append(NewLabel(face, 14, "unfocused label", th.TextMuted), false)
 	NewGolden(t, column, "focus-ring", goldenTheme(th), goldenFocus(button))
 }
 
@@ -370,7 +374,7 @@ func TestGoldenTooltipCard(t *testing.T) {
 	face := goldenFace(t)
 	th := DarkTheme()
 	card := NewBox(Row, 0, 8)
-	card.Append(NewLabel(face, "Tooltips appear after a short dwell", 12, th.Text), false)
+	card.Append(NewLabel(face, 12, "Tooltips appear after a short dwell", th.Text), false)
 	NewGolden(t, card, "tooltip-card", goldenTheme(th), goldenBackground(th.Surface))
 }
 
@@ -381,10 +385,10 @@ func TestGoldenLightTheme(t *testing.T) {
 	th := LightTheme()
 	light := goldenTheme(th)
 
-	NewGolden(t, NewLabel(face, "Save", 14, th.Text), "label-short-light", light)
+	NewGolden(t, NewLabel(face, 14, "Save", th.Text), "label-short-light", light)
 
 	newButton := func() *Button {
-		return NewButton(NewLabel(face, "Open", 14, th.Text), 10, 8)
+		return NewButton(NewLabel(face, 14, "Open", th.Text), 10, 8)
 	}
 	NewGolden(t, newButton(), "button-idle-light", light)
 	hover := newButton()
@@ -421,13 +425,13 @@ func TestGoldenLightTheme(t *testing.T) {
 	NewGolden(t, menu, "menu-hover-light", light,
 		goldenAfterArrange(func() { hoverMenuRow(menu, itemH, 1) }))
 
-	button := NewButton(NewLabel(face, "Focused", 14, th.Text), 10, 8)
+	button := NewButton(NewLabel(face, 14, "Focused", th.Text), 10, 8)
 	column := NewBox(Column, 10, 4).
 		Append(button, false).
-		Append(NewLabel(face, "unfocused label", 14, th.TextMuted), false)
+		Append(NewLabel(face, 14, "unfocused label", th.TextMuted), false)
 	NewGolden(t, column, "focus-ring-light", light, goldenFocus(button))
 
 	card := NewBox(Row, 0, 8)
-	card.Append(NewLabel(face, "Tooltips appear after a short dwell", 12, th.Text), false)
+	card.Append(NewLabel(face, 12, "Tooltips appear after a short dwell", th.Text), false)
 	NewGolden(t, card, "tooltip-card-light", light, goldenBackground(th.Surface))
 }

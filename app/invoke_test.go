@@ -88,7 +88,7 @@ func TestInvokeRunsOnLoopGoroutine(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	label := widget.NewLabel(face, "start", 14, render.RGB(255, 255, 255))
+	label := widget.NewLabel(face, 14, "start", render.RGB(255, 255, 255))
 
 	a := testApp(nil)
 	const passes = 3

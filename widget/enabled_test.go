@@ -21,7 +21,7 @@ func enabledRoot(t *testing.T, w Widget) *Box {
 func TestDisabledButtonSwallowsInput(t *testing.T) {
 	newButton := func() (*Button, *Router, Point, *int) {
 		clicks := 0
-		b := NewButton(NewLabel(entryFace(t), "go", 12, render.RGB(255, 255, 255)), 8, 4)
+		b := NewButton(NewLabel(entryFace(t), 12, "go", render.RGB(255, 255, 255)), 8, 4)
 		b.OnClick = func() { clicks++ }
 		r := &Router{Root: enabledRoot(t, b)}
 		bb := b.Bounds()
@@ -600,8 +600,7 @@ func TestDisabledPaintSmoke(t *testing.T) {
 			return a
 		}(),
 	}
-	dd := NewDropdown([]string{"a"}, 0)
-	dd.SetFace(face, 12)
+	dd := NewDropdown(face, 12, []string{"a"}, 0)
 	dd.SetEnabled(false)
 	for _, w := range []Widget{
 		func() *Switch { s := NewSwitch(true); s.SetEnabled(false); return s }(),

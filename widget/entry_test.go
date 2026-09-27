@@ -49,7 +49,7 @@ func TestEntryClickToCaret(t *testing.T) {
 func TestEntryOnChanged(t *testing.T) {
 	seen := ""
 	fired := 0
-	e := NewEntry(nil, 14, render.RGB(255, 255, 255))
+	e := NewEntry(testFace(t), 14, render.RGB(255, 255, 255))
 	e.OnChanged = func(s string) { fired++; seen = s }
 
 	t.Run("typing fires with the new contents", func(t *testing.T) {

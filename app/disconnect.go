@@ -29,11 +29,11 @@ var ErrDisconnected = wlsession.ErrDisconnected
 type DisconnectReason = wlsession.DisconnectReason
 
 const (
-	// DisconnectConnectionLost: the compositor is gone without a
+	// DisconnectConnectionLost means the compositor is gone without a
 	// verdict — the restart case.
 	DisconnectConnectionLost = wlsession.DisconnectConnectionLost
-	// DisconnectProtocol: the compositor sent a fatal wl_display.error
-	// before the connection ended.
+	// DisconnectProtocol means the compositor sent a fatal
+	// wl_display.error before the connection ended.
 	DisconnectProtocol = wlsession.DisconnectProtocol
 )
 

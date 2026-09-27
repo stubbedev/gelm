@@ -101,7 +101,7 @@ func buildLeftModule(font render.Font, scale int) *widget.Button {
 	}
 	inner := widget.NewBox(widget.Row, 6*scale, 0)
 	inner.Append(widget.NewIcon(icon), false)
-	inner.Append(widget.NewLabel(font, "gelm", float64(14*scale), labelColor), false)
+	inner.Append(widget.NewLabel(font, float64(14*scale), "gelm", labelColor), false)
 	btn := widget.NewButton(inner, 4*scale, 6*scale)
 	btn.Bg = pillColor
 	btn.BgHover = render.RGB(0x18, 0x18, 0x25)

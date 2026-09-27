@@ -76,13 +76,13 @@ import (
 type Appearance uint8
 
 const (
-	// Unknown: no portal, no readable preference, or a value outside
-	// the spec (0 "no preference" included). Apps keep whatever theme
-	// they set; Unknown is a reason to do nothing.
+	// Unknown means no portal, no readable preference, or a value
+	// outside the spec (0 "no preference" included). Apps keep
+	// whatever theme they set; Unknown is a reason to do nothing.
 	Unknown Appearance = iota
-	// Dark: the system prefers a dark style ("prefer-dark", 1).
+	// Dark means the system prefers a dark style ("prefer-dark", 1).
 	Dark
-	// Light: the system prefers a light style ("prefer-light", 2).
+	// Light means the system prefers a light style ("prefer-light", 2).
 	Light
 )
 

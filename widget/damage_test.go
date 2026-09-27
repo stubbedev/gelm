@@ -56,7 +56,7 @@ func TestCollectDamage(t *testing.T) {
 	face := entryFace(t)
 
 	t.Run("SetText damages exactly the label bounds once", func(t *testing.T) {
-		lbl := NewLabel(face, "before", 14, Current().Text)
+		lbl := NewLabel(face, 14, "before", Current().Text)
 		root := NewBox(Column, 4, 0)
 		root.Append(lbl, false)
 		root.Measure(Constraints{Max: Size{W: 400, H: 300}})
@@ -78,7 +78,7 @@ func TestCollectDamage(t *testing.T) {
 	})
 
 	t.Run("no mutation means no damage", func(t *testing.T) {
-		lbl := NewLabel(face, "stable", 14, Current().Text)
+		lbl := NewLabel(face, 14, "stable", Current().Text)
 		root := NewBox(Row, 0, 0)
 		root.Append(lbl, false)
 		root.Measure(Constraints{Max: Size{W: 100, H: 100}})
@@ -133,7 +133,7 @@ func TestCollectDamage(t *testing.T) {
 
 	t.Run("a mutation on a hidden notebook page waits for the page flip", func(t *testing.T) {
 		p0 := NewBox(Column, 0, 0)
-		hidden := NewLabel(face, "page one", 12, Current().Text)
+		hidden := NewLabel(face, 12, "page one", Current().Text)
 		p0.Append(hidden, false)
 		nb := NewNotebook(face)
 		nb.AppendTab("a", p0)
@@ -260,7 +260,7 @@ func TestMutationDamageRects(t *testing.T) {
 
 func TestThemeChangeDamagesTree(t *testing.T) {
 	face := entryFace(t)
-	lbl := NewLabel(face, "themed", 14, Current().Text)
+	lbl := NewLabel(face, 14, "themed", Current().Text)
 	root := NewBox(Column, 0, 0)
 	root.Append(lbl, false)
 	root.Measure(Constraints{Max: Size{W: 200, H: 100}})
@@ -297,16 +297,16 @@ func buildShowcase(tb testing.TB) showcase {
 		all = append(all, ws...)
 	}
 
-	status := NewLabel(face, "events land here", 12, th.TextMuted)
-	countLabel := NewLabel(face, "clicked 0 times", 15, th.Text)
+	status := NewLabel(face, 12, "events land here", th.TextMuted)
+	countLabel := NewLabel(face, 15, "clicked 0 times", th.Text)
 	progress := NewProgressBar(0)
 	button := NewButton(
-		NewBox(Row, 8, 0).Append(NewLabel(face, "click me", 15, th.Text), false), 10, 8)
+		NewBox(Row, 8, 0).Append(NewLabel(face, 15, "click me", th.Text), false), 10, 8)
 	slider := NewSlider(0, 1, 0.05, 0)
 	sw := NewSwitch(true)
-	swLabel := NewLabel(face, "notifications", 14, th.Text)
+	swLabel := NewLabel(face, 14, "notifications", th.Text)
 	check := NewCheckButton(false)
-	checkLabel := NewLabel(face, "remember me", 14, th.Text)
+	checkLabel := NewLabel(face, 14, "remember me", th.Text)
 	entry := NewEntry(face, 14, th.Text)
 	entry.SetPlaceholder("type here")
 	area := NewTextArea(face, 13, th.Text)
@@ -314,7 +314,7 @@ func buildShowcase(tb testing.TB) showcase {
 
 	list := NewBox(Column, 4, 0)
 	for i := 1; i <= 48; i++ {
-		list.Append(NewLabel(face, "server-00.example   up   41ms", 12, th.Text), false)
+		list.Append(NewLabel(face, 12, "server-00.example   up   41ms", th.Text), false)
 	}
 	scrolled := NewScroll(list)
 	scrolled.ShowBars = true
@@ -325,8 +325,8 @@ func buildShowcase(tb testing.TB) showcase {
 	}
 
 	header := NewBox(Column, 2, 0)
-	header.Append(NewLabel(face, "gelm showcase", 18, th.Accent), false)
-	header.Append(NewLabel(face, "every widget in one window", 11, th.TextMuted), false)
+	header.Append(NewLabel(face, 18, "gelm showcase", th.Accent), false)
+	header.Append(NewLabel(face, 11, "every widget in one window", th.TextMuted), false)
 
 	left := NewBox(Column, 10, 0)
 	left.Append(button, false)
@@ -337,11 +337,11 @@ func buildShowcase(tb testing.TB) showcase {
 	left.Append(NewBox(Row, 8, 0).Append(check, false).Append(checkLabel, false), false)
 
 	right := NewBox(Column, 6, 0)
-	right.Append(NewLabel(face, "entry", 11, th.TextMuted), false)
+	right.Append(NewLabel(face, 11, "entry", th.TextMuted), false)
 	right.Append(entry, false)
-	right.Append(NewLabel(face, "text area", 11, th.TextMuted), false)
+	right.Append(NewLabel(face, 11, "text area", th.TextMuted), false)
 	right.Append(area, false)
-	right.Append(NewLabel(face, "list", 11, th.TextMuted), false)
+	right.Append(NewLabel(face, 11, "list", th.TextMuted), false)
 	right.Append(scrolled, true)
 
 	columns := NewBox(Row, 24, 0)

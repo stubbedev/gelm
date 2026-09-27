@@ -376,10 +376,10 @@ func TestScroll(t *testing.T) {
 		// Regression for the showcase: the scroll's unbounded natural
 		// width pushed the row's second column off the window.
 		face := entryFace(t)
-		lbl := NewLabel(face, "side", 12, render.RGB(255, 255, 255))
+		lbl := NewLabel(face, 12, "side", render.RGB(255, 255, 255))
 		list := NewBox(Column, 0, 0)
 		for range 24 {
-			list.Append(NewLabel(face, "server-01.example", 12, render.RGB(255, 255, 255)), false)
+			list.Append(NewLabel(face, 12, "server-01.example", render.RGB(255, 255, 255)), false)
 		}
 		row := NewBox(Row, 20, 0).
 			Append(NewBox(Column, 8, 0).Append(lbl, false), true).

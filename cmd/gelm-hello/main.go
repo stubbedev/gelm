@@ -231,7 +231,7 @@ type showcase struct {
 // a fallback chain, so mixed-script demo text renders past .notdef.
 func buildUI(font render.Font) showcase {
 	t := widget.Current()
-	status := widget.NewLabel(font, "events land here", 12, t.TextMuted)
+	status := widget.NewLabel(font, 12, "events land here", t.TextMuted)
 	note := func(format string, args ...any) {
 		status.SetText(fmt.Sprintf(format, args...))
 		// Trace what the demo did, so the headless input tests can assert
@@ -240,11 +240,11 @@ func buildUI(font render.Font) showcase {
 	}
 
 	count := 0
-	countLabel := widget.NewLabel(font, "clicked 0 times", 15, t.Text)
+	countLabel := widget.NewLabel(font, 15, "clicked 0 times", t.Text)
 	progress := widget.NewProgressBar(0)
 	button := widget.NewButton(
 		widget.NewBox(widget.Row, 8, 0).
-			Append(widget.NewLabel(font, "click me", 15, t.Text), false),
+			Append(widget.NewLabel(font, 15, "click me", t.Text), false),
 		10, 8)
 	bump := func() {
 		count++
@@ -274,12 +274,12 @@ func buildUI(font render.Font) showcase {
 	sw := widget.NewSwitch(true)
 	sw.OnChanged = func(on bool) { note("switch %v", on) }
 	sw.SetTooltip("toggles a boolean")
-	swLabel := widget.NewLabel(font, "notifications", 14, t.Text)
+	swLabel := widget.NewLabel(font, 14, "notifications", t.Text)
 
 	check := widget.NewCheckButton(false)
 	check.OnChanged = func(c bool) { note("checkbox %v", c) }
 	check.SetTooltip("checkbox state")
-	checkLabel := widget.NewLabel(font, "remember me", 14, t.Text)
+	checkLabel := widget.NewLabel(font, 14, "remember me", t.Text)
 
 	entry := widget.NewEntry(font, 14, t.Text)
 	entry.SetPlaceholder("type here; ctrl+c/x/v work")
@@ -294,7 +294,8 @@ func buildUI(font render.Font) showcase {
 	list := widget.NewBox(widget.Column, 4, 0)
 	for i := 1; i <= 48; i++ {
 		list.Append(widget.NewLabel(font,
-			fmt.Sprintf("server-%02d.example   up   41ms", i), 12, t.Text), false)
+			12, fmt.Sprintf("server-%02d.example   up   41ms", i), t.Text),
+			false)
 	}
 	scrolled := widget.NewScroll(list)
 	scrolled.ShowBars = true
@@ -305,9 +306,9 @@ func buildUI(font render.Font) showcase {
 	}
 
 	header := widget.NewBox(widget.Column, 2, 0)
-	header.Append(widget.NewLabel(font, "gelm showcase", 18, t.Accent), false)
-	header.Append(widget.NewLabel(font, "every widget in one window; drag the chrome to move, esc closes", 11, t.TextMuted), false)
-	header.Append(widget.NewLabel(font, "fallback check: 你好 world 😀 Привет", 13, t.Text), false)
+	header.Append(widget.NewLabel(font, 18, "gelm showcase", t.Accent), false)
+	header.Append(widget.NewLabel(font, 11, "every widget in one window; drag the chrome to move, esc closes", t.TextMuted), false)
+	header.Append(widget.NewLabel(font, 13, "fallback check: 你好 world 😀 Привет", t.Text), false)
 
 	left := widget.NewBox(widget.Column, 10, 0)
 	left.Append(button, false)
@@ -320,11 +321,11 @@ func buildUI(font render.Font) showcase {
 		Append(check, false).Append(checkLabel, false), false)
 
 	right := widget.NewBox(widget.Column, 6, 0)
-	right.Append(widget.NewLabel(font, "entry", 11, t.TextMuted), false)
+	right.Append(widget.NewLabel(font, 11, "entry", t.TextMuted), false)
 	right.Append(entry, false)
-	right.Append(widget.NewLabel(font, "text area", 11, t.TextMuted), false)
+	right.Append(widget.NewLabel(font, 11, "text area", t.TextMuted), false)
 	right.Append(area, false)
-	right.Append(widget.NewLabel(font, "list", 11, t.TextMuted), false)
+	right.Append(widget.NewLabel(font, 11, "list", t.TextMuted), false)
 	right.Append(scrolled, true)
 
 	columns := widget.NewBox(widget.Row, 24, 0)

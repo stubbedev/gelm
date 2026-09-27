@@ -21,14 +21,14 @@ func TestLabelMeasure(t *testing.T) {
 	face := testFace(t)
 
 	t.Run("nonempty text wants positive space", func(t *testing.T) {
-		got := NewLabel(face, "gelm", 14, render.RGB(255, 255, 255)).Measure(Constraints{Max: Size{W: 500, H: 100}})
+		got := NewLabel(face, 14, "gelm", render.RGB(255, 255, 255)).Measure(Constraints{Max: Size{W: 500, H: 100}})
 		if got.W <= 0 || got.H <= 0 {
 			t.Errorf("measure = %v, want positive", got)
 		}
 	})
 
 	t.Run("empty text keeps zero width and the font line height", func(t *testing.T) {
-		got := NewLabel(face, "", 14, render.RGB(255, 255, 255)).Measure(Constraints{Max: Size{W: 500, H: 100}})
+		got := NewLabel(face, 14, "", render.RGB(255, 255, 255)).Measure(Constraints{Max: Size{W: 500, H: 100}})
 		if got.W != 0 {
 			t.Errorf("empty label width = %d, want 0", got.W)
 		}
@@ -38,22 +38,22 @@ func TestLabelMeasure(t *testing.T) {
 	})
 
 	t.Run("wider text wants more width", func(t *testing.T) {
-		short := NewLabel(face, "g", 14, render.RGB(255, 255, 255)).Measure(Constraints{Max: Size{W: 500, H: 100}})
-		long := NewLabel(face, "gelmland", 14, render.RGB(255, 255, 255)).Measure(Constraints{Max: Size{W: 500, H: 100}})
+		short := NewLabel(face, 14, "g", render.RGB(255, 255, 255)).Measure(Constraints{Max: Size{W: 500, H: 100}})
+		long := NewLabel(face, 14, "gelmland", render.RGB(255, 255, 255)).Measure(Constraints{Max: Size{W: 500, H: 100}})
 		if long.W <= short.W {
 			t.Errorf("long %d <= short %d", long.W, short.W)
 		}
 	})
 
 	t.Run("clamps to the constraint ceiling", func(t *testing.T) {
-		got := NewLabel(face, "gelm is great", 14, render.RGB(255, 255, 255)).Measure(Constraints{Max: Size{W: 20, H: 8}})
+		got := NewLabel(face, 14, "gelm is great", render.RGB(255, 255, 255)).Measure(Constraints{Max: Size{W: 20, H: 8}})
 		if got.W != 20 || got.H != 8 {
 			t.Errorf("measure = %v, want clamped to 20x8", got)
 		}
 	})
 
 	t.Run("SetText retakes the measurement", func(t *testing.T) {
-		l := NewLabel(face, "a", 14, render.RGB(255, 255, 255))
+		l := NewLabel(face, 14, "a", render.RGB(255, 255, 255))
 		before := l.Measure(Constraints{Max: Size{W: 500, H: 100}})
 		l.SetText("a much longer label")
 		after := l.Measure(Constraints{Max: Size{W: 500, H: 100}})
@@ -66,7 +66,7 @@ func TestLabelMeasure(t *testing.T) {
 	})
 
 	t.Run("SetText to the same value is a no-op", func(t *testing.T) {
-		l := NewLabel(face, "same", 14, render.RGB(255, 255, 255))
+		l := NewLabel(face, 14, "same", render.RGB(255, 255, 255))
 		l.SetText("same")
 		if l.Text() != "same" {
 			t.Errorf("Text() = %q", l.Text())
@@ -80,7 +80,7 @@ func TestLabelPaint(t *testing.T) {
 	t.Run("text leaves ink in the arranged rect", func(t *testing.T) {
 		data := make([]byte, render.Stride(200)*32)
 		cv := render.New(data, render.Stride(200), 200, 32)
-		l := NewLabel(face, "ink", 16, render.RGB(255, 255, 255))
+		l := NewLabel(face, 16, "ink", render.RGB(255, 255, 255))
 		l.Measure(Constraints{Max: Size{W: 500, H: 100}})
 		l.Arrange(render.Rect{X: 4, Y: 0, W: 100, H: 32})
 		l.Paint(cv)
@@ -106,7 +106,7 @@ func TestLabelNaturalHeightPaints(t *testing.T) {
 		// paint guard compared the exact float, so some sizes (13px
 		// DejaVu) measured a box their own painter rejected.
 		const px = 13.0
-		l := NewLabel(face, "server-01.example", px, render.RGB(255, 255, 255))
+		l := NewLabel(face, px, "server-01.example", render.RGB(255, 255, 255))
 		got := l.Measure(Constraints{Max: Size{W: 500, H: 100}})
 		stride := render.Stride(200)
 		data := make([]byte, stride*40)

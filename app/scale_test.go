@@ -66,7 +66,7 @@ func TestLiveRescaleRebuildsBuffersInPlace(t *testing.T) {
 	entry := widget.NewEntry(face, 13, render.RGB(255, 255, 255))
 	root := widget.NewBox(widget.Row, 8, 0)
 	root.Append(entry, true)
-	root.Append(widget.NewButton(widget.NewLabel(face, "ok", 13, render.RGB(255, 255, 255)), 8, 4), false)
+	root.Append(widget.NewButton(widget.NewLabel(face, 13, "ok", render.RGB(255, 255, 255)), 8, 4), false)
 	fh := newFracHarness(root, 320, 200, 240) // live at 2x
 	wnd := fh.wnd
 
@@ -179,7 +179,7 @@ func TestLogicalHitTestsAtFractionalScales(t *testing.T) {
 	for _, frac := range []uint32{120, 150, 240} {
 		entry := widget.NewEntry(face, 13, render.RGB(255, 255, 255))
 		entry.SetText("hello")
-		btn := widget.NewButton(widget.NewLabel(face, "ok", 13, render.RGB(255, 255, 255)), 8, 4)
+		btn := widget.NewButton(widget.NewLabel(face, 13, "ok", render.RGB(255, 255, 255)), 8, 4)
 		root := widget.NewBox(widget.Row, 8, 0)
 		root.Append(entry, true)
 		root.Append(btn, false)

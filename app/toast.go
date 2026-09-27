@@ -69,7 +69,11 @@ func (a *Application) ShowToast(text string, timeout time.Duration, cfg *ToastCo
 		debug.Log("input", "toast dropped: no window to show it on")
 		return nil
 	}
-	face := a.toastFace(cfg.Face)
+	face := a.resolveFace(cfg.Face)
+	if face == nil {
+		debug.Log("input", "toast dropped: no text face available")
+		return nil
+	}
 	margin := cfg.Margin
 	if margin <= 0 {
 		margin = toastMargin
@@ -95,9 +99,12 @@ func (a *Application) ShowToast(text string, timeout time.Duration, cfg *ToastCo
 	return t
 }
 
-// toastFace resolves the toast text face: the config's pick, else the
-// tooltip face, else the default sans face.
-func (a *Application) toastFace(asked *render.Typeface) *render.Typeface {
+// resolveFace resolves the text face for app-provided widget text:
+// the asked-for face, else the configured tooltip face, else the
+// default sans face. It can return nil when the system has no usable
+// fonts; callers then skip the text surface (log and drop) rather
+// than hand a nil face into a widget constructor, which would panic.
+func (a *Application) resolveFace(asked *render.Typeface) *render.Typeface {
 	if asked != nil {
 		return asked
 	}

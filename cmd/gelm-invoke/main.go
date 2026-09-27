@@ -40,9 +40,9 @@ func run() error {
 	application := app.NewApplication(sess)
 
 	theme := widget.Current()
-	gauge := widget.NewLabel(tf, "sensor: -- mV", 18, theme.Text)
-	cadence := widget.NewLabel(tf, "every: --", 14, theme.Text)
-	hint := widget.NewLabel(tf, "a goroutine updates the top label via app.Invoke; Escape quits", 12, theme.TextMuted)
+	gauge := widget.NewLabel(tf, 18, "sensor: -- mV", theme.Text)
+	cadence := widget.NewLabel(tf, 14, "every: --", theme.Text)
+	hint := widget.NewLabel(tf, 12, "a goroutine updates the top label via app.Invoke; Escape quits", theme.TextMuted)
 	root := widget.NewBox(widget.Column, 10, 16)
 	root.Append(gauge, false)
 	root.Append(cadence, false)

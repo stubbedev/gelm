@@ -251,6 +251,10 @@ func (im *Image) SetPlaceholderColor(c Color) {
 	im.Invalidate()
 }
 
+// PlaceholderColor returns what fills the bounds while an asynchronous
+// load is in flight; the zero color paints nothing.
+func (im *Image) PlaceholderColor() Color { return im.placeholder }
+
 // Err returns the load failure of the current source: a missing or
 // undecodable file, a failed fetch, or undecodable bytes. Nil until a
 // load tried and failed, and sticky until SetImage or friends replace

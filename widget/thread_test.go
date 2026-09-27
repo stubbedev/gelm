@@ -30,7 +30,7 @@ func TestOffLoopMutationTripsHook(t *testing.T) {
 	}
 
 	MarkLoop() // this goroutine plays the loop
-	label := NewLabel(face, "one", 14, render.RGB(255, 255, 255))
+	label := NewLabel(face, 14, "one", render.RGB(255, 255, 255))
 	label.SetText("two")
 	box := NewBox(Column, 4, 4)
 	box.Append(label, false)
@@ -51,7 +51,7 @@ func TestOffLoopMutationTripsHook(t *testing.T) {
 
 	// A second off-loop widget (InvalidateRect path) is caught too.
 	before := hits.Load()
-	off := NewLabel(face, "x", 14, render.RGB(255, 255, 255))
+	off := NewLabel(face, 14, "x", render.RGB(255, 255, 255))
 	done2 := make(chan struct{})
 	go func() {
 		defer close(done2)
@@ -97,7 +97,7 @@ func TestMarkLoopReArms(t *testing.T) {
 		defer close(done)
 		MarkLoop()
 		close(entered)
-		label := NewLabel(face, "new loop owns the tree", 12, render.RGB(255, 255, 255))
+		label := NewLabel(face, 12, "new loop owns the tree", render.RGB(255, 255, 255))
 		label.SetText("moved")
 	}()
 	<-entered

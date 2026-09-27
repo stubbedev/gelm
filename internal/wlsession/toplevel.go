@@ -154,27 +154,32 @@ func (t *Toplevel) Activate() {
 	_ = t.req.Activate(t.sess.seat)
 }
 
-// SetMaximized, UnsetMaximized, SetMinimized, and UnsetMinimized ask
-// the compositor to change the window's state. No-ops without the
-// protocol.
+// SetMaximized asks the compositor to maximize the window. No-op
+// without the protocol.
 func (t *Toplevel) SetMaximized() {
 	if t != nil && t.req != nil {
 		_ = t.req.SetMaximized()
 	}
 }
 
+// UnsetMaximized asks the compositor to leave the maximized state.
+// No-op without the protocol.
 func (t *Toplevel) UnsetMaximized() {
 	if t != nil && t.req != nil {
 		_ = t.req.UnsetMaximized()
 	}
 }
 
+// SetMinimized asks the compositor to minimize the window. No-op
+// without the protocol.
 func (t *Toplevel) SetMinimized() {
 	if t != nil && t.req != nil {
 		_ = t.req.SetMinimized()
 	}
 }
 
+// UnsetMinimized asks the compositor to leave the minimized state.
+// No-op without the protocol.
 func (t *Toplevel) UnsetMinimized() {
 	if t != nil && t.req != nil {
 		_ = t.req.UnsetMinimized()

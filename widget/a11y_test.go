@@ -22,15 +22,15 @@ func TestRoles(t *testing.T) {
 		w    Widget
 		want Role
 	}{
-		{"button", NewButton(NewLabel(face, "go", 12, render.RGB(0, 0, 0)), 4, 4), RoleButton},
-		{"label", NewLabel(face, "go", 12, render.RGB(0, 0, 0)), RoleLabel},
+		{"button", NewButton(NewLabel(face, 12, "go", render.RGB(0, 0, 0)), 4, 4), RoleButton},
+		{"label", NewLabel(face, 12, "go", render.RGB(0, 0, 0)), RoleLabel},
 		{"entry", NewEntry(face, 14, render.RGB(0, 0, 0)), RoleEntry},
 		{"text area", NewTextArea(face, 13, render.RGB(0, 0, 0)), RoleTextArea},
 		{"slider", NewSlider(0, 1, 0.1, 0), RoleSlider},
 		{"switch", NewSwitch(false), RoleSwitch},
 		{"checkbox", NewCheckButton(false), RoleCheckBox},
 		{"progress", NewProgressBar(0.5), RoleProgressBar},
-		{"scroll", NewScroll(NewLabel(face, "row", 12, render.RGB(0, 0, 0))), RoleScrollArea},
+		{"scroll", NewScroll(NewLabel(face, 12, "row", render.RGB(0, 0, 0))), RoleScrollArea},
 		{"menu", NewMenu(face, 12, MenuItem{Label: "act"}), RoleMenu},
 		{"notebook", NewNotebook(face), RoleTabList},
 	} {
@@ -129,7 +129,7 @@ func TestDescribeValueAndState(t *testing.T) {
 
 	t.Run("names come from tooltips then the wrapped label", func(t *testing.T) {
 		btn := NewButton(NewBox(Row, 4, 0).Append(
-			NewLabel(face, "save file", 12, render.RGB(0, 0, 0)), false), 8, 4)
+			NewLabel(face, 12, "save file", render.RGB(0, 0, 0)), false), 8, 4)
 		if got := Describe(btn).Name; got != "save file" {
 			t.Errorf("button name = %q, want the wrapped label text", got)
 		}
@@ -137,7 +137,7 @@ func TestDescribeValueAndState(t *testing.T) {
 		if got := Describe(btn).Name; got != "saves" {
 			t.Errorf("button name = %q, want the tooltip", got)
 		}
-		lbl := NewLabel(face, "a caption", 12, render.RGB(0, 0, 0))
+		lbl := NewLabel(face, 12, "a caption", render.RGB(0, 0, 0))
 		if got := Describe(lbl).Name; got != "a caption" {
 			t.Errorf("label name = %q, want the text", got)
 		}
@@ -156,7 +156,7 @@ func TestDescribeValueAndState(t *testing.T) {
 			{"checkbox", NewCheckButton(false), true},
 			{"entry", NewEntry(face2, 14, render.RGB(0, 0, 0)), true},
 			{"text area", NewTextArea(face2, 13, render.RGB(0, 0, 0)), true},
-			{"label", NewLabel(face2, "x", 12, render.RGB(0, 0, 0)), false},
+			{"label", NewLabel(face2, 12, "x", render.RGB(0, 0, 0)), false},
 			{"progress", NewProgressBar(0), false},
 			{"scroll", NewScroll(NewSpacer(4, 4)), false},
 		} {
@@ -226,7 +226,7 @@ func TestKeyboardActivation(t *testing.T) {
 
 	t.Run("the router routes enter to the focused control", func(t *testing.T) {
 		clicks := 0
-		b := NewButton(NewLabel(entryFace(t), "go", 12, render.RGB(0, 0, 0)), 4, 4)
+		b := NewButton(NewLabel(entryFace(t), 12, "go", render.RGB(0, 0, 0)), 4, 4)
 		b.OnClick = func() { clicks++ }
 		r := &Router{Root: a11yRoot(t, b)}
 		r.FocusNext()
@@ -243,9 +243,9 @@ func TestKeyboardActivation(t *testing.T) {
 
 func TestDescribeTree(t *testing.T) {
 	face := entryFace(t)
-	btn := NewButton(NewLabel(face, "go", 12, render.RGB(0, 0, 0)), 4, 4)
+	btn := NewButton(NewLabel(face, 12, "go", render.RGB(0, 0, 0)), 4, 4)
 	sw := NewSwitch(true)
-	lbl := NewLabel(face, "hint", 12, render.RGB(0, 0, 0))
+	lbl := NewLabel(face, 12, "hint", render.RGB(0, 0, 0))
 	root := NewBox(Column, 2, 0)
 	root.Append(btn, false)
 	root.Append(NewBox(Row, 2, 0).Append(lbl, false).Append(sw, false), false)

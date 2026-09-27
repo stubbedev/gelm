@@ -40,9 +40,10 @@ linters:
       sprintf1: true
     revive:
       rules:
-        # Stub doc comments are noise; package docs carry the context.
+        # Enforced since the API-consistency pass (#52): every
+        # exported symbol carries a doc comment starting with its
+        # name, so godoc and the wayle-facing API stay complete.
         - name: exported
-          disabled: true
   exclusions:
     generated: lax
     rules:

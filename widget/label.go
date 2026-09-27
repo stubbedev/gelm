@@ -48,10 +48,13 @@ type Label struct {
 	natural Size
 }
 
-// NewLabel returns a label that paints text with face at sizePx pixels.
-// Face may be a render.Chain for mixed-script fallback.
-func NewLabel(face render.Font, text string, sizePx float64, color render.Color) *Label {
-	l := &Label{face: face, text: text, sizePx: sizePx, color: color}
+// NewLabel returns a label that paints text with face at sizePx
+// pixels in color. Face may be a render.Chain for mixed-script
+// fallback. Constructor argument order is the toolkit-wide one: face,
+// then sizePx, then the content, then colors. A nil face panics here
+// (see requireFace) instead of failing later, in shaping.
+func NewLabel(face render.Font, sizePx float64, text string, color render.Color) *Label {
+	l := &Label{face: requireFace("widget.NewLabel", face), sizePx: sizePx, text: text, color: color}
 	l.retext()
 	return l
 }
@@ -74,8 +77,15 @@ func (l *Label) Text() string {
 // SetAlignment selects horizontal placement when the arranged rect is
 // wider than the text; wrapped rows align individually.
 func (l *Label) SetAlignment(a render.Alignment) {
+	if l.align == a {
+		return
+	}
 	l.align = a
+	l.Invalidate()
 }
+
+// Alignment returns the horizontal placement.
+func (l *Label) Alignment() render.Alignment { return l.align }
 
 // SetWrap toggles word wrapping at the offered width. Measure reports
 // the widest wrapped row, one line height tall per row, breaking at

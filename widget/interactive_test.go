@@ -21,7 +21,7 @@ func TestIsInteractive(t *testing.T) {
 	})
 
 	t.Run("a bare label is chrome", func(t *testing.T) {
-		l := NewLabel(face, "chrome", 12, render.RGB(255, 255, 255))
+		l := NewLabel(face, 12, "chrome", render.RGB(255, 255, 255))
 		l.Arrange(render.Rect{X: 0, Y: 0, W: 50, H: 20})
 		if IsInteractive(l) {
 			t.Error("bare label classified as interactive")
@@ -29,7 +29,7 @@ func TestIsInteractive(t *testing.T) {
 	})
 
 	t.Run("a label inside a button is interactive", func(t *testing.T) {
-		lbl := NewLabel(face, "click me", 15, render.RGB(255, 255, 255))
+		lbl := NewLabel(face, 15, "click me", render.RGB(255, 255, 255))
 		btn := NewButton(NewBox(Row, 8, 0).Append(lbl, false), 10, 8)
 		root := NewBox(Column, 0, 0).Append(btn, false)
 		root.Measure(Constraints{Max: Size{W: 200, H: 100}})
@@ -47,7 +47,7 @@ func TestIsInteractive(t *testing.T) {
 	t.Run("a row inside a scroll is interactive", func(t *testing.T) {
 		list := NewBox(Column, 4, 0)
 		for range 8 {
-			list.Append(NewLabel(face, "server-01.example", 12, render.RGB(255, 255, 255)), false)
+			list.Append(NewLabel(face, 12, "server-01.example", render.RGB(255, 255, 255)), false)
 		}
 		sc := NewScroll(list)
 		root := NewBox(Column, 0, 0).Append(sc, true)

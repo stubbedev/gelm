@@ -198,7 +198,7 @@ func TestTooltipGhostOnRemove(t *testing.T) {
 // Regression: hover cursor management. The hovered widget decides the
 // shape; everything else falls back to the arrow.
 func TestCursorFor(t *testing.T) {
-	entry := widget.NewEntry(nil, 14, render.RGB(255, 255, 255))
+	entry := widget.NewEntry(testFace(t), 14, render.RGB(255, 255, 255))
 	if got := cursorFor(entry); got != "xterm" {
 		t.Errorf("entry cursor = %q, want xterm", got)
 	}

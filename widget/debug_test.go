@@ -22,9 +22,9 @@ type dumpFixture struct {
 func newDumpFixture(t *testing.T) *dumpFixture {
 	t.Helper()
 	face := entryFace(t)
-	header := NewLabel(face, "demo", 13, render.RGB(255, 255, 255))
+	header := NewLabel(face, 13, "demo", render.RGB(255, 255, 255))
 	header.SetTooltip("the page title")
-	inner := NewLabel(face, "save", 13, render.RGB(255, 255, 255))
+	inner := NewLabel(face, 13, "save", render.RGB(255, 255, 255))
 	button := NewButton(inner, 10, 4)
 	button.SetDebugName("toolbar:save")
 	button.SetTooltip("saves the thing")
@@ -98,7 +98,7 @@ func TestSetDebugNameSurvivesTextUpdates(t *testing.T) {
 	face := entryFace(t)
 
 	t.Run("label SetText keeps the name", func(t *testing.T) {
-		l := NewLabel(face, "before", 13, render.RGB(255, 255, 255))
+		l := NewLabel(face, 13, "before", render.RGB(255, 255, 255))
 		l.SetDebugName("status:line")
 		l.SetText("after")
 		if l.Text() != "after" {
@@ -120,7 +120,7 @@ func TestSetDebugNameSurvivesTextUpdates(t *testing.T) {
 	})
 
 	t.Run("empty name clears", func(t *testing.T) {
-		l := NewLabel(face, "x", 13, render.RGB(255, 255, 255))
+		l := NewLabel(face, 13, "x", render.RGB(255, 255, 255))
 		l.SetDebugName("temp")
 		l.SetDebugName("")
 		if got := l.DebugName(); got != "" {

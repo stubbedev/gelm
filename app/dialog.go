@@ -20,7 +20,9 @@ type DialogButton struct {
 
 // DialogConfig declares a dialog: content widget plus a button row.
 // Esc responds with CancelResponse, Enter with DefaultResponse (either
-// may be empty to disable that key).
+// may be empty to disable that key). Width and Height are the
+// dialog's initial size in logical pixels, like every size in the
+// toolkit; zero lets the compositor pick.
 type DialogConfig struct {
 	Title           string
 	Width, Height   uint32
@@ -52,6 +54,13 @@ func (a *Application) NewDialog(parent *Window, cfg DialogConfig) (*Dialog, erro
 	if len(cfg.Buttons) == 0 {
 		cfg.Buttons = []DialogButton{{Label: "OK", Response: "ok"}}
 	}
+	// The button row's labels need a face; under the toolkit-wide
+	// nil-face contract a nil face into a constructor panics, so a
+	// system without any usable font surfaces as an error here.
+	face := a.resolveFace(nil)
+	if face == nil {
+		return nil, errors.New("app: dialog text face unavailable: no configured tooltip face and the system has no sans font")
+	}
 
 	var d *Dialog
 	respond := func(response string) {
@@ -66,7 +75,7 @@ func (a *Application) NewDialog(parent *Window, cfg DialogConfig) (*Dialog, erro
 		resp := b.Response
 		btn := widget.NewButton(
 			widget.NewBox(widget.Row, 6, 0).
-				Append(widget.NewLabel(a.tooltipFace, b.Label, 13, widget.Current().Text), false),
+				Append(widget.NewLabel(face, 13, b.Label, widget.Current().Text), false),
 			10, 6)
 		btn.OnClick = func() { respond(resp) }
 		buttons.Append(btn, false)
@@ -184,9 +193,13 @@ func (a *Application) blockAll(blocked bool) {
 // MessageBox opens the standard preset: a colored icon slot by kind, a
 // text body, and a button row.
 func (a *Application) MessageBox(parent *Window, kind MessageKind, title, text string, buttons []DialogButton) (*Dialog, error) {
+	face := a.resolveFace(nil)
+	if face == nil {
+		return nil, errors.New("app: message box text face unavailable: no configured tooltip face and the system has no sans font")
+	}
 	body := widget.NewBox(widget.Row, 16, 0)
 	body.Append(newMessageGlyph(kind, 40), false)
-	body.Append(widget.NewLabel(a.tooltipFace, text, 14, widget.Current().Text), true)
+	body.Append(widget.NewLabel(face, 14, text, widget.Current().Text), true)
 	cfg := DialogConfig{
 		Title:           title,
 		Width:           420,
