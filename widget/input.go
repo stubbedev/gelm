@@ -394,6 +394,53 @@ func (r *Router) PointerLost() {
 	r.Leave()
 }
 
+// Forget drops every piece of router state that points at w or into
+// w's subtree — the widget-removal counterpart of PointerLost. Hover
+// clears, so no hover shade or tooltip dwell outlives a removed
+// widget; the press is cancelled without a click (its release must
+// never click a ghost); the drop target clears, so a drop cannot land
+// on detached content; and focus — including a focus on a descendant —
+// moves to the next focusable widget in paint order, exactly like
+// focusAfter, or nowhere when none follows. Containers fire this
+// through the removal hook (SetRemovedHook); descent is decided from
+// the parent links the last Arrange recorded, the same bookkeeping
+// markSub walks.
+func (r *Router) Forget(w Widget) {
+	if w == nil {
+		return
+	}
+	if inSubtree(r.hover, w) {
+		if h, ok := r.hover.(HoverSetter); ok {
+			h.SetHovered(false)
+		}
+		r.hover = nil
+	}
+	if inSubtree(r.pressed, w) {
+		r.CancelPress()
+	}
+	if inSubtree(r.focus, w) {
+		r.focus = r.focusAfter(w)
+	}
+	if inSubtree(r.dragTarget, w) {
+		r.applyDragTarget(nil, false)
+		r.dragMime = ""
+	}
+}
+
+// inSubtree reports whether w sits at or below root along the parent
+// links the last Arrange recorded.
+func inSubtree(w, root Widget) bool {
+	if w == nil || root == nil {
+		return false
+	}
+	for c := w; c != nil; c = parentOf(c) {
+		if c == root {
+			return true
+		}
+	}
+	return false
+}
+
 // dragHandlerAt walks up from the widget at p to the nearest ancestor
 // that decides drag acceptance. Hit tests return the deepest widget —
 // a label inside a row — so drop targets are found on the parent
@@ -613,6 +660,8 @@ func (r *Router) dropDisabledFocus() {
 
 // focusAfter returns the first focusable, enabled widget after skip
 // in paint order (wrapping), or nil when traversal has nowhere to go.
+// Nothing at or below skip qualifies — a container detached from the
+// tree takes its whole subtree out of the traversal order.
 func (r *Router) focusAfter(skip Widget) Widget {
 	var order []Widget
 	focusWalker(r.Root, func(w Widget) { order = append(order, w) })
@@ -625,7 +674,7 @@ func (r *Router) focusAfter(skip Widget) Widget {
 	}
 	for i := range order {
 		w := order[(start+i)%len(order)]
-		if _, ok := w.(KeyActionHandler); ok && IsEnabled(w) {
+		if _, ok := w.(KeyActionHandler); ok && IsEnabled(w) && !inSubtree(w, skip) {
 			return w
 		}
 	}

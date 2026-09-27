@@ -6,6 +6,7 @@ package widget
 
 import (
 	"slices"
+	"sync/atomic"
 
 	"github.com/stubbedev/gelm/render"
 )
@@ -322,6 +323,56 @@ func setParents(parent Widget, kids ...Widget) {
 		}
 		if s, ok := k.(interface{ setParent(Widget) }); ok {
 			s.setParent(parent)
+		}
+	}
+}
+
+// clearParents drops the recorded parent of every ws — the bookkeeping
+// a removal owes: a detached widget must stop claiming its old
+// ancestor, or the IsEnabled/markSub walks (and a re-Append elsewhere)
+// would read a tree it no longer belongs to.
+func clearParents(ws ...Widget) {
+	for _, w := range ws {
+		if w == nil {
+			continue
+		}
+		if s, ok := w.(interface{ setParent(Widget) }); ok {
+			s.setParent(nil)
+		}
+	}
+}
+
+// removedHook is the callback the tree-mutation API (Box.Remove
+// family, Stack.Remove, Scroll.SetChild, Grid.Remove, Notebook.CloseTab)
+// fires with each detached widget. The Application installs one that
+// drops the widget from every window router's hover, press, focus, and
+// drop-target state, so input never reaches a ghost — and through
+// router.Hovered() neither does a tooltip dwell (app's tooltipCtl).
+var removedHook atomic.Pointer[func(Widget)]
+
+// SetRemovedHook installs the hook fired when a widget is detached from
+// its container; nil disables. One hook per process, like SetInvoker —
+// the last install wins. It runs on the goroutine that mutated the tree
+// (the loop goroutine, per docs/threading.md), while the widget is
+// still linked to its container, so a router can find the focus
+// traversal neighbor of a removed focus.
+func SetRemovedHook(fn func(Widget)) {
+	if fn == nil {
+		removedHook.Store(nil)
+		return
+	}
+	removedHook.Store(&fn)
+}
+
+// notifyRemoved fires the removal hook for every non-nil ws.
+func notifyRemoved(ws ...Widget) {
+	fn := removedHook.Load()
+	if fn == nil {
+		return
+	}
+	for _, w := range ws {
+		if w != nil {
+			(*fn)(w)
 		}
 	}
 }

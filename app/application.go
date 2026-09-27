@@ -89,6 +89,19 @@ func NewApplication(sess *wlsession.Session) *Application {
 	// Async image loads (widget.Image file/URL sources) deliver through
 	// the loop queue - the only sanctioned bridge (docs/threading.md).
 	widget.SetInvoker(a.Invoke)
+	// Tree mutations (Box.Remove/RemoveAt/Clear/InsertAt, Stack.Remove,
+	// Scroll.SetChild, ...) must not leave a window's router pointing at
+	// a detached widget: the hook drops hover, press, focus, and
+	// drop-target state for the removed subtree, so no KeyAction reaches
+	// a dead widget — and, through router.Hovered(), no tooltip dwells
+	// on a ghost (tooltipCtl opens and closes on the router's hover).
+	// One hook per process, like SetInvoker; it covers the window
+	// routers — popups run transient routers over short-lived trees.
+	widget.SetRemovedHook(func(w widget.Widget) {
+		for _, win := range a.windows {
+			win.router.Forget(w)
+		}
+	})
 	if inspect.Enabled() {
 		a.setInspect(true)
 	}

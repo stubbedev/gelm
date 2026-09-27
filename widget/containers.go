@@ -27,7 +27,14 @@ func NewStack() *Stack {
 }
 
 // Add puts a child under name; adding an existing name replaces it.
+// The replaced widget detaches like Stack.Remove — parent link
+// cleared, removal hook fired — instead of staying parented to a
+// stack it no longer belongs to.
 func (s *Stack) Add(name string, w Widget) *Stack {
+	if old, ok := s.kids[name]; ok && old != w {
+		notifyRemoved(old)
+		clearParents(old)
+	}
 	if _, ok := s.kids[name]; !ok {
 		s.order = append(s.order, name)
 	}
@@ -37,6 +44,29 @@ func (s *Stack) Add(name string, w Widget) *Stack {
 	}
 	s.InvalidateLayout()
 	return s
+}
+
+// Remove deletes the child under name and reports whether there was
+// one. Removing the visible child leaves the stack showing nothing —
+// Visible reads "" until the next Show or Add names a child; removal
+// never silently promotes a sibling (pinned). The removed widget's
+// parent link clears and the removal hook fires, so routers drop it;
+// an unknown name is a no-op.
+func (s *Stack) Remove(name string) bool {
+	w, ok := s.kids[name]
+	if !ok {
+		return false
+	}
+	notifyRemoved(w)
+	delete(s.kids, name)
+	s.order = slices.DeleteFunc(s.order, func(n string) bool { return n == name })
+	delete(s.measured, name)
+	if s.visible == name {
+		s.visible = ""
+	}
+	clearParents(w)
+	s.InvalidateLayout()
+	return true
 }
 
 // Children exposes the visible child for focus traversal.
@@ -55,8 +85,10 @@ func (s *Stack) SetEnabled(enabled bool) {
 	invalidateTree(s)
 }
 
-// Children exposes the stacked children for focus traversal.
-func (o *Overlay) Children() []Widget { return o.kids }
+// Children exposes a snapshot of the overlay's children in add order
+// for focus traversal. A copy, like Box.Children: tree walks must be
+// able to survive a callback that mutates the container.
+func (o *Overlay) Children() []Widget { return slices.Clone(o.kids) }
 
 // SetEnabled turns the overlay's whole stack on or off through the
 // per-query enable walk, like Box.
@@ -241,8 +273,14 @@ const (
 	barFade  = 220 * time.Millisecond
 )
 
-// Children exposes the wrapped child for focus traversal.
-func (s *Scroll) Children() []Widget { return []Widget{s.child} }
+// Children exposes the wrapped child for focus traversal; an empty
+// scroll (SetChild(nil)) exposes none.
+func (s *Scroll) Children() []Widget {
+	if s.child == nil {
+		return nil
+	}
+	return []Widget{s.child}
+}
 
 // SetEnabled turns the viewport and everything inside it on or off
 // through the per-query enable walk, like Box. A disabled scroll
@@ -256,6 +294,27 @@ func (s *Scroll) SetEnabled(enabled bool) {
 // NewScroll wraps child in a scrollable viewport.
 func NewScroll(child Widget) *Scroll {
 	return &Scroll{child: child}
+}
+
+// SetChild replaces the wrapped child. The old child detaches like any
+// removal — parent link cleared, removal hook fired — and the scroll
+// forgets the old content's position: offsets reset to the top-left
+// (new content keeps no memory of the old scroll) and any bar drag
+// ends. Re-setting the current child is a no-op. nil clears the
+// content: an empty scroll measures empty, paints nothing, and hit
+// tests as itself.
+func (s *Scroll) SetChild(child Widget) {
+	if s.child == child {
+		return
+	}
+	old := s.child
+	notifyRemoved(old)
+	s.child = child
+	s.offX, s.offY = 0, 0
+	s.dragV, s.dragH = false, false
+	s.nat = Size{}
+	clearParents(old)
+	s.InvalidateLayout()
 }
 
 // Offset returns the current scroll offset.
@@ -347,7 +406,10 @@ func (s *Scroll) Measure(con Constraints) Size {
 	if sz, ok := s.measureHit(con); ok {
 		return sz
 	}
-	s.nat = s.child.Measure(Constraints{Max: Size{W: math.MaxInt, H: math.MaxInt}})
+	s.nat = Size{}
+	if s.child != nil {
+		s.nat = s.child.Measure(Constraints{Max: Size{W: math.MaxInt, H: math.MaxInt}})
+	}
 	return s.measureStore(con, clampSize(s.nat, con))
 }
 
@@ -385,13 +447,15 @@ func (s *Scroll) Arrange(r render.Rect) {
 	}
 	s.childX, s.childY = childX, childY
 
-	s.child.Arrange(render.Rect{
-		X: r.X + childX - s.offX,
-		Y: r.Y + childY - s.offY,
-		W: childW,
-		H: childH,
-	})
-	setParents(s, s.child)
+	if s.child != nil {
+		s.child.Arrange(render.Rect{
+			X: r.X + childX - s.offX,
+			Y: r.Y + childY - s.offY,
+			W: childW,
+			H: childH,
+		})
+		setParents(s, s.child)
+	}
 }
 
 // ArrangeRoot records the viewport rect.
@@ -403,7 +467,9 @@ func (s *Scroll) ArrangeRoot(r render.Rect) {
 // the auto-hiding bars in their gutters at the current fade alpha.
 func (s *Scroll) Paint(cv *render.Canvas) {
 	prev := cv.PushClip(s.bounds)
-	s.child.Paint(cv)
+	if s.child != nil {
+		s.child.Paint(cv)
+	}
 	if s.ShowBars && s.alpha > 0 {
 		s.tickFade()
 		bar := render.RGB(0x58, 0x5b, 0x70)
@@ -450,8 +516,10 @@ func (s *Scroll) HitTest(p Point) Widget {
 	if _, handle := s.hBarGeometry(); handle.H > 0 && p.Y >= handle.Y {
 		return s
 	}
-	if hit := s.child.HitTest(p); hit != nil {
-		return hit
+	if s.child != nil {
+		if hit := s.child.HitTest(p); hit != nil {
+			return hit
+		}
 	}
 	return s
 }
