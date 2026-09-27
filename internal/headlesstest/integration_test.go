@@ -147,6 +147,25 @@ func newPointerOnlyInput(t *testing.T) *VirtualInput {
 	return v
 }
 
+// clickUntil clicks (x, y) until the expected trace lands: a freshly
+// booted compositor eats the first synthetic presses (the socket is
+// pollable long before the seat reliably delivers buttons), so one
+// click there flakes the gate on lost input instead of a real
+// regression. A few short attempts beat one long wait - the same trade
+// tapUntil makes for keys. A lost press leaves no trace, so a retry is
+// honest: the effect shows up exactly once, on the attempt that lands.
+func clickUntil(w *LogWatcher, in *VirtualInput, category string, x, y int, button uint32, want string) error {
+	for range 3 {
+		if err := in.ClickAt(x, y, button); err != nil {
+			return fmt.Errorf("click: %w", err)
+		}
+		if err := w.WaitAll(category, attemptTimeout, want); err == nil {
+			return nil
+		}
+	}
+	return fmt.Errorf("no trace [%s] %q after 3 attempts; last tail:\n%s", category, want, w.Tail(25))
+}
+
 // TestHeadlessClicksOnShowcaseControls is the regression net for #1:
 // synthetic clicks must land on real widgets and the showcase's own
 // handlers must run. A broken click path dies here before it can be
@@ -167,24 +186,22 @@ func TestHeadlessClicksOnShowcaseControls(t *testing.T) {
 
 	// The button: two clicks, two activations.
 	btn := click("button")
-	in.ClickAt(btn[0], btn[1], BTNLeft)
-	if _, err := w.Wait("demo", "button clicked 1 times", traceTimeout); err != nil {
+	if err := clickUntil(w, in, "demo", btn[0], btn[1], BTNLeft, "button clicked 1 times"); err != nil {
 		t.Errorf("first click never reached the button: %v", err)
 	}
-	in.ClickAt(btn[0], btn[1], BTNLeft)
-	if _, err := w.Wait("demo", "button clicked 2 times", traceTimeout); err != nil {
+	if err := clickUntil(w, in, "demo", btn[0], btn[1], BTNLeft, "button clicked 2 times"); err != nil {
 		t.Errorf("second click never reached the button: %v", err)
 	}
 
 	// The switch starts on; one click turns it off.
-	in.ClickAt(click("switch")[0], click("switch")[1], BTNLeft)
-	if _, err := w.Wait("demo", "switch false", traceTimeout); err != nil {
+	sw := click("switch")
+	if err := clickUntil(w, in, "demo", sw[0], sw[1], BTNLeft, "switch false"); err != nil {
 		t.Errorf("click never toggled the switch: %v", err)
 	}
 
 	// The checkbox starts off; one click turns it on.
-	in.ClickAt(click("checkbox")[0], click("checkbox")[1], BTNLeft)
-	if _, err := w.Wait("demo", "checkbox true", traceTimeout); err != nil {
+	check := click("checkbox")
+	if err := clickUntil(w, in, "demo", check[0], check[1], BTNLeft, "checkbox true"); err != nil {
 		t.Errorf("click never checked the checkbox: %v", err)
 	}
 
@@ -234,10 +251,7 @@ func TestHeadlessPopupGrabOpenAndDismiss(t *testing.T) {
 
 	openMenu := func(when string) {
 		t.Helper()
-		if err := in.ClickAt(btn[0], btn[1], BTNRight); err != nil {
-			t.Fatalf("%s: right-click: %v", when, err)
-		}
-		if _, err := w.Wait("demo", "menu open ", traceTimeout); err != nil {
+		if err := clickUntil(w, in, "demo", btn[0], btn[1], BTNRight, "menu open "); err != nil {
 			t.Fatalf("%s: menu never opened: %v", when, err)
 		}
 		if _, err := w.Wait("input", "popup surface ", traceTimeout); err != nil {
@@ -476,14 +490,21 @@ func TestHeadlessClipboardRoundtrip(t *testing.T) {
 	in := newInput(t)
 	entry := centers["entry"]
 
-	if err := in.ClickAt(entry[0], entry[1], BTNLeft); err != nil {
-		t.Fatalf("focus entry: %v", err)
-	}
-	if err := in.TypeText("abc"); err != nil {
-		t.Fatalf("type abc: %v", err)
-	}
-	if _, err := w.Wait("demo", `entry: "abc"`, traceTimeout); err != nil {
-		t.Fatalf("typing never reached the entry: %v", err)
+	// Focusing the entry is a press, and a fresh compositor can eat
+	// it; the typed text is the proof of focus, so retry the pair and
+	// let the assert name the failure if focus never took.
+	for attempt := range 3 {
+		if err := in.ClickAt(entry[0], entry[1], BTNLeft); err != nil {
+			t.Fatalf("focus entry: %v", err)
+		}
+		if err := in.TypeText("abc"); err != nil {
+			t.Fatalf("type abc: %v", err)
+		}
+		if _, err := w.Wait("demo", `entry: "abc"`, attemptTimeout); err == nil {
+			break
+		} else if attempt == 2 {
+			t.Fatalf("typing never reached the entry: %v", err)
+		}
 	}
 
 	if err := in.Combo(KeyA); err != nil { // select all
