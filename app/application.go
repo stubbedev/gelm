@@ -47,6 +47,10 @@ type Application struct {
 	quit     bool
 	rep      *keyRepeater
 	kicker   *loopKicker
+	// queues is the Invoke/Every plumbing and wake the loop-kick call;
+	// wake is a field so tests can drive Invoke without a session.
+	queues loopQueues
+	wake   func(time.Duration)
 }
 
 // NewApplication binds an application to a connected session.
@@ -59,6 +63,7 @@ func NewApplication(sess *wlsession.Session) *Application {
 		rep:     newKeyRepeater(sess.RepeatInfo()),
 		kicker:  &loopKicker{},
 		ime:     newIMEController(sess),
+		wake:    sess.WakeAfter,
 	}
 }
 
@@ -302,8 +307,22 @@ func outputWire(o *wlsession.Output) *wl.Output {
 }
 
 // Run drives every window until the application quits (Quit) or every
-// window has closed. It returns ErrClosed in both cases.
+// window has closed. It returns ErrClosed in both cases. Run's
+// goroutine is the event-loop goroutine of the threading contract
+// (docs/threading.md): widget and callback work happens here, and
+// other goroutines reach it only through Invoke and Every. Run marks
+// the goroutine for the off-loop debug hook, pumps the queued work at
+// the top of every pass, and folds the periodic-timer deadlines into
+// the wake computation, so a pending poller wakes the park exactly
+// once per tick.
 func (a *Application) Run() error {
+	widget.MarkLoop()
+	defer func() {
+		widget.UnmarkLoop()
+		// Discard queued invokes and stop the pollers: nothing will run
+		// them, and later Invokes drop instead of accumulating.
+		a.queues.shutdown()
+	}()
 	a.sess.OnKey = a.routeKey
 	a.sess.OnKeyUp = a.rep.release
 	a.sess.OnIME = a.imeEvent
@@ -313,6 +332,11 @@ func (a *Application) Run() error {
 			return ErrClosed
 		}
 		now := time.Now()
+
+		// Off-loop work queued since the last pass: Invoke fns first,
+		// then the periodic timers (pollers) that came due. Everything
+		// here runs on this goroutine, the loop goroutine.
+		a.pump(now)
 
 		if code, mods, ok := a.rep.tick(); ok {
 			a.deliverKey(code, mods)
@@ -401,7 +425,7 @@ func (a *Application) Run() error {
 		if t, ok := anim.Next(); ok {
 			animFrame = t
 		}
-		wakeAt, ok := nextWake(repNext, animFrame, tipNext, now)
+		wakeAt, ok := nextWake(repNext, animFrame, tipNext, a.queues.nextDeadline(), now)
 		if ok {
 			a.kicker.schedule(a.sess, wakeAt)
 		}

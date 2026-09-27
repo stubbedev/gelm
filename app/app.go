@@ -2,6 +2,11 @@
 // into the widget tree, frame-callback pacing, and idle dispatch. A Host
 // abstracts over layer surfaces and toplevel windows so either can carry
 // a widget tree.
+//
+// Threading: all widget and callback work runs on the loop goroutine;
+// other goroutines reach the loop only through Application.Invoke and
+// Application.Every. The contract and the relm4 mapping are in
+// docs/threading.md.
 package app
 
 import (
@@ -352,10 +357,11 @@ func (k *loopKicker) covers(at, now time.Time) bool {
 // nextWake computes the earliest timer deadline the parked loop must
 // wake for; false means nothing is pending and the loop may sleep until
 // the next compositor event. animFrame is the animation clock's next
-// tick deadline while tweens run. Deadlines already due return false:
-// the next loop iteration handles them, and parking for zero duration
-// would only burn a cycle.
-func nextWake(repeat, animFrame, tipNext time.Time, now time.Time) (time.Time, bool) {
+// tick deadline while tweens run; timers is the earliest Every poller
+// deadline. Deadlines already due return false: the next loop
+// iteration handles them, and parking for zero duration would only
+// burn a cycle.
+func nextWake(repeat, animFrame, tipNext, timers, now time.Time) (time.Time, bool) {
 	wake := time.Time{}
 	found := false
 	consider := func(t time.Time) {
@@ -369,6 +375,7 @@ func nextWake(repeat, animFrame, tipNext time.Time, now time.Time) (time.Time, b
 	consider(repeat)
 	consider(animFrame)
 	consider(tipNext)
+	consider(timers)
 	return wake, found
 }
 

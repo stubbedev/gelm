@@ -83,7 +83,10 @@ type node struct {
 }
 
 // SetTooltip sets hover text shown after a dwell; empty clears it.
-func (n *node) SetTooltip(s string) { n.tooltip = s }
+func (n *node) SetTooltip(s string) {
+	checkLoop("SetTooltip")
+	n.tooltip = s
+}
 
 // TooltipText returns the hover text, empty when none is set.
 func (n *node) TooltipText() string { return n.tooltip }
@@ -92,6 +95,7 @@ func (n *node) TooltipText() string { return n.tooltip }
 // it after any state change that alters what Paint draws. Layout is
 // untouched; mutations that change the wanted size need InvalidateLayout.
 func (n *node) Invalidate() {
+	checkLoop("Invalidate")
 	n.invalid = true
 	n.markSub()
 }
@@ -101,6 +105,7 @@ func (n *node) Invalidate() {
 // bounds, such as a scrollbar strip beside a viewport. Unlike
 // Invalidate it does not mark the arranged bounds themselves.
 func (n *node) InvalidateRect(r render.Rect) {
+	checkLoop("InvalidateRect")
 	if r.Empty() || slices.Contains(n.extras, r) {
 		return
 	}

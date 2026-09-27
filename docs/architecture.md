@@ -5,7 +5,8 @@ layering first, then the invariants each layer must hold — most of them
 were paid for by a real bug, and each cites where the code and its test
 pins live. Companion documents: [input-model.md](input-model.md) (the
 input contract), [application-model.md](application-model.md) (many
-windows, one process), [a11y.md](a11y.md), and [icons.md](icons.md).
+windows, one process), [threading.md](threading.md) (the goroutine
+rules and `Invoke`/`Every`), [a11y.md](a11y.md), and [icons.md](icons.md).
 
 ## Layers
 
@@ -58,7 +59,10 @@ read with a `wl_display.sync` and returns.
 `app.Run` and `Application.Run` block in `Session.Step` (one blocking
 dispatch) instead of polling. Wakeups come from exactly three sources:
 compositor events, frame callbacks, and timer deadlines armed through
-`WakeAfter`. `nextWake` (app/app.go) computes the earliest pending
+`WakeAfter` — key repeat, animation frames, tooltip dwell, `Every`
+poller deadlines, and `Invoke` kicks (app/invoke.go,
+docs/threading.md; one armed wake covers an entire invoke storm).
+`nextWake` (app/app.go) computes the earliest pending
 deadline; with no dirty state and nothing scheduled the loop schedules
 no kick and holds no CPU — idle is 0%, verified against headless sway.
 `loopKicker.schedule` coalesces timer kicks: one outstanding kick

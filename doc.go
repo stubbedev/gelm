@@ -14,9 +14,10 @@
 //	wlr       - generated Wayland protocol bindings
 //	internal  - session, buffer arena, scale, popup, and drag-drop
 //	            plumbing
-//	cmd       - the demos (gelm-hello showcase, gelm-multi, panel, bar)
+//	cmd       - the demos (gelm-hello showcase, gelm-multi, panel,
+//	              bar, gelm-invoke threading demo)
 //
 // The docs/ directory carries the design contracts: architecture,
-// input model, application model, accessibility decision, and icon
-// theming.
+// input model, application model, threading model, accessibility
+// decision, and icon theming.
 package gelm

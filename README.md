@@ -168,6 +168,7 @@ ends the loop. This exact program is kept compiling (and honest) as
 | [docs/architecture.md](docs/architecture.md) | session → surfaces → app loop → router → widgets, and the invariants |
 | [docs/input-model.md](docs/input-model.md) | the input contract: routing, implicit grab, click/drag, dnd, keyboard, IME |
 | [docs/application-model.md](docs/application-model.md) | many windows on one loop; relm4/GTK concept mapping |
+| [docs/threading.md](docs/threading.md) | the threading contract: `app.Invoke`, `app.Every`, goroutine rules, and the relm4 Component/Worker/Command/Factory mapping |
 | [docs/a11y.md](docs/a11y.md) | the accessibility decision and the recorded AT-SPI path |
 | [docs/icons.md](docs/icons.md) | icon theme lookup and symbolic recoloring |
 
@@ -177,6 +178,7 @@ ends the loop. This exact program is kept compiling (and honest) as
 | --- | --- |
 | `cmd/gelm-hello` | the showcase: every widget, drag-to-move, context menu, tooltips, Tab focus |
 | `cmd/gelm-multi` | one process, one loop: per-output layer bars, on-demand windows, close-request veto |
+| `cmd/gelm-invoke` | the threading model: a goroutine updates a label via `app.Invoke`, `app.Every` drives a poller, the loop parks between ticks |
 | `cmd/gelm-panel` | a right-anchored layer-shell panel with live widgets |
 | `cmd/gelm-bar` | the M0 bar: a 32px top bar; each second only the old and new notch regions repaint |
 | `cmd/wlpointer` | synthetic pointer for the headless test env |

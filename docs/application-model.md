@@ -56,8 +56,9 @@ without the protocols keep the integer behavior.
 | `relm4::ApplicationWindow` | `app.Window` | declarative config instead of builder chains |
 | gtk4-layer-shell namespace/anchor/margin/exclusive | `LayerConfig` fields | same wire concepts, no layer-shell-in-window trickery |
 | `gtk::Window::close-request` | `Window.SetCloseRequest` | veto by returning false |
-| `relm4::Component` | not needed | widgets are retained objects; there is no actor model to wrap |
-| `relm4::Worker` | not needed | timers ride the parked loop (`WakeAfter`); long work needs a goroutine plus `app`-side marshalling, which is #27's subject |
+| `relm4::Component` | callbacks + `app.Invoke` | the Elm actor split is unneeded — see docs/threading.md for the mapping and the Component-shaped pattern on top of Invoke |
+| `relm4::Worker` / `Command` | a plain goroutine + `app.Invoke` | background work computes, then crosses onto the loop through Invoke; periodic work is `app.Every` on the loop's timer wakes (docs/threading.md) |
+| `relm4::Factory` | `widget.List[W]` + `ListModel[W]` | model-driven, virtualized rows with `OnSelect`/`OnActivate`; `Changed()` re-queries (docs/threading.md) |
 | `gtk::Application::quit` | `Application.Quit` | authoritative, bypasses vetoes |
 | per-window `scale-factor` | per-window `Scale` plus live `preferred_scale` | fractional scaling lands with #14 |
 
