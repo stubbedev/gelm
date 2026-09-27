@@ -2,7 +2,6 @@ package widget
 
 import (
 	"strings"
-	"unicode"
 
 	"github.com/stubbedev/gelm/render"
 )
@@ -34,6 +33,9 @@ type TextArea struct {
 	peText []rune
 	peAt   pos
 	peCur  int
+
+	// hist is the undo/redo history; every mutation records into it.
+	hist undoStack[areaState]
 
 	// Visual row cache, built lazily for the wrap width it was built
 	// with. rows always covers the document: with wrap off it is the
@@ -115,10 +117,9 @@ func (t *TextArea) Text() string {
 	return strings.Join(parts, "\n")
 }
 
-// SetText replaces the contents, splitting on newlines, and clears the
-// selection and composing display.
-func (t *TextArea) SetText(s string) {
-	t.clearPreedit()
+// splitLines replaces the logical lines with s split on newlines,
+// leaving cursor and caches alone.
+func (t *TextArea) splitLines(s string) {
 	t.lines = nil
 	for part := range strings.SplitSeq(s, "\n") {
 		t.lines = append(t.lines, []rune(part))
@@ -126,8 +127,77 @@ func (t *TextArea) SetText(s string) {
 	if len(t.lines) == 0 {
 		t.lines = [][]rune{{}}
 	}
+}
+
+// SetText replaces the contents, splitting on newlines, and clears the
+// selection and composing display. An app-driven replacement is not an
+// edit to back out of: the undo history starts fresh.
+func (t *TextArea) SetText(s string) {
+	t.clearPreedit()
+	t.splitLines(s)
 	t.cursor = pos{0, 0}
 	t.anchor = t.cursor
+	t.hasPref = false
+	t.rowsValid = false
+	t.hist.reset()
+	t.InvalidateLayout()
+}
+
+// Undo restores the state before the most recent edit — contents,
+// caret, and selection included — reporting whether there was anything
+// to undo. Composing text drops first, like before any other edit.
+func (t *TextArea) Undo() bool {
+	t.clearPreedit()
+	return t.hist.undo(t.applyState)
+}
+
+// Redo reapplies the most recently undone edit, reporting whether
+// there was one.
+func (t *TextArea) Redo() bool {
+	t.clearPreedit()
+	return t.hist.redo(t.applyState)
+}
+
+// areaState is one snapshot of the document for the undo history.
+type areaState struct {
+	lines  [][]rune
+	cursor pos
+	anchor pos
+}
+
+// same reports whether two snapshots describe identical editing state.
+func (s areaState) same(o areaState) bool {
+	if s.cursor != o.cursor || s.anchor != o.anchor || len(s.lines) != len(o.lines) {
+		return false
+	}
+	for i := range s.lines {
+		if string(s.lines[i]) != string(o.lines[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+// snapshot captures the current state for the history, deep-copying
+// the lines so later edits cannot rewrite history.
+func (t *TextArea) snapshot() areaState {
+	lines := make([][]rune, len(t.lines))
+	for i, l := range t.lines {
+		lines[i] = append([]rune{}, l...)
+	}
+	return areaState{lines: lines, cursor: t.cursor, anchor: t.anchor}
+}
+
+// applyState restores a snapshot exactly like the edit that produced
+// it: contents, caret, and selection, plus the same caches dropped and
+// damage scheduled. The lines are copied in — the snapshot stays in the
+// history for a later redo.
+func (t *TextArea) applyState(s areaState) {
+	t.lines = make([][]rune, len(s.lines))
+	for i, l := range s.lines {
+		t.lines[i] = append([]rune{}, l...)
+	}
+	t.cursor, t.anchor = s.cursor, s.anchor
 	t.hasPref = false
 	t.rowsValid = false
 	t.InvalidateLayout()
@@ -293,8 +363,11 @@ func (t *TextArea) rowOf(col pos) int {
 	return len(t.rows) - 1
 }
 
-// Insert inserts s at the cursor; an active selection is replaced.
-func (t *TextArea) Insert(s string) {
+// splice is the insert primitive: it drops the composing display,
+// replaces any selection, and puts s at the caret. History recording
+// is the callers' business — Insert lands as one entry, InsertRune as
+// a coalescable typing run.
+func (t *TextArea) splice(s string) {
 	t.clearPreedit()
 	t.collapse()
 	for _, r := range s {
@@ -324,8 +397,18 @@ func (t *TextArea) Insert(s string) {
 	t.InvalidateLayout()
 }
 
-// Delete removes the selection, or one rune/line break forward.
-func (t *TextArea) Delete() {
+// Insert inserts s at the cursor; an active selection is replaced, and
+// the whole insertion — a paste, a drop, a committed composition — is
+// one undo entry.
+func (t *TextArea) Insert(s string) {
+	before := t.snapshot()
+	t.splice(s)
+	t.hist.record(before, t.snapshot())
+}
+
+// deleteAt removes the selection, or one rune/line break forward,
+// without touching history.
+func (t *TextArea) deleteAt() {
 	t.clearPreedit()
 	if _, _, active := t.Selection(); active {
 		t.collapse()
@@ -346,11 +429,22 @@ func (t *TextArea) Delete() {
 	t.InvalidateLayout()
 }
 
-// Backspace removes the selection, or one rune/line break backward.
+// Delete removes the selection, or one rune/line break forward; one
+// undo entry per call.
+func (t *TextArea) Delete() {
+	before := t.snapshot()
+	t.deleteAt()
+	t.hist.record(before, t.snapshot())
+}
+
+// Backspace removes the selection, or one rune/line break backward;
+// one undo entry per call.
 func (t *TextArea) Backspace() {
+	before := t.snapshot()
 	t.clearPreedit()
 	if _, _, active := t.Selection(); active {
 		t.collapse()
+		t.hist.record(before, t.snapshot())
 		return
 	}
 	c := t.clamp(t.cursor)
@@ -365,7 +459,8 @@ func (t *TextArea) Backspace() {
 	}
 	t.anchor = t.clamp(t.cursor)
 	t.Invalidate()
-	t.Delete()
+	t.deleteAt()
+	t.hist.record(before, t.snapshot())
 }
 
 // CursorPos returns the cursor as line/column.
@@ -596,14 +691,13 @@ func (t *TextArea) DoubleClickAt(p Point) {
 	if col >= len(line) {
 		col = len(line) - 1
 	}
-	word := func(r rune) bool { return r == '_' || unicode.IsLetter(r) || unicode.IsDigit(r) }
-	want := word(line[col])
+	want := wordRune(line[col])
 	start := col
-	for start > 0 && word(line[start-1]) == want {
+	for start > 0 && wordRune(line[start-1]) == want {
 		start--
 	}
 	end := col + 1
-	for end < len(line) && word(line[end]) == want {
+	for end < len(line) && wordRune(line[end]) == want {
 		end++
 	}
 	t.cursor, t.anchor = pos{at.line, end}, pos{at.line, start}
@@ -620,8 +714,14 @@ func (t *TextArea) SelectAll() {
 	t.Invalidate()
 }
 
-// InsertRune implements RuneHandler.
-func (t *TextArea) InsertRune(r rune) { t.Insert(string(r)) }
+// InsertRune implements RuneHandler. Typed runes coalesce into one
+// undo entry until a word boundary, an idle gap, or a different edit
+// breaks the run.
+func (t *TextArea) InsertRune(r rune) {
+	before := t.snapshot()
+	t.splice(string(r))
+	t.hist.recordTyping(before, t.snapshot(), r)
+}
 
 // KeyAction implements KeyActionHandler. While composing, the input
 // method owns the text: backspace trims its last rune, and every other

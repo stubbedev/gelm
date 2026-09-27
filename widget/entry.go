@@ -1,8 +1,6 @@
 package widget
 
 import (
-	"unicode"
-
 	"github.com/stubbedev/gelm/render"
 )
 
@@ -23,6 +21,15 @@ type Entry struct {
 	runes  []rune
 	cursor int
 	anchor int // selection anchor; equals cursor when nothing is selected
+
+	// Echo masking: echo picks the display mode (dots, nothing) while
+	// the contents stay logical, and reveal is the app's temporary
+	// show-the-real-text override.
+	echo   Echo
+	reveal bool
+
+	// hist is the undo/redo history; every mutation records into it.
+	hist undoStack[entryState]
 
 	// Composing (input-method preedit) display: peText shows at the
 	// caret position peAt with the composing caret peCur runes into
@@ -54,6 +61,48 @@ func (e *Entry) Text() string {
 	return string(e.runes)
 }
 
+// Undo restores the state before the most recent edit — contents,
+// caret, and selection included — reporting whether there was anything
+// to undo. Composing text drops first, like before any other edit.
+func (e *Entry) Undo() bool {
+	e.clearPreedit()
+	return e.hist.undo(e.applyEntry)
+}
+
+// Redo reapplies the most recently undone edit, reporting whether
+// there was one.
+func (e *Entry) Redo() bool {
+	e.clearPreedit()
+	return e.hist.redo(e.applyEntry)
+}
+
+// entryState is one snapshot of the entry for the undo history.
+type entryState struct {
+	runes  []rune
+	cursor int
+	anchor int
+}
+
+// same reports whether two snapshots describe identical editing state.
+func (s entryState) same(o entryState) bool {
+	return s.cursor == o.cursor && s.anchor == o.anchor && string(s.runes) == string(o.runes)
+}
+
+// snapshot captures the current state for the history.
+func (e *Entry) snapshot() entryState {
+	return entryState{runes: append([]rune{}, e.runes...), cursor: e.cursor, anchor: e.anchor}
+}
+
+// applyEntry restores a snapshot exactly like the edit that produced
+// it: contents, caret, and selection, plus the same damage and change
+// signal the edit fired.
+func (e *Entry) applyEntry(s entryState) {
+	e.runes = append([]rune{}, s.runes...)
+	e.cursor, e.anchor = s.cursor, s.anchor
+	e.InvalidateLayout()
+	e.changed()
+}
+
 // changed fires OnChanged after a content change.
 func (e *Entry) changed() {
 	if e.OnChanged != nil {
@@ -80,6 +129,7 @@ func (e *Entry) SetText(s string) {
 	e.runes = []rune(s)
 	e.cursor = len(e.runes)
 	e.anchor = e.cursor
+	e.hist.reset() // app-driven replacement is not an edit to back out of
 	e.InvalidateLayout()
 	e.changed()
 }
@@ -112,8 +162,11 @@ func (e *Entry) collapse() {
 	e.cursor = start
 }
 
-// Insert inserts s at the cursor. An active selection is replaced.
-func (e *Entry) Insert(s string) {
+// splice is the insert primitive: it drops the composing display,
+// replaces any selection, and puts s at the caret. History recording
+// is the callers' business — Insert lands as one entry, InsertRune as
+// a coalescable typing run.
+func (e *Entry) splice(s string) {
 	e.clearPreedit()
 	e.collapse()
 	r := []rune(s)
@@ -124,42 +177,49 @@ func (e *Entry) Insert(s string) {
 	e.changed()
 }
 
+// Insert inserts s at the cursor. An active selection is replaced, and
+// the whole insertion — a paste, a drop, a committed composition — is
+// one undo entry.
+func (e *Entry) Insert(s string) {
+	before := e.snapshot()
+	e.splice(s)
+	e.hist.record(before, e.snapshot())
+}
+
 // Backspace deletes the selection, or the rune before the cursor when
-// nothing is selected.
+// nothing is selected; one undo entry per call.
 func (e *Entry) Backspace() {
+	before := e.snapshot()
 	e.clearPreedit()
 	if _, _, active := e.Selection(); active {
 		e.collapse()
 		e.InvalidateLayout()
 		e.changed()
-		return
+	} else if e.cursor > 0 {
+		e.runes = append(e.runes[:e.cursor-1], e.runes[e.cursor:]...)
+		e.cursor--
+		e.anchor = e.cursor
+		e.InvalidateLayout()
+		e.changed()
 	}
-	if e.cursor == 0 {
-		return
-	}
-	e.runes = append(e.runes[:e.cursor-1], e.runes[e.cursor:]...)
-	e.cursor--
-	e.anchor = e.cursor
-	e.InvalidateLayout()
-	e.changed()
+	e.hist.record(before, e.snapshot())
 }
 
 // Delete deletes the selection, or the rune at the cursor when nothing
-// is selected.
+// is selected; one undo entry per call.
 func (e *Entry) Delete() {
+	before := e.snapshot()
 	e.clearPreedit()
 	if _, _, active := e.Selection(); active {
 		e.collapse()
 		e.InvalidateLayout()
 		e.changed()
-		return
+	} else if e.cursor < len(e.runes) {
+		e.runes = append(e.runes[:e.cursor], e.runes[e.cursor+1:]...)
+		e.InvalidateLayout()
+		e.changed()
 	}
-	if e.cursor >= len(e.runes) {
-		return
-	}
-	e.runes = append(e.runes[:e.cursor], e.runes[e.cursor+1:]...)
-	e.InvalidateLayout()
-	e.changed()
+	e.hist.record(before, e.snapshot())
 }
 
 // MoveCursor moves the cursor by delta runes, clamped to [0, len]. An
@@ -218,7 +278,7 @@ func (e *Entry) Measure(con Constraints) Size {
 	if sz, ok := e.measureHit(con); ok {
 		return sz
 	}
-	text := string(e.displayRunes())
+	text := e.displayText()
 	if text == "" {
 		text = e.placeholder
 	}
@@ -236,20 +296,22 @@ func (e *Entry) Measure(con Constraints) Size {
 func (e *Entry) Paint(cv *render.Canvas) {
 	t := Current()
 	cv.RoundedRect(e.bounds, t.Radius, t.Surface)
+	disp := e.displayText()
 	if len(e.runes) == 0 && !e.composing() && e.placeholder != "" {
 		e.face.DrawAligned(cv, e.placeholder, e.bounds, e.sizePx, t.Border, render.AlignStart)
 		return
 	}
+	// The highlight and the caret map through the display shape: in
+	// masked modes the band covers dots, never the runes behind them.
+	sh := e.face.Shape(disp, e.sizePx)
 	if start, end, active := e.Selection(); active {
-		x0 := e.bounds.X + 8 + int(e.face.Shape(e.Text(), e.sizePx).CaretX(start)+0.5)
-		x1 := e.bounds.X + 8 + int(e.face.Shape(e.Text(), e.sizePx).CaretX(end)+0.5)
+		x0 := e.bounds.X + 8 + int(sh.CaretX(start)+0.5)
+		x1 := e.bounds.X + 8 + int(sh.CaretX(end)+0.5)
 		a := t.Accent
 		cv.FillRect(render.Rect{X: x0, Y: e.bounds.Y + 4, W: x1 - x0, H: e.bounds.H - 8},
 			render.RGBA(a.R(), a.G(), a.B(), 90))
 	}
-	disp := string(e.displayRunes())
 	e.face.DrawAligned(cv, disp, e.bounds, e.sizePx, e.color, render.AlignStart)
-	sh := e.face.Shape(disp, e.sizePx)
 	if e.composing() {
 		// Accent underline under the composing range.
 		a := t.Accent
@@ -277,11 +339,13 @@ func (e *Entry) HitTest(p Point) Widget {
 }
 
 // ClickAt places the cursor (and the selection anchor) at the clicked
-// text position, dropping the composing display.
+// text position, dropping the composing display. The mapping runs
+// through the display shape, so a click lands where the dots are while
+// the cursor stays a logical rune index.
 func (e *Entry) ClickAt(p Point) {
 	e.clearPreedit()
 	x := float64(p.X - e.bounds.X - 8)
-	e.cursor = e.face.Shape(e.Text(), e.sizePx).CaretAt(x)
+	e.cursor = e.face.Shape(e.displayText(), e.sizePx).CaretAt(x)
 	e.anchor = e.cursor
 	e.Invalidate()
 }
@@ -291,7 +355,7 @@ func (e *Entry) ClickAt(p Point) {
 func (e *Entry) DragMove(p Point) {
 	e.clearPreedit()
 	x := float64(p.X - e.bounds.X - 8)
-	e.cursor = e.face.Shape(e.Text(), e.sizePx).CaretAt(x)
+	e.cursor = e.face.Shape(e.displayText(), e.sizePx).CaretAt(x)
 	e.Invalidate()
 }
 
@@ -303,20 +367,17 @@ func (e *Entry) DoubleClickAt(p Point) {
 		return
 	}
 	x := float64(p.X - e.bounds.X - 8)
-	c := e.face.Shape(e.Text(), e.sizePx).CaretAt(x)
+	c := e.face.Shape(e.displayText(), e.sizePx).CaretAt(x)
 	if c >= len(e.runes) {
 		c = len(e.runes) - 1
 	}
-	word := func(r rune) bool {
-		return r == '_' || unicode.IsLetter(r) || unicode.IsDigit(r)
-	}
-	wantWord := word(e.runes[c])
+	wantWord := wordRune(e.runes[c])
 	start := c
-	for start > 0 && word(e.runes[start-1]) == wantWord {
+	for start > 0 && wordRune(e.runes[start-1]) == wantWord {
 		start--
 	}
 	end := c + 1
-	for end < len(e.runes) && word(e.runes[end]) == wantWord {
+	for end < len(e.runes) && wordRune(e.runes[end]) == wantWord {
 		end++
 	}
 	e.cursor, e.anchor = end, start
@@ -331,9 +392,13 @@ func (e *Entry) SelectAll() {
 	e.Invalidate()
 }
 
-// InsertRune implements RuneHandler.
+// InsertRune implements RuneHandler. Typed runes coalesce into one
+// undo entry until a word boundary, an idle gap, or a different edit
+// breaks the run.
 func (e *Entry) InsertRune(r rune) {
-	e.Insert(string(r))
+	before := e.snapshot()
+	e.splice(string(r))
+	e.hist.recordTyping(before, e.snapshot(), r)
 }
 
 // KeyAction implements KeyActionHandler for editing keys. Shift-extended

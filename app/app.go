@@ -439,8 +439,10 @@ type primarySelectionSource interface {
 // bindings. The precedence is fixed:
 //
 //  1. built-in widget handling: clipboard (ctrl+c/x/v), select-all
-//     (ctrl+a), and Tab focus movement — with shift held these stand
-//     down, so ctrl+shift combos stay free for accelerators;
+//     (ctrl+a), undo/redo (ctrl+z, ctrl+shift+z or ctrl+y), and Tab
+//     focus movement — with shift held these stand down, so ctrl+shift
+//     combos stay free for accelerators (ctrl+shift+z is the one
+//     exception, and only while an undoable widget holds focus);
 //  2. accelerators, per-widget for the focused widget first, then
 //     app-wide; a fired accelerator consumes the event;
 //  3. text routing: typed characters and remaining editing keysyms
@@ -469,6 +471,17 @@ func routeKey(sess keyTranslator, router *widget.Router, keycode uint32, mods wl
 	case isCtrl && noShift && (sym == xkb.Keysym('a') || sym == xkb.Keysym('A')):
 		router.SelectAll()
 		handled = true
+	case isCtrl && (sym == xkb.Keysym('z') || sym == xkb.Keysym('Z')):
+		// Undo history is built-in widget handling; shift turns it into
+		// redo. Either press is consumed only when an undoable widget
+		// holds focus, leaving the combos free everywhere else.
+		if noShift {
+			handled = undoFocused(router)
+		} else {
+			handled = redoFocused(router)
+		}
+	case isCtrl && noShift && (sym == xkb.Keysym('y') || sym == xkb.Keysym('Y')):
+		handled = redoFocused(router)
 	case !isCtrl && mods&wlsession.ModAlt == 0 && sym == xkb.KeyTab:
 		// Tab trap: inside a widget that absorbs tabs (a multi-line
 		// text area) a plain Tab indents; ctrl+Tab and shift+Tab move
@@ -547,15 +560,34 @@ func focusedSelection(router *widget.Router) (string, bool) {
 }
 
 // pasteSelection inserts the clipboard text at the focused widget's
-// cursor.
+// cursor — one Insert, so the paste lands as one undo entry. Widgets
+// that cannot take a bulk insert fall back to typed runes.
 func pasteSelection(router *widget.Router, clip *clipboard.Clipboard) {
 	text, err := clip.ReadText()
 	if err != nil {
 		return
 	}
+	if ins, ok := router.Focused().(widget.TextInserter); ok {
+		ins.Insert(text)
+		return
+	}
 	for _, r := range text {
 		router.Type(r)
 	}
+}
+
+// undoFocused undoes the focused widget's last edit, reporting whether
+// anything changed; false when nothing undoable holds focus.
+func undoFocused(router *widget.Router) bool {
+	u, ok := router.Focused().(widget.Undoer)
+	return ok && u.Undo()
+}
+
+// redoFocused reapplies the focused widget's most recently undone
+// edit, reporting whether anything changed.
+func redoFocused(router *widget.Router) bool {
+	u, ok := router.Focused().(widget.Undoer)
+	return ok && u.Redo()
 }
 
 // actionForSym maps editing keysyms to widget actions.

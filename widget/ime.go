@@ -160,6 +160,7 @@ func (e *Entry) IMEPreedit(text string, cursorBegin, cursorEnd int) {
 // IMEDelete implements IMEClient: input-method deletion of up to
 // before bytes before and after bytes after the caret.
 func (e *Entry) IMEDelete(before, after int) {
+	snap := e.snapshot()
 	e.clearPreedit()
 	start := e.cursor - imeRunesBack(e.runes, e.cursor, before)
 	end := e.cursor + imeRunesFwd(e.runes, e.cursor, after)
@@ -168,6 +169,7 @@ func (e *Entry) IMEDelete(before, after int) {
 	}
 	e.runes = append(e.runes[:start], e.runes[end:]...)
 	e.cursor, e.anchor = start, start
+	e.hist.record(snap, e.snapshot())
 	e.changed()
 }
 
@@ -192,7 +194,7 @@ func (e *Entry) IMECursorRect() render.Rect {
 	if caret < 0 {
 		caret = e.peAt + len(e.peText)
 	}
-	x := 8 + int(e.face.Shape(string(e.displayRunes()), e.sizePx).CaretX(caret)+0.5)
+	x := 8 + int(e.face.Shape(e.displayText(), e.sizePx).CaretX(caret)+0.5)
 	return render.Rect{X: e.bounds.X + x, Y: e.bounds.Y + 6, W: 2, H: max(e.bounds.H-12, 0)}
 }
 
@@ -273,6 +275,7 @@ func (t *TextArea) IMEPreedit(text string, cursorBegin, cursorEnd int) {
 // before bytes before and after bytes after the caret, possibly
 // across line breaks.
 func (t *TextArea) IMEDelete(before, after int) {
+	snap := t.snapshot()
 	t.clearPreedit()
 	if before <= 0 && after <= 0 {
 		return
@@ -285,6 +288,7 @@ func (t *TextArea) IMEDelete(before, after int) {
 		return
 	}
 	t.setDoc(string(doc[:start])+string(doc[end:]), start)
+	t.hist.record(snap, t.snapshot())
 }
 
 // IMECommit implements IMEClient.
@@ -306,9 +310,10 @@ func (t *TextArea) docRuneIndex(p pos) int {
 }
 
 // setDoc replaces the contents and parks the caret at rune index at
-// (newlines included in the count).
+// (newlines included in the count). Unlike SetText it leaves the undo
+// history alone — callers record the edit themselves.
 func (t *TextArea) setDoc(s string, at int) {
-	t.SetText(s)
+	t.splitLines(s)
 	p := pos{0, 0}
 	for at > 0 && p.line < len(t.lines) {
 		switch take := min(len(t.lines[p.line])-p.col, at); {
@@ -322,6 +327,8 @@ func (t *TextArea) setDoc(s string, at int) {
 	}
 	t.cursor, t.anchor = t.clamp(p), t.clamp(p)
 	t.hasPref = false
+	t.rowsValid = false
+	t.InvalidateLayout()
 }
 
 // IMESurrounding implements IMETracker: the document with the caret
