@@ -44,6 +44,12 @@ type Entry struct {
 	// hist is the undo/redo history; every mutation records into it.
 	hist undoStack[entryState]
 
+	// readOnly freezes user edits: typing, paste, cut, delete, and
+	// undo/redo all no-op, while selection, copy, caret motion, and pan
+	// keep working. Programmatic SetText is not a user edit and still
+	// applies. See SetReadOnly for the full contract.
+	readOnly bool
+
 	// Composing (input-method preedit) display: peText shows at the
 	// caret position peAt with the composing caret peCur runes into
 	// it (-1 hidden). It lives outside the contents until a commit.
@@ -67,6 +73,41 @@ func (e *Entry) SetPlaceholder(s string) {
 	e.InvalidateLayout()
 }
 
+// SetReadOnly toggles the read-only mode for copy-only fields (a
+// generated API key, a resolved config value). The contract:
+//
+//   - blocked: typing, paste, drop, composition, Backspace/Delete
+//     (cut), Undo/Redo, and — because they are user edits — new undo
+//     entries. A history built before SetReadOnly(true) is untouched,
+//     not cleared: flipping read-only back off resumes backing out the
+//     very same edits.
+//   - still working: selection (click, drag, double-click,
+//     SelectAll), copy through SelectedText, caret motion, and pan.
+//   - visual: the text keeps its normal color; only the caret fades
+//     to the disabled fade. A disabled entry is the mirror image —
+//     muted text — so the two states never look alike.
+//
+// SetText remains programmatic and applies regardless.
+func (e *Entry) SetReadOnly(ro bool) {
+	if e.readOnly == ro {
+		return
+	}
+	e.readOnly = ro
+	if ro {
+		e.clearPreedit() // no composing display on a frozen field
+	}
+	e.Invalidate()
+}
+
+// ReadOnly reports whether the entry is in the read-only mode.
+func (e *Entry) ReadOnly() bool { return e.readOnly }
+
+// editable reports whether user edits may land: the field accepts
+// input at all (it and its ancestors are enabled) and is not
+// read-only. Every mutation entry point opens with it; SetText is the
+// one deliberate exception.
+func (e *Entry) editable() bool { return e.Enabled() && !e.readOnly }
+
 // Text returns the entry contents.
 // CursorName reports the text caret shape while hovered.
 func (e *Entry) CursorName() string { return "xterm" }
@@ -78,14 +119,23 @@ func (e *Entry) Text() string {
 // Undo restores the state before the most recent edit — contents,
 // caret, and selection included — reporting whether there was anything
 // to undo. Composing text drops first, like before any other edit.
+// Undo is a user edit: disabled or read-only, it no-ops and returns
+// false while the history waits untouched.
 func (e *Entry) Undo() bool {
+	if !e.editable() {
+		return false
+	}
 	e.clearPreedit()
 	return e.hist.undo(e.applyEntry)
 }
 
 // Redo reapplies the most recently undone edit, reporting whether
-// there was one.
+// there was one. Like Undo it is a user edit and no-ops while
+// disabled or read-only.
 func (e *Entry) Redo() bool {
+	if !e.editable() {
+		return false
+	}
 	e.clearPreedit()
 	return e.hist.redo(e.applyEntry)
 }
@@ -197,16 +247,23 @@ func (e *Entry) splice(s string) {
 
 // Insert inserts s at the cursor. An active selection is replaced, and
 // the whole insertion — a paste, a drop, a committed composition — is
-// one undo entry.
+// one undo entry. Blocked while disabled or read-only.
 func (e *Entry) Insert(s string) {
+	if !e.editable() {
+		return
+	}
 	before := e.snapshot()
 	e.splice(s)
 	e.hist.record(before, e.snapshot())
 }
 
 // Backspace deletes the selection, or the rune before the cursor when
-// nothing is selected; one undo entry per call.
+// nothing is selected; one undo entry per call. Blocked while disabled
+// or read-only.
 func (e *Entry) Backspace() {
+	if !e.editable() {
+		return
+	}
 	before := e.snapshot()
 	e.clearPreedit()
 	if _, _, active := e.Selection(); active {
@@ -225,8 +282,12 @@ func (e *Entry) Backspace() {
 }
 
 // Delete deletes the selection, or the rune at the cursor when nothing
-// is selected; one undo entry per call.
+// is selected; one undo entry per call. This is the cut half of
+// ctrl+x; blocked while disabled or read-only.
 func (e *Entry) Delete() {
+	if !e.editable() {
+		return
+	}
 	before := e.snapshot()
 	e.clearPreedit()
 	if _, _, active := e.Selection(); active {
@@ -390,9 +451,26 @@ func (e *Entry) Measure(con Constraints) Size {
 // clipped to the inner rect, so the caret never leaves the field. The
 // placeholder only shows on an empty field and never pans. Zero color
 // fields fall back to the theme.
+//
+// State colors: a disabled field fills with the derived disabled
+// surface and paints text at the shared disabled fade; a read-only
+// field keeps the normal text and fades only the caret, so the two
+// states read differently at a glance (muted text vs muted caret).
 func (e *Entry) Paint(cv *render.Canvas) {
 	t := Current()
-	cv.RoundedRect(e.bounds, t.Radius, t.Surface)
+	enabled := IsEnabled(e)
+	bg := t.Surface
+	if !enabled {
+		bg = t.DisabledSurface()
+	}
+	cv.RoundedRect(e.bounds, t.Radius, bg)
+	textCol, caretCol := e.color, e.color
+	if !enabled {
+		textCol = scaleAlpha(textCol, disabledFade)
+		caretCol = textCol
+	} else if e.readOnly {
+		caretCol = scaleAlpha(caretCol, disabledFade)
+	}
 	disp := e.displayText()
 	if len(e.runes) == 0 && !e.composing() && e.placeholder != "" {
 		e.face.DrawAligned(cv, e.placeholder, e.bounds, e.sizePx, t.Border, render.AlignStart)
@@ -411,7 +489,7 @@ func (e *Entry) Paint(cv *render.Canvas) {
 		cv.FillRect(render.Rect{X: x0, Y: e.bounds.Y + 4, W: x1 - x0, H: e.bounds.H - 8},
 			render.RGBA(a.R(), a.G(), a.B(), 90))
 	}
-	e.face.DrawAligned(cv, disp, render.Rect{X: bx, Y: e.bounds.Y, W: e.bounds.W, H: e.bounds.H}, e.sizePx, e.color, render.AlignStart)
+	e.face.DrawAligned(cv, disp, render.Rect{X: bx, Y: e.bounds.Y, W: e.bounds.W, H: e.bounds.H}, e.sizePx, textCol, render.AlignStart)
 	if e.composing() {
 		// Accent underline under the composing range.
 		a := t.Accent
@@ -427,7 +505,7 @@ func (e *Entry) Paint(cv *render.Canvas) {
 	// same offset, so a repaint (blink or otherwise) never jumps it.
 	if caret := e.caretRune(); caret >= 0 {
 		x := bx + int(sh.CaretX(caret)+0.5)
-		cv.FillRect(render.Rect{X: x, Y: e.bounds.Y + 6, W: 2, H: e.bounds.H - 12}, e.color)
+		cv.FillRect(render.Rect{X: x, Y: e.bounds.Y + 6, W: 2, H: e.bounds.H - 12}, caretCol)
 	}
 	cv.PopClip(prev)
 }
@@ -512,8 +590,11 @@ func (e *Entry) SelectAll() {
 
 // InsertRune implements RuneHandler. Typed runes coalesce into one
 // undo entry until a word boundary, an idle gap, or a different edit
-// breaks the run.
+// breaks the run. Blocked while disabled or read-only.
 func (e *Entry) InsertRune(r rune) {
+	if !e.editable() {
+		return
+	}
 	before := e.snapshot()
 	e.splice(string(r))
 	e.hist.recordTyping(before, e.snapshot(), r)
@@ -523,9 +604,14 @@ func (e *Entry) InsertRune(r rune) {
 // motion grows the selection from its anchor. While composing, the
 // input method owns the text: backspace trims its last rune, and every
 // other edit drops the composing display and applies to the contents.
+// A disabled entry ignores keys outright; a read-only one keeps the
+// motion and selection keys and drops only the mutating ones.
 func (e *Entry) KeyAction(a KeyAction, mods Mods) {
+	if !e.Enabled() {
+		return
+	}
 	shift := mods&ModShift != 0
-	if a == KeyBackspace && e.composing() {
+	if a == KeyBackspace && e.composing() && e.editable() {
 		e.peText = e.peText[:len(e.peText)-1]
 		e.peCur = min(e.peCur, len(e.peText))
 		if len(e.peText) == 0 {
@@ -537,9 +623,13 @@ func (e *Entry) KeyAction(a KeyAction, mods Mods) {
 	e.clearPreedit()
 	switch a {
 	case KeyBackspace:
-		e.Backspace()
+		if e.editable() {
+			e.Backspace()
+		}
 	case KeyDelete:
-		e.Delete()
+		if e.editable() {
+			e.Delete()
+		}
 	case KeyLeft:
 		if shift {
 			e.MoveCursorExtending(-1)

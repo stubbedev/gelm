@@ -30,6 +30,9 @@ type Theme struct {
 	// Text paints primary labels; TextMuted groups and hints. Leave
 	// TextMuted unset and DisabledText derives it from Text.
 	Text, TextMuted Color
+	// SurfaceDisabled fills disabled controls. Leave it unset and
+	// DisabledSurface derives it from Surface and Bg.
+	SurfaceDisabled Color
 	// Accent drives fills that express state: progress, switches on,
 	// sliders. HoverAccent derives the translucent hover wash from it.
 	Accent Color
@@ -188,6 +191,12 @@ func (t *Theme) WithTextMuted(c Color) *Theme {
 	return t.with(func(n *Theme) { n.TextMuted = c })
 }
 
+// WithSurfaceDisabled returns a copy with the disabled-control fill
+// set; unset, the copy derives one (DisabledSurface).
+func (t *Theme) WithSurfaceDisabled(c Color) *Theme {
+	return t.with(func(n *Theme) { n.SurfaceDisabled = c })
+}
+
 // WithAccent returns a copy with the accent color set.
 func (t *Theme) WithAccent(c Color) *Theme { return t.with(func(n *Theme) { n.Accent = c }) }
 
@@ -246,6 +255,12 @@ func (t *Theme) WithAnimations(on bool) *Theme {
 // All derivations are pure functions of the palette: same palette in,
 // same color out, on every widget.
 
+// disabledFade is the opacity of disabled ink: the same fraction
+// DisabledText fades Text by, applied by widgets to colors the theme
+// cannot derive (an entry's constructor color, a button's child
+// subtree through the canvas alpha stack).
+const disabledFade = 0.45
+
 // HoverSurface returns the control fill under the pointer: the
 // explicit SurfaceHover when set, otherwise Surface mixed 8% toward
 // Text. The text pole carries the palette's polarity, so the shift
@@ -275,13 +290,32 @@ func (t *Theme) HoverAccent() Color {
 }
 
 // DisabledText returns the color for rows and labels that ignore
-// input: the explicit TextMuted when set, otherwise Text faded to 45%
-// alpha.
+// input: the explicit TextMuted when set, otherwise Text faded to
+// disabledFade alpha.
 func (t *Theme) DisabledText() Color {
 	if t.TextMuted != 0 {
 		return t.TextMuted
 	}
-	return scaleAlpha(t.Text, 0.45)
+	return scaleAlpha(t.Text, disabledFade)
+}
+
+// DisabledSurface returns the fill of a control that ignores input:
+// the explicit SurfaceDisabled when set, otherwise Surface mixed
+// halfway toward Bg — the control recedes into the window on any
+// palette, the inert counterpart of PressedSurface.
+func (t *Theme) DisabledSurface() Color {
+	if t.SurfaceDisabled != 0 {
+		return t.SurfaceDisabled
+	}
+	return mix(t.Surface, t.Bg, 0.5)
+}
+
+// DisabledAccent returns the accent fill (a switch's on-track, a
+// slider's fill, a checkbox's tick) while the control ignores input:
+// Accent faded to disabledFade, the same fade DisabledText applies to
+// Text.
+func (t *Theme) DisabledAccent() Color {
+	return scaleAlpha(t.Accent, disabledFade)
 }
 
 // wcagAA is the WCAG 2.x AA contrast ratio for normal text.

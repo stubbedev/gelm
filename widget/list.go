@@ -208,8 +208,11 @@ func (l *List) rowAt(p Point) int {
 }
 
 // HoverMove implements HoverMover: tracks the hovered row for styling
-// and per-row tooltips.
+// and per-row tooltips. Disabled lists highlight nothing.
 func (l *List) HoverMove(p Point) {
+	if !IsEnabled(l) {
+		return
+	}
 	i := l.rowAt(p)
 	if i == l.hover {
 		return
@@ -219,8 +222,11 @@ func (l *List) HoverMove(p Point) {
 	l.Invalidate()
 }
 
-// ScrollBy implements ScrollHandler.
+// ScrollBy implements ScrollHandler. Disabled lists do not scroll.
 func (l *List) ScrollBy(dx, dy int) {
+	if !IsEnabled(l) {
+		return
+	}
 	scrollMax := max(0, l.model.len()*l.rowH-l.viewH)
 	l.offY = min(max(0, l.offY+dy*40), scrollMax)
 	l.dirty = true
@@ -229,8 +235,12 @@ func (l *List) ScrollBy(dx, dy int) {
 
 // KeyAction implements KeyActionHandler: selection motion clamps at
 // the ends (pinned), PageUp/PageDown move a viewport of rows, and
-// Enter activates the selection exactly once per press.
+// Enter activates the selection exactly once per press. Disabled
+// lists ignore keys.
 func (l *List) KeyAction(a KeyAction, mods Mods) {
+	if !IsEnabled(l) {
+		return
+	}
 	n := l.model.len()
 	if n == 0 {
 		return

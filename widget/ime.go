@@ -141,10 +141,15 @@ func (e *Entry) caretRune() int {
 	return e.peAt + e.peCur
 }
 
-// IMEPreedit implements IMEClient.
+// IMEPreedit implements IMEClient. A disabled or read-only entry never
+// enters composing: the input method is told nothing back, so it stops
+// sending preedit after the first empty commit.
 func (e *Entry) IMEPreedit(text string, cursorBegin, cursorEnd int) {
 	if text == "" {
 		e.clearPreedit()
+		return
+	}
+	if !e.editable() {
 		return
 	}
 	// The composing text replaces a selection: the protocol removes
@@ -159,8 +164,12 @@ func (e *Entry) IMEPreedit(text string, cursorBegin, cursorEnd int) {
 }
 
 // IMEDelete implements IMEClient: input-method deletion of up to
-// before bytes before and after bytes after the caret.
+// before bytes before and after bytes after the caret. Blocked while
+// disabled or read-only.
 func (e *Entry) IMEDelete(before, after int) {
+	if !e.editable() {
+		return
+	}
 	snap := e.snapshot()
 	e.clearPreedit()
 	start := e.cursor - imeRunesBack(e.runes, e.cursor, before)
@@ -175,7 +184,8 @@ func (e *Entry) IMEDelete(before, after int) {
 	e.changed()
 }
 
-// IMECommit implements IMEClient.
+// IMECommit implements IMEClient; the insertion inside is what
+// actually honors the disabled and read-only gates.
 func (e *Entry) IMECommit(text string) {
 	e.clearPreedit()
 	if text != "" {
@@ -256,10 +266,14 @@ func (t *TextArea) caretPos() pos {
 	return pos{t.peAt.line, t.peAt.col + t.peCur}
 }
 
-// IMEPreedit implements IMEClient.
+// IMEPreedit implements IMEClient. A disabled or read-only area never
+// enters composing (see Entry.IMEPreedit).
 func (t *TextArea) IMEPreedit(text string, cursorBegin, cursorEnd int) {
 	if text == "" {
 		t.clearPreedit()
+		return
+	}
+	if !t.editable() {
 		return
 	}
 	// The composing text replaces a selection: the protocol removes
@@ -277,8 +291,11 @@ func (t *TextArea) IMEPreedit(text string, cursorBegin, cursorEnd int) {
 
 // IMEDelete implements IMEClient: input-method deletion of up to
 // before bytes before and after bytes after the caret, possibly
-// across line breaks.
+// across line breaks. Blocked while disabled or read-only.
 func (t *TextArea) IMEDelete(before, after int) {
+	if !t.editable() {
+		return
+	}
 	snap := t.snapshot()
 	t.clearPreedit()
 	if before <= 0 && after <= 0 {

@@ -48,12 +48,19 @@ func (s *Switch) Measure(con Constraints) Size {
 }
 
 // Paint draws the track and knob. The knob sits at the right when on.
-// Zero colors fall back to the theme.
+// Disabled, the on-track and knob fade through the derived disabled
+// colors. Zero colors fall back to the theme.
 func (s *Switch) Paint(cv *render.Canvas) {
 	t := Current()
-	track := t.Surface
+	track, knob := t.Surface, t.Text
 	if s.on {
 		track = t.Accent
+	}
+	if !IsEnabled(s) {
+		track, knob = t.DisabledSurface(), t.DisabledText()
+		if s.on {
+			track = t.DisabledAccent()
+		}
 	}
 	cv.RoundedRect(s.bounds, s.bounds.H/2, track)
 
@@ -62,7 +69,7 @@ func (s *Switch) Paint(cv *render.Canvas) {
 	if s.on {
 		kx = s.bounds.X + s.bounds.W - 3 - knobD
 	}
-	cv.RoundedRect(render.Rect{X: kx, Y: s.bounds.Y + 3, W: knobD, H: knobD}, knobD/2, t.Text)
+	cv.RoundedRect(render.Rect{X: kx, Y: s.bounds.Y + 3, W: knobD, H: knobD}, knobD/2, knob)
 }
 
 // Role implements Roleer.
@@ -74,23 +81,29 @@ func (s *Switch) HitTest(p Point) Widget {
 }
 
 // ClickAt toggles the switch; the Router invokes it on press+release.
-func (s *Switch) ClickAt(Point) { s.Toggle() }
+// Disabled switches ignore clicks.
+func (s *Switch) ClickAt(Point) {
+	if IsEnabled(s) {
+		s.Toggle()
+	}
+}
 
 // SetPressed is a no-op: the switch has no pressed visual.
 func (s *Switch) SetPressed(bool) {}
 
 // KeyAction implements KeyActionHandler: Enter toggles when focused,
 // which makes the switch reachable and activatable by keyboard only.
+// Disabled switches ignore keys.
 func (s *Switch) KeyAction(a KeyAction, _ Mods) {
-	if a == KeyEnter {
+	if a == KeyEnter && IsEnabled(s) {
 		s.Toggle()
 	}
 }
 
 // InsertRune implements RuneHandler: Space toggles, the other half of
-// the GTK activation pair.
+// the GTK activation pair. Disabled switches ignore it.
 func (s *Switch) InsertRune(r rune) {
-	if r == ' ' {
+	if r == ' ' && IsEnabled(s) {
 		s.Toggle()
 	}
 }
@@ -202,10 +215,15 @@ func (c *CheckButton) Measure(con Constraints) Size {
 }
 
 // Paint draws the box; when checked, an accent fill and a check mark.
-// Paint draws the box; when checked, an accent fill and a check mark.
-// Colors fall back to the theme.
+// Colors fall back to the theme. Disabled, box and fill fade through
+// the derived disabled colors.
 func (c *CheckButton) Paint(cv *render.Canvas) {
 	t := Current()
+	boxCol, fillCol, tickCol := t.Border, t.Accent, t.OnAccent
+	if !IsEnabled(c) {
+		boxCol, fillCol = t.DisabledText(), t.DisabledAccent()
+		tickCol = scaleAlpha(t.OnAccent, disabledFade)
+	}
 	box := c.bounds
 	if box.W > box.H {
 		box.W = box.H
@@ -213,14 +231,14 @@ func (c *CheckButton) Paint(cv *render.Canvas) {
 	if box.H > box.W {
 		box.H = box.W
 	}
-	cv.RoundedRect(box, 4, t.Border)
+	cv.RoundedRect(box, 4, boxCol)
 	inner := box
 	inner.X += 2
 	inner.Y += 2
 	inner.W -= 4
 	inner.H -= 4
 	if c.checked {
-		cv.RoundedRect(inner, 3, t.Accent)
+		cv.RoundedRect(inner, 3, fillCol)
 		bw, bh := float64(box.W), float64(box.H)
 		stroke := max(2, box.W/7)
 		x0 := box.X + int(0.24*bw)
@@ -229,8 +247,8 @@ func (c *CheckButton) Paint(cv *render.Canvas) {
 		y1 := box.Y + int(0.73*bh)
 		x2 := box.X + int(0.78*bw)
 		y2 := box.Y + int(0.27*bh)
-		cv.Line(x0, y0, x1, y1, stroke, t.OnAccent)
-		cv.Line(x1, y1, x2, y2, stroke, t.OnAccent)
+		cv.Line(x0, y0, x1, y1, stroke, tickCol)
+		cv.Line(x1, y1, x2, y2, stroke, tickCol)
 		return
 	}
 	cv.RoundedRect(inner, 3, t.Bg)
@@ -245,20 +263,26 @@ func (c *CheckButton) HitTest(p Point) Widget {
 }
 
 // ClickAt toggles the checkbox; the Router invokes it on press+release.
-func (c *CheckButton) ClickAt(Point) { c.Toggle() }
+// Disabled checkboxes ignore clicks.
+func (c *CheckButton) ClickAt(Point) {
+	if IsEnabled(c) {
+		c.Toggle()
+	}
+}
 
 // KeyAction implements KeyActionHandler: Enter toggles when focused,
 // which makes the checkbox reachable and activatable by keyboard only.
+// Disabled checkboxes ignore keys.
 func (c *CheckButton) KeyAction(a KeyAction, _ Mods) {
-	if a == KeyEnter {
+	if a == KeyEnter && IsEnabled(c) {
 		c.Toggle()
 	}
 }
 
 // InsertRune implements RuneHandler: Space toggles, the other half of
-// the GTK activation pair.
+// the GTK activation pair. Disabled checkboxes ignore it.
 func (c *CheckButton) InsertRune(r rune) {
-	if r == ' ' {
+	if r == ' ' && IsEnabled(c) {
 		c.Toggle()
 	}
 }

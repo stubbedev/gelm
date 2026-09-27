@@ -103,8 +103,14 @@ type A11yState struct {
 	// bar); Step is the keyboard increment (slider only, 0 when the
 	// slider divides the range itself).
 	Min, Max, Value, Step float64
-	// Editable reports whether the text can be changed by the user.
+	// Editable reports whether the text can be changed by the user:
+	// false for a read-only field, and for a disabled one — the same
+	// contract the widget input paths enforce.
 	Editable bool
+	// Enabled reports whether the widget accepts input at all, folding
+	// its ancestors in (widget.IsEnabled): a widget inside a disabled
+	// container reports false, exactly as input treats it.
+	Enabled bool
 	// Multiline distinguishes text areas from single-line entries.
 	Multiline bool
 	// Focusable reports whether Tab traversal can land on the widget,
@@ -121,7 +127,7 @@ func Describe(w Widget) A11yState {
 	if w == nil {
 		return A11yState{}
 	}
-	st := A11yState{Role: RoleOf(w), Focusable: isFocusable(w)}
+	st := A11yState{Role: RoleOf(w), Enabled: IsEnabled(w), Focusable: isFocusable(w)}
 	if t, ok := w.(TooltipTexter); ok {
 		st.Name = t.TooltipText()
 	}
@@ -145,12 +151,12 @@ func Describe(w Widget) A11yState {
 			st.Name = labelText(v.child)
 		}
 	case *Entry:
-		st.Editable = true
+		st.Editable = v.editable()
 		st.Text = v.Text()
 		st.Caret = v.Cursor()
 		st.SelStart, st.SelEnd, st.HasSelection = v.Selection()
 	case *TextArea:
-		st.Editable = true
+		st.Editable = v.editable()
 		st.Multiline = true
 		st.Text = v.Text()
 		st.Caret, st.SelStart, st.SelEnd, st.HasSelection = textAreaOffsets(v)
@@ -179,10 +185,14 @@ func Describe(w Widget) A11yState {
 	return st
 }
 
-// isFocusable reports whether Tab traversal can land on w.
+// isFocusable reports whether Tab traversal can land on w: it handles
+// key actions and is enabled — a disabled widget is skipped by
+// FocusNext and so is reported unfocusable here.
 func isFocusable(w Widget) bool {
-	_, ok := w.(KeyActionHandler)
-	return ok
+	if _, ok := w.(KeyActionHandler); !ok {
+		return false
+	}
+	return IsEnabled(w)
 }
 
 // DescribeTree snapshots root and every descendant in paint order, the

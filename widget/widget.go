@@ -83,6 +83,13 @@ type node struct {
 	// themeSeen stamps the theme generation this widget last joined a
 	// frame with; SetTheme bumps themeGen so every widget repaints once.
 	themeSeen uint64
+
+	// disabled is the widget's own half of the enable state: false (the
+	// zero value) means enabled, so plain widgets accept input without
+	// opting in. The other half is inherited: widget.IsEnabled walks the
+	// ancestors, so a disabled container disables its subtree by query
+	// — see SetEnabled.
+	disabled bool
 }
 
 // SetTooltip sets hover text shown after a dwell; empty clears it.
@@ -93,6 +100,49 @@ func (n *node) SetTooltip(s string) {
 
 // TooltipText returns the hover text, empty when none is set.
 func (n *node) TooltipText() string { return n.tooltip }
+
+// SetEnabled turns the widget's own interactivity on or off; every
+// node-embedding widget inherits it. The zero state is enabled.
+//
+// Propagation model (pinned): a container's flag does NOT rewrite its
+// children's. Disable a Box and the whole subtree reads as disabled
+// through widget.IsEnabled, the per-query ancestor walk — the same
+// shape as IsInteractive. Per-query beats a recursive flag because it
+// keeps every widget's own decision intact: re-enabling the container
+// never resurrects a child the app disabled on purpose, and a child
+// disabled after its container keeps its state when the container
+// comes back. Each widget's own flag only ever changes through its own
+// SetEnabled.
+//
+// The flip invalidates self and — for containers that expose Children,
+// which override this with invalidateTree — every descendant, so the
+// muted paint lands on the next frame without a relayout: enabled
+// state changes what Paint draws, never what Measure wants.
+func (n *node) SetEnabled(enabled bool) {
+	checkLoop("SetEnabled")
+	if n.disabled == !enabled {
+		return
+	}
+	n.disabled = !enabled
+	n.Invalidate()
+}
+
+// Enabled reports the widget's own flag, NOT the effective state: a
+// widget inside a disabled container still reads true here. Input
+// paths and Paint must consult widget.IsEnabled, which folds the
+// ancestors in.
+func (n *node) Enabled() bool { return !n.disabled }
+
+// invalidateTree marks self and every descendant for repaint.
+// Containers call it after a state flip (enable/disable) that the
+// query walks project onto the whole subtree at once.
+func invalidateTree(self Widget) {
+	walkTree(self, 0, func(w Widget, _ int) {
+		if v, ok := w.(interface{ Invalidate() }); ok {
+			v.Invalidate()
+		}
+	})
+}
 
 // Invalidate schedules a repaint of the widget's arranged bounds. Call
 // it after any state change that alters what Paint draws. Layout is

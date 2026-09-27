@@ -103,6 +103,14 @@ func (n *Notebook) Children() []Widget {
 	return nil
 }
 
+// SetEnabled turns the notebook's subtree on or off through the
+// per-query enable walk, like Box. Like Stack, hidden pages stay
+// untouched: they are not painted, so they need no repaint.
+func (n *Notebook) SetEnabled(enabled bool) {
+	n.node.SetEnabled(enabled)
+	invalidateTree(n)
+}
+
 // Measure reports the tab bar height plus the largest page.
 func (n *Notebook) Measure(con Constraints) Size {
 	if sz, ok := n.measureHit(con); ok {
