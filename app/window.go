@@ -114,15 +114,34 @@ type hostWindow struct {
 	// lastDamage mirrors the rects the last frame damaged; tests and
 	// traces read it.
 	lastDamage []render.Rect
+	// opaqueW, opaqueH are the device-pixel size the opaque region was
+	// last set at; opaqueSet records that it went out at all. The
+	// region only changes on resize/rescale, so the wire call runs once
+	// per size change, never per frame.
+	opaqueSet        bool
+	opaqueW, opaqueH int
 }
 
 // windowHooks are the app-visible callbacks one window carries.
 type windowHooks struct {
 	background render.Color
-	onPress    func(button uint32, serial uint32, over widget.Widget)
-	onMove     func(x, y float64)
-	onKey      func(r *widget.Router, keycode uint32, mods wlsession.Mods)
-	onClosed   func()
+	// opaque promises the surface is fully opaque: the frame pipeline
+	// sets wl_surface.set_opaque_region so the compositor can skip
+	// blending behind it. Computed once at config time by opaqueFor.
+	opaque   bool
+	onPress  func(button uint32, serial uint32, over widget.Widget)
+	onMove   func(x, y float64)
+	onKey    func(r *widget.Router, keycode uint32, mods wlsession.Mods)
+	onClosed func()
+}
+
+// opaqueFor reports whether a window may promise an opaque surface:
+// an explicit opt-in, or automatically whenever the background is
+// fully opaque. A translucent background (alpha < 255) must never set
+// the region: the compositor blends the surface over what is behind
+// it, and promising opacity would make it skip that blend.
+func opaqueFor(background render.Color, opaque bool) bool {
+	return opaque || background.A() == 255
 }
 
 // focusRingPad is how far the keyboard focus ring extends beyond the
@@ -135,7 +154,7 @@ func newHostWindow(sess *wlsession.Session, host Host, initialScale int, root wi
 	}
 	w := &hostWindow{
 		host: host, sess: sess, cfg: hooks,
-		surf:    wireSurface{wl: host.HostSurface()},
+		surf:    wireSurface{wl: host.HostSurface(), comp: sess.Compositor()},
 		frac120: uint32(initialScale * 120),
 		scale:   initialScale,
 		router:  &widget.Router{Root: root},
@@ -338,10 +357,18 @@ type surfaceHandle interface {
 	// Frame arms the compositor callback that fires ready once the
 	// frame may be followed by another.
 	Frame(ready *bool) error
+	// SetOpaqueRegion promises the full w x h rect (device pixels)
+	// holds opaque content, so the compositor can skip blending behind
+	// the surface. Double-buffered state like the scale: it applies at
+	// the next commit and only needs re-sending when the size changes.
+	SetOpaqueRegion(w, h int) error
 }
 
 // wireSurface is the production surfaceHandle over a wl_surface.
-type wireSurface struct{ wl *wl.Surface }
+type wireSurface struct {
+	wl   *wl.Surface
+	comp *wl.Compositor
+}
 
 // Attach implements surfaceHandle.
 func (s wireSurface) Attach(b *buffer.Buffer) error { return s.wl.Attach(b.WL, 0, 0) }
@@ -370,6 +397,26 @@ func (s wireSurface) Frame(ready *bool) error {
 	return nil
 }
 
+// SetOpaqueRegion implements surfaceHandle: the compositor's region
+// object carries the full rect, the surface keeps a copy at
+// set_opaque_region, and the region dies right after - it is a
+// set-once-per-size message, not a long-lived proxy.
+func (s wireSurface) SetOpaqueRegion(w, h int) error {
+	region, err := s.comp.CreateRegion()
+	if err != nil {
+		return fmt.Errorf("app: create region: %w", err)
+	}
+	if err := region.Add(0, 0, int32(w), int32(h)); err != nil {
+		_ = region.Destroy()
+		return fmt.Errorf("app: region add: %w", err)
+	}
+	if err := s.wl.SetOpaqueRegion(region); err != nil {
+		_ = region.Destroy()
+		return fmt.Errorf("app: set_opaque_region: %w", err)
+	}
+	return region.Destroy()
+}
+
 // frameStaleAfter is how long a committed frame may sit unanswered
 // before the loop treats the compositor as paused and lets the
 // animation timer pace the draw itself. One and a half frame periods:
@@ -386,6 +433,29 @@ func (w *hostWindow) frameOwed(animating bool, now time.Time) bool {
 		return true
 	}
 	return animating && now.Sub(w.frameArmedAt) >= frameStaleAfter
+}
+
+// syncOpaque publishes the surface's opaque region when it can have
+// changed: the full device rect on the first draw and after every
+// resize or rescale, and nothing in between - the region is surface
+// state that tracks the buffer size, not per-frame traffic. Opaque
+// windows only: a translucent background must stay blendable, so it
+// never sets a region (opaqueFor). A failed set leaves the state
+// unset, so the next frame retries.
+func (w *hostWindow) syncOpaque(bw, bh int) {
+	if !w.cfg.opaque || bw <= 0 || bh <= 0 {
+		return
+	}
+	dw, dh := scale.DeviceSize(bw, w.frac120), scale.DeviceSize(bh, w.frac120)
+	if w.opaqueSet && dw == w.opaqueW && dh == w.opaqueH {
+		return
+	}
+	if err := w.surf.SetOpaqueRegion(dw, dh); err != nil {
+		debug.Log("frame", "opaque region: %v", err)
+		return
+	}
+	w.opaqueSet, w.opaqueW, w.opaqueH = true, dw, dh
+	debug.Log("frame", "opaque region %dx%d", dw, dh)
 }
 
 // draw paints one frame: resize check, acquire, cached measure, arrange,
@@ -409,6 +479,10 @@ func (w *hostWindow) draw() bool {
 			w.scaleApplied = true
 		}
 	}
+	// Same surface-state shape as the scale: the opaque region tracks
+	// the size and goes out once per size change, before the commit
+	// that applies it.
+	w.syncOpaque(bw, bh)
 
 	// Measure (cached per widget: a static tree costs nothing) and
 	// arrange; Arrange invalidates the old rect of anything that moved,

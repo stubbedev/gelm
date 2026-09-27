@@ -75,6 +75,7 @@ deliberate non-goals and the honest, deferred gaps — lives in
 | Animation | done | timer-paced clock; easing curves, damped springs, Sequence/Parallel timelines, mid-flight cancel |
 | Fractional scale | done | 120-based rational scales end to end; logical coordinates for input, layout, and carets; text rasterizes at device scale |
 | Rendering | done | premultiplied-alpha ARGB8888, signed-distance AA (coverage scales all channels), shaped text, SVG/PNG icons |
+| Translucent surfaces | done | `Background` alpha < 255 composites for compositor blur (Hyprland blurs translucent layer surfaces; panels keep alpha ≈ 200–235); a fully opaque background sets `wl_surface.set_opaque_region` automatically — see [docs/architecture.md](docs/architecture.md), rule 13 |
 | Accessibility | decision | semantic roles + `DescribeTree`, keyboard-first guarantee pinned by tests; **no in-process AT-SPI** — see [docs/a11y.md](docs/a11y.md) |
 | Icon themes | done | freedesktop icon-theme spec lookup in pure Go; explicit theme switches (no live xsettings signal) — see [docs/icons.md](docs/icons.md) |
 

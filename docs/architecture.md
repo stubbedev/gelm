@@ -213,6 +213,36 @@ pre-feature behavior byte for byte; none of them fail `Connect`
 (internal/wlsession). Feature work adds capabilities without adding
 requirements.
 
+### 13. A surface declares its own opacity
+
+Every shm buffer is ARGB8888 premultiplied — `buffer.Format`
+(internal/buffer), never XRGB, because a translucent surface loses its
+alpha channel to XRGB and composites as garbage. The whole alpha path
+is pinned end to end in app/alpha_test.go: `Config.Background` through
+`ClearDevice` (an overwrite, so the background is premultiplied
+exactly once), widget blends on top, wl_shm bytes read back as B, G,
+R, A.
+
+Opacity is declared once per window and acted on by the frame
+pipeline (app/window.go `syncOpaque`):
+
+- **Background alpha < 255 — translucent, the panel shape.** The
+  compositor blends the surface over whatever is behind it. Hyprland
+  applies its blur to translucent layer surfaces automatically, so a
+  wayle panel gets the blur look for free: keep the background in the
+  200–235 alpha range (`render.RGBA(r, g, b, 216)` is a good default)
+  — solid enough for text contrast, transparent enough for the blur to
+  read. Translucent windows never set an opaque region: promising
+  opacity there would make the compositor skip the very blend the
+  panel exists for.
+- **Background alpha == 255 — opaque.** The pipeline promises that to
+  the compositor once per size change: `wl_surface.set_opaque_region`
+  over the full device rect (region created from the compositor,
+  destroyed right after the set), re-sent on resize and rescale,
+  never per frame. The compositor can then skip blending behind the
+  window entirely. An explicit `Config.Opaque` forces the promise —
+  only sound if the tree really paints every pixel opaquely.
+
 ## Theming
 
 The theme is a single palette value (`widget.Theme`): public color

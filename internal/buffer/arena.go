@@ -44,6 +44,11 @@ type Arena struct {
 	free []slot // free slots sorted by offset, adjacent ones merged
 	live int    // sub-allocations handed out and not yet retired
 
+	// lastFormat is the shm format the most recent wire buffer creation
+	// advertised (buffer.Format); an inspection point for the format
+	// pins - the create_buffer call must never drift to XRGB.
+	lastFormat uint32
+
 	closed bool
 }
 
@@ -109,9 +114,10 @@ func (a *Arena) Acquire(bufW, bufH, scale int) (*Buffer, error) {
 	if err != nil {
 		return nil, err
 	}
+	a.lastFormat = Format
 	var wlBuf *wl.Buffer
 	if a.pool != nil {
-		wlBuf, err = a.pool.CreateBuffer(int32(s.offset), int32(bufW), int32(bufH), int32(stride), wl.ShmFormatArgb8888)
+		wlBuf, err = a.pool.CreateBuffer(int32(s.offset), int32(bufW), int32(bufH), int32(stride), a.lastFormat)
 		if err != nil {
 			a.put(s)
 			return nil, fmt.Errorf("buffer: wl_shm_pool.create_buffer: %w", err)

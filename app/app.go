@@ -53,8 +53,18 @@ type Config struct {
 	Scale int
 	// Root is the widget tree.
 	Root widget.Widget
-	// Background fills the frame before the tree paints.
+	// Background fills the frame before the tree paints. An alpha of
+	// 255 marks the surface fully opaque and the frame pipeline sets
+	// wl_surface.set_opaque_region automatically; an alpha below 255
+	// leaves the surface translucent so the compositor blends what is
+	// behind it (compositor blur: panels keep alpha in the 200-235
+	// range - see docs/architecture.md, rule 13).
 	Background render.Color
+	// Opaque forces the opaque region even though Background is
+	// translucent - a promise the tree must keep: every pixel painted
+	// fully opaque, or the compositor shows stale content behind the
+	// surface. Leave false and let the background alpha decide.
+	Opaque bool
 	// OnPress, when set, fires after the router recorded a press with
 	// the button, its serial (for interactive move), and the widget
 	// under the pointer.
@@ -338,6 +348,7 @@ func Run(cfg Config) error {
 	}
 	app.newWindow(cfg.Host, cfg.Scale, cfg.Root, windowHooks{
 		background: cfg.Background,
+		opaque:     opaqueFor(cfg.Background, cfg.Opaque),
 		onPress:    cfg.OnPress,
 		onMove:     cfg.OnPointerMove,
 		onKey:      cfg.OnKey,

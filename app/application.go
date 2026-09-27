@@ -143,8 +143,14 @@ type WindowConfig struct {
 	Scale int
 	// Root is the window's widget tree.
 	Root widget.Widget
-	// Background fills the frame before the tree paints.
+	// Background fills the frame before the tree paints. An alpha of
+	// 255 sets wl_surface.set_opaque_region automatically; an alpha
+	// below 255 leaves the surface translucent for compositor blur
+	// (panels: alpha 200-235 - docs/architecture.md, rule 13).
 	Background render.Color
+	// Opaque forces the opaque region even though Background is
+	// translucent; see app.Config.Opaque.
+	Opaque bool
 	// OnPress fires after the router recorded a press (chrome drag,
 	// context menus).
 	OnPress func(button uint32, serial uint32, over widget.Widget)
@@ -188,8 +194,14 @@ type LayerConfig struct {
 	Scale int
 	// Root is the window's widget tree.
 	Root widget.Widget
-	// Background fills the frame before the tree paints.
+	// Background fills the frame before the tree paints. An alpha of
+	// 255 sets wl_surface.set_opaque_region automatically; an alpha
+	// below 255 leaves the surface translucent for compositor blur
+	// (panels: alpha 200-235 - docs/architecture.md, rule 13).
 	Background render.Color
+	// Opaque forces the opaque region even though Background is
+	// translucent; see app.Config.Opaque.
+	Opaque bool
 	// OnPress, OnPointerMove, OnKey mirror WindowConfig.
 	OnPress       func(button uint32, serial uint32, over widget.Widget)
 	OnPointerMove func(x, y float64)
@@ -230,6 +242,7 @@ func (a *Application) newWindowWindow(cfg WindowConfig) (*Window, *hostWindow, e
 	w := &Window{app: a}
 	hw := a.newWindow(win, scale, cfg.Root, windowHooks{
 		background: cfg.Background,
+		opaque:     opaqueFor(cfg.Background, cfg.Opaque),
 		onPress:    cfg.OnPress,
 		onMove:     cfg.OnPointerMove,
 		onKey:      cfg.OnKey,
@@ -275,6 +288,7 @@ func (a *Application) NewLayer(cfg LayerConfig) (*LayerWindow, error) {
 	}
 	hw := a.newWindow(&layerHost{ls: ls, out: cfg.Output}, scale, cfg.Root, windowHooks{
 		background: cfg.Background,
+		opaque:     opaqueFor(cfg.Background, cfg.Opaque),
 		onPress:    cfg.OnPress,
 		onMove:     cfg.OnPointerMove,
 		onKey:      cfg.OnKey,

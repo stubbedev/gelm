@@ -32,6 +32,10 @@ func (f *fakeHost) resizeTo(w, h int) { f.w, f.h = w, h }
 type fakeSurface struct {
 	attaches, commits, frames int
 	damage                    []render.Rect
+	// opaque records the SetOpaqueRegion device rects in call order;
+	// an opaque window sets one per size change, translucent ones
+	// never.
+	opaque []render.Rect
 }
 
 func (f *fakeSurface) Attach(*buffer.Buffer) error { f.attaches++; return nil }
@@ -46,6 +50,11 @@ func (f *fakeSurface) Commit() error { f.commits++; return nil }
 func (f *fakeSurface) Frame(ready *bool) error {
 	f.frames++
 	*ready = true
+	return nil
+}
+
+func (f *fakeSurface) SetOpaqueRegion(w, h int) error {
+	f.opaque = append(f.opaque, render.Rect{W: w, H: h})
 	return nil
 }
 

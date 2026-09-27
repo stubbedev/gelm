@@ -21,6 +21,15 @@ var ErrBusy = errors.New("buffer: all pool buffers busy")
 // hands out nothing anymore.
 var ErrClosed = errors.New("buffer: pool closed")
 
+// Format is the wl_shm pixel format every buffer this package creates
+// advertises to the compositor: ARGB8888, premultiplied. XRGB is
+// deliberately never used - a translucent surface (an app background
+// with alpha < 255, the default panel shape) would lose its alpha
+// channel and composite as garbage. In memory the format is
+// little-endian, so a pixel sits as bytes B, G, R, A - the layout
+// render.ColorFromBytes decodes and format_test.go pins.
+const Format = wl.ShmFormatArgb8888
+
 // Buffer is one wl_shm-backed pixel buffer: in production a
 // sub-allocation of the session arena's shared pool, sharing its fd and
 // mapping.
