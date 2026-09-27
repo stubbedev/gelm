@@ -185,13 +185,20 @@ func (a *Application) OpenPopover(host Host, cfg PopoverConfig) (*Popover, error
 	bw, bh := host.Size()
 	size := cfg.Content.Measure(widget.Constraints{Max: widget.Size{W: bw, H: 600}})
 	x, y := anchorOrigin(render.Rect{W: bw, H: bh}, anchor, size, cfg.Gravity)
+	// The shadow gutter rides on the surface: it grows the popup on
+	// every side and shifts the anchor math so the CONTENT (not the
+	// gutter) lands where the positioner places it. The theme can
+	// turn it off (ShadowGutter 0), collapsing to the exact pre-shadow
+	// geometry.
+	gutter := widget.Current().ShadowGutter()
 
 	p := &Popover{}
 	keyRoot := &popoverKeyRoot{onDismiss: p.Dismiss, content: cfg.Content}
 
 	pcfg := popup.Config{
-		X: x, Y: y,
-		Width: size.W, Height: size.H,
+		X: x - gutter, Y: y - gutter,
+		Width: size.W + 2*gutter, Height: size.H + 2*gutter,
+		Gutter:  gutter,
 		Gravity: cfg.Gravity,
 		Serial:  cfg.Serial,
 	}

@@ -30,6 +30,7 @@ type Painter struct {
 	surf    *wl.Surface
 	frac120 uint32
 	bg      render.Color
+	gutter  int           // the shadow margin the content is inset by
 	visual  widget.Widget // the slide wrapper around the fader-wrapped content
 
 	frameReady   bool
@@ -59,6 +60,7 @@ func (p *Popup) NewPainter(sess *wlsession.Session, frac120 uint32, root widget.
 		surf:    p.WLSurface,
 		frac120: frac120,
 		bg:      bg,
+		gutter:  p.gutter,
 		visual:  p.anim.slide,
 	}
 	pc.dirty.Store(true)
@@ -119,25 +121,28 @@ func (pc *Painter) Pass() (bool, error) {
 	}
 	w, h := p.Size()
 	_ = p.sc.Apply(pc.frac120, w, h)
-	pc.visual.Measure(widget.Constraints{Max: widget.Size{W: w, H: h}})
-	pc.visual.Arrange(render.Rect{X: 0, Y: 0, W: w, H: h})
+	cw, ch := max(0, w-2*pc.gutter), max(0, h-2*pc.gutter)
+	content := render.Rect{X: pc.gutter, Y: pc.gutter, W: cw, H: ch}
+	pc.visual.Measure(widget.Constraints{Max: widget.Size{W: cw, H: ch}})
+	pc.visual.Arrange(content)
 
 	cv := render.NewScaled(b.Data, b.Stride, b.Width, b.Height, int(pc.frac120), scale.Denom)
 	reveal := p.fx.Reveal()
+	// The surface raw-clears to transparent either way: with a shadow
+	// gutter the falloff must blend over whatever the popup floats
+	// above, and a recycled buffer must not leak its last frame
+	// through (ClearDevice ignores PushAlpha by design).
+	cv.ClearDevice(cv.Rect(), render.Color(0))
 	if reveal < 1 {
-		// Tween frame: the whole surface fades. Raw-clear to
-		// transparent first so a recycled buffer cannot leak its last
-		// opaque frame through (ClearDevice ignores PushAlpha by
-		// design), then blend the background and the tree under the
-		// reveal — at 0 nothing is written and the frame is truly
-		// invisible.
-		cv.ClearDevice(cv.Rect(), render.Color(0))
+		// Tween frame: the whole surface — shadow, plate, content —
+		// fades under one PushAlpha, so the exit tween carries the
+		// elevation out with the popup.
 		prev := cv.PushAlpha(reveal)
-		cv.FillRect(cv.Rect(), pc.bg)
+		pc.paintPlate(cv, content)
 		pc.visual.Paint(cv)
 		cv.PopAlpha(prev)
 	} else {
-		cv.ClearDevice(cv.Rect(), pc.bg)
+		pc.paintPlate(cv, content)
 		pc.visual.Paint(cv)
 	}
 
@@ -166,3 +171,18 @@ func (pc *Painter) Pass() (bool, error) {
 
 // Close releases the painter's pool storage back to the session arena.
 func (pc *Painter) Close() { pc.pool.Close() }
+
+// paintPlate fills the content rect with the popup background and,
+// when the theme reserves a shadow gutter, paints the elevation around
+// it first — the shared elevation look every popup carries, content
+// kind aside. The plate rounds at the theme radius, matching the
+// shadow silhouette and the menu plates painted on top of it.
+func (pc *Painter) paintPlate(cv *render.Canvas, content render.Rect) {
+	t := widget.Current()
+	if pc.gutter > 0 {
+		t.DrawShadow(cv, content, t.Radius)
+		cv.RoundedRect(content, t.Radius, pc.bg)
+		return
+	}
+	cv.FillRect(content, pc.bg)
+}

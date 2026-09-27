@@ -157,10 +157,12 @@ func run() error {
 			menu := widget.NewMenu(font, 13, items...)
 			mSize := menu.Measure(widget.Constraints{Max: widget.Size{W: 200, H: 400}})
 			debug.Log("demo", "menu open %dx%d at (%d,%d)", mSize.W, mSize.H, posX, posY)
+			gutter := widget.Current().ShadowGutter()
 			p, err := popup.New(sess, popup.Config{
 				Parent: win.XdgSurface,
-				X:      posX, Y: posY,
-				Width: mSize.W, Height: mSize.H,
+				X:      posX - gutter, Y: posY - gutter,
+				Width: mSize.W + 2*gutter, Height: mSize.H + 2*gutter,
+				Gutter: gutter,
 				Serial: serial,
 			})
 			if err != nil {

@@ -1,0 +1,165 @@
+// Box shadows for floating surfaces. Menus, popovers, tooltips, toasts,
+// and dialogs all read their elevation from here, so one theme knob
+// (ShadowBlur, ShadowColor) restyles — or disables — every shadow at
+// once, and the look never drifts per widget.
+//
+// Two invariants hold everywhere:
+//
+//   - The shadow paints OUTSIDE the widget's logical bounds. Layout,
+//     hit-testing, and the bounds the damage collector sees are never
+//     widened by it: a point in the shadow gutter is not a hit, the
+//     one rule that keeps click-away dismissal and padding math
+//     honest.
+//   - The pixels a shadow owes beyond the bounds are tracked as a
+//     damage ring (shadowTracker), invalidated only when the bounds
+//     move or the theme's shadow restyles — a hover twitch repaints
+//     the card, never the falloff.
+package widget
+
+import "github.com/stubbedev/gelm/render"
+
+// defaultShadowColor is the derived shadow paint for themes that set a
+// blur but no color: neutral black at 110 alpha.
+var defaultShadowColor = render.RGBA(0, 0, 0, 110)
+
+// shadowPaint resolves the shadow's paint at strength p in [0, 1]:
+// premultiplied color and blur radius in logical pixels. blur 0 means
+// disabled — the theme's ShadowBlur is the on/off switch; an unset
+// color derives the default.
+func (t *Theme) shadowPaint(p float64) (render.Color, int) {
+	if t.ShadowBlur <= 0 {
+		return 0, 0
+	}
+	return scaleAlpha(t.or(t.ShadowColor, defaultShadowColor), p), t.ShadowBlur
+}
+
+// DrawShadow paints the theme's box shadow around r — a widget's
+// arranged bounds — rounding at the given corner radius. It is the one
+// elevation helper every floating surface paints through; disabled or
+// fully transparent shadows paint nothing.
+func (t *Theme) DrawShadow(cv *render.Canvas, r render.Rect, radius int) {
+	col, blur := t.shadowPaint(1)
+	if blur == 0 {
+		return
+	}
+	cv.Shadow(r, radius, blur, col)
+}
+
+// ShadowRing returns the rect the shadow around r covers: the damage
+// ring a floating widget owes beyond its bounds (the blur plus the
+// anti-aliasing rim, matching the raster's box). Empty when the shadow
+// is disabled, which callers treat as "no extra pixels owed".
+func (t *Theme) ShadowRing(r render.Rect) render.Rect {
+	_, blur := t.shadowPaint(1)
+	if blur == 0 {
+		return render.Rect{}
+	}
+	return expandRect(r, blur+1)
+}
+
+// ShadowGutter reports how much room a surface must reserve around its
+// content for the theme's shadow: the blur when shadows paint, else
+// zero. Popups grow their surface by it on every side and dialogs
+// inset their card by it; content size, placement, and hit-testing
+// stay on the un-guttered logical rect.
+func (t *Theme) ShadowGutter() int {
+	_, blur := t.shadowPaint(1)
+	return blur
+}
+
+// expandRect grows r by n on every side.
+func expandRect(r render.Rect, n int) render.Rect {
+	return render.Rect{X: r.X - n, Y: r.Y - n, W: r.W + 2*n, H: r.H + 2*n}
+}
+
+// shadowTracker remembers the ring a floating widget last owed damage
+// for and the theme generation it was owed under. Embed it in any
+// widget whose Paint draws outside its bounds, and call sync from
+// Arrange — which every frame runs before the damage walk.
+type shadowTracker struct {
+	last render.Rect
+	gen  uint64
+}
+
+// sync re-invalidates the ring when the bounds moved or resized (the
+// old pixels must be erased and the new painted) or the theme's shadow
+// restyled (SetTheme bumps the generation; the bounds-only repaint a
+// theme change triggers never covers the ring outside them). Steady
+// state — same bounds, same theme — is a no-op, so hovering a menu
+// never re-invalidates the falloff.
+func (s *shadowTracker) sync(n *node) {
+	ring := Current().ShadowRing(n.bounds)
+	if ring == s.last && s.gen == themeGen {
+		return
+	}
+	if !s.last.Empty() {
+		n.InvalidateRect(s.last)
+	}
+	if !ring.Empty() {
+		n.InvalidateRect(ring)
+	}
+	s.last, s.gen = ring, themeGen
+}
+
+// Elevation wraps a widget and paints the theme's box shadow around
+// it — the widget-shaped half of the shared elevation helper, for
+// floating cards whose content does not paint its own plate. WithPlate
+// adds a rounded fill behind the child, so a bare content tree becomes
+// a floating card: shadow, plate, content (the dialog's shape).
+//
+// The wrapper claims exactly the child's rect: Measure and Arrange
+// pass through untouched — the shadow lives outside the logical
+// bounds — and HitTest resolves through the child alone, so a point in
+// the gutter is never a hit.
+type Elevation struct {
+	node
+	child  Widget
+	radius int
+	plate  Color
+	ring   shadowTracker
+}
+
+// NewElevation wraps child, rounding at the theme's corner radius.
+func NewElevation(child Widget) *Elevation {
+	return &Elevation{child: child, radius: Current().Radius}
+}
+
+// WithRadius sets the corner radius the shadow and plate round at.
+func (e *Elevation) WithRadius(px int) *Elevation { e.radius = px; return e }
+
+// WithPlate sets a rounded fill painted between the shadow and the
+// child; zero (the default) paints no plate.
+func (e *Elevation) WithPlate(c Color) *Elevation { e.plate = c; return e }
+
+// Child returns the wrapped widget.
+func (e *Elevation) Child() Widget { return e.child }
+
+// Measure passes through to the child.
+func (e *Elevation) Measure(con Constraints) Size { return e.child.Measure(con) }
+
+// Arrange records the rect, passes it to the child, and keeps the
+// shadow ring's damage in step.
+func (e *Elevation) Arrange(r render.Rect) {
+	e.node.Arrange(r)
+	e.child.Arrange(r)
+	setParents(e, e.child)
+	e.ring.sync(&e.node)
+}
+
+// Paint draws shadow, optional plate, then the child.
+func (e *Elevation) Paint(cv *render.Canvas) {
+	t := Current()
+	t.DrawShadow(cv, e.bounds, e.radius)
+	if e.plate != 0 {
+		cv.RoundedRect(e.bounds, e.radius, e.plate)
+	}
+	e.child.Paint(cv)
+}
+
+// HitTest resolves through the child alone: the shadow gutter is never
+// a hit, so clicks just outside the card pass through.
+func (e *Elevation) HitTest(p Point) Widget { return e.child.HitTest(p) }
+
+// Children exposes the child for the damage collector, focus
+// traversal, and the accessibility walk.
+func (e *Elevation) Children() []Widget { return []Widget{e.child} }

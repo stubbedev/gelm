@@ -101,6 +101,8 @@ func TestThemePresetsPinned(t *testing.T) {
 		Accent:         render.RGB(0x89, 0xB4, 0xFA),
 		OnAccent:       render.RGB(0x11, 0x11, 0x1B),
 		Border:         render.RGB(0x58, 0x5B, 0x70),
+		ShadowColor:    render.RGBA(0, 0, 0, 120),
+		ShadowBlur:     16,
 		Radius:         6,
 		Spacing:        8,
 		Padding:        8,
@@ -117,6 +119,8 @@ func TestThemePresetsPinned(t *testing.T) {
 		Accent:         render.RGB(0x1E, 0x66, 0xF5),
 		OnAccent:       render.RGB(0xFF, 0xFF, 0xFF),
 		Border:         render.RGB(0xB8, 0xC0, 0xD4),
+		ShadowColor:    render.RGBA(0, 0, 0, 70),
+		ShadowBlur:     16,
 		Radius:         6,
 		Spacing:        8,
 		Padding:        8,
@@ -159,17 +163,23 @@ func TestThemeWithChainingIsImmutable(t *testing.T) {
 	}
 
 	// Every With* pairs with a field, including the metrics the wayle
-	// config drives.
+	// config drives and the shadow knobs.
 	composed := DarkTheme().WithBg(green).WithSurface(green).WithText(green).
 		WithTextMuted(green).WithOnAccent(green).WithBorder(green).
 		WithSurfaceHover(green).WithSurfacePressed(green).
-		WithRadius(3).WithSpacing(4).WithPadding(5).WithTextSize(11)
+		WithRadius(3).WithSpacing(4).WithPadding(5).WithTextSize(11).
+		WithShadowColor(green).WithShadowBlur(9)
 	if composed.Bg != green || composed.Surface != green || composed.Text != green ||
 		composed.TextMuted != green || composed.OnAccent != green || composed.Border != green ||
 		composed.SurfaceHover != green || composed.SurfacePressed != green ||
 		composed.Radius != 3 || composed.Spacing != 4 || composed.Padding != 5 ||
-		composed.TextSize != 11 {
+		composed.TextSize != 11 || composed.ShadowColor != green || composed.ShadowBlur != 9 {
 		t.Errorf("a With* did not set its field: %+v", composed)
+	}
+
+	// ShadowBlur zero is the disable switch; the presets ship it on.
+	if DarkTheme().ShadowBlur == 0 || LightTheme().ShadowBlur == 0 {
+		t.Error("a preset ships with shadows disabled")
 	}
 }
 
