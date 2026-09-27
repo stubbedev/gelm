@@ -145,6 +145,28 @@ shift+Tab traverse focus (`FocusNext` / `FocusPrev`); shift+click
 extends a text selection (`Entry` / `TextArea` handle shift+left /
 shift+right and shift+click anchor).
 
+## Tree mutation and router state
+
+The container APIs mutate the retained tree: `Box.Remove` (by
+identity), `RemoveAt`, `Clear`, `InsertAt`, `Stack.Remove`,
+`Scroll.SetChild`, plus `Grid.Remove` and `Notebook.CloseTab`. Every
+mutation drops the measure cache and invalidates the subtree
+(`InvalidateLayout`), clears the removed widget's parent link (it can
+be re-appended elsewhere, never double-parented), and fires the
+removal hook (`widget.SetRemovedHook`) while the widget is still
+linked, so a router can find the focus-traversal neighbor.
+
+The application points the hook at every window router
+(`Router.Forget`): hover clears, the active press is cancelled without
+a click, the drop target clears, and focus — even on a descendant of
+the removed widget — moves to the next focusable widget like a Tab
+would, or nowhere. No key lands in a dead widget, and since tooltips
+follow the router's hover, no tooltip dwells on a ghost.
+
+`Children()` returns snapshots (`Box`, `Overlay`, `Grid`), so tree
+walks — damage, focus traversal, a11y — survive a callback that
+mutates the tree mid-traversal.
+
 ## Disabled and read-only
 
 - `SetEnabled(false)` on any widget makes it inert: no hover shade, no

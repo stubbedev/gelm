@@ -75,12 +75,14 @@ func (n *Notebook) selectIndex(i int) {
 
 // CloseTab removes the page under name; the following page becomes
 // visible. Unknown names are a no-op. Reports whether a page was
-// removed.
+// removed. The closed page detaches like every tree mutation: parent
+// link cleared, removal hook fired.
 func (n *Notebook) CloseTab(name string) bool {
 	for i, t := range n.tabs {
 		if t.name != name {
 			continue
 		}
+		notifyRemoved(t.w)
 		n.tabs = append(n.tabs[:i], n.tabs[i+1:]...)
 		if n.selected >= len(n.tabs) {
 			n.selected = len(n.tabs) - 1
@@ -88,6 +90,7 @@ func (n *Notebook) CloseTab(name string) bool {
 		if n.selected < 0 {
 			n.selected = 0
 		}
+		clearParents(t.w)
 		n.InvalidateLayout()
 		return true
 	}

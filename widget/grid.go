@@ -135,9 +135,21 @@ func (g *Grid) Attach(w Widget, col, row, colSpan, rowSpan int) *Grid {
 			w: w, col: col, row: row, colSpan: colSpan, rowSpan: rowSpan,
 		})
 	}
+	// A displaced child leaves the tree entirely: detach it like
+	// Grid.Remove — hook while still linked, then clear its parent.
+	var displaced []Widget
+	for _, c := range g.child {
+		if c.w != w && c.col == col && c.row == row {
+			displaced = append(displaced, c.w)
+		}
+	}
+	for _, d := range displaced {
+		notifyRemoved(d)
+	}
 	g.child = slices.DeleteFunc(g.child, func(c *gridChild) bool {
 		return c.w != w && c.col == col && c.row == row
 	})
+	clearParents(displaced...)
 	g.InvalidateLayout()
 	return g
 }
@@ -155,12 +167,16 @@ func (g *Grid) SetAlign(w Widget, h, v Align) *Grid {
 	return g
 }
 
-// Remove detaches w and reports whether it was attached. The measure
-// cache drops so the next frame reflows without it.
+// Remove detaches w and reports whether it was attached. The removed
+// widget's parent link clears and the removal hook fires, like every
+// tree mutation; the measure cache drops so the next frame reflows
+// without it.
 func (g *Grid) Remove(w Widget) bool {
 	for i, c := range g.child {
 		if c.w == w {
+			notifyRemoved(w)
 			g.child = slices.Delete(g.child, i, i+1)
+			clearParents(w)
 			g.InvalidateLayout()
 			return true
 		}

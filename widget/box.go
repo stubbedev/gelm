@@ -1,6 +1,8 @@
 package widget
 
 import (
+	"slices"
+
 	"github.com/stubbedev/gelm/render"
 )
 
@@ -61,6 +63,70 @@ func (b *Box) Append(w Widget, expand bool) *Box {
 	b.child = append(b.child, &childEntry{w: w, expand: expand})
 	b.InvalidateLayout()
 	return b
+}
+
+// detachChild drops the child at index i: the removal hook fires while
+// the child is still linked to the box (so a router can move a removed
+// focus to its traversal neighbor), then the entry goes, the child's
+// parent link clears, and the box reflows.
+func (b *Box) detachChild(i int) {
+	w := b.child[i].w
+	notifyRemoved(w)
+	b.child = slices.Delete(b.child, i, i+1)
+	clearParents(w)
+	b.InvalidateLayout()
+}
+
+// Remove detaches w, found by identity, and reports whether it was a
+// child. The removed widget's parent link clears, so it can be
+// appended elsewhere without a double parent; removing a widget that
+// is not (or no longer) a child reports false and changes nothing.
+// The measure cache drops so the next frame reflows without it.
+func (b *Box) Remove(w Widget) bool {
+	for i, c := range b.child {
+		if c.w == w {
+			b.detachChild(i)
+			return true
+		}
+	}
+	return false
+}
+
+// RemoveAt detaches the child at index i; an out-of-range index is a
+// no-op.
+func (b *Box) RemoveAt(i int) {
+	if i < 0 || i >= len(b.child) {
+		return
+	}
+	b.detachChild(i)
+}
+
+// Clear detaches every child at once — the wholesale rebuild path.
+// Each child's parent link clears and the removal hook fires per
+// child; clearing an empty box does nothing.
+func (b *Box) Clear() {
+	if len(b.child) == 0 {
+		return
+	}
+	ws := make([]Widget, len(b.child))
+	for i, c := range b.child {
+		ws[i] = c.w
+	}
+	for _, w := range ws {
+		notifyRemoved(w)
+	}
+	b.child = nil
+	clearParents(ws...)
+	b.InvalidateLayout()
+}
+
+// InsertAt puts w at index i with Append's expand meaning, so dynamic
+// UIs can reorder without a rebuild. Out-of-range indexes clamp to the
+// ends; the measure cache drops like every other mutation.
+func (b *Box) InsertAt(i int, w Widget, expand bool) {
+	i = min(max(i, 0), len(b.child))
+	b.child = slices.Insert(b.child, i, &childEntry{w: w, expand: expand})
+	b.InvalidateLayout()
 }
 
 // SetEnabled turns the box's subtree on or off: the per-query enable

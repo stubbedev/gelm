@@ -152,6 +152,49 @@ func TestTooltipCtlUpdate(t *testing.T) {
 	})
 }
 
+// Regression for the tooltip ghost class (tree mutation, issue #58):
+// removing the hovered widget must dismiss the open tooltip anchored
+// to it and never reopen one for the dead widget. The app installs the
+// removal hook so a mutation drops the widget from the router's hover;
+// tooltipCtl closes on the hover change like any other.
+func TestTooltipGhostOnRemove(t *testing.T) {
+	box := widget.NewBox(widget.Row, 0, 0)
+	target := newTipTarget("hover text")
+	box.Append(target, false)
+	box.Measure(widget.Constraints{Max: widget.Size{W: 100, H: 20}})
+	box.Arrange(render.Rect{X: 0, Y: 0, W: 100, H: 20})
+	router := &widget.Router{Root: box}
+
+	widget.SetRemovedHook(router.Forget)
+	defer widget.SetRemovedHook(nil)
+
+	var openStub *stub
+	opener := func(w widget.Widget, text string) (tooltipWindow, *popup.Painter) {
+		openStub = &stub{}
+		return openStub, nil
+	}
+	ctl := &tooltipCtl{}
+	base := time.Now()
+
+	router.Move(widget.Point{X: 5, Y: 5})
+	ctl.update(router, base, opener)
+	ctl.update(router, base.Add(tooltipDelay), opener)
+	if openStub == nil {
+		t.Fatal("dwell did not open the tooltip")
+	}
+
+	box.Remove(target)
+	ctl.update(router, base.Add(2*tooltipDelay), opener)
+	if openStub.closed != 1 {
+		t.Errorf("dismissals = %d, want 1: the tooltip outlived its widget", openStub.closed)
+	}
+	// No ghost dwell: the removed widget must never earn a new tooltip.
+	ctl.update(router, base.Add(3*tooltipDelay), opener)
+	if openStub.closed != 1 {
+		t.Error("a tooltip reopened for a removed widget")
+	}
+}
+
 // Regression: hover cursor management. The hovered widget decides the
 // shape; everything else falls back to the arrow.
 func TestCursorFor(t *testing.T) {
