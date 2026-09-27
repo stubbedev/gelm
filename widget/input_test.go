@@ -128,6 +128,63 @@ func TestRouterDrag(t *testing.T) {
 	})
 }
 
+func TestRouterPointerLost(t *testing.T) {
+	a := &inputStub{nat: Size{W: 20, H: 20}}
+	box := NewBox(Row, 0, 0).Append(a, false)
+	box.Measure(Constraints{Max: Size{W: 100, H: 100}})
+	box.Arrange(render.Rect{X: 0, Y: 0, W: 20, H: 20})
+	r := &Router{Root: box}
+
+	r.Move(Point{X: 5, Y: 5})
+	r.Press(BTNLeft, Point{X: 5, Y: 5})
+	r.Move(Point{X: 15, Y: 5}) // in-widget drag while pressed
+	if !a.hovered || !a.pressed || len(a.dragTo) == 0 {
+		t.Fatalf("setup: hovered=%v pressed=%v dragTo=%d", a.hovered, a.pressed, len(a.dragTo))
+	}
+
+	t.Run("losing the pointer ends hover, press, and drag", func(t *testing.T) {
+		r.PointerLost()
+		if a.hovered || r.Hovered() != nil {
+			t.Errorf("hover survived the loss: stub=%v router=%v", a.hovered, r.Hovered())
+		}
+		if a.pressed || r.Pressed() != nil {
+			t.Errorf("press survived the loss: stub=%v router=%v", a.pressed, r.Pressed())
+		}
+	})
+
+	t.Run("the vanished device cannot finish the gesture", func(t *testing.T) {
+		drags := len(a.dragTo)
+		r.Move(Point{X: 18, Y: 5}) // motion with no pointer: no drag feed
+		if len(a.dragTo) != drags {
+			t.Error("motion after the loss fed the drag")
+		}
+		r.Release(BTNLeft, Point{X: 5, Y: 5}) // a release that never came
+		if a.clicks != 0 {
+			t.Errorf("clicks = %d, want 0: a lost pointer must not click", a.clicks)
+		}
+	})
+
+	t.Run("the router works again for the replugged device", func(t *testing.T) {
+		r.Move(Point{X: 5, Y: 5})
+		if !a.hovered {
+			t.Fatal("hover did not come back")
+		}
+		r.Press(BTNLeft, Point{X: 5, Y: 5})
+		r.Release(BTNLeft, Point{X: 5, Y: 5})
+		if a.clicks != 1 {
+			t.Errorf("clicks = %d, want 1 after replug", a.clicks)
+		}
+	})
+
+	t.Run("losing the pointer with no gesture is safe", func(t *testing.T) {
+		r.PointerLost()
+		r.PointerLost() // twice: idempotent
+		if a.hovered || a.pressed || r.Hovered() != nil || r.Pressed() != nil {
+			t.Error("a repeated loss disturbed clean state")
+		}
+	})
+}
+
 func TestRouterScrollBubbles(t *testing.T) {
 	tall := NewBox(Column, 0, 0)
 	for range 10 {

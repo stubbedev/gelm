@@ -472,5 +472,8 @@ func (in *popupInput) HandlePointerButton(button, state, serial uint32) {
 // HandlePointerAxis implements wlsession.SurfacePointerHandler.
 func (in *popupInput) HandlePointerAxis(dx, dy float64) {}
 
-// HandlePointerLeave implements wlsession.SurfacePointerHandler.
-func (in *popupInput) HandlePointerLeave() { in.router.Leave() }
+// HandlePointerLeave implements wlsession.SurfacePointerHandler. The
+// session leaves a surface only when the pointer truly left or the
+// device went away, so the whole gesture ends: an in-flight press is
+// cancelled without a click, its release will never arrive.
+func (in *popupInput) HandlePointerLeave() { in.router.PointerLost() }

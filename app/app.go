@@ -281,7 +281,12 @@ func axisSteps(v float64) int {
 	return steps
 }
 
-// HandlePointerLeave implements wlsession.SurfacePointerHandler.
+// HandlePointerLeave implements wlsession.SurfacePointerHandler. The
+// session reports a leave only when the pointer truly left or the
+// grabbing input device went away, so this ends every pointer-derived
+// gesture: hover clears and an in-flight press/drag is cancelled
+// without a click, since its release will never arrive. The shape
+// cache reset above makes the next enter re-apply the cursor.
 func (in *surfaceInput) HandlePointerLeave() {
 	// Forget the shape even while a modal blocks this window: the
 	// session restores the default arrow on leave, and a stale cache
@@ -291,7 +296,7 @@ func (in *surfaceInput) HandlePointerLeave() {
 		return
 	}
 	debug.Log("input", "route leave")
-	in.router.Leave()
+	in.router.PointerLost()
 	in.request()
 }
 

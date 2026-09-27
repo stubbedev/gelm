@@ -344,6 +344,17 @@ func (r *Router) CancelPress() {
 	r.dragging = false
 }
 
+// PointerLost ends every pointer-derived state because the pointer
+// stopped delivering events: the device went away (wl_seat capability
+// loss) or the compositor ended the grab that kept it here. The active
+// press is cancelled without a click — its release will never arrive —
+// and hover clears, so nothing stays highlighted or half-pressed for a
+// device that is gone.
+func (r *Router) PointerLost() {
+	r.CancelPress()
+	r.Leave()
+}
+
 // dragHandlerAt walks up from the widget at p to the nearest ancestor
 // that decides drag acceptance. Hit tests return the deepest widget —
 // a label inside a row — so drop targets are found on the parent

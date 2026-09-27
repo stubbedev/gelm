@@ -94,8 +94,10 @@ type Session struct {
 	viewporter          *wlr.WpViewporter
 	fracScaleManager    *wlr.WpScaleManagerV1
 	seat                *wl.Seat
-	pointer             *wl.Pointer
-	keyboard            *wl.Keyboard
+	seatVersion         uint32
+	seatDev             seatDevices
+	pointer             pointerAPI
+	keyboard            keyboardAPI
 	wmBase              *xdg.WmBase
 	compositorVersion   uint32
 	outputs             []*Output
@@ -356,6 +358,8 @@ func (s *Session) HandleRegistryGlobal(ev wl.RegistryGlobalEvent) {
 		s.fracScaleManager = mgr
 	case "wl_seat":
 		s.seat = wlclient.RegistryBindSeatInterface(s.registry, ev.Name, bindVersion(ev.Version, 7))
+		s.seatVersion = bindVersion(ev.Version, 7)
+		s.seatDev = wireSeat{seat: s.seat}
 		wlclient.SeatAddListener(s.seat, s)
 		s.ensureDataDevice()
 		s.ensureTextInput()
@@ -490,65 +494,216 @@ func (e *outputEvents) HandleOutputMode(ev wl.OutputModeEvent) {
 // HandleOutputDone implements wl.OutputDoneHandler.
 func (e *outputEvents) HandleOutputDone(wl.OutputDoneEvent) {}
 
-// seat capabilities bits.
+// seat capability bits.
 const (
 	capPointer  = 1
 	capKeyboard = 2
+	// capTouch is parsed only to be ignored. Touch is a recorded
+	// non-goal: gelm has no touch pipeline — no wl_touch binding and no
+	// touch routing — so a seat advertising the bit gets a session that
+	// takes pointer and keyboard input and never binds a touch object.
+	// Deliberate, not an oversight; revisit together with the input
+	// model if touch surfaces ever matter.
+	capTouch = 4
 )
 
-// HandleSeatCapabilities implements wl.SeatCapabilitiesHandler. The
-// pointer and keyboard objects track the advertised capabilities: when
-// a capability disappears the compositor destroys the matching object,
-// so the stale proxy must be dropped and a fresh one created on the
-// next gain, or input goes silent after a unplug-replug.
-func (s *Session) HandleSeatCapabilities(ev wl.SeatCapabilitiesEvent) {
-	hasPointer := ev.Capabilities&capPointer != 0
-	hasKeyboard := ev.Capabilities&capKeyboard != 0
+// minSeatReleaseVersion is the wl_seat version that introduced the
+// wl_pointer.release and wl_keyboard.release destructor requests. On
+// older seats the objects are dropped without a release request; the
+// compositor destroys them with the capability either way.
+const minSeatReleaseVersion = 5
 
+// seatDevices is the wl_seat request side the capability path drives:
+// acquiring the pointer and keyboard objects as their capabilities
+// arrive. wireSeat adapts the generated proxy; tests substitute a
+// recorder so unplug-replug cycles run without a live connection.
+type seatDevices interface {
+	GetPointer() (pointerAPI, error)
+	GetKeyboard() (keyboardAPI, error)
+}
+
+// pointerAPI is the request and listener side of wl_pointer the
+// session drives: the cursor push, listener wiring at bind time, and
+// the release the spec asks for on capability loss. wirePointer
+// adapts the generated proxy; tests substitute a recorder.
+type pointerAPI interface {
+	SetCursor(serial uint32, surface *wl.Surface, hotspotX, hotspotY int32) error
+	Release() error
+	AddListener(h wlclient.PointerListener)
+}
+
+// keyboardAPI is the listener-plus-release side of wl_keyboard;
+// wireKeyboard adapts the generated proxy, tests substitute a
+// recorder.
+type keyboardAPI interface {
+	Release() error
+	AddListener(h wlclient.KeyboardListener)
+}
+
+// wireSeat adapts the generated wl_seat proxy to seatDevices: the
+// generated GetPointer/GetKeyboard return concrete proxies, the wrap
+// hands back the narrow interfaces.
+type wireSeat struct{ seat *wl.Seat }
+
+// GetPointer implements seatDevices.
+func (w wireSeat) GetPointer() (pointerAPI, error) {
+	p, err := w.seat.GetPointer()
+	if err != nil {
+		return nil, err
+	}
+	return wirePointer{p: p}, nil
+}
+
+// GetKeyboard implements seatDevices.
+func (w wireSeat) GetKeyboard() (keyboardAPI, error) {
+	k, err := w.seat.GetKeyboard()
+	if err != nil {
+		return nil, err
+	}
+	return wireKeyboard{k: k}, nil
+}
+
+// wirePointer adapts the generated wl_pointer proxy to pointerAPI;
+// the wlclient listener helper becomes a method.
+type wirePointer struct{ p *wl.Pointer }
+
+// SetCursor implements pointerAPI.
+func (w wirePointer) SetCursor(serial uint32, surface *wl.Surface, hotspotX, hotspotY int32) error {
+	return w.p.SetCursor(serial, surface, hotspotX, hotspotY)
+}
+
+// Release implements pointerAPI.
+func (w wirePointer) Release() error { return w.p.Release() }
+
+// AddListener implements pointerAPI.
+func (w wirePointer) AddListener(h wlclient.PointerListener) { wlclient.PointerAddListener(w.p, h) }
+
+// wireKeyboard adapts the generated wl_keyboard proxy to keyboardAPI.
+type wireKeyboard struct{ k *wl.Keyboard }
+
+// Release implements keyboardAPI.
+func (w wireKeyboard) Release() error { return w.k.Release() }
+
+// AddListener implements keyboardAPI.
+func (w wireKeyboard) AddListener(h wlclient.KeyboardListener) { wlclient.KeyboardAddListener(w.k, h) }
+
+// HandleSeatCapabilities implements wl.SeatCapabilitiesHandler. The
+// set arrives at bind time and again whenever it changes — a USB
+// mouse unplugged, a keyboard switched, libinput re-probing. The
+// pointer and keyboard objects track it: when a capability disappears
+// the compositor destroys the matching object, so the stale proxy is
+// released and dropped, and a fresh one is created on the next gain,
+// or input goes silent after an unplug-replug.
+func (s *Session) HandleSeatCapabilities(ev wl.SeatCapabilitiesEvent) {
+	// The touch bit is deliberately dropped here — see capTouch.
+	s.handleCapabilities(ev.Capabilities&capPointer != 0, ev.Capabilities&capKeyboard != 0)
+}
+
+// handleCapabilities is the capability transition state machine,
+// split from the event so tests can drive synthetic unplug-replug
+// cycles through a recorder seat. Idempotent: the compositor may
+// re-send an unchanged set at any time.
+func (s *Session) handleCapabilities(hasPointer, hasKeyboard bool) {
+	if s.seatDev == nil {
+		return
+	}
 	if !hasPointer && s.pointer != nil {
 		debug.Log("seat", "pointer capability lost")
 		s.pointerLost()
 	}
 	if hasPointer && s.pointer == nil {
-		p, err := s.seat.GetPointer()
+		p, err := s.seatDev.GetPointer()
 		if err != nil {
-			return
+			debug.Log("seat", "get_pointer: %v", err)
+		} else {
+			p.AddListener(s)
+			s.pointer = p
+			debug.Log("seat", "pointer capability gained")
 		}
-		s.pointer = p
-		wlclient.PointerAddListener(p, s)
-		debug.Log("seat", "pointer capability gained")
 	}
 	if !hasKeyboard && s.keyboard != nil {
-		s.keyboard = nil
-		s.mods = 0
 		debug.Log("seat", "keyboard capability lost")
+		s.keyboardLost()
 	}
 	if hasKeyboard && s.keyboard == nil {
-		k, err := s.seat.GetKeyboard()
+		k, err := s.seatDev.GetKeyboard()
 		if err != nil {
-			return
+			debug.Log("seat", "get_keyboard: %v", err)
+		} else {
+			k.AddListener(s)
+			s.keyboard = k
+			// The text-input object hangs off the seat proxy, not the
+			// keyboard, so the IME enable state survives this loss;
+			// when the compositor re-establishes focus for the new
+			// keyboard it sends text-input enter, and the OnIMEFocus
+			// hook makes the host re-push its state.
+			debug.Log("seat", "keyboard capability gained")
 		}
-		s.keyboard = k
-		wlclient.KeyboardAddListener(k, s)
-		debug.Log("seat", "keyboard capability gained")
 	}
+	// Re-enter the seat-attached setup paths after every transition.
+	// All three are guarded no-ops while their objects are bound; they
+	// act only when an earlier attempt failed or the manager global
+	// arrived after the seat. Deliberately eager rather than lazy at
+	// next use: the setup is cheap and idempotent, and laziness would
+	// push capability awareness into the clipboard and IME paths.
+	s.ensureDataDevice()
+	s.ensureTextInput()
+	s.ensurePrimarySelectionDevice()
 }
 
-// pointerLost drops the pointer object and every routing state that
-// depends on it, notifying the focused surface's handler first.
+// pointerLost tears the pointer down because its capability went
+// away: wl_pointer.release (seat v5+) tells the compositor the client
+// is done with the doomed object, and every routing state that depends
+// on it ends cleanly — the implicit grab drops, the surfaces holding
+// pointer state hear a leave (hover clears; the host cancels any
+// in-flight widget drag), and the cursor frame timer stops. The
+// desired shape survives so the next enter re-applies it.
 func (s *Session) pointerLost() {
-	s.pointer = nil
+	if p := s.pointer; p != nil {
+		s.pointer = nil
+		if s.seatVersion >= minSeatReleaseVersion {
+			_ = p.Release()
+		}
+	}
 	s.crs.mu.Lock()
 	s.pointerEnterSerial = 0
 	s.crs.mu.Unlock()
 	s.stopCursorAnim()
+	grab := s.grabSurface
 	s.grabSurface = nil
-	if s.pointerFocus != nil {
-		if h := s.surfaceHandlers[s.pointerFocus]; h != nil {
+	s.wheel120[0], s.wheel120[1] = 0, 0
+	focus := s.pointerFocus
+	s.pointerFocus = nil
+	if focus != nil {
+		if h := s.surfaceHandlers[focus]; h != nil {
 			h.HandlePointerLeave()
 		}
-		s.pointerFocus = nil
 	}
+	// The grabbed surface hears the loss too when it differs from the
+	// focus: a drag whose pointer died must end on the surface that
+	// holds it, not only on wherever focus had drifted.
+	if grab != nil && grab != focus {
+		if h := s.surfaceHandlers[grab]; h != nil {
+			h.HandlePointerLeave()
+		}
+	}
+}
+
+// keyboardLost tears the keyboard down because its capability went
+// away: release (seat v5+), drop the proxy, and clear the state that
+// belongs to the device — the held modifiers and the focus surface.
+// The keymap state is kept: the compositor announces a fresh keymap
+// when the next keyboard arrives, and keeping it keeps KeyUTF8
+// answering in the gap.
+func (s *Session) keyboardLost() {
+	if k := s.keyboard; k != nil {
+		s.keyboard = nil
+		if s.seatVersion >= minSeatReleaseVersion {
+			_ = k.Release()
+		}
+	}
+	s.mods = 0
+	s.keyboardFocus = nil
 }
 
 // SetSurfaceInput registers h as the receiver of pointer events

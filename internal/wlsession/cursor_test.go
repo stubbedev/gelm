@@ -197,7 +197,7 @@ func newCursorHarness(t *testing.T, cursors map[string]*wlcursor.Cursor) *cursor
 	t.Helper()
 	h := &cursorHarness{s: &Session{}}
 	s := h.s
-	s.pointer = &wl.Pointer{}
+	s.pointer = wirePointer{p: &wl.Pointer{}}
 	s.pointerEnterSerial = 1
 	s.crs.surface = &wl.Surface{} // the wire push is faked; the surface is never used
 	s.crs.now = func() time.Time { return h.now }
