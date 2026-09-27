@@ -58,6 +58,7 @@ type Toast struct {
 	// leaving marks an exit fade in flight — the rescue path on hover.
 	leaving     bool
 	actionRect  render.Rect
+	ring        shadowTracker
 	cancelSlide anim.Cancel
 	cancelTimer anim.Cancel
 	visible     bool
@@ -115,7 +116,7 @@ func (t *Toast) SetHovered(on bool) {
 			t.leaving = false
 			t.stopSlide()
 			t.progress = 1
-			t.Invalidate()
+			t.invalidateFrame()
 		}
 		return
 	}
@@ -176,13 +177,13 @@ func (t *Toast) fadeOut(p float64) {
 	if p >= 1 {
 		t.progress = 0
 		t.leaving = false
-		t.Invalidate()
+		t.invalidateFrame()
 		t.finish()
 		return
 	}
 	t.leaving = true
 	t.progress = 1 - p
-	t.Invalidate()
+	t.invalidateFrame()
 }
 
 // finish marks the toast gone and fires OnDismissed exactly once.
@@ -222,7 +223,30 @@ func (t *Toast) Close() {
 	t.progress = 0
 	t.stopSlide()
 	t.stopTimer()
+	t.invalidateFrame()
+}
+
+// invalidateFrame schedules the repaint one animated frame owes: the
+// bounds, plus the shadow ring grown by the slide while the card is
+// moving — the shadow rides the card, so its pixels move too.
+func (t *Toast) invalidateFrame() {
 	t.Invalidate()
+	if ext := t.paintExtent(); ext != t.bounds {
+		t.InvalidateRect(ext)
+	}
+}
+
+// paintExtent returns the rect the card's paint can touch: the bare
+// bounds while the shadow is off (the masked-slide contract — motion
+// never paints outside its damage rect), otherwise the shadow ring
+// grown by the slide, which the moving card and its falloff never
+// exceed.
+func (t *Toast) paintExtent() render.Rect {
+	ring := Current().ShadowRing(t.bounds)
+	if ring.Empty() {
+		return t.bounds
+	}
+	return expandRect(ring, toastSlide)
 }
 
 // Arrange records the rect. The first visible arrangement starts the
@@ -230,6 +254,7 @@ func (t *Toast) Close() {
 // both — nothing animates while hidden.
 func (t *Toast) Arrange(r render.Rect) {
 	t.node.Arrange(r)
+	t.ring.sync(&t.node)
 	vis := !r.Empty()
 	if vis == t.visible {
 		t.layoutAction()
@@ -244,7 +269,7 @@ func (t *Toast) Arrange(r render.Rect) {
 		st := toastPlan()
 		t.cancelSlide = anim.Play(anim.Animate(st.Enter.Duration, func(p float64) {
 			t.progress = min(p, 1)
-			t.Invalidate()
+			t.invalidateFrame()
 		}).Easing(st.Enter.Easing))
 		t.armTimer()
 	default:
@@ -304,18 +329,23 @@ func (t *Toast) Measure(con Constraints) Size {
 
 // Paint draws the card, its text, and the action button at the current
 // reveal: alpha fades with progress, and the entrance rise is masked
-// to the card's own bounds so the animation never paints outside its
-// damage rect.
+// to the paint extent — the card's bounds, widened by the theme shadow
+// ring plus the slide when one is owed — so the animation never paints
+// outside its damage rect. The shadow rides the card (it shifts with
+// the same dy), which is why it clips to the extent, not the bounds.
 func (t *Toast) Paint(cv *render.Canvas) {
 	p := math01(t.progress)
 	if p <= 0 || t.bounds.Empty() {
 		return
 	}
 	th := Current()
-	prev := cv.PushClip(t.bounds)
+	prev := cv.PushClip(t.paintExtent())
 	dy := int((1 - p) * toastSlide)
 	card := t.bounds
 	card.Y += dy
+	if col, blur := th.shadowPaint(p); blur != 0 {
+		cv.Shadow(card, th.Radius, blur, col)
+	}
 	cv.RoundedRect(card, th.Radius, scaleAlpha(th.Surface, p))
 	if t.face != nil {
 		sh := t.face.Shape(t.text, t.sizePx)

@@ -37,6 +37,16 @@ type Theme struct {
 	OnAccent Color
 	// Border strokes control outlines.
 	Border Color
+	// ShadowColor paints floating surfaces' box shadows (menus,
+	// popovers, tooltips, toasts, dialogs). Leave it unset to derive
+	// the default (neutral black at 110 alpha), the usual zero-falls-
+	// back-to-derived rule.
+	ShadowColor Color
+	// ShadowBlur is the shadow's falloff radius in pixels around every
+	// floating surface, and the on/off switch: zero disables client
+	// shadows entirely — for compositors that already blur under
+	// translucent surfaces, where a client shadow would double up.
+	ShadowBlur int
 	// Radius is the default corner rounding; Spacing and Padding are
 	// layout defaults.
 	Radius  int
@@ -99,6 +109,8 @@ func DarkTheme() *Theme {
 		Accent:         render.RGB(0x89, 0xB4, 0xFA),
 		OnAccent:       render.RGB(0x11, 0x11, 0x1B),
 		Border:         render.RGB(0x58, 0x5B, 0x70),
+		ShadowColor:    render.RGBA(0, 0, 0, 120),
+		ShadowBlur:     16,
 		Radius:         6,
 		Spacing:        8,
 		Padding:        8,
@@ -119,6 +131,8 @@ func LightTheme() *Theme {
 		Accent:         render.RGB(0x1E, 0x66, 0xF5),
 		OnAccent:       render.RGB(0xFF, 0xFF, 0xFF),
 		Border:         render.RGB(0xB8, 0xC0, 0xD4),
+		ShadowColor:    render.RGBA(0, 0, 0, 70),
+		ShadowBlur:     16,
 		Radius:         6,
 		Spacing:        8,
 		Padding:        8,
@@ -194,6 +208,19 @@ func (t *Theme) WithOnAccent(c Color) *Theme { return t.with(func(n *Theme) { n.
 
 // WithBorder returns a copy with the outline color set.
 func (t *Theme) WithBorder(c Color) *Theme { return t.with(func(n *Theme) { n.Border = c }) }
+
+// WithShadowColor returns a copy with the box-shadow color set. The
+// zero color means unset (derive the default), the theme-wide
+// convention.
+func (t *Theme) WithShadowColor(c Color) *Theme {
+	return t.with(func(n *Theme) { n.ShadowColor = c })
+}
+
+// WithShadowBlur returns a copy with the shadow falloff radius set;
+// zero disables client shadows (see ShadowBlur).
+func (t *Theme) WithShadowBlur(px int) *Theme {
+	return t.with(func(n *Theme) { n.ShadowBlur = px })
+}
 
 // WithRadius returns a copy with the default corner rounding set.
 func (t *Theme) WithRadius(px int) *Theme { return t.with(func(n *Theme) { n.Radius = px }) }

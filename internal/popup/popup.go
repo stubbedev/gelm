@@ -76,6 +76,9 @@ type Popup struct {
 	sess  *wlsession.Session
 	// gravity orients the enter/exit slide toward the anchor.
 	gravity Gravity
+	// gutter is the shadow margin (Config.Gutter) the painter insets
+	// the content by.
+	gutter int
 	// painter is the frame pipeline whoever paints this surface built
 	// (Run internally, or the application loop for tooltips).
 	painter *Painter
@@ -102,6 +105,14 @@ type Config struct {
 	// NoGrab skips the seat grab: the popup tracks hover without
 	// taking input, which tooltips need.
 	NoGrab bool
+	// Gutter reserves that many logical pixels on every side for the
+	// theme's box shadow: Width and Height cover content plus two
+	// gutters, the content occupies the inner rect (arranged and
+	// hit-tested there), the gutter stays transparent so the falloff
+	// blends over whatever the popup floats above, and the input
+	// region excludes it — a shadow never extends a hit area. Zero
+	// paints the popup exactly as before the shadow work.
+	Gutter int
 	// Kind picks the animation profile; zero is the menu/popover one
 	// (pass surfx.KindTooltip for tooltips).
 	Kind surfx.Kind
@@ -143,9 +154,23 @@ func New(sess *wlsession.Session, cfg Config) (*Popup, error) {
 		return nil, fmt.Errorf("popup: create surface: %w", err)
 	}
 	debug.Log("input", "popup surface %d created", surf.Id())
-	p := &Popup{WLSurface: surf, w: int32(cfg.Width), h: int32(cfg.Height), sess: sess, gravity: cfg.Gravity}
+	p := &Popup{WLSurface: surf, w: int32(cfg.Width), h: int32(cfg.Height), sess: sess, gravity: cfg.Gravity, gutter: cfg.Gutter}
 	p.sc = scale.New(sess, surf, nil)
 	p.fx = surfx.NewCoordinator(cfg.Kind, p, func() bool { return widget.Current().Animations })
+	if cfg.Gutter > 0 {
+		// The gutter is display-only: clicks in it route to whatever is
+		// beneath instead of landing on a shadow pixel. Sealed once at
+		// open; the dismissal state machine re-seals it empty, and
+		// later commits keep the region (double-buffered state
+		// persists until changed).
+		if region, err := sess.Compositor().CreateRegion(); err == nil {
+			_ = region.Add(int32(cfg.Gutter), int32(cfg.Gutter),
+				max(0, int32(cfg.Width)-2*int32(cfg.Gutter)),
+				max(0, int32(cfg.Height)-2*int32(cfg.Gutter)))
+			_ = surf.SetInputRegion(region)
+			_ = region.Destroy()
+		}
+	}
 
 	xdgSurf, err := wmBase.GetSurface(surf)
 	if err != nil {

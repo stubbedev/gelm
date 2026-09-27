@@ -188,3 +188,50 @@ func TestInputDeadDuringExit(t *testing.T) {
 		t.Errorf("dismissed popup took input: dirties = %d, want none extra", dirties)
 	}
 }
+
+// TestPaintPlateShadowGutter pins the popup plate: with a gutter, the
+// theme's elevation paints around the content rect, the plate rounds
+// inside it, and the gutter's far corner stays transparent — the
+// falloff must blend over whatever the popup floats above. Without a
+// gutter the plate is the legacy whole-surface fill.
+func TestPaintPlateShadowGutter(t *testing.T) {
+	defer widget.SetTheme(widget.DarkTheme())
+	widget.SetTheme(widget.DarkTheme().WithShadowBlur(6))
+	bg := render.RGB(30, 30, 40)
+
+	at := func(data []byte, stride, x, y int) render.Color {
+		return render.ColorFromBytes(data[y*stride+x*4:])
+	}
+
+	t.Run("gutter carries the shadow, corner stays transparent", func(t *testing.T) {
+		pc := &Painter{bg: bg, gutter: 6}
+		data := make([]byte, render.Stride(72)*52)
+		pc.paintPlate(render.New(data, render.Stride(72), 72, 52), render.Rect{X: 6, Y: 6, W: 60, H: 40})
+
+		if got := at(data, render.Stride(72), 0, 0); got != 0 {
+			t.Errorf("gutter corner = %#08x, want untouched transparent", uint32(got))
+		}
+		if got := at(data, render.Stride(72), 2, 26); got.A() == 0 {
+			t.Error("no falloff 3px into the gutter; the plate painted no elevation")
+		}
+		if got := at(data, render.Stride(72), 36, 26); got != bg {
+			t.Errorf("plate center = %#08x, want the popup background %#08x", uint32(got), uint32(bg))
+		}
+		if got := at(data, render.Stride(72), 7, 7); got == bg {
+			t.Error("cut plate corner painted plate color; the plate must round with the shadow")
+		}
+	})
+
+	t.Run("no gutter fills the surface as before", func(t *testing.T) {
+		pc := &Painter{bg: bg}
+		w, h := 40, 30
+		data := make([]byte, render.Stride(w)*h)
+		pc.paintPlate(render.New(data, render.Stride(w), w, h), render.Rect{X: 0, Y: 0, W: w, H: h})
+
+		for _, p := range [][2]int{{0, 0}, {39, 29}, {20, 15}} {
+			if got := at(data, render.Stride(w), p[0], p[1]); got != bg {
+				t.Errorf("plate at (%d,%d) = %#08x, want the background", p[0], p[1], uint32(got))
+			}
+		}
+	})
+}
