@@ -286,9 +286,33 @@ the presets and every widget paints identically:
   menu items paint under the pointer.
 - `DisabledText`: the explicit `TextMuted` when set, otherwise `Text`
   faded to 45% alpha.
+- `DisabledSurface`: the explicit `SurfaceDisabled` when set, otherwise
+  `Surface` mixed halfway toward `Bg` — a disabled control recedes
+  into the window, the inert counterpart of `PressedSurface`.
+- `DisabledAccent`: `Accent` faded to 45% alpha — a switch's on-track,
+  a slider's fill, a checkbox's tick while the control ignores input.
 
 Widgets never mix these themselves; the presets pin explicit shades
-that pass through untouched.
+that pass through untouched. Widgets also fade colors the palette
+cannot know (an entry's constructor color, a button's child subtree
+through the canvas alpha stack) by the same 45% fraction, so every
+muted surface shares one derivation family.
+
+**Enabled and read-only states.** `SetEnabled(bool)` exists on every
+widget (it rides the shared `node`); disabled controls paint muted,
+ignore presses, keys, drags, and wheel, and are skipped by focus
+traversal. Propagation is a per-query ancestor walk
+(`widget.IsEnabled`), not a rewrite: disabling a `Box` makes the whole
+subtree read disabled while every widget keeps its own flag, so
+re-enabling the box never resurrects a child the app disabled on
+purpose. Disabled is not chrome: `widget.IsInteractive` still counts a
+disabled control as interactive, because it still consumes — and
+swallows — the press. Read-only (`Entry.SetReadOnly`,
+`TextArea.SetReadOnly`) freezes user edits — typing, paste, cut,
+composition, undo/redo, and new undo entries — while selection, copy,
+caret motion, and pan keep working; `SetText` stays programmatic.
+Visually the states are mirrors: disabled fades the text, read-only
+fades only the caret.
 
 **Contrast guard.** In debug builds (the `gelmdebug` tag),
 `SetTheme` checks `Text`/`Bg` and `TextMuted`/`Bg` against WCAG AA

@@ -145,6 +145,31 @@ shift+Tab traverse focus (`FocusNext` / `FocusPrev`); shift+click
 extends a text selection (`Entry` / `TextArea` handle shift+left /
 shift+right and shift+click anchor).
 
+## Disabled and read-only
+
+- `SetEnabled(false)` on any widget makes it inert: no hover shade, no
+  press, no drag, no wheel, no keys, and traversal skips it. A press
+  on a disabled widget is swallowed whole — it does not even move
+  focus. A disabled control still counts as interactive
+  (`widget.IsInteractive`): it consumes the press, it is not chrome.
+- Propagation is a **per-query ancestor walk** (`widget.IsEnabled`),
+  never a recursive flag rewrite: disabling a container (`Box`,
+  `Scroll`, `Grid`, ...) disables the subtree by query while each
+  widget keeps its own flag. Re-enabling the container therefore never
+  resurrects a child the app disabled on purpose.
+- Focus never rests on a disabled widget: if the focused widget is
+  disabled (directly or through a container), the next key delivery
+  moves focus to the next focusable widget instead of feeding keys
+  into a dead control.
+- Read-only (`Entry.SetReadOnly` / `TextArea.SetReadOnly`) is a text
+  editing gate, not an input gate: typing, paste, drop, composition,
+  cut, undo/redo, and Tab indentation no-op, while selection, copy,
+  caret motion, and pan keep working. The undo history built before
+  the flip is untouched, not cleared — read-only back off and the same
+  edits are undoable again. `SetText` remains programmatic and
+  applies. Visually: a disabled text widget fades its text; a
+  read-only one keeps the text and fades only the caret.
+
 ## Hit testing and z-order
 
 - `HitTest` returns the deepest widget whose area contains the point.

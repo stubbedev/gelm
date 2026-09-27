@@ -147,7 +147,7 @@ func (m *Menu) Paint(cv *render.Canvas) {
 			x += 18
 		}
 		col := t.Text
-		if it.OnClick == nil && len(it.Items) == 0 {
+		if (it.OnClick == nil && len(it.Items) == 0) || !IsEnabled(m) {
 			col = t.DisabledText()
 		}
 		baseline := row.Y + (row.H-lineH)/2 + int(m.face.Shape("lg", m.sizePx).Ascent()+0.5)
@@ -177,7 +177,11 @@ func (m *Menu) SetHovered(on bool) {
 }
 
 // HoverMove tracks the hovered row as the pointer moves inside.
+// Disabled menus highlight nothing.
 func (m *Menu) HoverMove(p Point) {
+	if !IsEnabled(m) {
+		return
+	}
 	if i := m.itemAt(p); i != m.hovered {
 		m.hovered = i
 		m.Invalidate()
@@ -197,8 +201,11 @@ func (m *Menu) itemAt(p Point) int {
 }
 
 // ClickAt activates the clicked row (or opens its submenu) and
-// dismisses the menu.
+// dismisses the menu. A disabled menu neither fires nor dismisses.
 func (m *Menu) ClickAt(p Point) {
+	if !IsEnabled(m) {
+		return
+	}
 	i := m.itemAt(p)
 	if i < 0 {
 		m.dismiss()
@@ -258,8 +265,12 @@ func (m *Menu) step(dir int) {
 
 // KeyAction implements KeyActionHandler: arrows move the hovered row
 // (clamped at the ends - pinned), Home/End jump, Enter activates, Esc
-// and Left dismiss, Right opens a submenu.
+// and Left dismiss, Right opens a submenu. A disabled menu ignores
+// keys outright.
 func (m *Menu) KeyAction(a KeyAction, mods Mods) {
+	if !IsEnabled(m) {
+		return
+	}
 	switch a {
 	case KeyDown:
 		if m.hovered < 0 {
@@ -301,5 +312,11 @@ func (m *Menu) dismiss() {
 	}
 }
 
-// DragMove keeps hover tracking during presses.
-func (m *Menu) DragMove(p Point) { m.hovered = m.itemAt(p) }
+// DragMove keeps hover tracking during presses. Disabled menus
+// highlight nothing.
+func (m *Menu) DragMove(p Point) {
+	if !IsEnabled(m) {
+		return
+	}
+	m.hovered = m.itemAt(p)
+}

@@ -51,6 +51,12 @@ type TextArea struct {
 	// hist is the undo/redo history; every mutation records into it.
 	hist undoStack[areaState]
 
+	// readOnly freezes user edits the same way Entry.readOnly does:
+	// typing, paste, composition, delete, and undo/redo no-op, while
+	// selection, copy, caret motion, and pan keep working. See Entry
+	// .SetReadOnly for the contract; SetText stays programmatic.
+	readOnly bool
+
 	// Visual row cache, built lazily for the wrap width it was built
 	// with. rows always covers the document: with wrap off it is the
 	// identity mapping (one row per logical line).
@@ -83,8 +89,12 @@ func (t *TextArea) SetIndent(n int) { t.indent = n }
 
 // TrapTab implements the tab-trap rule: a plain Tab inside the area
 // inserts indentation instead of moving focus. Ctrl and shift variants
-// are routed to focus movement before this is asked.
+// are routed to focus movement before this is asked. Read-only and
+// disabled areas decline the trap, so Tab moves focus instead.
 func (t *TextArea) TrapTab(bool) bool {
+	if !t.editable() {
+		return false
+	}
 	if t.indent > 0 {
 		t.Insert(strings.Repeat(" ", t.indent))
 	} else {
@@ -113,6 +123,31 @@ func (t *TextArea) SetPlaceholder(s string) {
 	t.placeholder = s
 	t.Invalidate()
 }
+
+// SetReadOnly toggles the read-only mode — the same contract as
+// Entry.SetReadOnly: user edits (typing, paste, composition, delete,
+// undo/redo, and Tab indentation through TrapTab) no-op, while
+// selection, copy, caret motion, and pan keep working. A history built
+// before the flip waits untouched. The visual distinguishes itself
+// from disabled the same way: normal text, muted caret.
+func (t *TextArea) SetReadOnly(ro bool) {
+	if t.readOnly == ro {
+		return
+	}
+	t.readOnly = ro
+	if ro {
+		t.clearPreedit()
+	}
+	t.Invalidate()
+}
+
+// ReadOnly reports whether the area is in the read-only mode.
+func (t *TextArea) ReadOnly() bool { return t.readOnly }
+
+// editable reports whether user edits may land: enabled throughout
+// the ancestor chain and not read-only. Every mutation entry point
+// opens with it; SetText is the deliberate exception.
+func (t *TextArea) editable() bool { return t.Enabled() && !t.readOnly }
 
 // pos is a line/column cursor or anchor position in the logical
 // document.
@@ -162,14 +197,23 @@ func (t *TextArea) SetText(s string) {
 // Undo restores the state before the most recent edit — contents,
 // caret, and selection included — reporting whether there was anything
 // to undo. Composing text drops first, like before any other edit.
+// Undo is a user edit: disabled or read-only, it no-ops and returns
+// false while the history waits untouched.
 func (t *TextArea) Undo() bool {
+	if !t.editable() {
+		return false
+	}
 	t.clearPreedit()
 	return t.hist.undo(t.applyState)
 }
 
 // Redo reapplies the most recently undone edit, reporting whether
-// there was one.
+// there was one. Like Undo it is a user edit and no-ops while
+// disabled or read-only.
 func (t *TextArea) Redo() bool {
+	if !t.editable() {
+		return false
+	}
 	t.clearPreedit()
 	return t.hist.redo(t.applyState)
 }
@@ -420,8 +464,11 @@ func (t *TextArea) splice(s string) {
 
 // Insert inserts s at the cursor; an active selection is replaced, and
 // the whole insertion — a paste, a drop, a committed composition — is
-// one undo entry.
+// one undo entry. Blocked while disabled or read-only.
 func (t *TextArea) Insert(s string) {
+	if !t.editable() {
+		return
+	}
 	before := t.snapshot()
 	t.splice(s)
 	t.hist.record(before, t.snapshot())
@@ -452,16 +499,22 @@ func (t *TextArea) deleteAt() {
 }
 
 // Delete removes the selection, or one rune/line break forward; one
-// undo entry per call.
+// undo entry per call. Blocked while disabled or read-only.
 func (t *TextArea) Delete() {
+	if !t.editable() {
+		return
+	}
 	before := t.snapshot()
 	t.deleteAt()
 	t.hist.record(before, t.snapshot())
 }
 
 // Backspace removes the selection, or one rune/line break backward;
-// one undo entry per call.
+// one undo entry per call. Blocked while disabled or read-only.
 func (t *TextArea) Backspace() {
+	if !t.editable() {
+		return
+	}
 	before := t.snapshot()
 	t.clearPreedit()
 	if _, _, active := t.Selection(); active {
@@ -663,10 +716,24 @@ func (t *TextArea) lineHeight() int {
 // text with its underline, and the cursor. An unwrapped line wider than
 // the viewport pans: its content draws at -panX[line], clipped to the
 // inner rect, per logical line. The placeholder only shows on an empty
-// area and never pans.
+// area and never pans. State colors follow Entry: disabled fills with
+// the derived disabled surface and fades the text; read-only keeps the
+// text and fades only the caret.
 func (t *TextArea) Paint(cv *render.Canvas) {
 	th := Current()
-	cv.RoundedRect(t.bounds, th.Radius, th.Surface)
+	enabled := IsEnabled(t)
+	bg := th.Surface
+	if !enabled {
+		bg = th.DisabledSurface()
+	}
+	cv.RoundedRect(t.bounds, th.Radius, bg)
+	textCol, caretCol := t.color, t.color
+	if !enabled {
+		textCol = scaleAlpha(textCol, disabledFade)
+		caretCol = textCol
+	} else if t.readOnly {
+		caretCol = scaleAlpha(caretCol, disabledFade)
+	}
 	lineH := t.lineHeight()
 	start, end, active := t.Selection()
 	t.ensureRows(t.wrapWidth())
@@ -706,7 +773,7 @@ func (t *TextArea) Paint(cv *render.Canvas) {
 		}
 		box := render.Rect{X: t.bounds.X + 8, Y: t.bounds.Y + y, W: t.bounds.W - 16, H: lineH}
 		rowClip := cv.PushClip(box)
-		t.face.DrawAligned(cv, string(line[r.startCol:r.endCol]), render.Rect{X: box.X - pan, Y: box.Y, W: box.W, H: box.H}, t.sizePx, t.color, render.AlignStart)
+		t.face.DrawAligned(cv, string(line[r.startCol:r.endCol]), render.Rect{X: box.X - pan, Y: box.Y, W: box.W, H: box.H}, t.sizePx, textCol, render.AlignStart)
 		cv.PopClip(rowClip)
 	}
 	if t.composing() {
@@ -735,7 +802,7 @@ func (t *TextArea) Paint(cv *render.Canvas) {
 		crow := t.rows[row]
 		x := 8 + int(t.spanWidthDisp(crow.line, crow.startCol, caret.col)+0.5) - t.linePan(crow.line)
 		y := 6 + row*lineH
-		cv.FillRect(render.Rect{X: t.bounds.X + x, Y: t.bounds.Y + y + 2, W: 2, H: lineH - 4}, t.color)
+		cv.FillRect(render.Rect{X: t.bounds.X + x, Y: t.bounds.Y + y + 2, W: 2, H: lineH - 4}, caretCol)
 	}
 	cv.PopClip(prev)
 }
@@ -839,8 +906,11 @@ func (t *TextArea) SelectAll() {
 
 // InsertRune implements RuneHandler. Typed runes coalesce into one
 // undo entry until a word boundary, an idle gap, or a different edit
-// breaks the run.
+// breaks the run. Blocked while disabled or read-only.
 func (t *TextArea) InsertRune(r rune) {
+	if !t.editable() {
+		return
+	}
 	before := t.snapshot()
 	t.splice(string(r))
 	t.hist.recordTyping(before, t.snapshot(), r)
@@ -848,10 +918,15 @@ func (t *TextArea) InsertRune(r rune) {
 
 // KeyAction implements KeyActionHandler. While composing, the input
 // method owns the text: backspace trims its last rune, and every other
-// edit drops the composing display and applies to the contents.
+// edit drops the composing display and applies to the contents. A
+// disabled area ignores keys outright; a read-only one keeps the
+// motion and selection keys and drops only the mutating ones.
 func (t *TextArea) KeyAction(a KeyAction, mods Mods) {
+	if !t.Enabled() {
+		return
+	}
 	shift := mods&ModShift != 0
-	if a == KeyBackspace && t.composing() {
+	if a == KeyBackspace && t.composing() && t.editable() {
 		t.peText = t.peText[:len(t.peText)-1]
 		t.peCur = min(t.peCur, len(t.peText))
 		if len(t.peText) == 0 {
@@ -863,9 +938,13 @@ func (t *TextArea) KeyAction(a KeyAction, mods Mods) {
 	t.clearPreedit()
 	switch a {
 	case KeyBackspace:
-		t.Backspace()
+		if t.editable() {
+			t.Backspace()
+		}
 	case KeyDelete:
-		t.Delete()
+		if t.editable() {
+			t.Delete()
+		}
 	case KeyLeft:
 		c := t.clamp(t.cursor)
 		if !shift {
@@ -945,6 +1024,8 @@ func (t *TextArea) KeyAction(a KeyAction, mods Mods) {
 		t.panToCaret()
 		t.Invalidate()
 	case KeyEnter:
-		t.Insert("\n")
+		if t.editable() {
+			t.Insert("\n")
+		}
 	}
 }

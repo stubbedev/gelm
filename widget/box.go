@@ -63,6 +63,16 @@ func (b *Box) Append(w Widget, expand bool) *Box {
 	return b
 }
 
+// SetEnabled turns the box's subtree on or off: the per-query enable
+// walk (IsEnabled) folds the box's flag into every descendant, whose
+// own flag stays untouched — re-enabling the box never resurrects a
+// child the app disabled on purpose. The walk marks the whole subtree
+// for repaint, since each descendant's effective state changed.
+func (b *Box) SetEnabled(enabled bool) {
+	b.node.SetEnabled(enabled)
+	invalidateTree(b)
+}
+
 // main returns the extent of s along the box's main axis.
 func (b *Box) main(s Size) int {
 	if b.axis == Row {

@@ -49,7 +49,6 @@ type Dropdown struct {
 	menu    *Menu
 	open    bool
 	hovered bool
-	enabled bool
 
 	// reveal is the open/close tween's progress: the list fades and
 	// rises into place on open, and on close stays painted (closing)
@@ -73,7 +72,7 @@ func NewDropdown(items []string, selected int) *Dropdown {
 	if len(items) > 0 {
 		sel = min(max(selected, 0), len(items)-1)
 	}
-	return &Dropdown{items: items, selected: sel, enabled: true}
+	return &Dropdown{items: items, selected: sel}
 }
 
 // SetFace sets the font and pixel size the closed face and the
@@ -121,22 +120,18 @@ func (d *Dropdown) selectIndex(i int) {
 // Opened reports whether the item list is showing.
 func (d *Dropdown) Opened() bool { return d.open }
 
-// SetEnabled turns the dropdown on or off. Disabling closes the list;
-// a disabled dropdown ignores clicks and keys and paints muted, the
-// way Menu paints rows without an action.
+// SetEnabled turns the dropdown on or off, following the toolkit-wide
+// node.SetEnabled convention (the flag lives on the embedded node;
+// Enabled reads it). Disabling closes the list; a disabled dropdown
+// ignores clicks and keys and paints muted, the way Menu paints rows
+// without an action.
 func (d *Dropdown) SetEnabled(enabled bool) {
-	if d.enabled == enabled {
-		return
-	}
-	d.enabled = enabled
-	if !enabled {
+	was := d.Enabled()
+	d.node.SetEnabled(enabled)
+	if was && !enabled {
 		d.Close()
 	}
-	d.Invalidate()
 }
-
-// Enabled reports whether the dropdown accepts input.
-func (d *Dropdown) Enabled() bool { return d.enabled }
 
 // list lazily builds the item menu from the items; it needs the face,
 // which may arrive after construction through SetFace.
@@ -161,7 +156,7 @@ func (d *Dropdown) list() *Menu {
 // and the tween raises it to rest. A disabled dropdown, an empty one,
 // and one with no face stay closed.
 func (d *Dropdown) Open() {
-	if d.open || !d.enabled || len(d.items) == 0 {
+	if d.open || !d.Enabled() || len(d.items) == 0 {
 		return
 	}
 	m := d.list()
@@ -284,20 +279,23 @@ func (d *Dropdown) Arrange(r render.Rect) {
 }
 
 // Paint draws the closed face — surface, selection, chevron — and, on
-// top of the frame beneath it, the open item list.
+// top of the frame beneath it, the open item list. A disabled dropdown
+// fills with the derived disabled surface and paints muted.
 func (d *Dropdown) Paint(cv *render.Canvas) {
 	t := Current()
 	bg := t.Surface
 	switch {
 	case d.open:
 		bg = t.SurfacePressed
-	case d.hovered:
+	case d.hovered && d.Enabled():
 		bg = t.SurfaceHover
+	case !d.Enabled():
+		bg = t.DisabledSurface()
 	}
 	cv.RoundedRect(d.bounds, t.Radius, bg)
 
 	col := t.Text
-	if !d.enabled {
+	if !d.Enabled() {
 		col = t.DisabledText()
 	}
 	if d.face != nil {
@@ -359,7 +357,7 @@ func (d *Dropdown) Children() []Widget {
 // click mid-close-tween reverses the close: the reveal rises from its
 // current fraction, no blink to zero.
 func (d *Dropdown) ClickAt(Point) {
-	if !d.enabled {
+	if !d.Enabled() {
 		return
 	}
 	if d.closing {
@@ -387,7 +385,7 @@ func (d *Dropdown) SetHovered(on bool) {
 // open, everything but Esc goes to the item list, so arrows move the
 // highlight and Enter picks. Esc closes without changing anything.
 func (d *Dropdown) KeyAction(a KeyAction, _ Mods) {
-	if !d.enabled {
+	if !d.Enabled() {
 		return
 	}
 	if d.open {

@@ -47,8 +47,23 @@ func (s *Stack) Children() []Widget {
 	return nil
 }
 
+// SetEnabled turns the visible child on or off through the per-query
+// enable walk, like Box (hidden children stay untouched; they paint
+// nothing, so they need no repaint either).
+func (s *Stack) SetEnabled(enabled bool) {
+	s.node.SetEnabled(enabled)
+	invalidateTree(s)
+}
+
 // Children exposes the stacked children for focus traversal.
 func (o *Overlay) Children() []Widget { return o.kids }
+
+// SetEnabled turns the overlay's whole stack on or off through the
+// per-query enable walk, like Box.
+func (o *Overlay) SetEnabled(enabled bool) {
+	o.node.SetEnabled(enabled)
+	invalidateTree(o)
+}
 
 // Show makes the child under name the visible one and invalidates the
 // stack's bounds; unknown names are ignored.
@@ -228,6 +243,15 @@ const (
 
 // Children exposes the wrapped child for focus traversal.
 func (s *Scroll) Children() []Widget { return []Widget{s.child} }
+
+// SetEnabled turns the viewport and everything inside it on or off
+// through the per-query enable walk, like Box. A disabled scroll
+// ignores wheel, bar drags, and gutter clicks; its child is disabled
+// with it.
+func (s *Scroll) SetEnabled(enabled bool) {
+	s.node.SetEnabled(enabled)
+	invalidateTree(s)
+}
 
 // NewScroll wraps child in a scrollable viewport.
 func NewScroll(child Widget) *Scroll {
@@ -461,8 +485,11 @@ func (s *Scroll) hBarGeometry() (track, handle render.Rect) {
 }
 
 // ScrollBy shifts the offset by dx, dy scroll steps of 40px and shows
-// the bars.
+// the bars. A disabled scroll does not scroll.
 func (s *Scroll) ScrollBy(dx, dy int) {
+	if !IsEnabled(s) {
+		return
+	}
 	s.SetOffset(s.offX+dx*40, s.offY+dy*40)
 	s.showBars()
 }
@@ -479,8 +506,12 @@ func (s *Scroll) SetPressed(on bool) {
 // track grabs that handle (recording the press position and offset);
 // later calls map pointer motion 1:1 onto content motion through the
 // viewport-to-track ratio. Outside the tracks this is content drugging
-// of the wrapped child, which the child handles.
+// of the wrapped child, which the child handles. Disabled scrolls
+// ignore drags.
 func (s *Scroll) DragMove(p Point) {
+	if !IsEnabled(s) {
+		return
+	}
 	vTrack, _ := s.vBarGeometry()
 	hTrack, _ := s.hBarGeometry()
 	switch {
@@ -510,8 +541,11 @@ func (s *Scroll) DragMove(p Point) {
 // ClickAt implements Clicker: a gutter press above or below (or left
 // or right of) a handle pages by one viewport; the first DragMove of
 // such a press would have grabbed the handle instead. A click on a
-// handle without motion does nothing.
+// handle without motion does nothing. Disabled scrolls ignore clicks.
 func (s *Scroll) ClickAt(p Point) {
+	if !IsEnabled(s) {
+		return
+	}
 	vTrack, vHandle := s.vBarGeometry()
 	if vTrack.W > 0 && vTrack.Contains(p.X, p.Y) {
 		if p.Y < vHandle.Y {

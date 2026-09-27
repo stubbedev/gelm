@@ -63,18 +63,29 @@ func (b *Button) ArrangeRoot(r render.Rect) {
 }
 
 // Paint draws the state's background, then the child. A zero Bg family
-// falls back to the theme.
+// falls back to the theme. Disabled, the fill is the derived disabled
+// surface and the child paints through the shared disabled fade, so
+// whatever a button wraps (label, icon) mutes without the child
+// knowing about the state.
 func (b *Button) Paint(cv *render.Canvas) {
 	t := Current()
 	bg := t.resolve(b.Bg, t.Surface)
 	switch {
+	case !IsEnabled(b):
+		bg = t.resolve(b.Bg, t.DisabledSurface())
 	case b.Pressed:
 		bg = t.resolve(b.BgPressed, t.SurfacePressed)
 	case b.Hovered:
 		bg = t.resolve(b.BgHover, t.SurfaceHover)
 	}
 	cv.RoundedRect(b.bounds, b.radius, bg)
+	if IsEnabled(b) {
+		b.child.Paint(cv)
+		return
+	}
+	a := cv.PushAlpha(disabledFade)
 	b.child.Paint(cv)
+	cv.PopAlpha(a)
 }
 
 // Role implements Roleer.
@@ -86,13 +97,18 @@ func (b *Button) HitTest(p Point) Widget {
 }
 
 // ClickAt fires the OnClick hook, ignoring the release point. It is a
-// no-op without one.
+// no-op without one, and a no-op while disabled: a dead button never
+// fires.
 func (b *Button) ClickAt(p Point) {
 	b.click()
 }
 
-// click fires the hook from ClickAt and KeyAction.
+// click fires the hook from ClickAt and KeyAction. Disabled buttons
+// swallow clicks, keys, and activation runes alike.
 func (b *Button) click() {
+	if !IsEnabled(b) {
+		return
+	}
 	if b.OnClick != nil {
 		b.OnClick()
 	}

@@ -75,21 +75,26 @@ func (s *Slider) Measure(con Constraints) Size {
 	return s.measureStore(con, clampSize(Size{W: 200, H: 18}, con))
 }
 
-// Paint draws the trough, fill, and handle. Zero colors fall back to the
+// Paint draws the trough, fill, and handle. Disabled, they fade
+// through the derived disabled colors. Zero colors fall back to the
 // theme.
 func (s *Slider) Paint(cv *render.Canvas) {
 	t := Current()
+	troughCol, fillCol, knobCol := t.Border, t.Accent, t.Text
+	if !IsEnabled(s) {
+		troughCol, fillCol, knobCol = t.DisabledText(), t.DisabledAccent(), t.DisabledText()
+	}
 	cy := s.bounds.Y + s.bounds.H/2
 	trough := render.Rect{X: s.bounds.X + 4, Y: cy - 2, W: s.bounds.W - 8, H: 4}
-	cv.RoundedRect(trough, 2, t.Border)
+	cv.RoundedRect(trough, 2, troughCol)
 
 	filled := trough
 	filled.W = int(float64(trough.W) * s.fraction())
-	cv.RoundedRect(filled, 2, t.Accent)
+	cv.RoundedRect(filled, 2, fillCol)
 
 	knob := 14
 	kx := s.bounds.X + 4 + int(float64(s.bounds.W-8)*s.fraction()) - knob/2
-	cv.RoundedRect(render.Rect{X: kx, Y: cy - knob/2, W: knob, H: knob}, knob/2, t.Text)
+	cv.RoundedRect(render.Rect{X: kx, Y: cy - knob/2, W: knob, H: knob}, knob/2, knobCol)
 }
 
 func (s *Slider) fraction() float64 {
@@ -111,13 +116,21 @@ func (s *Slider) HitTest(p Point) Widget {
 func (s *Slider) SetPressed(on bool) { s.Pressed = on }
 
 // DragMove sets the value from the pointer position while pressed.
+// Disabled sliders ignore the drag.
 func (s *Slider) DragMove(p Point) {
+	if !IsEnabled(s) {
+		return
+	}
 	s.SetValue(s.ValueFromX(p.X))
 }
 
 // KeyAction implements KeyActionHandler: arrows nudge the value by one
 // step (or a tenth of the range without one), Home and End jump.
+// Disabled sliders ignore keys.
 func (s *Slider) KeyAction(a KeyAction, mods Mods) {
+	if !IsEnabled(s) {
+		return
+	}
 	step := s.step
 	if step <= 0 {
 		step = (s.max - s.min) / 10

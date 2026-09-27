@@ -71,3 +71,10 @@ func (f *Fader) Children() []Widget {
 	}
 	return []Widget{f.child}
 }
+
+// SetEnabled turns the fader's child on or off through the per-query
+// enable walk, like Box.
+func (f *Fader) SetEnabled(enabled bool) {
+	f.node.SetEnabled(enabled)
+	invalidateTree(f)
+}

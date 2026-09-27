@@ -99,6 +99,13 @@ func (e *Expander) Children() []Widget {
 	return nil
 }
 
+// SetEnabled turns the expander and its content on or off through the
+// per-query enable walk, like Box.
+func (e *Expander) SetEnabled(enabled bool) {
+	e.node.SetEnabled(enabled)
+	invalidateTree(e)
+}
+
 // animate moves progress toward the open state over expanderDuration.
 // A hidden expander — nothing arranged — settles instantly and
 // schedules no timer: nothing animates while hidden.

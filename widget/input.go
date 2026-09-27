@@ -61,7 +61,9 @@ type TooltipTexter interface {
 // buttons, sliders, toggles, text inputs, and scroll areas. Hit tests
 // return the deepest widget, often a plain label inside a control, so
 // apps checking "was this chrome?" must walk up. Parents are recorded
-// during Arrange, so call it on an arranged tree.
+// during Arrange, so call it on an arranged tree. Enabled state does
+// not change the answer: a disabled button is still interactive — it
+// consumes the press and swallows it — never chrome.
 func IsInteractive(w Widget) bool {
 	for w != nil {
 		switch w.(type) {
@@ -75,6 +77,27 @@ func IsInteractive(w Widget) bool {
 		w = p.Parent()
 	}
 	return false
+}
+
+// IsEnabled reports whether w accepts input: its own flag AND every
+// ancestor's, so disabling a container disables its subtree by query
+// (see node.SetEnabled for why propagation is a walk, not a rewrite).
+// Widgets that carry no enable state — third-party Widget
+// implementations without an Enabled method — read as enabled, and so
+// does nil (nothing there to block). Parents are recorded during
+// Arrange, so call it on an arranged tree.
+func IsEnabled(w Widget) bool {
+	for w != nil {
+		if e, ok := w.(interface{ Enabled() bool }); ok && !e.Enabled() {
+			return false
+		}
+		p, ok := w.(interface{ Parent() Widget })
+		if !ok {
+			return true
+		}
+		w = p.Parent()
+	}
+	return true
 }
 
 // HoverMover receives pointer motion while the widget is hovered, even
@@ -139,11 +162,15 @@ type DragOverSetter interface {
 }
 
 // Axis routes vertical and horizontal scrolling to the hovered widget
-// or the nearest ancestor that handles scrolling.
+// or the nearest ancestor that handles scrolling. A disabled handler
+// stops the walk: the wheel never scrolls through an inert viewport to
+// an outer one.
 func (r *Router) Axis(dx, dy float64) {
 	for target := r.hover; target != nil; target = parentOf(target) {
 		if sc, ok := target.(ScrollHandler); ok {
-			sc.ScrollBy(int(dx), int(dy))
+			if IsEnabled(target) {
+				sc.ScrollBy(int(dx), int(dy))
+			}
 			return
 		}
 	}
@@ -255,9 +282,13 @@ type Router struct {
 }
 
 // Move updates hover state and feeds drags and in-widget hover
-// tracking. p is in root coordinates.
+// tracking. p is in root coordinates. A hit inside a disabled subtree
+// hovers nothing: an inert control shows no hover shade.
 func (r *Router) Move(p Point) {
 	hit := r.Root.HitTest(p)
+	if !IsEnabled(hit) {
+		hit = nil
+	}
 	if r.hover != hit {
 		if h, ok := r.hover.(HoverSetter); ok {
 			h.SetHovered(false)
@@ -277,12 +308,18 @@ func (r *Router) Move(p Point) {
 	}
 }
 
-// Press records a pointer button press. p is in root coordinates.
+// Press records a pointer button press. p is in root coordinates. A
+// press on a disabled widget is swallowed whole: no pressed shade, no
+// drag, and no focus move — focus stays where it was, exactly like a
+// press on empty space outside any control leaves a text field alone.
 func (r *Router) Press(button uint32, p Point) {
 	if button != BTNLeft {
 		return
 	}
 	hit := r.Root.HitTest(p)
+	if hit != nil && !IsEnabled(hit) {
+		return
+	}
 	r.focus = hit
 	r.pressed = hit
 	r.dragging = hit != nil
@@ -291,7 +328,9 @@ func (r *Router) Press(button uint32, p Point) {
 	}
 }
 
-// Release finishes a press: a release over the pressed widget clicks it.
+// Release finishes a press: a release over the pressed widget clicks
+// it — unless the widget was disabled between press and release, in
+// which case the click dies with the gesture.
 func (r *Router) Release(button uint32, p Point) {
 	if button != BTNLeft || r.pressed == nil {
 		return
@@ -300,7 +339,7 @@ func (r *Router) Release(button uint32, p Point) {
 		pr.SetPressed(false)
 	}
 	hit := r.Root.HitTest(p)
-	if hit == r.pressed {
+	if hit == r.pressed && IsEnabled(hit) {
 		handled := false
 		if hit == r.lastClickWidget && time.Since(r.lastClick) < doubleClickWindow {
 			// Only widgets with a double-click behavior consume the
@@ -445,9 +484,10 @@ func (r *Router) applyDragTarget(w Widget, accepted bool) {
 // ancestor that handles it.
 
 // KeyAction delivers an editing or activation action to the focused
-// widget.
+// widget — never to one that went disabled since it took focus; see
+// keyboardTarget.
 func (r *Router) KeyAction(a KeyAction, mods Mods) {
-	if h, ok := r.focus.(KeyActionHandler); ok {
+	if h, ok := r.keyboardTarget().(KeyActionHandler); ok {
 		h.KeyAction(a, mods)
 	}
 }
@@ -468,9 +508,10 @@ type TextInserter interface {
 	Insert(s string)
 }
 
-// Type delivers a typed character to the focused widget.
+// Type delivers a typed character to the focused widget, honoring a
+// disable-during-focus just like KeyAction.
 func (r *Router) Type(ch rune) {
-	if h, ok := r.focus.(RuneHandler); ok {
+	if h, ok := r.keyboardTarget().(RuneHandler); ok {
 		h.InsertRune(ch)
 	}
 }
@@ -486,9 +527,10 @@ type SelectAller interface {
 	SelectAll()
 }
 
-// SelectAll asks the focused widget to select its entire content.
+// SelectAll asks the focused widget to select its entire content,
+// honoring a disable-during-focus just like KeyAction.
 func (r *Router) SelectAll() {
-	if s, ok := r.focus.(SelectAller); ok {
+	if s, ok := r.keyboardTarget().(SelectAller); ok {
 		s.SelectAll()
 	}
 }
@@ -528,11 +570,14 @@ func (r *Router) FocusNext() { r.focusStep(1) }
 func (r *Router) FocusPrev() { r.focusStep(-1) }
 
 // focusStep walks the tree collecting focusable widgets and lands on
-// the neighbor of the current focus.
+// the neighbor of the current focus. Disabled widgets never join the
+// order, so Tab cannot land on one; a focus that went disabled since
+// it was set moves to the next focusable first.
 func (r *Router) focusStep(dir int) {
+	r.dropDisabledFocus()
 	var order []Widget
 	focusWalker(r.Root, func(w Widget) {
-		if _, ok := w.(KeyActionHandler); ok {
+		if _, ok := w.(KeyActionHandler); ok && IsEnabled(w) {
 			order = append(order, w)
 		}
 	})
@@ -551,6 +596,47 @@ func (r *Router) focusStep(dir int) {
 		idx = len(order) - 1
 	}
 	r.focus = order[idx]
+}
+
+// dropDisabledFocus moves focus off a widget that stopped accepting
+// input since it took it (disabled directly, or through a container):
+// focus falls to the next focusable widget in paint order, or nowhere
+// when there is none. Delivery paths (KeyAction, Type, SelectAll) and
+// traversal (focusStep) call it before touching r.focus, so keys are
+// never fed into a dead control.
+func (r *Router) dropDisabledFocus() {
+	if r.focus == nil || IsEnabled(r.focus) {
+		return
+	}
+	r.focus = r.focusAfter(r.focus)
+}
+
+// focusAfter returns the first focusable, enabled widget after skip
+// in paint order (wrapping), or nil when traversal has nowhere to go.
+func (r *Router) focusAfter(skip Widget) Widget {
+	var order []Widget
+	focusWalker(r.Root, func(w Widget) { order = append(order, w) })
+	start := 0
+	for i, w := range order {
+		if w == skip {
+			start = i + 1
+			break
+		}
+	}
+	for i := range order {
+		w := order[(start+i)%len(order)]
+		if _, ok := w.(KeyActionHandler); ok && IsEnabled(w) {
+			return w
+		}
+	}
+	return nil
+}
+
+// keyboardTarget returns the widget keyboard input should reach,
+// dropping a focus that went disabled since it was set.
+func (r *Router) keyboardTarget() Widget {
+	r.dropDisabledFocus()
+	return r.focus
 }
 
 // Boundser exposes a widget's arranged rect; the app draws the focus

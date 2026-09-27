@@ -241,6 +241,7 @@ func TestParseColor(t *testing.T) {
 func TestThemeDerivations(t *testing.T) {
 	// A palette composed from scratch: no explicit state shades.
 	dark := &Theme{
+		Bg:      render.RGB(0x1E, 0x1E, 0x2E),
 		Surface: render.RGB(0x18, 0x18, 0x24),
 		Text:    render.RGB(0xCD, 0xD6, 0xF4),
 		Accent:  render.RGB(0x89, 0xB4, 0xFA),
@@ -291,6 +292,34 @@ func TestThemeDerivations(t *testing.T) {
 			if a, b := th.DisabledText(), th.DisabledText(); a != b {
 				t.Errorf("DisabledText unstable: %v then %v", a, b)
 			}
+			if a, b := th.DisabledSurface(), th.DisabledSurface(); a != b {
+				t.Errorf("DisabledSurface unstable: %v then %v", a, b)
+			}
+			if a, b := th.DisabledAccent(), th.DisabledAccent(); a != b {
+				t.Errorf("DisabledAccent unstable: %v then %v", a, b)
+			}
+		}
+	})
+
+	t.Run("disabled surface recedes halfway toward the background", func(t *testing.T) {
+		// Pinned arithmetic: mix(Surface, Bg, 0.5) on the dark palette above.
+		want := render.RGB(27, 27, 41)
+		if got := dark.DisabledSurface(); got != want {
+			t.Errorf("DisabledSurface = %v, want %v", got, want)
+		}
+	})
+
+	t.Run("disabled accent fades accent like disabled text fades text", func(t *testing.T) {
+		want := Color(uint32(float64(dark.Accent) * 0.45))
+		if got := dark.DisabledAccent(); got != want {
+			t.Errorf("DisabledAccent = %v, want accent at 45%% alpha: %v", got, want)
+		}
+	})
+
+	t.Run("explicit disabled surface wins over derivation", func(t *testing.T) {
+		explicit := render.RGB(9, 8, 7)
+		if got := dark.WithSurfaceDisabled(explicit).DisabledSurface(); got != explicit {
+			t.Errorf("DisabledSurface = %v, want the explicit %v", got, explicit)
 		}
 	})
 

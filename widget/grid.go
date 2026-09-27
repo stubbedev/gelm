@@ -198,6 +198,13 @@ func (g *Grid) extents() (cols, rows int) {
 	return cols, rows
 }
 
+// SetEnabled turns the grid's subtree on or off through the per-query
+// enable walk, like Box.
+func (g *Grid) SetEnabled(enabled bool) {
+	g.node.SetEnabled(enabled)
+	invalidateTree(g)
+}
+
 // Measure measures every child and derives the tracks: single-cell
 // children set their track's maximum, then spanning children grow a run
 // of tracks by whatever their natural size exceeds the run's current
