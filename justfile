@@ -53,6 +53,13 @@ test:
 bench:
     go test -bench . -run '^$' -benchmem ./...
 
+# Regenerate the golden-image snapshots after a deliberate visual
+# change: render and widget goldens are rewritten, so review the diff
+# (git diff -- '*testdata/golden*') before committing. See
+# internal/golden for the comparison policy.
+goldens:
+    UPDATE_GOLDEN=1 go test ./render ./widget
+
 # Compile-check the bar binary; the output is discarded.
 build:
     go build -o /dev/null ./cmd/gelm-bar
