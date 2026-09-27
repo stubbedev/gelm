@@ -56,3 +56,23 @@ func BenchmarkShowcasePaint(b *testing.B) {
 	b.ReportMetric(float64(painted), "px/frame")
 	b.ReportMetric(100*float64(painted)/float64(showW*showH), "%-painted")
 }
+
+// BenchmarkEntryPaint repaints one entry with unchanged contents every
+// op - the caret-blink steady state. Its shape, selection band, text,
+// and caret all read the same (font, size, string), so after the first
+// op the shaping cache serves every one of them; the glyph atlas serves
+// the rasterization.
+func BenchmarkEntryPaint(b *testing.B) {
+	face := entryFace(b)
+	e := NewEntry(face, 14, Current().Text)
+	e.SetText("the quick brown fox jumps over the lazy dog")
+	e.MoveHome()
+	w, h := 320, 32
+	e.Arrange(render.Rect{X: 0, Y: 0, W: w, H: h})
+	cv := render.New(make([]byte, render.Stride(w)*h), render.Stride(w), w, h)
+	b.ReportAllocs()
+	for b.Loop() {
+		cv.Clear(cv.Rect(), Current().Bg)
+		e.Paint(cv)
+	}
+}

@@ -326,7 +326,7 @@ func TestSetBytesSourceDropsDecodedSource(t *testing.T) {
 
 func TestImagePlaceholderPaintsWhileAsyncPending(t *testing.T) {
 	resetImageCache(t)
-	newFakeInvoker(t)
+	inv := newFakeInvoker(t)
 	ph := render.RGB(0x30, 0x30, 0x40)
 	im := NewFileImage(writePNG(t, solidPNG(t, 4, 4, color.NRGBA{R: 0xff, A: 0xff})))
 	im.SetPlaceholderColor(ph)
@@ -338,6 +338,9 @@ func TestImagePlaceholderPaintsWhileAsyncPending(t *testing.T) {
 	if im.Loaded() {
 		t.Error("async source reported loaded before its load landed")
 	}
+	// Settle the load this test kicked: leaving the delivery in flight
+	// can land it in the next test's invoker and flake its assertions.
+	inv.drain(t, 1)
 }
 
 func TestImageAsyncLoadFiresOnLoadedExactlyOnce(t *testing.T) {
