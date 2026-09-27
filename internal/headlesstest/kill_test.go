@@ -63,7 +63,16 @@ func TestHeadlessCompositorKillExitsCleanly(t *testing.T) {
 	select {
 	case <-c.Exited():
 	case <-time.After(killTimeout):
-		t.Fatal("showcase outlived the compositor: no disconnect policy ran")
+		// Evidence before failing: did the SIGKILL actually take sway
+		// down (kill(2) with signal 0 only probes), and where is the
+		// client parked? SIGQUIT makes the Go runtime dump every
+		// goroutine's stack into the client log, which names the park
+		// point instead of leaving the failure to guesswork.
+		swayAlive := syscall.Kill(pid, 0) == nil
+		_ = c.cmd.Process.Signal(syscall.SIGQUIT)
+		time.Sleep(2 * time.Second)
+		t.Fatalf("showcase outlived the compositor: no disconnect policy ran; sway pid %d still alive: %v; client stacks:\n\t%s",
+			pid, swayAlive, strings.ReplaceAll(tailFile(c.LogPath, 100), "\n", "\n\t"))
 	}
 	waitErr := c.Wait()
 	var ee *exec.ExitError
