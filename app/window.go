@@ -30,6 +30,7 @@ import (
 	"github.com/stubbedev/gelm/internal/buffer"
 	"github.com/stubbedev/gelm/internal/debug"
 	"github.com/stubbedev/gelm/internal/dragdrop"
+	"github.com/stubbedev/gelm/internal/inspect"
 	"github.com/stubbedev/gelm/internal/scale"
 	"github.com/stubbedev/gelm/internal/wlsession"
 	"github.com/stubbedev/gelm/render"
@@ -89,6 +90,10 @@ type hostWindow struct {
 	// decorated reports compositor-owned decorations, which disables
 	// the client's own edge handles; nil means never decorated.
 	decorated func() bool
+	// inspector is the window's debug overlay (internal/inspect) the
+	// tree wraps in; nil only in wire-free tests that build hostWindow
+	// by hand. The app toggles it through setInspect.
+	inspector *inspect.Overlay
 	// lastFocus is the widget the focus ring was last drawn around; a
 	// change adds both rings' rects to the damage union.
 	lastFocus widget.Widget

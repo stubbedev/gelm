@@ -76,6 +76,11 @@ type Config struct {
 	// together with the router, for apps that map keycodes to typing
 	// or actions.
 	OnKey func(r *widget.Router, keycode uint32, mods wlsession.Mods)
+	// Inspect arms the debug inspector: the widget-tree overlay plus
+	// the ctrl+shift+i (toggle) and ctrl+shift+d (dump) chords.
+	// GELM_INSPECT=1 arms it for every app; this field is the
+	// in-code opt-in. See docs/inspector.md.
+	Inspect bool
 }
 
 // surfaceInput routes one host surface's pointer events into the
@@ -315,6 +320,9 @@ func (in *surfaceInput) pinCursor(shape string) {
 // for an occluded surface. It returns ErrClosed when the surface ended.
 func Run(cfg Config) error {
 	app := NewApplication(cfg.Session)
+	if cfg.Inspect {
+		app.SetInspect(true)
+	}
 	app.SetClipboard(cfg.Clipboard)
 	app.SetCopyOnSelect(cfg.CopyOnSelect)
 	app.SetTooltipFace(cfg.TooltipFace)

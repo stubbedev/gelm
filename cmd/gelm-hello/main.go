@@ -183,6 +183,10 @@ func run() error {
 		OnPointerMove: func(x, y float64) { posX, posY = int(x), int(y) },
 		TooltipFace:   tf,
 		Clipboard:     clipboard.New(sess),
+		// The showcase arms the debug inspector: ctrl+shift+i toggles
+		// the widget-tree overlay, ctrl+shift+d dumps the tree to
+		// stdout. GELM_INSPECT=1 does the same for any gelm app.
+		Inspect: true,
 		OnKey: func(_ *widget.Router, code uint32, _ wlsession.Mods) {
 			debug.Log("demo", "app key code=%d sym=%v", code, sess.KeySym(code))
 			if sess.KeySym(code) == xkb.KeyEscape {
@@ -241,7 +245,9 @@ func buildUI(font render.Font) showcase {
 		})
 	}
 	button.SetTooltip("increments the counter and animates the bar")
+	button.SetDebugName("demo:increment")
 	countLabel.SetTooltip("your click total")
+	countLabel.SetDebugName("demo:count")
 
 	slider := widget.NewSlider(0, 1, 0.05, 0)
 	slider.OnChanged = func(v float64) {
@@ -249,6 +255,7 @@ func buildUI(font render.Font) showcase {
 		note("slider at %.0f%%", v*100)
 	}
 	slider.SetTooltip("drag, or Tab here and use the arrows")
+	slider.SetDebugName("demo:slider")
 
 	sw := widget.NewSwitch(true)
 	sw.OnChanged = func(on bool) { note("switch %v", on) }
@@ -263,6 +270,7 @@ func buildUI(font render.Font) showcase {
 	entry := widget.NewEntry(font, 14, t.Text)
 	entry.SetPlaceholder("type here; ctrl+c/x/v work")
 	entry.SetTooltip("single-line entry; double-click selects a word")
+	entry.SetDebugName("demo:entry")
 	entry.OnChanged = func(s string) { note("entry: %q", s) }
 
 	area := widget.NewTextArea(font, 13, t.Text)
@@ -277,6 +285,7 @@ func buildUI(font render.Font) showcase {
 	scrolled := widget.NewScroll(list)
 	scrolled.ShowBars = true
 	scrolled.SetTooltip("scrollable list")
+	scrolled.SetDebugName("demo:list")
 	scrolled.OnScrolled = func(x, y int) {
 		note("list scrolled to %d,%d", x, y)
 	}

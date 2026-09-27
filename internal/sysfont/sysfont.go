@@ -240,3 +240,15 @@ func preferenceFaces() []*render.Typeface {
 	}
 	return out
 }
+
+// FallbackFamilies returns the standard Linux fallback family names
+// Fallback chains prefer, reporting only the ones installed, in
+// preference order. Diagnostics (the doctor block) use it to show
+// what mixed-script text actually falls back to.
+func FallbackFamilies() []string {
+	var out []string
+	for _, tf := range preferenceFaces() {
+		out = append(out, tf.Family())
+	}
+	return out
+}

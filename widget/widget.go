@@ -57,6 +57,9 @@ type node struct {
 	bounds  render.Rect
 	parent  Widget
 	tooltip string
+	// debugName labels the widget for the inspector's dump and
+	// overlay; plain data the toolkit itself never reads.
+	debugName string
 
 	// paint damage: invalid marks the bounds as needing a repaint;
 	// extras are additional rects (in root coordinates) a widget owes a

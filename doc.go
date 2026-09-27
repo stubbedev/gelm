@@ -19,5 +19,5 @@
 //
 // The docs/ directory carries the design contracts: architecture,
 // input model, application model, threading model, accessibility
-// decision, and icon theming.
+// decision, icon theming, and the debug inspector.
 package gelm

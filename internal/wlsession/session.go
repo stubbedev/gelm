@@ -101,6 +101,7 @@ type Session struct {
 	outputs             []*Output
 	hasArgb             bool
 	globals             map[string]bool
+	globalVersions      map[string]uint32
 	ifaceNames          map[uint32]string
 	mods                uint32
 	repeatRate          uint32
@@ -257,6 +258,7 @@ func Connect() (*Session, error) {
 	s := &Session{
 		Display:         d,
 		globals:         make(map[string]bool),
+		globalVersions:  make(map[string]uint32),
 		ifaceNames:      make(map[uint32]string),
 		surfaceHandlers: make(map[*wl.Surface]SurfacePointerHandler),
 		dropHandlers:    make(map[*wl.Surface]SurfaceDropHandler),
@@ -321,6 +323,7 @@ func bindVersion(advertised, want uint32) uint32 {
 // global and bind what we need immediately.
 func (s *Session) HandleRegistryGlobal(ev wl.RegistryGlobalEvent) {
 	s.globals[ev.Interface] = true
+	s.globalVersions[ev.Interface] = ev.Version
 	s.ifaceNames[ev.Name] = ev.Interface
 
 	switch ev.Interface {
@@ -432,6 +435,7 @@ func (s *Session) HandleRegistryGlobalRemove(ev wl.RegistryGlobalRemoveEvent) {
 		}
 	}
 	delete(s.globals, iface)
+	delete(s.globalVersions, iface)
 	delete(s.ifaceNames, ev.Name)
 }
 

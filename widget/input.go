@@ -490,16 +490,21 @@ func (r *Router) Focused() Widget { return r.focus }
 
 // focusWalker visits the tree in paint order for focus traversal.
 func focusWalker(w Widget, fn func(Widget)) {
+	walkTree(w, 0, func(w Widget, _ int) { fn(w) })
+}
+
+// walkTree visits w and every descendant in paint order (pre-order),
+// passing each widget's nesting depth; the root is depth 0. The same
+// Children walk focus traversal, the damage collector, and the a11y
+// snapshot use.
+func walkTree(w Widget, depth int, fn func(Widget, int)) {
 	if w == nil {
 		return
 	}
-	fn(w)
-	type childser interface {
-		Children() []Widget
-	}
+	fn(w, depth)
 	if c, ok := w.(childser); ok {
 		for _, k := range c.Children() {
-			focusWalker(k, fn)
+			walkTree(k, depth+1, fn)
 		}
 	}
 }

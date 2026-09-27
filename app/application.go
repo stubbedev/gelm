@@ -9,6 +9,7 @@ package app
 import (
 	"errors"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/neurlang/wayland/wl"
@@ -16,6 +17,7 @@ import (
 	"github.com/stubbedev/gelm/internal/anim"
 	"github.com/stubbedev/gelm/internal/clipboard"
 	"github.com/stubbedev/gelm/internal/dragdrop"
+	"github.com/stubbedev/gelm/internal/inspect"
 	"github.com/stubbedev/gelm/internal/layersurface"
 	"github.com/stubbedev/gelm/internal/window"
 	"github.com/stubbedev/gelm/internal/wlsession"
@@ -40,6 +42,12 @@ type Application struct {
 	// dnd drives drag-and-drop for every window on this application;
 	// inert when the compositor lacks a data device.
 	dnd *dragdrop.Controller
+
+	// inspector state: armed enables the chords (ctrl+shift+i/d), on
+	// paints the widget-tree overlay. Armed by GELM_INSPECT=1 or an
+	// explicit SetInspect/ToggleInspect; see inspect.go.
+	inspectArmed bool
+	inspectOn    bool
 
 	windows  []*hostWindow
 	dialogs  []*Dialog
@@ -70,6 +78,12 @@ func NewApplication(sess *wlsession.Session) *Application {
 	// Async image loads (widget.Image file/URL sources) deliver through
 	// the loop queue - the only sanctioned bridge (docs/threading.md).
 	widget.SetInvoker(a.Invoke)
+	if inspect.Enabled() {
+		a.setInspect(true)
+	}
+	if doctorRequested() {
+		fmt.Fprint(os.Stdout, inspect.Doctor(sess, inspect.DoctorOptions{}))
+	}
 	return a
 }
 
@@ -296,7 +310,15 @@ func (h *layerHost) Size() (int, int) {
 // the application.
 func (a *Application) newWindow(host Host, scale int, root widget.Widget, hooks windowHooks, onClosed func()) *hostWindow {
 	hooks.onClosed = onClosed
-	w := newHostWindow(a.sess, host, scale, root, hooks, a.dnd, a.primary)
+	// Every window's tree sits behind the inspector overlay. While it
+	// is off the overlay is pure passthrough (measure, arrange, hit
+	// test, damage), so wrapping costs nothing visible; toggling it on
+	// never changes layout or which widget input lands on.
+	ov := inspect.NewOverlay(root)
+	ov.SetOn(a.inspectOn)
+	w := newHostWindow(a.sess, host, scale, ov, hooks, a.dnd, a.primary)
+	ov.SetRouter(w.router)
+	w.inspector = ov
 	a.windows = append(a.windows, w)
 	// Wake the parked loop so a new window paints promptly.
 	a.sess.WakeAfter(0)
@@ -496,6 +518,20 @@ func (a *Application) deliverKey(keycode uint32, mods wlsession.Mods) {
 		extra = func(r *widget.Router, code uint32, m wlsession.Mods) {
 			windowKey(r, code, m)
 			appKey(r, code, m)
+		}
+	}
+	// The inspector's chords run before everything else - widget
+	// routing, accelerators, and text - but only while it is armed,
+	// so unarmed apps never lose their ctrl+shift bindings.
+	if a.inspectArmed {
+		if act, ok := inspectKey(a.sess.KeySym(keycode), mods); ok {
+			switch act {
+			case inspectToggle:
+				a.ToggleInspect()
+			case inspectDump:
+				a.dumpTree(target)
+			}
+			return
 		}
 	}
 	routeKey(a.sess, target.router, keycode, mods, a.clip, a.accels, extra)
