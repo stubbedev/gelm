@@ -14,8 +14,12 @@ Hyprland and headless sway): toplevel and layer-shell windows, the full
 widget set below, keyboard and pointer input with a defined
 [input model](docs/input-model.md), the clipboard, drag and drop, IME
 composition, fractional scaling with live rescale, and an animation
-clock. Theming is palette-based (`widget.SetTheme`, dark and light);
-there is no CSS engine yet.
+clock. Theming is a composable palette value (`widget.SetTheme`,
+`widget.DarkTheme().WithAccentHex("#a6e3a1").WithPadding(8)`-style
+chaining, dark and light presets); state shades derive from the
+palette and there is no CSS engine and deliberately no per-widget
+theme overrides (see [docs/architecture.md](docs/architecture.md),
+"Theming").
 
 ## Feature matrix
 

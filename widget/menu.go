@@ -129,8 +129,7 @@ func (m *Menu) Paint(cv *render.Canvas) {
 			continue
 		}
 		if i == m.hovered {
-			hl := t.Accent
-			cv.RoundedRect(row, t.Radius, render.RGBA(hl.R(), hl.G(), hl.B(), 70))
+			cv.RoundedRect(row, t.Radius, t.HoverAccent())
 		}
 		x := row.X + 8
 		switch it.Kind {
@@ -149,7 +148,7 @@ func (m *Menu) Paint(cv *render.Canvas) {
 		}
 		col := t.Text
 		if it.OnClick == nil && len(it.Items) == 0 {
-			col = t.TextMuted
+			col = t.DisabledText()
 		}
 		baseline := row.Y + (row.H-lineH)/2 + int(m.face.Shape("lg", m.sizePx).Ascent()+0.5)
 		m.face.Draw(cv, m.face.Shape(it.Label, m.sizePx), x, baseline, col)

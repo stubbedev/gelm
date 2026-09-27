@@ -208,6 +208,59 @@ pre-feature behavior byte for byte; none of them fail `Connect`
 (internal/wlsession). Feature work adds capabilities without adding
 requirements.
 
+## Theming
+
+The theme is a single palette value (`widget.Theme`): public color
+roles and three metrics (radius, spacing, padding), constructed from
+the `DarkTheme`/`LightTheme` presets and customized through `With*`
+methods. Every `With*` returns a fresh copy and never mutates the
+receiver, so a config-driven palette composes and branches without
+aliasing:
+
+	theme, err := widget.DarkTheme().WithAccentHex("#a6e3a1")
+	if err != nil {
+		return err // malformed config colors fail at construction, never silently default
+	}
+	widget.SetTheme(theme.WithPadding(8))
+
+`SetTheme` swaps the palette globally and bumps the theme generation,
+so the next frame repaints every widget (rule 3's damage walk).
+Explicit per-widget colors (`button.Bg`) always win over the palette.
+
+**No per-widget theme overrides.** A widget cannot carry its own
+partial theme; it carries explicit colors at most, and restyling
+flows one way, from the palette down. GTK's CSS machinery paid for
+cascade, specificity, and per-widget style contexts across every
+widget; the cost bought little in a compositor toolkit where the
+palette already restyles everything on the next frame. Branching
+palettes are values — build a second `Theme` and swap it.
+
+**Derived state colors live on the palette, not in widgets.** Hover,
+pressed, and disabled appearances are methods on `Theme`
+(`widget/theme.go`), so a custom palette derives the same states as
+the presets and every widget paints identically:
+
+- `HoverSurface`: the explicit `SurfaceHover` when set, otherwise
+  `Surface` mixed 8% toward `Text` — the text pole carries the
+  palette's polarity, so dark palettes lighten and light palettes
+  darken.
+- `PressedSurface`: the explicit `SurfacePressed` when set, otherwise
+  `Surface` mixed 20% toward black — the surface recedes under a
+  press on any palette.
+- `HoverAccent`: `Accent` at alpha 70 — the translucent wash rows and
+  menu items paint under the pointer.
+- `DisabledText`: the explicit `TextMuted` when set, otherwise `Text`
+  faded to 45% alpha.
+
+Widgets never mix these themselves; the presets pin explicit shades
+that pass through untouched.
+
+**Contrast guard.** In debug builds (the `gelmdebug` tag),
+`SetTheme` checks `Text`/`Bg` and `TextMuted`/`Bg` against WCAG AA
+(4.5:1) and traces a warning on the `theme` category. It warns and
+applies; a theme is never rejected for its colors. The check compiles
+out of prod builds with the rest of the trace facility.
+
 ## Non-goals
 
 - **No per-window goroutines** — one loop, one goroutine, ordered
@@ -221,5 +274,8 @@ requirements.
 - **No live theme-change signal** — following the desktop setting
   would pull xsettings in as a dependency; theme switches are explicit
   (docs/icons.md).
+- **No per-widget theme overrides** — a widget carries explicit colors
+  at most; restyling flows from the palette down. The reasoning and
+  the derivation rules live in the theming section above.
 - **No actor model or component framework** — widgets are retained
   objects with plain Go callbacks (docs/application-model.md).

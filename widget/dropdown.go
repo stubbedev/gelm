@@ -227,7 +227,7 @@ func (d *Dropdown) Paint(cv *render.Canvas) {
 
 	col := t.Text
 	if !d.enabled {
-		col = t.TextMuted
+		col = t.DisabledText()
 	}
 	if d.face != nil {
 		lineH := d.face.Shape("lg", d.sizePx).LineHeight()
