@@ -21,7 +21,7 @@ const maxPrimarySelectionVersion = 1
 func (s *Session) bindPrimarySelectionManager(ev wl.RegistryGlobalEvent) {
 	ctx, _ := wl.GetUserData[wl.Context](s.registry)
 	mgr := wlr.NewZwpPrimarySelectionDeviceManagerV1(ctx)
-	if err := s.registry.Bind(ev.Name, ev.Interface, bindVersion(ev.Version, maxPrimarySelectionVersion), mgr); err != nil {
+	if !s.bindOptional(ev, maxPrimarySelectionVersion, mgr) {
 		return
 	}
 	s.primarySelectionMgr = mgr

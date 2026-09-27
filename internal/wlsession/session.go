@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"time"
 
@@ -21,6 +22,7 @@ import (
 	"github.com/stubbedev/gelm/internal/buffer"
 	"github.com/stubbedev/gelm/internal/compose"
 	"github.com/stubbedev/gelm/internal/debug"
+	"github.com/stubbedev/gelm/internal/logutil"
 	"github.com/stubbedev/gelm/wlr"
 )
 
@@ -295,6 +297,7 @@ func Connect() (*Session, error) {
 		return nil, fmt.Errorf("wlsession: wl_compositor v%d lacks set_buffer_scale (need v%d)",
 			s.compositorVersion, minCompositorVersion)
 	}
+	s.logOptionalGlobals()
 
 	if err := s.Roundtrip(); err != nil {
 		s.Close()
@@ -354,12 +357,16 @@ func (s *Session) HandleRegistryGlobal(ev wl.RegistryGlobalEvent) {
 	case "wp_viewporter":
 		ctx, _ := wl.GetUserData[wl.Context](s.registry)
 		vp := wlr.NewWpViewporter(ctx)
-		_ = s.registry.Bind(ev.Name, ev.Interface, bindVersion(ev.Version, 1), vp)
+		if !s.bindOptional(ev, 1, vp) {
+			return
+		}
 		s.viewporter = vp
 	case "wp_fractional_scale_manager_v1":
 		ctx, _ := wl.GetUserData[wl.Context](s.registry)
 		mgr := wlr.NewWpScaleManagerV1(ctx)
-		_ = s.registry.Bind(ev.Name, ev.Interface, bindVersion(ev.Version, 1), mgr)
+		if !s.bindOptional(ev, 1, mgr) {
+			return
+		}
 		s.fracScaleManager = mgr
 	case "wl_seat":
 		s.seat = wlclient.RegistryBindSeatInterface(s.registry, ev.Name, bindVersion(ev.Version, 7))
@@ -410,6 +417,8 @@ func (s *Session) ensureDataDevice() {
 	}
 	dev, err := s.dataDeviceManager.GetDataDevice(s.seat)
 	if err != nil {
+		logutil.L().Debug("wlsession: wl_data_device bind failed; drag-and-drop and clipboard transfer disabled",
+			slog.Any("err", err))
 		return
 	}
 	// The session routes the drag-and-drop events per surface; the
@@ -619,7 +628,7 @@ func (s *Session) handleCapabilities(hasPointer, hasKeyboard bool) {
 	if hasPointer && s.pointer == nil {
 		p, err := s.seatDev.GetPointer()
 		if err != nil {
-			debug.Log("seat", "get_pointer: %v", err)
+			logutil.L().Debug("wlsession: get_pointer failed; pointer input disabled", slog.Any("err", err))
 		} else {
 			p.AddListener(s)
 			s.pointer = p
@@ -633,7 +642,7 @@ func (s *Session) handleCapabilities(hasPointer, hasKeyboard bool) {
 	if hasKeyboard && s.keyboard == nil {
 		k, err := s.seatDev.GetKeyboard()
 		if err != nil {
-			debug.Log("seat", "get_keyboard: %v", err)
+			logutil.L().Debug("wlsession: get_keyboard failed; keyboard input disabled", slog.Any("err", err))
 		} else {
 			k.AddListener(s)
 			s.keyboard = k
@@ -1130,13 +1139,16 @@ func (s *Session) Step() error {
 
 // HandleDisplayError implements wl.DisplayErrorHandler: record the
 // compositor's fatal protocol error so the dispatch failure that ends
-// the run names the compositor's verdict, and trace it. Registered in
-// Connect; a closed connection without an error event leaves protoErr
-// nil, which is itself diagnostic (the compositor dropped us without
-// saying why).
+// the run names the compositor's verdict, trace it, and report it at
+// Error on the injected logger — a protocol error is terminal: the
+// connection is dead, and reconnecting would replay the fatal
+// exchange. Registered in Connect; a closed connection without an
+// error event leaves protoErr nil, which is itself diagnostic (the
+// compositor dropped us without saying why).
 func (s *Session) HandleDisplayError(ev wl.DisplayErrorEvent) {
 	s.protoErr = fmt.Errorf("object %T: %s", ev.ObjectId, ev.Message)
 	debug.Log("wire", "compositor fatal: %v", s.protoErr)
+	logutil.L().Error("wlsession: compositor fatal protocol error", slog.Any("err", s.protoErr))
 }
 
 // withProtoErr decorates a dispatch failure with the recorded protocol

@@ -1,11 +1,14 @@
 package widget
 
 import (
+	"bytes"
+	"log/slog"
 	"math"
 	"reflect"
 	"strings"
 	"testing"
 
+	"github.com/stubbedev/gelm/internal/logutil"
 	"github.com/stubbedev/gelm/render"
 )
 
@@ -427,6 +430,29 @@ func TestThemeContrastGuard(t *testing.T) {
 			t.Errorf("unset roles warned: %v", warns)
 		}
 	})
+}
+
+// TestThemeContrastWarnsThroughLogger: the default themeWarn sink is
+// the injected library logger at Warn — visible only when the
+// application opted into gelm's logging, silent otherwise (the
+// discarding default).
+func TestThemeContrastWarnsThroughLogger(t *testing.T) {
+	defer SetTheme(DarkTheme())
+
+	var buf bytes.Buffer
+	logutil.Set(slog.New(slog.NewTextHandler(&buf, nil)))
+	defer logutil.Set(nil)
+
+	SetTheme(DarkTheme().WithText(DarkTheme().Surface))
+	if got := buf.String(); !strings.Contains(got, "level=WARN") || !strings.Contains(got, "Text/Bg") {
+		t.Errorf("contrast warning missing from the injected logger:\n%s", got)
+	}
+
+	buf.Reset()
+	SetTheme(DarkTheme())
+	if buf.Len() != 0 {
+		t.Errorf("clean palette logged:\n%s", buf.String())
+	}
 }
 
 func TestSetThemeComposedThemeRepaints(t *testing.T) {

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"math"
 
-	"github.com/stubbedev/gelm/internal/debug"
+	"github.com/stubbedev/gelm/internal/logutil"
 	"github.com/stubbedev/gelm/render"
 )
 
@@ -79,10 +79,11 @@ var current = DarkTheme()
 func Current() *Theme { return current }
 
 // SetTheme replaces the active theme. Passing nil restores DarkTheme.
-// The next frame repaints every widget with the new palette. In debug
-// builds (gelmdebug tag) any palette pair whose contrast falls below
-// WCAG AA traces a warning on the "theme" category; the check compiles
-// out of prod builds.
+// The next frame repaints every widget with the new palette. Any
+// palette pair whose contrast falls below WCAG AA is reported at Warn
+// on the injected library logger (degraded but running: the swap
+// proceeds); with the default logger the warning is discarded and
+// SetTheme never fails.
 func SetTheme(t *Theme) {
 	if t == nil {
 		t = DarkTheme()
@@ -94,11 +95,12 @@ func SetTheme(t *Theme) {
 	}
 }
 
-// themeWarn is the contrast-warning sink: debug builds route to the
-// trace log, where GOELM_DEBUG admits categories; without the
-// gelmdebug tag debug.Log is an empty function. Tests swap it to
-// capture warnings.
-var themeWarn = func(msg string) { debug.Log("theme", "%s", msg) }
+// themeWarn is the contrast-warning sink: warnings route to the
+// injected library logger at Warn level — the one app-facing event the
+// widget package emits, so an application that opts into gelm's
+// logging learns its palette is hard to read even in prod builds.
+// Tests swap it to capture warnings.
+var themeWarn = func(msg string) { logutil.L().Warn(msg) }
 
 // DarkTheme returns the default dark palette.
 func DarkTheme() *Theme {

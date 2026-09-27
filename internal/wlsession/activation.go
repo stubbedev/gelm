@@ -68,7 +68,7 @@ func (s *Session) ActivationAvailable() bool { return s.activation != nil }
 func (s *Session) bindActivation(ev wl.RegistryGlobalEvent) {
 	ctx, _ := wl.GetUserData[wl.Context](s.registry)
 	mgr := wlr.NewActivationV1(ctx)
-	if err := s.registry.Bind(ev.Name, ev.Interface, bindVersion(ev.Version, maxActivationVersion), mgr); err != nil {
+	if !s.bindOptional(ev, maxActivationVersion, mgr) {
 		return
 	}
 	s.activation = wireActivation{mgr: mgr}

@@ -253,3 +253,15 @@ mode switches, and unplug-replug (gelm#46).
 traces the path at its seams: `wire`-level pointer events with surface
 ids in `wlsession`, routing decisions and hit bounds in `app`, frame
 pacing under `frame`. Without the tag every call compiles out.
+
+Traces are not logging. The library itself is silent by default: an
+embedding application installs its `*slog.Logger` once
+(`wlsession.SetLogger` or `app.SetLogger`; nil — the default —
+discards everything) and only three things flow through it: Warn for
+degraded-but-running (an advertised optional protocol whose bind
+failed, a theme below WCAG AA), Error for terminal conditions (the
+compositor raising a fatal protocol error), and Debug for protocol
+chatter (optional globals the compositor does not advertise,
+capability changes). Nothing logs per-frame or per-keypress, and
+nothing logs at Info. The demo binaries keep their own
+`log.Printf` — they are apps, not the library.
