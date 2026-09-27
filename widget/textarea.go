@@ -429,9 +429,10 @@ func (t *TextArea) rowOf(col pos) int {
 }
 
 // splice is the insert primitive: it drops the composing display,
-// replaces any selection, and puts s at the caret. History recording
-// is the callers' business — Insert lands as one entry, InsertRune as
-// a coalescable typing run.
+// replaces any selection, and puts s at the caret, snapping the caret
+// forward to a grapheme cluster boundary — appending runes, counting
+// clusters (#57). History recording is the callers' business — Insert
+// lands as one entry, InsertRune as a coalescable typing run.
 func (t *TextArea) splice(s string) {
 	t.clearPreedit()
 	t.collapse()
@@ -456,6 +457,7 @@ func (t *TextArea) splice(s string) {
 			t.cursor.col++
 		}
 	}
+	t.cursor.col = text.SnapClusterForward(t.lines[t.cursor.line], t.cursor.col)
 	t.anchor = t.cursor
 	t.hasPref = false
 	t.panToCaret()
@@ -475,8 +477,8 @@ func (t *TextArea) Insert(s string) {
 	t.hist.record(before, t.snapshot())
 }
 
-// deleteAt removes the selection, or one rune/line break forward,
-// without touching history.
+// deleteAt removes the selection, or one grapheme cluster/line break
+// forward (#57), without touching history.
 func (t *TextArea) deleteAt() {
 	t.clearPreedit()
 	if _, _, active := t.Selection(); active {
@@ -487,7 +489,8 @@ func (t *TextArea) deleteAt() {
 	line := t.lines[c.line]
 	switch {
 	case c.col < len(line):
-		t.lines[c.line] = append(line[:c.col], line[c.col+1:]...)
+		end := text.NextCluster(line, c.col)
+		t.lines[c.line] = append(line[:c.col], line[end:]...)
 	case c.line < len(t.lines)-1:
 		next := t.lines[c.line+1]
 		t.lines[c.line] = append(append([]rune{}, line...), next...)
@@ -499,8 +502,9 @@ func (t *TextArea) deleteAt() {
 	t.InvalidateLayout()
 }
 
-// Delete removes the selection, or one rune/line break forward; one
-// undo entry per call. Blocked while disabled or read-only.
+// Delete removes the selection, or one grapheme cluster/line break
+// forward (#57); one undo entry per call. Blocked while disabled or
+// read-only.
 func (t *TextArea) Delete() {
 	if !t.editable() {
 		return
@@ -510,8 +514,10 @@ func (t *TextArea) Delete() {
 	t.hist.record(before, t.snapshot())
 }
 
-// Backspace removes the selection, or one rune/line break backward;
-// one undo entry per call. Blocked while disabled or read-only.
+// Backspace removes the selection, or one grapheme cluster/line break
+// backward — an emoji family, a flag, a base rune with its marks go as
+// one whole (#57); one undo entry per call. Blocked while disabled or
+// read-only.
 func (t *TextArea) Backspace() {
 	if !t.editable() {
 		return
@@ -526,7 +532,7 @@ func (t *TextArea) Backspace() {
 	c := t.clamp(t.cursor)
 	switch {
 	case c.col > 0:
-		t.cursor.col--
+		t.cursor.col = text.PrevCluster(t.lines[c.line], c.col)
 	case c.line > 0:
 		t.cursor.line--
 		t.cursor.col = len(t.lines[t.cursor.line])
@@ -600,7 +606,9 @@ func (t *TextArea) DeleteWordForward() {
 func (t *TextArea) CursorPos() (line, col int) { return t.cursor.line, t.cursor.col }
 
 // move collapses the selection, then moves the cursor without touching
-// the anchor when extend is set.
+// the anchor when extend is set. A horizontal delta steps one grapheme
+// cluster per unit (#57); vertical motion carries the column, and the
+// landed column snaps to its line's clusters.
 func (t *TextArea) move(delta pos, extend bool) {
 	t.clearPreedit()
 	if !extend {
@@ -616,7 +624,15 @@ func (t *TextArea) move(delta pos, extend bool) {
 	}
 	c := t.clamp(t.cursor)
 	c.line += delta.line
-	c.col += delta.col
+	line := t.lines[t.clamp(c).line]
+	switch {
+	case delta.col > 0:
+		c.col = text.NextCluster(line, c.col)
+	case delta.col < 0:
+		c.col = text.PrevCluster(line, c.col)
+	default:
+		c.col = min(c.col, len(line))
+	}
 	t.cursor = t.clamp(c)
 	if !extend {
 		t.anchor = t.cursor
@@ -650,6 +666,7 @@ func (t *TextArea) moveVertical(dline int, extend bool) {
 		nl := max(min(c.line+dline, len(t.lines)-1), 0)
 		t.cursor = pos{nl, t.colForX(nl, t.prefX)}
 	}
+	t.cursor.col = text.SnapCluster(t.lines[t.cursor.line], t.cursor.col)
 	if !extend {
 		t.anchor = t.cursor
 	}
@@ -659,8 +676,9 @@ func (t *TextArea) moveVertical(dline int, extend bool) {
 
 // wordTo moves the cursor to the word edge delta points at, inside
 // the cursor's line: word start for negative delta, word end for
-// positive, over the shared word segmentation (internal/text), so
-// motion, deletion, and double-click agree on what a word is. Word
+// positive, over the shared word segmentation (internal/text) — words
+// are runs of grapheme clusters (#56, #57) — so motion, deletion, and
+// double-click agree on what a word is. Word
 // motion stays inside the line — a line start or end is a no-op, it
 // never jumps across the line break. With extend the selection grows
 // or shrinks from its anchor; without it an active selection first
@@ -931,18 +949,21 @@ func (t *TextArea) HitTest(p Point) Widget { return t.HitLeaf(t, p) }
 
 // posAt maps a root-space point to a document position, resolving
 // through the visual rows when wrapping and through the clicked
-// line's pan so a click on a half-visible rune lands on that rune.
+// line's pan so a click on a half-visible rune lands on that rune,
+// snapped to the start of its grapheme cluster (#57).
 func (t *TextArea) posAt(p Point) pos {
 	lineH := t.lineHeight()
 	t.ensureRows(t.wrapWidth())
 	row := max(min((p.Y-t.bounds.Y-6)/lineH, len(t.rows)-1), 0)
 	r := t.rows[row]
 	x := float64(p.X - t.bounds.X - 8 + t.linePan(r.line))
+	var col int
 	if !t.wrap {
-		return pos{line: r.line, col: t.colForX(r.line, x)}
+		col = t.colForX(r.line, x)
+	} else {
+		col = r.startCol + t.caretIn(r, x)
 	}
-	col := r.startCol + t.caretIn(r, x)
-	return pos{line: r.line, col: col}
+	return pos{line: r.line, col: text.SnapCluster(t.lines[r.line], col)}
 }
 
 // ClickAt places the cursor (and anchor) at the clicked position,
@@ -1016,12 +1037,16 @@ func (t *TextArea) InsertRune(r rune) {
 
 // KeyAction implements KeyActionHandler. Shift-extended motion grows
 // the selection from its anchor; ctrl turns arrows and backspace/delete
-// word-wise, alt+backspace aliasing ctrl+backspace. While composing,
-// the input method owns the text: the bare backspace trims its last
-// rune, and every other key — word-wise ones included — drops the
-// composing display and applies to the contents. A disabled area
-// ignores keys outright; a read-only one keeps the motion and
-// selection keys and drops only the mutating ones.
+// word-wise, alt+backspace aliasing ctrl+backspace. The bare keys edit
+// one grapheme cluster per press (#57), so emoji and accented pairs
+// edit whole. Interaction order: while composing, the input method owns
+// the text and the bare backspace unwinds the composing display one
+// rune first — that is compose state (#54), orthogonal to committed
+// text; after it, ctrl/alt make backspace and delete word-wise over the
+// cluster-refined words (#56); the bare keys apply to the contents one
+// cluster at a time. A disabled area ignores keys outright; a
+// read-only one keeps the motion and selection keys and drops only the
+// mutating ones.
 func (t *TextArea) KeyAction(a KeyAction, mods Mods) {
 	if !t.Enabled() {
 		return
@@ -1135,6 +1160,8 @@ func (t *TextArea) KeyAction(a KeyAction, mods Mods) {
 		} else {
 			t.cursor.col = len(t.lines[t.clamp(t.cursor).line])
 		}
+		t.cursor = t.clamp(t.cursor)
+		t.cursor.col = text.SnapCluster(t.lines[t.cursor.line], t.cursor.col)
 		if !shift {
 			t.anchor = t.cursor
 		}

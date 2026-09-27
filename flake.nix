@@ -32,7 +32,7 @@
             version = self.shortRev or "dev";
             src = self;
             env.CGO_ENABLED = "0";
-            vendorHash = "sha256-5uo0N0DlIHqQ2Y0hX6IPM1vurlRkGrQoGHhe8mKKuh8=";
+            vendorHash = "sha256-y5igtdYZ61+SWmsP/8Ikq/SoBMi/FJTHfz/BVvZbENE=";
             doCheck = false;
 
             meta = with lib; {
