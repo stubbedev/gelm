@@ -78,17 +78,58 @@ pointers in [docs/architecture.md](docs/architecture.md).
 ## Quickstart
 
 ```sh
-nix develop   # go, gopls, golangci-lint, delve, just, sway; CGO_ENABLED=0
+nix develop   # pinned go 1.27, gopls, golangci-lint, gofumpt, delve, just, sway; CGO_ENABLED=0
 just demo     # the gelm-hello showcase: widgets, drag, tooltips, menu, Tab focus
 just panel    # the gelm-panel layer-shell demo
 ```
 
 Other recipes: `just bar` (layer-shell bar), `just multi` (many windows
 on one loop), `just check` (the release gates: vet, lint, test,
-build). For headless runs without a desktop: `just test-env` starts a
-private sway on wlroots' headless backend, and `just demo-headless`,
-`move`, `click`, `sweep`, `axis` drive the demo through the synthetic
-`wlpointer` client.
+build), `just fmt` (gofumpt in place; `just fmt-check` is the gate CI
+runs), `just bench` (benchmarks, see below). For headless runs without
+a desktop: `just test-env` starts a private sway on wlroots' headless
+backend, and `just demo-headless`, `move`, `click`, `sweep`, `axis`
+drive the demo through the synthetic `wlpointer` client.
+
+### Packaging and releases
+
+The flake exposes the module and the demo binaries as packages, built
+with the same pinned Go toolchain the dev shell uses (no cgo, no
+network at build time — modules are vendored via `buildGoModule` with
+`vendorHash` pinning `go.sum`):
+
+```sh
+nix build .#gelm-hello   # the widget showcase binary
+nix build .#gelm-bar     # the layer-shell bar
+nix build .#gelm-panel   # the layer-shell panel
+nix build .#gelm         # the whole module: every demo binary + wlpointer
+```
+
+`packages.gelm.goModules` carries the vendored dependency tree for
+other nix Go builds. Plain Go consumers don't go through nix: the
+toolkit ships as an ordinary Go module, and apps pin a version by
+semver tag — `go get github.com/stubbedev/gelm@v0.1.0`.
+
+Releases are tag-driven: pushing `v*` runs
+`.github/workflows/release.yml`, which builds the three demo binaries
+(linux/amd64 + arm64, CGO off) with goreleaser and attaches archives
+to the GitHub release. goreleaser was chosen over a nix-based release
+path because release artifacts must be usable without nix, while the
+flake remains the primary build path; the two share the same source
+and the same CGO-off constraint.
+
+### Benchmarks
+
+`widget/benchmark_test.go` benchmarks the three frame passes on the
+showcase tree: `BenchmarkShowcaseMeasure` (cold measure, cache
+defeated by alternating constraints), `BenchmarkStaticTreeMeasure`
+(warm measure: zero recursion), `BenchmarkShowcaseArrange` (steady
+layout walk), `BenchmarkShowcasePaint` (full-window repaint), plus the
+damage-tracker benchmarks `BenchmarkProgressOnlyFrame` /
+`BenchmarkProgressOnlyFrames` (incremental repaint). Fixed sizes, no
+time-dependent content. `just bench` runs them; CI archives the
+numbers as workflow artifacts for trend watching — deliberately not a
+gate, shared runners are too noisy.
 
 ### The minimal app
 

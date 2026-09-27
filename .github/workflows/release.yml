@@ -1,0 +1,32 @@
+# Tag-driven release of the demo binaries: goreleaser (config in
+# .goreleaser.yml) builds gelm-bar, gelm-panel, and gelm-hello for
+# linux/amd64 + arm64 with CGO disabled and attaches the archives to
+# the GitHub release. Nix stays the primary build path - nix users
+# build from the flake at the tag (flake.nix); these artifacts are for
+# everyone else. Module consumers pin versions by the same tags via
+# go.mod. Trigger: push a v* tag.
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - uses: goreleaser/goreleaser-action@v6
+        with:
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

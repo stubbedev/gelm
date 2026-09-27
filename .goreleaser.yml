@@ -1,0 +1,46 @@
+# Release automation for the demo binaries.
+#
+# Why goreleaser when the project is nix-first: the flake (flake.nix)
+# is the primary build path for nix users, but a GitHub release needs
+# portable, non-nix artifacts that anyone - and the wayle rewrite - can
+# grab without a nix store. goreleaser is the honest one-file path to
+# that: tag v* -> .github/workflows/release.yml -> archives attached to
+# the release. Module consumers pin the repo by the same semver tags
+# via go.mod (the toolkit itself ships as a Go module, not a tarball).
+#
+# Cutting a release: git tag v0.1.0 && git push origin v0.1.0
+version: 2
+
+project_name: gelm
+
+builds:
+  - id: gelm-bar
+    main: ./cmd/gelm-bar
+    binary: gelm-bar
+    # Wayland only: the toolkit is Linux-only by design.
+    goos: [linux]
+    goarch: [amd64, arm64]
+    # Pure Go; keep accidental cgo out of the release binaries too.
+    env: [CGO_ENABLED=0]
+  - id: gelm-panel
+    main: ./cmd/gelm-panel
+    binary: gelm-panel
+    goos: [linux]
+    goarch: [amd64, arm64]
+    env: [CGO_ENABLED=0]
+  - id: gelm-hello
+    main: ./cmd/gelm-hello
+    binary: gelm-hello
+    goos: [linux]
+    goarch: [amd64, arm64]
+    env: [CGO_ENABLED=0]
+
+archives:
+  - formats: [tar.gz]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  use: github

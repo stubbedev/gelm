@@ -1,0 +1,58 @@
+// Layout and paint benchmarks over the showcase tree - the gelm-hello
+// window shape from damage_test.go. One benchmark per frame pass, all
+// with fixed sizes and no time-dependent content, so numbers stay
+// comparable across runs: CI archives them as an artifact for trend
+// watching (go test -bench . -run '^$' -benchmem), none of it gates.
+package widget
+
+import (
+	"testing"
+
+	"github.com/stubbedev/gelm/render"
+)
+
+// BenchmarkShowcaseMeasure measures the cold layout pass: alternating
+// the constrained width every op defeats the measure cache (cache hits
+// key on the constraints), so each iteration re-measures the whole tree
+// from scratch. The warm path is pinned by BenchmarkStaticTreeMeasure.
+func BenchmarkShowcaseMeasure(b *testing.B) {
+	show := buildShowcase(b)
+	conA := Constraints{Max: Size{W: showW, H: showH}}
+	conB := Constraints{Max: Size{W: showW - 1, H: showH}}
+	b.ResetTimer()
+	for i := range b.N {
+		if i%2 == 0 {
+			show.root.Measure(conA)
+		} else {
+			show.root.Measure(conB)
+		}
+	}
+}
+
+// BenchmarkShowcaseArrange measures the per-frame layout walk over the
+// arranged tree: the same rect every op, so no damage is owed and the
+// number is pure Arrange work over the cached Measure results.
+func BenchmarkShowcaseArrange(b *testing.B) {
+	show := buildShowcase(b)
+	rect := render.Rect{X: 0, Y: 0, W: showW, H: showH}
+	show.root.Measure(Constraints{Max: Size{W: showW, H: showH}})
+	show.root.Arrange(rect)
+	for b.Loop() {
+		show.root.Arrange(rect)
+	}
+}
+
+// BenchmarkShowcasePaint measures a full-window repaint: every frame is
+// stale, so this is the upper bound the damage tracker works to stay
+// under - BenchmarkProgressOnlyFrame is the incremental counterpart.
+func BenchmarkShowcasePaint(b *testing.B) {
+	show := buildShowcase(b)
+	cv := render.New(make([]byte, render.Stride(showW)*showH), render.Stride(showW), showW, showH)
+	stale := render.Rect{W: showW, H: showH}
+	painted := 0
+	for b.Loop() {
+		painted, _ = paintFrame(cv, show.root, showW, showH, Current().Bg, stale)
+	}
+	b.ReportMetric(float64(painted), "px/frame")
+	b.ReportMetric(100*float64(painted)/float64(showW*showH), "%-painted")
+}

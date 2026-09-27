@@ -47,13 +47,23 @@ lint:
 test:
     go test ./...
 
+# Run every benchmark once, tests skipped: Measure/Arrange/Paint over
+# the showcase tree. CI archives the numbers as an artifact for trend
+# watching - deliberately not a gate, shared runners are too noisy.
+bench:
+    go test -bench . -run '^$' -benchmem ./...
+
 # Compile-check the bar binary; the output is discarded.
 build:
     go build -o /dev/null ./cmd/gelm-bar
 
-# Format every Go source in place with gofmt.
+# Format every Go source in place with gofumpt (stricter gofmt).
 fmt:
-    gofmt -w .
+    gofumpt -w .
+
+# The formatting gate: fail when any source is not gofumpt-clean.
+fmt-check:
+    test -z "$(gofumpt -l .)" || { echo 'not gofumpt-clean:'; gofumpt -l .; exit 1; }
 
 # Run the widget showcase (gelm-hello): clicks, drag, tooltips, menu, Tab focus.
 demo:

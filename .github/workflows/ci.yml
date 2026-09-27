@@ -4,9 +4,15 @@
 # behavior breaks CI before it can break a real desktop.
 #
 # Everything runs through nix develop (flake.nix): the Go toolchain,
-# golangci-lint, just, and sway for the headless compositor. The whole
-# job needs no display server and no GPU: sway runs on wlroots'
-# headless backend with the software (pixman) renderer.
+# golangci-lint, gofumpt, just, and sway for the headless compositor.
+# The whole job needs no display server and no GPU: sway runs on
+# wlroots' headless backend with the software (pixman) renderer.
+#
+# Layout: `check` runs the full gate on every push; `lint` gives PRs a
+# fast, dedicated formatting + linting evidence check. Benchmarks run
+# with the gates and their numbers are uploaded as artifacts - trend
+# tracking only, never a gate (shared runners are too noisy to gate
+# on). Releases are separate: .github/workflows/release.yml, on v* tags.
 name: ci
 
 on:
@@ -14,6 +20,20 @@ on:
   pull_request:
 
 jobs:
+  lint:
+    # PR evidence: gofumpt + golangci-lint in one quick pass. The full
+    # gate (tests, headless suite) runs in the check job; this exists so
+    # formatting and lint findings surface as their own PR check.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cachix/install-nix-action@v31
+        with:
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+      - name: gofumpt + golangci-lint
+        run: nix develop -c just lint fmt-check
+
   check:
     runs-on: ubuntu-latest
     steps:
@@ -21,7 +41,19 @@ jobs:
       - uses: cachix/install-nix-action@v31
         with:
           github_access_token: ${{ secrets.GITHUB_TOKEN }}
+      - name: gofumpt formatting gate
+        run: nix develop -c just fmt-check
       - name: Release gates (vet, lint, test, build)
         run: nix develop -c just check
       - name: Headless compositor input gate
         run: nix develop -c just headless
+      # Benchmarks are tracked, not gated: the numbers land as workflow
+      # artifacts so regressions can be compared run over run. Fixed
+      # sizes and no time-dependent content keep them comparable.
+      - name: Benchmarks (artifact, not a gate)
+        run: nix develop -c just bench 2>&1 | tee bench.txt
+        shell: bash
+      - uses: actions/upload-artifact@v4
+        with:
+          name: benchmarks-${{ github.sha }}
+          path: bench.txt
