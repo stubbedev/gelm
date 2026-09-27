@@ -61,7 +61,7 @@ func (s *Session) XdgOutputAvailable() bool { return s.xdgOutputMgr != nil }
 func (s *Session) bindXdgOutputManager(ev wl.RegistryGlobalEvent) {
 	ctx, _ := wl.GetUserData[wl.Context](s.registry)
 	mgr := wlr.NewZxdgOutputManagerV1(ctx)
-	if err := s.registry.Bind(ev.Name, ev.Interface, bindVersion(ev.Version, maxXdgOutputVersion), mgr); err != nil {
+	if !s.bindOptional(ev, maxXdgOutputVersion, mgr) {
 		return
 	}
 	s.xdgOutputMgr = wireXdgOutputMaker{mgr: mgr}

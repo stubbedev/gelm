@@ -62,11 +62,14 @@ package appearance
 
 import (
 	"context"
+	"log/slog"
 	"slices"
 	"sync"
 	"time"
 
 	"github.com/godbus/dbus/v5"
+
+	"github.com/stubbedev/gelm/internal/logutil"
 )
 
 // Appearance is the system dark/light preference.
@@ -193,7 +196,10 @@ func newMonitor(dial func() (*dbus.Conn, error), retry time.Duration) *Monitor {
 	conn, err := dial()
 	if err != nil {
 		// No session bus: no portal desktop. Fail silent — Unknown
-		// forever, no goroutines, nothing to leak (documented).
+		// forever, no goroutines, nothing to leak (documented) — and
+		// say so at Debug for applications that opted into gelm's
+		// logger.
+		logutil.L().Debug("appearance: no session bus; preference monitoring disabled", slog.Any("err", err))
 		return m
 	}
 	return startOn(m, conn)
@@ -273,8 +279,10 @@ func (m *Monitor) run(conn *dbus.Conn, ch chan *dbus.Signal, owned bool) {
 		// injected connection cannot be replaced: fail silent, keep the
 		// last known value (documented in NewOn).
 		if !owned {
+			logutil.L().Debug("appearance: session bus connection lost; monitoring stops, keeping last known preference")
 			return
 		}
+		logutil.L().Debug("appearance: session bus connection lost; reconnecting")
 		conn = m.redial()
 		if conn == nil {
 			return

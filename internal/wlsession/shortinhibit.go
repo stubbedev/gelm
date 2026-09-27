@@ -106,7 +106,7 @@ func (s *Session) ShortcutsInhibitAvailable() bool { return s.shortcutsInhibitMg
 func (s *Session) bindShortcutsInhibitManager(ev wl.RegistryGlobalEvent) {
 	ctx, _ := wl.GetUserData[wl.Context](s.registry)
 	mgr := wlr.NewZwpShortcutsInhibitManagerV1(ctx)
-	if err := s.registry.Bind(ev.Name, ev.Interface, bindVersion(ev.Version, maxShortcutsInhibitVersion), mgr); err != nil {
+	if !s.bindOptional(ev, maxShortcutsInhibitVersion, mgr) {
 		return
 	}
 	s.shortcutsInhibitMgr = wireShortcutsInhibit{mgr: mgr}

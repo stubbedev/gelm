@@ -81,7 +81,7 @@ type tiPending struct {
 func (s *Session) bindTextInputManager(ev wl.RegistryGlobalEvent) {
 	ctx, _ := wl.GetUserData[wl.Context](s.registry)
 	mgr := text.NewZwpInputManagerV3(ctx)
-	if err := s.registry.Bind(ev.Name, ev.Interface, bindVersion(ev.Version, 1), mgr); err != nil {
+	if !s.bindOptional(ev, 1, mgr) {
 		return
 	}
 	s.textInputMgr = mgr

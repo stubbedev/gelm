@@ -315,11 +315,11 @@ caret motion, and pan keep working; `SetText` stays programmatic.
 Visually the states are mirrors: disabled fades the text, read-only
 fades only the caret.
 
-**Contrast guard.** In debug builds (the `gelmdebug` tag),
-`SetTheme` checks `Text`/`Bg` and `TextMuted`/`Bg` against WCAG AA
-(4.5:1) and traces a warning on the `theme` category. It warns and
-applies; a theme is never rejected for its colors. The check compiles
-out of prod builds with the rest of the trace facility.
+**Contrast guard.** `SetTheme` checks `Text`/`Bg` and
+`TextMuted`/`Bg` against WCAG AA (4.5:1) and reports a warning at
+Warn on the injected library logger (`wlsession.SetLogger` or
+`app.SetLogger`; nil keeps the silent default). It warns and
+applies; a theme is never rejected for its colors.
 
 ## Non-goals
 
