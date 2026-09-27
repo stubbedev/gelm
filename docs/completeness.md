@@ -8,6 +8,13 @@ when this map was written. Sources: the issue text, the README feature
 matrix, docs/*.md, and `git log`. The first-pass ladder lives in
 [stubbedev/wayle#19](https://github.com/stubbedev/wayle/issues/19).
 
+Third pass, with the maintainer's goal restated — a **feature-complete
+replacement for relm4** — files the gaps below and the non-goals that
+parity overturns as #60–#74 under the epic
+[stubbedev/gelm#59](https://github.com/stubbedev/gelm/issues/59);
+CSS support is conditionally filed (#75 design, #76 engine), and the
+allocation/syscall reduction sweep (#77) is gated behind the epic.
+
 ## Widgets
 
 | relm4/GTK area | gelm's answer | Where |
@@ -59,18 +66,22 @@ matrix, docs/*.md, and `git log`. The first-pass ladder lives in
 
 ## Deliberate non-goals
 
-Audited in #36 and **not** filed — with the maintainer's reasons, now
-also recorded in [architecture.md](architecture.md) "Non-goals":
+Audited in #36; the reasons stay recorded in
+[architecture.md](architecture.md) "Non-goals". The third pass promoted
+every one that relm4 parity requires — each now filed under [#59](https://github.com/stubbedev/gelm/issues/59):
 
-- **RTL/bidirectional text** — no wayle use case; revisit if ever needed.
-- **Clipboard images** — wayle is text-only for clipboard.
-- **Window icons** — Wayland has no client window icons.
+- **RTL/bidirectional text** — no wayle use case; revisit if ever
+  needed. Filed as #68.
+- **Clipboard images** — wayle is text-only for clipboard. Filed as #69.
+- **Window icons** — Wayland had no client window icons;
+  xdg-toplevel-icon-v1 supersedes that, filed as #70.
 - **GtkCss analog** — rejected on cost; #32 scopes styling to the typed
-  `Theme` struct instead.
-- **Paned (draggable splitter)** — no wayle layout needs it; file later
-  if the settings UI wants it.
+  `Theme` struct instead. Revisited per the maintainer: conditional
+  design doc #75, engine #76.
+- **Paned (draggable splitter)** — no wayle layout needs it. Filed as
+  #71.
 - **Color picker, calendar, font chooser** — application-dialog
-  territory gelm does not aim at.
+  territory. Filed as #72, #73, #74.
 
 The standing non-goals (no per-window goroutines, no window manager, no
 actor model, no per-widget theme overrides, no live theme-change
@@ -81,24 +92,29 @@ signal) are in [architecture.md](architecture.md) "Non-goals".
 Honest deferrals, each with its pointer — none of these block the
 declared use cases:
 
-- **List is single-select**; no multi-select model yet (README matrix).
+- **List is single-select**; no multi-select model yet — filed as #60
+  (README matrix).
 - **Dialog modality is application-level only** — xdg_shell has no
-  modal bit (README matrix, app/dialog.go).
+  modal bit (README matrix, app/dialog.go); xdg-dialog-v1 changes that,
+  filed as #61.
 - **No Dropdown type-ahead** — decided against in #28: menus have no
   mnemonics either, and a typed character collides with Space-opens in
   the text router (documented on the type, widget/dropdown.go).
-- **Menu accelerators are display-only**; no mnemonics (README matrix).
+  Reopened for parity, filed as #62.
+- **Menu accelerators are display-only**; no mnemonics (README matrix)
+  — filed as #63.
 - **Icon themes do not follow live setting changes** — the lookup is
   explicit ([icons.md](icons.md), widget/theme.go); the system
   dark/light preference itself is observable since #53
   ([appearance.md](appearance.md)) but wiring it to a palette swap is
-  the app's call, never the toolkit's.
+  the app's call, never the toolkit's. Lookup refresh on the live
+  icon-theme setting is filed as #64.
 - **No in-process AT-SPI** — the integration path is recorded, not
-  built ([a11y.md](a11y.md)).
+  built ([a11y.md](a11y.md)); filed as #65.
 - **Compositor-in-the-loop tests run on headless sway only** — the
   automated gate (`just headless`, internal/headlesstest) boots wlroots'
   headless backend; Hyprland is verified manually (README "Status"),
-  not in CI.
+  not in CI. Filed as #66.
 - **Grid tracks never shrink below their maxima** — under-sized rects
   overflow and let the painter's clip decide visibility, matching Box
-  (widget/grid.go).
+  (widget/grid.go). Filed as #67.
