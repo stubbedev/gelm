@@ -19,6 +19,7 @@ import (
 
 	"github.com/stubbedev/gelm/internal/clipboard"
 	"github.com/stubbedev/gelm/internal/debug"
+	"github.com/stubbedev/gelm/internal/surfx"
 	"github.com/stubbedev/gelm/internal/wlsession"
 	"github.com/stubbedev/gelm/render"
 	"github.com/stubbedev/gelm/widget"
@@ -211,9 +212,12 @@ func (in *surfaceInput) HandlePointerButton(button, state, serial uint32) {
 	debug.Log("input", "route button %d %s at (%.1f,%.1f) over %T",
 		button, buttonStateName(state), in.x, in.y, in.router.Hovered())
 	if state == 1 {
-		// Any press dismisses a tooltip, like every toolkit.
+		// Any press dismisses a tooltip, like every toolkit. The
+		// reference drops immediately (Dismissed), so the next dwell can
+		// open a fresh one while this surface fades.
 		if in.tip != nil && in.tip.open != nil {
-			in.tip.open.Close()
+			in.tip.open.Dismiss()
+			in.tip.open = nil
 		}
 		// A press on a resize handle belongs to the window frame: the
 		// xdg_toplevel.resize grab replaces the widget press entirely.
@@ -346,13 +350,19 @@ func Run(cfg Config) error {
 	if cfg.OnDisconnect != nil {
 		app.OnDisconnect(cfg.OnDisconnect)
 	}
+	// Layer hosts animate (launcher/panel overlays); other hosts get
+	// the plain toplevel behavior — instant open, instant close.
+	animKind := surfx.KindMenu
+	if _, isLayer := cfg.Host.(*layerHost); isLayer {
+		animKind = surfx.KindOverlay
+	}
 	app.newWindow(cfg.Host, cfg.Scale, cfg.Root, windowHooks{
 		background: cfg.Background,
 		opaque:     opaqueFor(cfg.Background, cfg.Opaque),
 		onPress:    cfg.OnPress,
 		onMove:     cfg.OnPointerMove,
 		onKey:      cfg.OnKey,
-	}, nil)
+	}, nil, animKind)
 	return app.Run()
 }
 

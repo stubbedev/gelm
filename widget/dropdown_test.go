@@ -30,10 +30,12 @@ func facePoint(dd *Dropdown) Point {
 }
 
 func TestDropdownClick(t *testing.T) {
+	c := pinAnimClock(t)
 	dd := newDropdown(t, "Light", "Dark", "System")
 
 	t.Run("clicking the face opens the list below it", func(t *testing.T) {
 		dd.ClickAt(facePoint(dd))
+		c.drive() // land the reveal: the list rests exactly below the face
 		if !dd.Opened() {
 			t.Fatal("face click did not open the list")
 		}
@@ -48,6 +50,7 @@ func TestDropdownClick(t *testing.T) {
 		// Row clicks reach the list through its own ClickAt, exactly
 		// what the Router does when the hit lands on the open list.
 		dd.menu.ClickAt(rowPoint(dd, 2))
+		c.drive() // the close tween lands before the assertions
 		if dd.Selected() != 2 {
 			t.Errorf("selected = %d, want 2", dd.Selected())
 		}
@@ -65,6 +68,7 @@ func TestDropdownClick(t *testing.T) {
 			t.Errorf("hit = %v, want the item list", got)
 		}
 		dd.ClickAt(facePoint(dd)) // second face click toggles closed
+		c.drive()
 		if dd.Opened() {
 			t.Error("second face click did not close the list")
 		}
@@ -102,6 +106,7 @@ func TestDropdownRouterClick(t *testing.T) {
 }
 
 func TestDropdownKeyboard(t *testing.T) {
+	c := pinAnimClock(t)
 	t.Run("Enter, Space, and Down open while focused", func(t *testing.T) {
 		for _, key := range []struct {
 			name   string
@@ -135,6 +140,7 @@ func TestDropdownKeyboard(t *testing.T) {
 		dd.KeyAction(KeyUp, 0)
 		dd.KeyAction(KeyDown, 0) // back to 1
 		dd.KeyAction(KeyEnter, 0)
+		c.drive()
 
 		if dd.Selected() != 1 {
 			t.Errorf("selected = %d, want 1", dd.Selected())
@@ -156,6 +162,7 @@ func TestDropdownKeyboard(t *testing.T) {
 		dd.KeyAction(KeyDown, 0)
 		dd.KeyAction(KeyDown, 0)
 		dd.KeyAction(KeyDismiss, 0)
+		c.drive()
 
 		if dd.Opened() {
 			t.Fatal("Esc did not close the list")
@@ -178,6 +185,7 @@ func TestDropdownKeyboard(t *testing.T) {
 }
 
 func TestDropdownOnSelectExactlyOnce(t *testing.T) {
+	c := pinAnimClock(t)
 	dd := newDropdown(t, "Light", "Dark", "System")
 	fired := 0
 	dd.OnSelect = func(int) { fired++ }
@@ -185,6 +193,7 @@ func TestDropdownOnSelectExactlyOnce(t *testing.T) {
 	t.Run("re-opening and re-picking the selected row fires nothing", func(t *testing.T) {
 		dd.ClickAt(facePoint(dd))        // open
 		dd.menu.ClickAt(rowPoint(dd, 0)) // pick the already-selected row
+		c.drive()                        // land the close tween
 		if fired != 0 {
 			t.Errorf("no-change pick fired %d times, want 0", fired)
 		}
@@ -193,6 +202,7 @@ func TestDropdownOnSelectExactlyOnce(t *testing.T) {
 	t.Run("open plus Enter on the seeded highlight fires nothing", func(t *testing.T) {
 		dd.KeyAction(KeyEnter, 0) // open, highlight on the selection
 		dd.KeyAction(KeyEnter, 0) // re-pick it
+		c.drive()
 		if fired != 0 {
 			t.Errorf("re-pick fired %d times, want 0", fired)
 		}
@@ -207,6 +217,7 @@ func TestDropdownOnSelectExactlyOnce(t *testing.T) {
 		dd.KeyAction(KeyEnter, 0)
 		dd.KeyAction(KeyUp, 0) // 2 -> 1
 		dd.KeyAction(KeyEnter, 0)
+		c.drive()
 		if fired != 2 {
 			t.Errorf("keyboard change fired %d times total, want 2", fired)
 		}
@@ -297,6 +308,7 @@ func TestDropdownChildren(t *testing.T) {
 }
 
 func TestDropdownDisabled(t *testing.T) {
+	c := pinAnimClock(t)
 	t.Run("disabled ignores clicks and keys", func(t *testing.T) {
 		dd := newDropdown(t, "Light", "Dark", "System")
 		dd.SetEnabled(false)
@@ -321,6 +333,7 @@ func TestDropdownDisabled(t *testing.T) {
 		dd := newDropdown(t, "Light", "Dark", "System")
 		dd.KeyAction(KeyEnter, 0)
 		dd.SetEnabled(false)
+		c.drive()
 		if dd.Opened() || dd.Children() != nil {
 			t.Error("disabling left the list open or traversable")
 		}
@@ -328,11 +341,13 @@ func TestDropdownDisabled(t *testing.T) {
 }
 
 func TestDropdownDamage(t *testing.T) {
+	c := pinAnimClock(t)
 	dd := newDropdown(t, "Light", "Dark", "System")
 
 	// Opening must owe the list's pixels; closing must owe them back,
 	// even though the closed list is no longer exposed as a child.
 	dd.ClickAt(facePoint(dd))
+	c.drive() // land the reveal
 	rects, any := CollectDamage(dd)
 	if !any {
 		t.Fatal("opening owed no damage")
@@ -357,9 +372,11 @@ func TestDropdownDamage(t *testing.T) {
 }
 
 func TestDropdownPaintAndRole(t *testing.T) {
+	c := pinAnimClock(t)
 	t.Run("open list paints ink on every row", func(t *testing.T) {
 		dd := newDropdown(t, "Light", "Dark", "System")
 		dd.ClickAt(facePoint(dd))
+		c.drive() // land the reveal: the list paints at rest
 		b := dd.Bounds().Union(dd.menu.Bounds())
 		data := make([]byte, render.Stride(b.W)*(b.H+2))
 		cv := render.New(data, render.Stride(b.W), b.W, b.H+2)

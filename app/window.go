@@ -21,6 +21,7 @@ package app
 import (
 	"errors"
 	"fmt"
+	"sync/atomic"
 	"time"
 
 	"github.com/neurlang/wayland/wl"
@@ -32,6 +33,7 @@ import (
 	"github.com/stubbedev/gelm/internal/dragdrop"
 	"github.com/stubbedev/gelm/internal/inspect"
 	"github.com/stubbedev/gelm/internal/scale"
+	"github.com/stubbedev/gelm/internal/surfx"
 	"github.com/stubbedev/gelm/internal/wlsession"
 	"github.com/stubbedev/gelm/render"
 	"github.com/stubbedev/gelm/widget"
@@ -49,6 +51,21 @@ type hostWindow struct {
 	// isDialog marks the exempt dialog windows themselves.
 	blocked  bool
 	isDialog bool
+
+	// Exit/enter animation state. fx is nil for kinds that do not
+	// animate (plain toplevels open and close instantly). fader wraps
+	// the app's tree while fx exists; destroy is the raw wire teardown
+	// the coordinator's exit lands into. exiting flips at Dismiss, so
+	// input goes dead before the first fade frame and the loop keeps
+	// the window mapped and drawing until the tween finishes.
+	fx           *surfx.Coordinator
+	fader        *widget.Fader
+	enterStarted bool
+	exiting      bool
+	destroy      func()
+	// kick carries MarkFrame's repaint request from a tween callback
+	// (possibly on another goroutine) into the loop pass.
+	kick atomic.Bool
 
 	pool *buffer.Pool
 	// surf is the wire half of the host surface; production wraps the
@@ -148,7 +165,7 @@ func opaqueFor(background render.Color, opaque bool) bool {
 // focused widget's bounds.
 const focusRingPad = 2
 
-func newHostWindow(sess *wlsession.Session, host Host, initialScale int, root widget.Widget, hooks windowHooks, dnd *dragdrop.Controller, primary *primarySelection) *hostWindow {
+func newHostWindow(sess *wlsession.Session, host Host, initialScale int, root widget.Widget, hooks windowHooks, dnd *dragdrop.Controller, primary *primarySelection, animKind surfx.Kind, destroy func()) *hostWindow {
 	if initialScale < 1 {
 		initialScale = 1
 	}
@@ -161,6 +178,16 @@ func newHostWindow(sess *wlsession.Session, host Host, initialScale int, root wi
 		dnd:     dnd,
 		tip:     &tooltipCtl{since: time.Now()},
 		dirty:   true,
+		destroy: destroy,
+	}
+	// Animated kinds (layer overlays, dialogs) wrap their tree in a
+	// fader the coordinator drives; the enter starts lazily — at the
+	// first usable pass, after the configure handshake — so the very
+	// first frame paints at reveal 0, never the finished surface.
+	if animKind != surfx.KindMenu {
+		w.fader = widget.NewFader(root)
+		w.router.Root = w.fader
+		w.fx = surfx.NewCoordinator(animKind, w, func() bool { return widget.Current().Animations })
 	}
 	// Toplevel hosts carry the size limits, the resize grab, and the
 	// decoration state; layer surfaces implement none of it.
@@ -195,7 +222,7 @@ func newHostWindow(sess *wlsession.Session, host Host, initialScale int, root wi
 		onPress: hooks.onPress, onMove: hooks.onMove,
 		dnd:         dnd,
 		request:     func() { w.dirty = true },
-		blocked:     func() bool { return w.blocked },
+		blocked:     func() bool { return w.blocked || w.exiting },
 		frac:        func() uint32 { return w.frac120 },
 		startResize: w.startResize,
 		primary:     primary,
@@ -226,6 +253,74 @@ func (w *hostWindow) release() {
 	}
 	if w.pool != nil {
 		w.pool.Close()
+	}
+}
+
+// beginExit starts the animated close: Dismiss flips the logical state
+// (input seals, the app's close semantics fire) and the exit tween
+// keeps the surface mapped and repainting until it lands; the loop
+// keeps ticking — event-driven, paced by the animation clock's wake
+// deadlines — and only the tween's completion reaches destroy, the
+// real wayland teardown. Reports whether the exit ran (or was already
+// running); false means there is nothing to animate.
+func (w *hostWindow) beginExit() bool {
+	if w.fx == nil {
+		return false
+	}
+	w.exiting = true
+	w.fx.Dismiss()
+	return true
+}
+
+// enterIfDue starts the enter tween on the first usable loop pass: the
+// configure handshake has completed, so ApplyVisual(0) lands before
+// the first draw and the window fades in from nothing — never a flash
+// of the finished surface.
+func (w *hostWindow) enterIfDue() {
+	if w.fx != nil && !w.enterStarted {
+		w.enterStarted = true
+		w.fx.Enter()
+		w.dirty = true
+	}
+}
+
+// ApplyVisual implements surfx.Driver: one tween frame's reveal.
+func (w *hostWindow) ApplyVisual(reveal float64) {
+	if w.fader != nil {
+		w.fader.SetOpacity(reveal)
+	}
+}
+
+// MarkFrame implements surfx.Driver: request a repaint through the
+// loop's kick flag. The app loop's anim.Tick already marks every
+// window dirty when a callback runs there; the kick covers ticks that
+// ran on another goroutine (a popup's nested loop).
+func (w *hostWindow) MarkFrame() { w.kick.Store(true) }
+
+// SealInput implements surfx.Driver: an empty input region, committed,
+// so clicks during the exit pass through the dying window to whatever
+// is beneath (the tooltip input-region trick). The commit only applies
+// the region; the next frame re-attaches a buffer as usual.
+func (w *hostWindow) SealInput() {
+	if w.sess == nil {
+		return
+	}
+	region, err := w.sess.Compositor().CreateRegion()
+	if err != nil {
+		return
+	}
+	_ = region.Add(0, 0, 0, 0)
+	_ = w.host.HostSurface().SetInputRegion(region)
+	_ = region.Destroy()
+	_ = w.host.HostSurface().Commit()
+}
+
+// Destroy implements surfx.Driver: the real teardown, reached only
+// when the exit tween has landed (or teardown interrupted it). The
+// next loop pass sees host.Closed and reaps the window.
+func (w *hostWindow) Destroy() {
+	if w.destroy != nil {
+		w.destroy()
 	}
 }
 

@@ -1,20 +1,27 @@
 // Package popup manages transient surfaces with the xdg_popup role:
 // menus and tooltips. New positions a popup relative to its parent via
 // an xdg_positioner, grabs it for dismissal, and Run drives a nested
-// render/dispatch loop until it closes.
+// render/dispatch loop until the popup is destroyed. Dismissal is a
+// state (see internal/surfx): Dismiss seals input, fires the close
+// callback once, and the exit tween keeps the surface mapped and
+// repainting until it lands — the wire teardown follows, whatever the
+// dismissal path.
 package popup
 
 import (
 	"errors"
 	"fmt"
+	"sync"
+	"sync/atomic"
+	"time"
 
 	"github.com/neurlang/wayland/wl"
-	"github.com/neurlang/wayland/wlclient"
 	"github.com/neurlang/wayland/xdg"
 
-	"github.com/stubbedev/gelm/internal/buffer"
+	"github.com/stubbedev/gelm/internal/anim"
 	"github.com/stubbedev/gelm/internal/debug"
 	"github.com/stubbedev/gelm/internal/scale"
+	"github.com/stubbedev/gelm/internal/surfx"
 	"github.com/stubbedev/gelm/internal/wlsession"
 	"github.com/stubbedev/gelm/render"
 	"github.com/stubbedev/gelm/widget"
@@ -49,8 +56,29 @@ type Popup struct {
 	w          int32
 	h          int32
 	configured bool
-	closed     bool
-	onClosed   func()
+
+	// fx is the dismissal state machine: Dismarking the popup dismissed
+	// seals input and fires OnClosed exactly once, the exit tween keeps
+	// the surface mapped until it lands, and only then does the real
+	// wire teardown (Destroy) run. Close is the teardown path through
+	// the same machine.
+	fx *surfx.Coordinator
+	// anim wraps the content root for tween painting; built by Run,
+	// which owns the content.
+	anim *animView
+	// mu serializes tween frames (which may fire on the application's
+	// loop goroutine) against Run's measure/arrange/paint passes.
+	mu sync.Mutex
+	// dirty is set by MarkFrame (tween callbacks) and the input
+	// handlers, and consumed by Run's loop; atomic because tween ticks
+	// run on whichever goroutine called anim.Tick.
+	dirty atomic.Bool
+	sess  *wlsession.Session
+	// gravity orients the enter/exit slide toward the anchor.
+	gravity Gravity
+	// painter is the frame pipeline whoever paints this surface built
+	// (Run internally, or the application loop for tooltips).
+	painter *Painter
 }
 
 // Config describes where the popup goes and how big it is.
@@ -74,6 +102,9 @@ type Config struct {
 	// NoGrab skips the seat grab: the popup tracks hover without
 	// taking input, which tooltips need.
 	NoGrab bool
+	// Kind picks the animation profile; zero is the menu/popover one
+	// (pass surfx.KindTooltip for tooltips).
+	Kind surfx.Kind
 }
 
 // New positions and maps a popup, then grabs the seat so clicks outside
@@ -112,8 +143,9 @@ func New(sess *wlsession.Session, cfg Config) (*Popup, error) {
 		return nil, fmt.Errorf("popup: create surface: %w", err)
 	}
 	debug.Log("input", "popup surface %d created", surf.Id())
-	p := &Popup{WLSurface: surf, w: int32(cfg.Width), h: int32(cfg.Height)}
+	p := &Popup{WLSurface: surf, w: int32(cfg.Width), h: int32(cfg.Height), sess: sess, gravity: cfg.Gravity}
 	p.sc = scale.New(sess, surf, nil)
+	p.fx = surfx.NewCoordinator(cfg.Kind, p, func() bool { return widget.Current().Animations })
 
 	xdgSurf, err := wmBase.GetSurface(surf)
 	if err != nil {
@@ -133,12 +165,10 @@ func New(sess *wlsession.Session, cfg Config) (*Popup, error) {
 	// grab on an already-committed popup as xdg_popup.error
 	// invalid_grab (sway never engages it; wlroots-based ones kill the
 	// connection over it), so the commit - which maps the popup - must
-	// come second.
-	// The grab goes out before the initial commit: compositors treat a
-	// grab on an already-committed popup as xdg_popup.error
-	// invalid_grab (sway never engages it; wlroots-based ones kill the
-	// connection over it), so the commit - which maps the popup - must
-	// come second.
+	// come second. The enter tween changes nothing about this ordering:
+	// it only mutates widget state that Run paints on later commits, so
+	// the initial commit stays the one and only mapping commit and
+	// keeps its place after the grab.
 	if !cfg.NoGrab {
 		if err := pop.Grab(sess.Seat(), cfg.Serial); err != nil {
 			return nil, fmt.Errorf("popup: grab: %w", err)
@@ -158,6 +188,11 @@ func New(sess *wlsession.Session, cfg Config) (*Popup, error) {
 	if err := p.EnsureUsable(); err != nil {
 		return nil, fmt.Errorf("popup: %w", err)
 	}
+	// The enter tween starts mapped-at-progress-0: ApplyVisual(0) lands
+	// synchronously here, so Run's first paint is the hidden or offset
+	// first frame, never a flash of the finished surface. Reduced
+	// motion collapses the tween and lands at rest inside this call.
+	p.fx.Enter()
 	return p, nil
 }
 
@@ -179,17 +214,19 @@ func (p *Popup) HandlePopupConfigure(ev xdg.PopupConfigureEvent) {
 	}
 }
 
-// HandlePopupDone implements dismissal: the user clicked away. The
-// popup's surfaces are destroyed here too, so its buffers return to the
-// session pool instead of leaking with the dead surface.
+// HandlePopupDone implements outside-click dismissal. It routes
+// through Dismiss like every other path — no fast lane: the surface
+// stays mapped for the exit tween and the compositor has already ended
+// the grab by the time this fires (a grab dropped while the popup is
+// mapped is exactly the wire state the exit needs).
 func (p *Popup) HandlePopupPopupDone(xdg.PopupPopupDoneEvent) {
-	p.Close()
+	p.Dismiss()
 }
 
-// EnsureUsable gates drawing until the first configure completed and the
-// popup is not dismissed.
+// EnsureUsable gates drawing until the first configure completed and
+// the popup is not dismissed.
 func (p *Popup) EnsureUsable() error {
-	if p.closed {
+	if p.Dismissed() {
 		return ErrClosed
 	}
 	if !p.configured {
@@ -198,8 +235,15 @@ func (p *Popup) EnsureUsable() error {
 	return nil
 }
 
-// Closed reports whether the popup was dismissed.
-func (p *Popup) Closed() bool { return p.closed }
+// Closed reports whether the popup was dismissed (logically gone; the
+// surface may still be running its exit tween).
+func (p *Popup) Closed() bool { return p.Dismissed() }
+
+// Dismissed reports whether the logical close happened.
+func (p *Popup) Dismissed() bool { return p != nil && p.fx.Dismissed() }
+
+// Destroyed reports whether the wire teardown happened.
+func (p *Popup) Destroyed() bool { return p != nil && p.fx.Destroyed() }
 
 // Size returns the placed popup size.
 func (p *Popup) Size() (int, int) { return int(p.w), int(p.h) }
@@ -213,18 +257,49 @@ func (p *Popup) Scale() *scale.Controller { return p.sc }
 // HostSurface returns the underlying wl_surface.
 func (p *Popup) HostSurface() *wl.Surface { return p.WLSurface }
 
-// SetOnClosed runs f when the popup is dismissed.
-func (p *Popup) SetOnClosed(f func()) { p.onClosed = f }
+// SetOnClosed runs f when the popup is dismissed — exactly once,
+// inside the first Dismiss (or a teardown that beats any dismissal).
+func (p *Popup) SetOnClosed(f func()) { p.fx.SetOnDismissed(f) }
 
-// Close dismisses the popup from the client side and destroys its wire
-// objects - xdg_popup, xdg_surface, wl_surface - so the compositor can
-// drop the popup's buffers and release them back to the session pool.
-// Runs on compositor dismissal too (popup_done): after it, the popup is
-// dead and HostSurface is no longer valid.
+// Dismiss starts the two-phase close: the logical state flips (input
+// region empties, OnClosed fires, the popup stops taking pointer
+// events), the exit tween keeps the surface mapped and repainting
+// until it lands, and only then does the wire teardown run. A second
+// Dismiss mid-exit — another outside click, another Esc — is a no-op.
+func (p *Popup) Dismiss() {
+	if p == nil || p.Destroyed() {
+		return
+	}
+	if p.fx.Dismiss() && p.WLSurface != nil {
+		debug.Log("input", "popup %d dismissed", p.WLSurface.Id())
+	}
+}
+
+// Close tears the popup down on the spot: the teardown path through
+// the same state machine, for error paths and callers that want no
+// exit (gelm-hello's replace-on-open, buffer allocation failures).
+// OnClosed still fires exactly once, and the wire objects are
+// destroyed exactly once even if a tween was mid-flight.
 func (p *Popup) Close() {
+	if p == nil {
+		return
+	}
 	if p.WLSurface != nil {
 		debug.Log("input", "popup %d closed", p.WLSurface.Id())
 	}
+	p.fx.Teardown()
+}
+
+// Destroy implements surfx.Driver: the real wayland teardown -
+// xdg_popup, xdg_surface, wl_surface - so the compositor can drop the
+// popup's buffers and release them back to the session pool. Runs
+// after the exit tween lands, or immediately from Teardown. Under
+// p.mu, so a frame mid-paint on the popup's loop goroutine finishes
+// its commit before the proxies go away. After it, HostSurface is no
+// longer valid.
+func (p *Popup) Destroy() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	if p.XdgPopup != nil {
 		_ = p.XdgPopup.Destroy()
 		p.XdgPopup = nil
@@ -237,41 +312,81 @@ func (p *Popup) Close() {
 		_ = p.WLSurface.Destroy()
 		p.WLSurface = nil
 	}
-	p.closed = true
-	if p.onClosed != nil {
-		p.onClosed()
+}
+
+// SealInput implements surfx.Driver: an empty input region, committed,
+// so clicks during the exit fall through to whatever is beneath — the
+// tooltip input-region trick, applied at dismissal. The commit only
+// refreshes the region (the current buffer stays attached), and later
+// animation commits keep it: the input region is double-buffered state
+// that persists until changed. Under p.mu, serialized against frames
+// like Destroy.
+func (p *Popup) SealInput() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.WLSurface == nil || p.sess == nil {
+		return
+	}
+	region, err := p.sess.Compositor().CreateRegion()
+	if err != nil {
+		return
+	}
+	_ = region.Add(0, 0, 0, 0)
+	_ = p.WLSurface.SetInputRegion(region)
+	_ = region.Destroy()
+	_ = p.WLSurface.Commit()
+}
+
+// ApplyVisual implements surfx.Driver: one tween frame.
+func (p *Popup) ApplyVisual(reveal float64) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.anim != nil {
+		p.anim.setProgress(reveal)
 	}
 }
 
-// Run drives the popup's own render loop until it is dismissed: paint
-// through paint each frame, dispatch input through the session. The
-// popup surface registers its own pointer handler, so events land here
-// only while the compositor routes focus (or the popup grab) to it -
-// the host surface keeps receiving nothing and no hooks are swapped.
-// A non-nil keys handler receives seat keyboard events translated to
-// KeyActions, which menus need for arrow and Enter navigation. It is
-// the handler itself, not a Router: a fresh menu has no focused widget,
-// so a Router would swallow every action before the menu saw it.
-// frac120 is the parent window's 120-based device scale; the popup's
-// buffers are built at that device scale while its widget tree stays
-// logical.
+// MarkFrame implements surfx.Driver: schedule a repaint of this
+// surface. The owning loop's pacing does the waking — Run arms the
+// animation clock's next frame deadline itself, and the application
+// loop is already woken by the same deadlines through its kicker.
+// (Deliberately no WakeAfter(0) here: pacing every tween callback as
+// an immediate wake turns a tween into a busy spin.)
+func (p *Popup) MarkFrame() {
+	p.dirty.Store(true)
+	if pc := p.painter; pc != nil {
+		pc.dirty.Store(true)
+	}
+}
+
+// Run drives the popup's own render loop until it is destroyed: paint
+// through the Painter each frame, dispatch input through the session,
+// and advance the enter/exit tweens. This nested loop is for grabbed
+// menus: it dispatches, so the caller must already own the loop
+// goroutine. The popup surface registers its own pointer handler, so
+// events land here only while the compositor routes focus (or the
+// popup grab) to it - the host surface keeps receiving nothing and no
+// hooks are swapped. A non-nil keys handler receives seat keyboard
+// events translated to KeyActions, which menus need for arrow and
+// Enter navigation. It is the handler itself, not a Router: a fresh
+// menu has no focused widget, so a Router would swallow every action
+// before the menu saw it. frac120 is the parent window's 120-based
+// device scale; the popup's buffers are built at that device scale
+// while its widget tree stays logical. Surfaces that must not run a
+// second dispatcher (tooltips) use NewPainter from the application
+// loop instead.
 func Run(sess *wlsession.Session, p *Popup, frac120 uint32, root widget.Widget, bg render.Color, keys widget.KeyActionHandler) error {
-	if frac120 == 0 {
-		frac120 = scale.Denom
-	}
-	surf := p.HostSurface()
-	create := func() (*buffer.Buffer, error) {
-		w, h := p.Size()
-		return buffer.NewFile(sess.Shm(),
-			scale.DeviceSize(w, frac120), scale.DeviceSize(h, frac120),
-			scale.IntegerScale(frac120))
-	}
-	pool := buffer.New(create, 2)
+	frame := p.NewPainter(sess, frac120, root, bg)
+	defer frame.Close()
 
 	router := &widget.Router{Root: root}
 	var pointer struct{ x, y float64 }
-	dirty := true
-	input := &popupInput{router: router, pointer: &pointer, markDirty: func() { dirty = true }}
+	input := &popupInput{
+		dismissed: p.Dismissed,
+		router:    router,
+		pointer:   &pointer,
+		markDirty: func() { p.dirty.Store(true) },
+	}
 	sess.SetSurfaceInput(p.WLSurface, input)
 	defer sess.SetSurfaceInput(p.WLSurface, nil)
 
@@ -285,51 +400,27 @@ func Run(sess *wlsession.Session, p *Popup, frac120 uint32, root widget.Widget, 
 		defer func() { sess.OnKey = prevKey }()
 	}
 
-	frameReady := false
-	framePending := false
-	for !p.Closed() {
-		if frameReady {
-			frameReady = false
-			framePending = false
+	for !p.Destroyed() {
+		// Advance the animation clock for this surface's tweens. The app
+		// loop ticks it too when both run; Tick is absolute-time based
+		// and fires each callback exactly once, so the duplication only
+		// decides which loop notices first. A tween callback flips dirty
+		// and wakes the park, so an exit keeps this loop event-driven:
+		// paint, park, wake on the next frame.
+		if anim.Tick(time.Now()) {
+			p.dirty.Store(true)
 		}
-		if dirty && !framePending {
-			dirty = false
-			b, err := pool.Acquire()
-			if errors.Is(err, buffer.ErrBusy) {
-				// The release event wakes the park below; stay dirty.
-				dirty = true
-			} else if err != nil {
-				return fmt.Errorf("popup: acquire buffer: %w", err)
-			} else {
-				w, h := p.Size()
-				_ = p.sc.Apply(frac120, w, h)
-				root.Measure(widget.Constraints{Max: widget.Size{W: w, H: h}})
-				root.Arrange(render.Rect{X: 0, Y: 0, W: w, H: h})
-
-				cv := render.NewScaled(b.Data, b.Stride, b.Width, b.Height, int(frac120), scale.Denom)
-				cv.ClearDevice(cv.Rect(), bg)
-				root.Paint(cv)
-
-				if err := surf.Attach(b.WL, 0, 0); err != nil {
-					return fmt.Errorf("popup: attach: %w", err)
-				}
-				if err := surf.DamageBuffer(0, 0, int32(b.Width), int32(b.Height)); err != nil {
-					return fmt.Errorf("popup: damage: %w", err)
-				}
-				if err := surf.Commit(); err != nil {
-					return fmt.Errorf("popup: commit: %w", err)
-				}
-
-				cb, err := surf.Frame()
-				if err != nil {
-					return fmt.Errorf("popup: frame callback: %w", err)
-				}
-				wlclient.CallbackAddListener(cb, frameDone{ready: &frameReady})
-				framePending = true
-			}
+		if _, err := frame.Pass(); err != nil {
+			return fmt.Errorf("popup: paint: %w", err)
 		}
-		// Park: dismissal, pointer events, and buffer releases are all
-		// events; nothing here polls.
+		// Park: dismissal, tween frames, pointer events, and buffer
+		// releases are all events; nothing here polls. While a tween
+		// runs, arm the animation clock's next frame deadline as the
+		// wake — frame-callback pacing is the Pass gate, the timer is
+		// the fallback, and both park when nothing runs.
+		if wake, ok := anim.Next(); ok {
+			sess.WakeAfter(time.Until(wake))
+		}
 		if err := sess.Step(); err != nil {
 			return fmt.Errorf("popup: dispatch: %w", err)
 		}
@@ -337,23 +428,13 @@ func Run(sess *wlsession.Session, p *Popup, frac120 uint32, root widget.Widget, 
 	return ErrClosed
 }
 
-// frameDone flips ready when the compositor reports the frame as taken
-// and unregisters the callback: done is a destructor event, so the
-// object is dead on both sides and its id must rejoin the client's
-// pool. A frame loop that skips this leaks a proxy per frame.
-type frameDone struct {
-	ready *bool
-}
-
-// HandleCallbackDone implements wl.CallbackDoneHandler.
-func (f frameDone) HandleCallbackDone(ev wl.CallbackDoneEvent) {
-	ev.C.Unregister()
-	*f.ready = true
-}
-
 // popupInput routes one popup surface's pointer events into its widget
-// tree. It implements wlsession.SurfacePointerHandler.
+// tree. It implements wlsession.SurfacePointerHandler. Once the popup
+// is dismissed the handlers go inert: the dying surface takes no
+// input, belt-and-braces beside the empty input region (which is what
+// actually stops the compositor from routing events here).
 type popupInput struct {
+	dismissed func() bool
 	router    *widget.Router
 	pointer   *struct{ x, y float64 }
 	markDirty func()
@@ -366,6 +447,9 @@ func (in *popupInput) HandlePointerEnter(x, y float64) { in.move(x, y) }
 func (in *popupInput) HandlePointerMotion(x, y float64) { in.move(x, y) }
 
 func (in *popupInput) move(x, y float64) {
+	if in.dismissed() {
+		return
+	}
 	in.pointer.x, in.pointer.y = x, y
 	in.router.Move(widget.Point{X: int(x), Y: int(y)})
 	in.markDirty()
@@ -373,6 +457,9 @@ func (in *popupInput) move(x, y float64) {
 
 // HandlePointerButton implements wlsession.SurfacePointerHandler.
 func (in *popupInput) HandlePointerButton(button, state, serial uint32) {
+	if in.dismissed() {
+		return
+	}
 	pt := widget.Point{X: int(in.pointer.x), Y: int(in.pointer.y)}
 	if state == 1 {
 		in.router.Press(button, pt)

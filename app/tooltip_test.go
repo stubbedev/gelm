@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stubbedev/gelm/internal/popup"
 	"github.com/stubbedev/gelm/render"
 	"github.com/stubbedev/gelm/widget"
 )
@@ -92,11 +93,11 @@ func (t *tipTarget) HitTest(p widget.Point) widget.Widget {
 
 func (t *tipTarget) TooltipText() string { return t.tooltip }
 
-// stub is a popup double recording closes.
+// stub is a popup double recording dismissals.
 type stub struct{ closed int }
 
-func (s *stub) Closed() bool { return false }
-func (s *stub) Close()       { s.closed++ }
+func (s *stub) Dismissed() bool { return s.closed > 0 }
+func (s *stub) Dismiss()        { s.closed++ }
 
 func TestTooltipCtlUpdate(t *testing.T) {
 	target := newTipTarget("hover text")
@@ -105,10 +106,10 @@ func TestTooltipCtlUpdate(t *testing.T) {
 
 	var openStub *stub
 	var openedText string
-	opener := func(w widget.Widget, text string) tooltipWindow {
+	opener := func(w widget.Widget, text string) (tooltipWindow, *popup.Painter) {
 		openedText = text
 		openStub = &stub{}
-		return openStub
+		return openStub, nil
 	}
 
 	ctl := &tooltipCtl{}

@@ -6,6 +6,7 @@ import (
 
 	"github.com/unxed/xkb-go"
 
+	"github.com/stubbedev/gelm/internal/surfx"
 	"github.com/stubbedev/gelm/internal/wlsession"
 	"github.com/stubbedev/gelm/render"
 	"github.com/stubbedev/gelm/widget"
@@ -95,7 +96,11 @@ func (a *Application) NewDialog(parent *Window, cfg DialogConfig) (*Dialog, erro
 			}
 		},
 	}
-	w, err := a.NewWindow(winCfg)
+	// Dialogs animate: KindDialog gives the child window a fade-in on
+	// open and an exit tween on Respond, during which the modal block
+	// stays on (the unblock happens in OnClosed, once the tween's
+	// destroy has landed and the loop reaped the window).
+	w, err := a.newWindowWindow(winCfg, surfx.KindDialog)
 	if err != nil {
 		return nil, fmt.Errorf("app: dialog window: %w", err)
 	}

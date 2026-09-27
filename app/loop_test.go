@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/stubbedev/gelm/internal/anim"
+	"github.com/stubbedev/gelm/internal/popup"
 	"github.com/stubbedev/gelm/render"
 	"github.com/stubbedev/gelm/widget"
 )
@@ -264,7 +265,7 @@ func TestTooltipNext(t *testing.T) {
 	t.Run("pending hover schedules its delay", func(t *testing.T) {
 		tip := &tooltipCtl{since: time.Now()}
 		router.Move(widget.Point{X: 5, Y: 5})
-		tip.update(router, time.Now(), func(widget.Widget, string) tooltipWindow { return nil })
+		tip.update(router, time.Now(), func(widget.Widget, string) (tooltipWindow, *popup.Painter) { return nil, nil })
 		wake, ok := tip.next()
 		if !ok {
 			t.Fatal("pending tooltip did not schedule a wakeup")
@@ -286,21 +287,21 @@ func TestTooltipNext(t *testing.T) {
 		router.Move(widget.Point{X: 5, Y: 5})
 		attempts := 0
 		tip := &tooltipCtl{}
-		tip.update(router, t0.Add(-time.Second), func(widget.Widget, string) tooltipWindow { return nil })
+		tip.update(router, t0.Add(-time.Second), func(widget.Widget, string) (tooltipWindow, *popup.Painter) { return nil, nil })
 		// The dwell has elapsed; the opener fails (no tooltip face,
 		// compositor rejection). The dwell clock must restart, or every
 		// loop iteration retries the open - once a live protocol-error
 		// storm against a compositor that kept rejecting the popup.
-		tip.update(router, t0, func(widget.Widget, string) tooltipWindow {
+		tip.update(router, t0, func(widget.Widget, string) (tooltipWindow, *popup.Painter) {
 			attempts++
-			return nil
+			return nil, nil
 		})
 		if attempts != 1 {
 			t.Fatalf("opener ran %d times, want 1", attempts)
 		}
-		tip.update(router, t0.Add(10*time.Millisecond), func(widget.Widget, string) tooltipWindow {
+		tip.update(router, t0.Add(10*time.Millisecond), func(widget.Widget, string) (tooltipWindow, *popup.Painter) {
 			attempts++
-			return nil
+			return nil, nil
 		})
 		if attempts != 1 {
 			t.Errorf("failed open retried after 10ms; want a full-delay back-off")

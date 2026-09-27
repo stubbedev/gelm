@@ -126,7 +126,7 @@ func TestToastHoverCancelsDismissal(t *testing.T) {
 	if !ok {
 		t.Fatal("unhovered toast armed no dismissal")
 	}
-	if want := t0.Add(5*time.Second + 500*time.Millisecond - toastExit); wake != want {
+	if want := t0.Add(5*time.Second + 500*time.Millisecond - toastPlan().Exit.Duration); wake != want {
 		t.Errorf("rearmed fade start = %v, want exactly %v", wake, want)
 	}
 	for c.step() {
@@ -148,7 +148,7 @@ func TestToastHoverRescuesMidExit(t *testing.T) {
 
 	toast.Dismiss()
 	// Halfway through the exit fade, hover snaps the card back.
-	for c.now().Sub(t0) < toastExit/2 {
+	for c.now().Sub(t0) < toastPlan().Exit.Duration/2 {
 		if !c.step() {
 			t.Fatal("exit fade scheduled no frame")
 		}

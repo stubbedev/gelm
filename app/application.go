@@ -20,6 +20,8 @@ import (
 	"github.com/stubbedev/gelm/internal/dragdrop"
 	"github.com/stubbedev/gelm/internal/inspect"
 	"github.com/stubbedev/gelm/internal/layersurface"
+	"github.com/stubbedev/gelm/internal/popup"
+	"github.com/stubbedev/gelm/internal/surfx"
 	"github.com/stubbedev/gelm/internal/window"
 	"github.com/stubbedev/gelm/internal/wlsession"
 	"github.com/stubbedev/gelm/render"
@@ -214,18 +216,20 @@ type LayerConfig struct {
 // adds it to the application. The window joins the loop on the next
 // Run iteration (or immediately when Run is already running).
 func (a *Application) NewWindow(cfg WindowConfig) (*Window, error) {
-	win, _, err := a.newWindowWindow(cfg)
+	win, err := a.newWindowWindow(cfg, surfx.KindMenu)
 	return win, err
 }
 
-// newWindowWindow creates the toplevel and its loop state.
-func (a *Application) newWindowWindow(cfg WindowConfig) (*Window, *hostWindow, error) {
+// newWindowWindow creates the toplevel and its loop state. animKind
+// is the surface-animation profile: KindMenu (zero) for plain
+// toplevels, which open and close instantly.
+func (a *Application) newWindowWindow(cfg WindowConfig, animKind surfx.Kind) (*Window, error) {
 	if a.sess.WmBase() == nil {
-		return nil, nil, errors.New("app: compositor has no xdg_wm_base; windows unsupported")
+		return nil, errors.New("app: compositor has no xdg_wm_base; windows unsupported")
 	}
 	surf, err := a.sess.Compositor().CreateSurface()
 	if err != nil {
-		return nil, nil, fmt.Errorf("app: create surface: %w", err)
+		return nil, fmt.Errorf("app: create surface: %w", err)
 	}
 	win, err := window.New(a.sess.WmBase(), surf, window.Config{
 		Title: cfg.Title, AppID: cfg.AppID, Width: cfg.Width, Height: cfg.Height,
@@ -233,7 +237,7 @@ func (a *Application) newWindowWindow(cfg WindowConfig) (*Window, *hostWindow, e
 		MaxWidth: cfg.MaxWidth, MaxHeight: cfg.MaxHeight,
 	})
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	scale := cfg.Scale
 	if scale == 0 {
@@ -246,12 +250,12 @@ func (a *Application) newWindowWindow(cfg WindowConfig) (*Window, *hostWindow, e
 		onPress:    cfg.OnPress,
 		onMove:     cfg.OnPointerMove,
 		onKey:      cfg.OnKey,
-	}, cfg.OnClosed)
+	}, cfg.OnClosed, animKind)
 	hw.win = w
 	if err := surf.Commit(); err != nil {
-		return nil, nil, fmt.Errorf("app: initial commit: %w", err)
+		return nil, fmt.Errorf("app: initial commit: %w", err)
 	}
-	return w, hw, nil
+	return w, nil
 }
 
 // NewLayer creates a layer surface from a declarative config — the
@@ -292,7 +296,7 @@ func (a *Application) NewLayer(cfg LayerConfig) (*LayerWindow, error) {
 		onPress:    cfg.OnPress,
 		onMove:     cfg.OnPointerMove,
 		onKey:      cfg.OnKey,
-	}, cfg.OnClosed)
+	}, cfg.OnClosed, surfx.KindOverlay)
 	// A rotated output's transform must be published before the first
 	// commit so the compositor maps the buffers correctly.
 	if cfg.Output != nil && cfg.Output.Transform != 0 && hw.sc != nil {
@@ -330,8 +334,12 @@ func (h *layerHost) Size() (int, int) {
 }
 
 // newWindow builds the loop state for one created host and joins it to
-// the application.
-func (a *Application) newWindow(host Host, scale int, root widget.Widget, hooks windowHooks, onClosed func()) *hostWindow {
+// the application. animKind picks the surface-animation profile:
+// surfx.KindMenu (the zero) means no window-level animation — plain
+// toplevels open and close instantly — while KindOverlay (layer
+// surfaces) and KindDialog get enter/exit tweens whose exit keeps the
+// loop alive until it lands.
+func (a *Application) newWindow(host Host, scale int, root widget.Widget, hooks windowHooks, onClosed func(), animKind surfx.Kind) *hostWindow {
 	hooks.onClosed = onClosed
 	// Every window's tree sits behind the inspector overlay. While it
 	// is off the overlay is pure passthrough (measure, arrange, hit
@@ -339,13 +347,26 @@ func (a *Application) newWindow(host Host, scale int, root widget.Widget, hooks 
 	// never changes layout or which widget input lands on.
 	ov := inspect.NewOverlay(root)
 	ov.SetOn(a.inspectOn)
-	w := newHostWindow(a.sess, host, scale, ov, hooks, a.dnd, a.primary)
+	w := newHostWindow(a.sess, host, scale, ov, hooks, a.dnd, a.primary, animKind, hostCloser(host))
 	ov.SetRouter(w.router)
 	w.inspector = ov
 	a.windows = append(a.windows, w)
 	// Wake the parked loop so a new window paints promptly.
 	a.sess.WakeAfter(0)
 	return w
+}
+
+// hostCloser returns the raw wire teardown for a host: the layer
+// surface's or the xdg toplevel's destroy, without the app-level
+// Window handle's animated-close logic (which would recurse).
+func hostCloser(host Host) func() {
+	switch h := host.(type) {
+	case *layerHost:
+		return h.ls.Close
+	case *window.Window:
+		return h.Close
+	}
+	return nil
 }
 
 // outputWire maps an application-level output to its wl_output; nil
@@ -424,6 +445,11 @@ func (a *Application) Run() error {
 
 		kept := a.windows[:0]
 		for _, w := range a.windows {
+			// A tween-frame kick from another loop's tick (a popup's
+			// nested Run) marks the window for repaint.
+			if w.kick.Swap(false) {
+				w.dirty = true
+			}
 			if w.host.Closed() {
 				// Stop the window's toast timers before the surface
 				// they paint on disappears.
@@ -454,6 +480,9 @@ func (a *Application) Run() error {
 				// Not configured yet; the configure event wakes the park.
 				continue
 			}
+			// Start the enter tween on the first usable pass, before the
+			// first draw, so the window's first frame sits at reveal 0.
+			w.enterIfDue()
 			// Draw when something changed: a configure-driven resize
 			// repaint always goes out (a pacing-gated one deadlocks,
 			// see shouldDraw), otherwise the frameOwed pacing decides:
@@ -503,22 +532,22 @@ func (a *Application) Run() error {
 // updateTips advances every window's tooltip state machine.
 func (a *Application) updateTips(now time.Time) {
 	for _, w := range a.windows {
-		w.tip.update(w.router, now, func(h widget.Widget, text string) tooltipWindow {
+		w.tip.update(w.router, now, func(h widget.Widget, text string) (tooltipWindow, *popup.Painter) {
 			if a.tooltipFace == nil {
-				return nil
+				return nil, nil
 			}
 			// A nil *popup.Popup must not be wrapped: the interface
 			// would carry a typed nil that the nil checks below let
 			// through to a dereference.
-			tp := openTooltip(w.sess, w.host, &Config{
+			tp, pc := openTooltip(w.sess, w.host, &Config{
 				Session:     w.sess,
 				Host:        w.host,
 				TooltipFace: a.tooltipFace,
 			}, w.frac120, int(w.input.x), int(w.input.y), text)
 			if tp == nil {
-				return nil
+				return nil, nil
 			}
-			return tp
+			return tp, pc
 		})
 	}
 }
@@ -602,6 +631,26 @@ func (a *Application) focused() *hostWindow {
 	return nil
 }
 
+// hostOf returns the loop state for a toplevel handle.
+func (a *Application) hostOf(w *Window) *hostWindow {
+	for _, hw := range a.windows {
+		if hw.win == w {
+			return hw
+		}
+	}
+	return nil
+}
+
+// hostOfLayer returns the loop state for a layer handle.
+func (a *Application) hostOfLayer(l *LayerWindow) *hostWindow {
+	for _, hw := range a.windows {
+		if lw, ok := hw.host.(*layerHost); ok && lw.ls == l.ls {
+			return hw
+		}
+	}
+	return nil
+}
+
 // Window is the application's handle on one toplevel window.
 type Window struct {
 	app    *Application
@@ -610,8 +659,18 @@ type Window struct {
 }
 
 // Close closes the window from the client side; the close-request veto
-// does not apply to explicit closes.
+// does not apply to explicit closes. Animated kinds (dialogs) run the
+// exit tween first: Closed flips immediately, input seals, and the
+// real destroy waits for the tween to land. Plain toplevels close on
+// the spot as before.
 func (w *Window) Close() {
+	if w.closed {
+		return
+	}
+	if hw := w.app.hostOf(w); hw != nil && hw.beginExit() {
+		w.closed = true
+		return
+	}
 	if w.win != nil {
 		w.win.Close()
 	}
@@ -656,8 +715,22 @@ type LayerWindow struct {
 	ls  *layersurface.Surface
 }
 
-// Close destroys the layer surface from the client side.
-func (l *LayerWindow) Close() { l.ls.Close() }
+// Close closes the layer surface from the client side: the exit tween
+// runs first — the launcher/panel-reveal fade-out — with the loop kept
+// alive and event-driven until it lands, then the real destroy.
+func (l *LayerWindow) Close() {
+	if hw := l.app.hostOfLayer(l); hw != nil && hw.beginExit() {
+		return
+	}
+	l.ls.Close()
+}
 
 // Closed reports whether the compositor or client closed the surface.
-func (l *LayerWindow) Closed() bool { return l.ls.Closed() }
+// A surface running its exit tween reads closed here (the logical
+// state flipped at Close) while its last frames still paint.
+func (l *LayerWindow) Closed() bool {
+	if hw := l.app.hostOfLayer(l); hw != nil && hw.exiting {
+		return true
+	}
+	return l.ls.Closed()
+}

@@ -208,7 +208,11 @@ func (a *Application) OpenPopover(host Host, cfg PopoverConfig) (*Popover, error
 	if err != nil {
 		return nil, err
 	}
-	p.closeFn = pop.Close
+	// Dismiss, not Close: the programmatic path takes the same two-
+	// phase route as outside-clicks and Esc — input seals, OnClosed
+	// fires, and the surface runs its exit tween before the wire
+	// teardown.
+	p.closeFn = pop.Dismiss
 	fireClosed := func() {
 		if p.markClosed() && cfg.OnClosed != nil {
 			cfg.OnClosed()

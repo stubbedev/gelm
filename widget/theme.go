@@ -44,6 +44,12 @@ type Theme struct {
 	Padding int
 	// TextSize is the default label size in pixels.
 	TextSize float64
+	// Animations gates the animated enter/exit (and open/reveal) motion:
+	// surface tweens, toast slides, dropdown lists. False collapses the
+	// durations to zero — the reduced-motion switch beside
+	// GELM_NO_ANIM=1 and surfx.SetEnabled(false); state machines run
+	// unchanged, only the motion goes away.
+	Animations bool
 }
 
 // Color aliases render.Color so themes read naturally without importing
@@ -97,6 +103,7 @@ func DarkTheme() *Theme {
 		Spacing:        8,
 		Padding:        8,
 		TextSize:       14,
+		Animations:     true,
 	}
 }
 
@@ -116,6 +123,7 @@ func LightTheme() *Theme {
 		Spacing:        8,
 		Padding:        8,
 		TextSize:       14,
+		Animations:     true,
 	}
 }
 
@@ -198,6 +206,12 @@ func (t *Theme) WithPadding(px int) *Theme { return t.with(func(n *Theme) { n.Pa
 
 // WithTextSize returns a copy with the default label size set.
 func (t *Theme) WithTextSize(px float64) *Theme { return t.with(func(n *Theme) { n.TextSize = px }) }
+
+// WithAnimations returns a copy with the animated-motion gate set;
+// false is the theme-level reduced-motion switch (see Animations).
+func (t *Theme) WithAnimations(on bool) *Theme {
+	return t.with(func(n *Theme) { n.Animations = on })
+}
 
 // Derived state colors. The presets pin explicit shades; themes
 // composed from scratch get the same states by derivation, so widgets

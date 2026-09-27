@@ -4,16 +4,16 @@ import (
 	"time"
 
 	"github.com/stubbedev/gelm/internal/anim"
+	"github.com/stubbedev/gelm/internal/surfx"
 	"github.com/stubbedev/gelm/render"
 )
 
 const (
-	// toastEnter/toastExit pace the slide-and-fade entrance and the
-	// exit fade; toastSlide is the entrance rise in pixels, masked to
-	// the card's own bounds so the motion stays inside its damage
-	// rect.
-	toastEnter = 180 * time.Millisecond
-	toastExit  = 160 * time.Millisecond
+	// toastSlide is the entrance rise in pixels, masked to the card's
+	// own bounds so the motion stays inside its damage rect. The
+	// enter/exit durations and curves come from the surfx per-kind
+	// table (KindToast), so overrides and the reduced-motion switches
+	// apply to toasts like every other surface.
 	toastSlide = 12
 	// toastPadX/toastPadY inset the card's content; toastGap separates
 	// text from the action button, whose own insets follow.
@@ -131,6 +131,11 @@ func (t *Toast) HoverMove(p Point) {
 	t.Invalidate()
 }
 
+// toastPlan resolves the toast kind's tween profile: the surfx table
+// gated by the theme's motion switch (the package toggle and anim's
+// reduced-motion state fold in inside Plan).
+func toastPlan() surfx.Style { return surfx.Plan(surfx.KindToast, Current().Animations) }
+
 // armTimer schedules the exit: hold for the timeout minus the fade,
 // then fade out. It launches only on a visible toast — a hidden one
 // holds no timer.
@@ -139,10 +144,11 @@ func (t *Toast) armTimer() {
 		return
 	}
 	t.stopTimer()
-	fade := min(toastExit, t.timeout)
+	st := toastPlan()
+	fade := min(st.Exit.Duration, t.timeout)
 	t.cancelTimer = anim.Play(
 		anim.Delay(t.timeout-fade),
-		anim.Animate(fade, t.fadeOut).Easing(anim.Linear),
+		anim.Animate(fade, t.fadeOut).Easing(st.Exit.Easing),
 	)
 }
 
@@ -204,7 +210,8 @@ func (t *Toast) Dismiss() {
 	}
 	t.leaving = true
 	t.stopTimer()
-	t.cancelTimer = anim.Play(anim.Animate(toastExit, t.fadeOut).Easing(anim.Linear))
+	st := toastPlan()
+	t.cancelTimer = anim.Play(anim.Animate(st.Exit.Duration, t.fadeOut).Easing(st.Exit.Easing))
 }
 
 // Close tears the toast down without a fade and without firing
@@ -234,10 +241,11 @@ func (t *Toast) Arrange(r render.Rect) {
 		t.stopSlide()
 		t.stopTimer()
 		t.progress = 0
-		t.cancelSlide = anim.Play(anim.Animate(toastEnter, func(p float64) {
+		st := toastPlan()
+		t.cancelSlide = anim.Play(anim.Animate(st.Enter.Duration, func(p float64) {
 			t.progress = min(p, 1)
 			t.Invalidate()
-		}))
+		}).Easing(st.Enter.Easing))
 		t.armTimer()
 	default:
 		// Out of the tree (or already gone): hold nothing.

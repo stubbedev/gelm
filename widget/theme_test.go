@@ -105,6 +105,7 @@ func TestThemePresetsPinned(t *testing.T) {
 		Spacing:        8,
 		Padding:        8,
 		TextSize:       14,
+		Animations:     true,
 	}
 	wantLight := Theme{
 		Bg:             render.RGB(0xEF, 0xF1, 0xF5),
@@ -120,6 +121,7 @@ func TestThemePresetsPinned(t *testing.T) {
 		Spacing:        8,
 		Padding:        8,
 		TextSize:       14,
+		Animations:     true,
 	}
 	if !reflect.DeepEqual(*dark, wantDark) {
 		t.Errorf("DarkTheme drifted: %+v", *dark)

@@ -13,6 +13,7 @@
 package anim
 
 import (
+	"os"
 	"sync"
 	"time"
 )
@@ -22,6 +23,33 @@ import (
 // (occluded surface), and the deadline granularity of Next while a
 // tween is mid-flight.
 const FrameInterval = time.Second / 60
+
+// instant collapses every tween to its end state: launches deliver
+// fn(1) immediately and hold no schedule. It is the reduced-motion
+// escape hatch — GELM_NO_ANIM=1 in the environment, or SetInstant from
+// code. Delays keep their durations (a toast still waits out its
+// timeout), so behavior keeps its timing skeleton and only the motion
+// goes away. The state machines driving the tweens run unchanged —
+// the same code path, just instant.
+var instant = os.Getenv("GELM_NO_ANIM") == "1"
+
+// Instant reports whether tweens currently collapse to their end state.
+func Instant() bool { return instant }
+
+// SetInstant turns the reduced-motion collapse on or off and returns
+// the restore function. Already-running tweens keep their schedules;
+// only launches after the call are affected.
+func SetInstant(on bool) (restore func()) {
+	mu.Lock()
+	old := instant
+	instant = on
+	mu.Unlock()
+	return func() {
+		mu.Lock()
+		instant = old
+		mu.Unlock()
+	}
+}
 
 // clock is the time source for launches and deadlines; tests pin it to
 // make tick schedules exact. Tick takes its instant explicitly, so a
@@ -189,6 +217,9 @@ func Play(steps ...Step) Cancel {
 	for _, it := range items {
 		if it.fn == nil {
 			continue
+		}
+		if instant {
+			it.dur = 0 // reduced motion: the tween lands at launch
 		}
 		if it.dur <= 0 {
 			it.fn(1) // a zero-duration tween delivers its end state once

@@ -1,12 +1,19 @@
 package widget
 
 import (
+	"github.com/stubbedev/gelm/internal/anim"
+	"github.com/stubbedev/gelm/internal/surfx"
 	"github.com/stubbedev/gelm/render"
 )
 
-// dropdownMaxListH caps the open item list's height; taller lists clip
-// (the app caps popovers at the same 600px).
-const dropdownMaxListH = 600
+const (
+	// dropdownMaxListH caps the open item list's height; taller lists clip
+	// (the app caps popovers at the same 600px).
+	dropdownMaxListH = 600
+	// dropdownSlide is how far the list rises into place over the open
+	// tween (and falls back on close), masked to the list's own bounds.
+	dropdownSlide = 10
+)
 
 // Dropdown is a combobox: a closed face showing the current selection
 // that expands into a themed list of items beneath it.
@@ -43,6 +50,15 @@ type Dropdown struct {
 	open    bool
 	hovered bool
 	enabled bool
+
+	// reveal is the open/close tween's progress: the list fades and
+	// rises into place on open, and on close stays painted (closing)
+	// until the exit tween lands, then detaches. listRect is the rest
+	// rect the tween's slide is masked to.
+	reveal       float64
+	closing      bool
+	listRect     render.Rect
+	cancelReveal anim.Cancel
 
 	// OnSelect fires exactly once per selection change, whatever
 	// produced it: a click, Enter, or SetSelected. Re-picking the
@@ -140,8 +156,10 @@ func (d *Dropdown) list() *Menu {
 }
 
 // Open shows the item list beneath the face, highlighted on the
-// current selection. A disabled dropdown, an empty one, and one with
-// no face stay closed.
+// current selection, with the kind's reveal tween: the first frame is
+// hidden and offset toward the face — never a flash of the open list —
+// and the tween raises it to rest. A disabled dropdown, an empty one,
+// and one with no face stay closed.
 func (d *Dropdown) Open() {
 	if d.open || !d.enabled || len(d.items) == 0 {
 		return
@@ -152,34 +170,87 @@ func (d *Dropdown) Open() {
 	}
 	d.open = true
 	m.hovered = d.selected
+	d.playReveal(true)
 	d.arrangeList()
 	m.Invalidate()
 	d.Invalidate()
 }
 
-// Close hides the item list without touching the selection; the list's
-// pixels are invalidated as an extra rect, because the damage walk no
-// longer descends into the unexposed child.
+// Close starts hiding the item list. The list keeps painting (fading,
+// sliding back toward the face) until the exit tween lands, then
+// detaches; its pixels are invalidated as an extra rect, both now and
+// per tween frame, because the damage walk no longer descends into the
+// unexposed child.
 func (d *Dropdown) Close() {
-	if !d.open {
+	if !d.open || d.closing {
 		return
 	}
+	d.closing = true
+	d.InvalidateRect(d.listRect)
+	d.Invalidate()
+	d.playReveal(false)
+}
+
+// finishClose detaches the list after the exit tween landed.
+func (d *Dropdown) finishClose() {
+	d.closing = false
 	d.open = false
-	d.InvalidateRect(d.menu.Bounds())
+	d.reveal = 0
+	d.cancelReveal = nil
+	if d.menu != nil {
+		d.InvalidateRect(d.listRect)
+	}
 	d.Invalidate()
 }
 
+// playReveal runs one reveal tween: rising on open (from the current
+// reveal, so re-opening mid-close does not blink), falling on close,
+// landing in finishClose. Reduced motion collapses both to their end
+// state inside Play — close detaches synchronously, exactly like the
+// pre-tween code path.
+func (d *Dropdown) playReveal(rising bool) {
+	st := surfx.Plan(surfx.KindDropdown, Current().Animations)
+	spec := st.Enter
+	if !rising {
+		spec = st.Exit
+	}
+	start := d.reveal
+	if d.cancelReveal != nil {
+		d.cancelReveal()
+	}
+	d.cancelReveal = anim.Play(anim.Animate(spec.Duration, func(p float64) {
+		if rising {
+			d.reveal = start + (1-start)*p
+		} else {
+			d.reveal = start * (1 - p)
+		}
+		// The slide lives in the arrangement (the menu's rect shifts
+		// toward the face); re-place it per frame so the tween lands at
+		// rest — the exact rest rect — when the reveal hits 1.
+		d.arrangeList()
+		d.InvalidateRect(d.listRect)
+		d.Invalidate()
+		if !rising && p >= 1 {
+			d.finishClose()
+		}
+	}).Easing(spec.Easing))
+}
+
 // arrangeList places the item menu directly below the face, at least
-// as wide as the face and capped in height.
+// as wide as the face and capped in height, shifted toward the face by
+// the unrevealed fraction of the slide (the tween's motion, masked to
+// the rest rect at paint time).
 func (d *Dropdown) arrangeList() {
 	m := d.menu
 	nat := m.Measure(Constraints{Max: Size{W: 1 << 24, H: dropdownMaxListH}})
-	m.Arrange(render.Rect{
+	d.listRect = render.Rect{
 		X: d.bounds.X,
 		Y: d.bounds.Y + d.bounds.H,
 		W: max(d.bounds.W, nat.W),
 		H: nat.H,
-	})
+	}
+	dy := int((1 - d.reveal) * dropdownSlide)
+	m.Arrange(render.Rect{X: d.listRect.X, Y: d.listRect.Y - dy, W: d.listRect.W, H: d.listRect.H})
 	setParents(d, m)
 }
 
@@ -203,8 +274,8 @@ func (d *Dropdown) Measure(con Constraints) Size {
 	return d.measureStore(con, clampSize(Size{W: w, H: h}, con))
 }
 
-// Arrange records the face's rect and, while open, keeps the list
-// pinned beneath it.
+// Arrange records the face's rect and, while the list shows (including
+// a close tween in flight), keeps it pinned beneath the face.
 func (d *Dropdown) Arrange(r render.Rect) {
 	d.node.Arrange(r)
 	if d.open {
@@ -240,7 +311,22 @@ func (d *Dropdown) Paint(cv *render.Canvas) {
 	cv.Line(cx, cy+2, cx+4, cy-2, 1, col)
 
 	if d.open {
-		d.menu.Paint(cv)
+		// The tween's slide is masked to the list's rest rect: the
+		// shifted rows that would paint above it are clipped away, and
+		// the fade rides the menu's own colors through PushAlpha.
+		reveal := min(max(d.reveal, 0), 1)
+		switch reveal {
+		case 1:
+			d.menu.Paint(cv)
+		case 0:
+			// Hidden: paint nothing (the skip proof's zero fast path).
+		default:
+			prev := cv.PushClip(d.listRect)
+			alpha := cv.PushAlpha(reveal)
+			d.menu.Paint(cv)
+			cv.PopAlpha(alpha)
+			cv.PopClip(prev)
+		}
 	}
 }
 
@@ -269,9 +355,16 @@ func (d *Dropdown) Children() []Widget {
 }
 
 // ClickAt toggles the list; the Router invokes it when a press and
-// release land on the face. Presses on the list go to the list.
+// release land on the face. Presses on the list go to the list. A face
+// click mid-close-tween reverses the close: the reveal rises from its
+// current fraction, no blink to zero.
 func (d *Dropdown) ClickAt(Point) {
 	if !d.enabled {
+		return
+	}
+	if d.closing {
+		d.closing = false
+		d.playReveal(true)
 		return
 	}
 	if d.open {

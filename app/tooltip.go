@@ -5,12 +5,10 @@ import (
 
 	"github.com/neurlang/wayland/xdg"
 
-	"github.com/stubbedev/gelm/internal/buffer"
 	"github.com/stubbedev/gelm/internal/debug"
 	"github.com/stubbedev/gelm/internal/popup"
-	"github.com/stubbedev/gelm/internal/scale"
+	"github.com/stubbedev/gelm/internal/surfx"
 	"github.com/stubbedev/gelm/internal/wlsession"
-	"github.com/stubbedev/gelm/render"
 	"github.com/stubbedev/gelm/widget"
 )
 
@@ -44,17 +42,24 @@ type tooltipSurfacer interface {
 }
 
 // tooltipWindow is the slice of a popup the tooltip state machine
-// needs; real popups and tests both satisfy it.
+// needs; real popups and tests both satisfy it. Dismissed — not a
+// closed/destroyed flag — is what drops the reference: a tooltip
+// running its exit tween is logically gone, so the next dwell may open
+// a new one while the old surface is still fading out.
 type tooltipWindow interface {
-	Closed() bool
-	Close()
+	Dismissed() bool
+	Dismiss()
 }
 
-// tooltipCtl tracks the hover dwell and the one open tooltip.
+// tooltipCtl tracks the hover dwell and the one open tooltip. The
+// open tooltip's painter is driven by the application loop (one Pass
+// per loop pass): tooltips must never run their own dispatcher — one
+// event-loop goroutine owns the connection.
 type tooltipCtl struct {
-	open  tooltipWindow
-	hover widget.Widget
-	since time.Time
+	open    tooltipWindow
+	painter *popup.Painter
+	hover   widget.Widget
+	since   time.Time
 }
 
 // next returns when a pending tooltip could open: a hovered widget
@@ -80,10 +85,11 @@ func hoverTooltipText(h widget.Widget) string {
 }
 
 // update advances the tooltip state to now: reset the dwell on hover
-// change, close stale tooltips, open a due one through opener.
-func (t *tooltipCtl) update(router *widget.Router, now time.Time, opener func(widget.Widget, string) tooltipWindow) {
-	if t.open != nil && t.open.Closed() {
-		t.open = nil
+// change, dismiss stale tooltips, open a due one through opener, and
+// paint the open tooltip's tween frames.
+func (t *tooltipCtl) update(router *widget.Router, now time.Time, opener func(widget.Widget, string) (tooltipWindow, *popup.Painter)) {
+	if t.open != nil && t.open.Dismissed() {
+		t.open, t.painter = nil, nil
 	}
 	h := router.Hovered()
 	text := hoverTooltipText(h)
@@ -92,18 +98,25 @@ func (t *tooltipCtl) update(router *widget.Router, now time.Time, opener func(wi
 		t.hover, t.since = h, now
 	}
 	if tooltipShouldClose(t.open != nil, changed, text != "") {
+		// Traced as "tooltip closed": the headless harness waits on it.
 		debug.Log("input", "tooltip closed")
-		t.open.Close()
-		t.open = nil
+		t.open.Dismiss()
+		t.open, t.painter = nil, nil
 	}
 	if tooltipShouldOpen(t.open != nil, h, text, t.since, now) {
-		if p := opener(h, text); p != nil {
-			t.open = p
+		if p, pc := opener(h, text); p != nil {
+			t.open, t.painter = p, pc
 		}
 		// Advance the dwell clock even when the open failed, so a
 		// tooltip that cannot open (host without a face, compositor
 		// rejection) retries after a full delay instead of every loop.
 		t.since = now
+	}
+	if t.painter != nil {
+		if _, err := t.painter.Pass(); err != nil {
+			debug.Log("frame", "tooltip paint: %v", err)
+			t.painter = nil
+		}
 	}
 }
 
@@ -116,14 +129,18 @@ func cursorFor(hover widget.Widget) string {
 	return ""
 }
 
-// openTooltip maps a one-shot painted popup at the pointer. The popup
-// surface scales with the host window: frac120 is the window's current
-// 120-based device scale.
-func openTooltip(sess *wlsession.Session, host Host, cfg *Config, frac120 uint32, pointerX, pointerY int, text string) *popup.Popup {
+// openTooltip maps a tooltip popup at the pointer. The popup surface
+// scales with the host window: frac120 is the window's current
+// 120-based device scale. Frames are painted by the application loop
+// through the returned Painter — the enter fade, the rest state, and
+// the exit fade all repaint through the same tween machinery menus
+// use, without a second wayland dispatcher. Tooltips are ungrabbed
+// (NoGrab), so the fades never hold input hostage.
+func openTooltip(sess *wlsession.Session, host Host, cfg *Config, frac120 uint32, pointerX, pointerY int, text string) (*popup.Popup, *popup.Painter) {
 	ts, ok := host.(tooltipSurfacer)
 	if !ok || cfg.TooltipFace == nil {
 		debug.Log("input", "tooltip unavailable: host %T or nil face", host)
-		return nil
+		return nil, nil
 	}
 	lbl := widget.NewLabel(cfg.TooltipFace, text, 12, widget.Current().Text)
 	box := widget.NewBox(widget.Row, 0, 8)
@@ -135,56 +152,19 @@ func openTooltip(sess *wlsession.Session, host Host, cfg *Config, frac120 uint32
 		Y:      pointerY + tooltipOffsetY,
 		Width:  size.W, Height: size.H,
 		NoGrab: true,
+		Kind:   surfx.KindTooltip,
 	})
 	if err != nil {
 		debug.Log("input", "tooltip popup: %v", err)
-		return nil
+		return nil, nil
 	}
 	// Tooltips are pure display: an empty input region keeps the
 	// compositor from ever routing the pointer to the popup, which
-	// would steal clicks from the window beneath.
-	region, err := sess.Compositor().CreateRegion()
-	if err == nil {
-		_ = region.Add(0, 0, 0, 0)
-		_ = tp.HostSurface().SetInputRegion(region)
-		_ = region.Destroy()
-		// The input region is double-buffered: commit to apply.
-		_ = tp.HostSurface().Commit()
-	}
-	w, h := tp.Size()
-	box.Measure(widget.Constraints{Max: widget.Size{W: w, H: h}})
-	box.Arrange(render.Rect{X: 0, Y: 0, W: w, H: h})
-	// Reuse the popup's controller: a second scale.New on this surface
-	// would create a second wp_viewport, a fatal protocol error.
-	sc := tp.Scale()
-	_ = sc.Apply(frac120, w, h)
-	b, err := buffer.NewFile(sess.Shm(),
-		scale.DeviceSize(w, frac120), scale.DeviceSize(h, frac120), scale.IntegerScale(frac120))
-	if err != nil {
-		tp.Close()
-		return nil
-	}
-	cv := render.NewScaled(b.Data, b.Stride, b.Width, b.Height, int(frac120), scale.Denom)
-	cv.ClearDevice(cv.Rect(), widget.Current().Surface)
-	box.Paint(cv)
-	surf := tp.HostSurface()
-	if err := surf.Attach(b.WL, 0, 0); err != nil {
-		buffer.Cancel(b)
-		tp.Close()
-		return nil
-	}
-	if err := surf.DamageBuffer(0, 0, int32(b.Width), int32(b.Height)); err != nil {
-		buffer.Cancel(b)
-		tp.Close()
-		return nil
-	}
-	if err := surf.Commit(); err != nil {
-		buffer.Cancel(b)
-		tp.Close()
-		return nil
-	}
-	// One-shot: the commit was the buffer's only user. Its arena slot
-	// returns when the compositor releases the buffer.
+	// would steal clicks from the window beneath. Sealed once at open;
+	// the state machine re-seals on dismissal, and later commits keep
+	// the region (double-buffered state persists until changed).
+	tp.SealInput()
+	painter := tp.NewPainter(sess, frac120, box, widget.Current().Surface)
 	debug.Log("input", "tooltip open %q at (%d,%d)", text, pointerX, pointerY)
-	return tp
+	return tp, painter
 }
