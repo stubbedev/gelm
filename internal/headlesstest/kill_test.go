@@ -17,7 +17,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -33,11 +32,15 @@ import (
 // detection itself.
 const killTimeout = 30 * time.Second
 
-// killTree SIGKILLs pid and every descendant, read from procfs: the
-// compositor tree is sway plus whatever it forked (swaybg, a wrapped
-// self), and a survivor keeps the display socket open past the kill.
-func killTree(pid int) {
-	children := map[int][]int{}
+// killCompositor SIGKILLs every process serving this test env's sway
+// config, plus the recorded pid: on some environments the recorded pid
+// daemonizes - a parent that forks the real compositor and exits - so
+// by kill time the pid file is stale and the socket holder's only
+// reliable trace is the config path in its cmdline. A tree walk from a
+// dead parent finds nothing; a cmdline scan finds whatever shape the
+// fork took.
+func killCompositor() {
+	pattern := testEnv.Dir + "/sway.cfg"
 	entries, err := os.ReadDir("/proc")
 	if err != nil {
 		return
@@ -46,42 +49,14 @@ func killTree(pid int) {
 		if !e.IsDir() || !isDigits(e.Name()) {
 			continue
 		}
-		stat, err := os.ReadFile("/proc/" + e.Name() + "/stat")
-		if err != nil {
+		cmd, err := os.ReadFile("/proc/" + e.Name() + "/cmdline")
+		if err != nil || !strings.Contains(string(cmd), pattern) {
 			continue
 		}
-		// The comm field can contain spaces; everything after its
-		// closing paren is fixed-format, and the fourth field is ppid.
-		rest, ok := strings.CutPrefix(string(stat), ") ")
-		if !ok {
-			continue
+		p, err := strconv.Atoi(e.Name())
+		if err == nil {
+			_ = syscall.Kill(p, syscall.SIGKILL)
 		}
-		fields := strings.Fields(rest)
-		if len(fields) < 2 {
-			continue
-		}
-		ppid, err := strconv.Atoi(fields[1])
-		if err != nil {
-			continue
-		}
-		self, err := strconv.Atoi(e.Name())
-		if err != nil {
-			continue
-		}
-		children[ppid] = append(children[ppid], self)
-	}
-	pending := []int{pid}
-	var order []int
-	for len(pending) > 0 {
-		current := pending[0]
-		pending = pending[1:]
-		order = append(order, current)
-		pending = append(pending, children[current]...)
-	}
-	// Kill deepest first and the recorded pid last: the walk above ran
-	// while the parent was still alive, so nothing has reparented yet.
-	for _, p := range slices.Backward(order) {
-		_ = syscall.Kill(p, syscall.SIGKILL)
 	}
 }
 
@@ -222,14 +197,11 @@ func TestHeadlessCompositorKillExitsCleanly(t *testing.T) {
 	if err != nil {
 		t.Fatalf("bad compositor pid %q: %v", data, err)
 	}
-	// The recorded pid is not always the socket holder: some setups wrap
-	// sway in a parent that forks the real compositor, and killing only
-	// the parent orphans the child still holding the display socket -
-	// the client would wait forever for an EOF that never comes. Snapshot
-	// and kill the whole tree, descendants before the parent: once the
-	// parent dies the children reparent to init and a walk would find
-	// nothing under it.
-	killTree(pid)
+	// The compositor is whatever serves this env's config: the recorded
+	// pid may be a daemonizing parent that exited long before the kill,
+	// with the real socket holder forked off and reparented to init.
+	// Kill by the config path every candidate carries in its cmdline.
+	killCompositor()
 
 	// The client must exit on its own — the zombie scenario this issue
 	// kills is a client that parks forever on a dead fd.
