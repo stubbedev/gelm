@@ -19,7 +19,10 @@ clock. Theming is a composable palette value (`widget.SetTheme`,
 chaining, dark and light presets); state shades derive from the
 palette and there is no CSS engine and deliberately no per-widget
 theme overrides (see [docs/architecture.md](docs/architecture.md),
-"Theming").
+"Theming"). The system's dark/light preference is available as a
+signal, not an automatic switch: `internal/appearance` watches
+xdg-desktop-portal's `color-scheme` (pure Go, no cgo) and the app
+wires it to `SetTheme` — see [docs/appearance.md](docs/appearance.md).
 
 ## Feature matrix
 
@@ -78,6 +81,7 @@ deliberate non-goals and the honest, deferred gaps — lives in
 | Translucent surfaces | done | `Background` alpha < 255 composites for compositor blur (Hyprland blurs translucent layer surfaces; panels keep alpha ≈ 200–235); a fully opaque background sets `wl_surface.set_opaque_region` automatically — see [docs/architecture.md](docs/architecture.md), rule 13 |
 | Accessibility | decision | semantic roles + `DescribeTree`, keyboard-first guarantee pinned by tests; **no in-process AT-SPI** — see [docs/a11y.md](docs/a11y.md) |
 | Icon themes | done | freedesktop icon-theme spec lookup in pure Go; explicit theme switches (no live xsettings signal) — see [docs/icons.md](docs/icons.md) |
+| System dark/light preference | done | `internal/appearance` watches xdg-desktop-portal `color-scheme` via godbus (pure Go); reports `Dark`/`Light`/`Unknown` + `OnChange` — the app wires it to `widget.SetTheme`, gelm never switches on its own — see [docs/appearance.md](docs/appearance.md) |
 
 The rules that keep all of this correct — the parked loop, the
 resize-before-acquire ordering, buffer staleness, the shared line
@@ -221,6 +225,7 @@ ends the loop. This exact program is kept compiling (and honest) as
 | [docs/application-model.md](docs/application-model.md) | many windows on one loop; relm4/GTK concept mapping |
 | [docs/threading.md](docs/threading.md) | the threading contract: `app.Invoke`, `app.Every`, goroutine rules, and the relm4 Component/Worker/Command/Factory mapping |
 | [docs/a11y.md](docs/a11y.md) | the accessibility decision and the recorded AT-SPI path |
+| [docs/appearance.md](docs/appearance.md) | following the system dark/light preference via xdg-desktop-portal, and the wiring example |
 | [docs/icons.md](docs/icons.md) | icon theme lookup and symbolic recoloring |
 | [docs/completeness.md](docs/completeness.md) | the relm4/GTK coverage map: shipped, deliberate non-goals, known gaps |
 
@@ -248,6 +253,9 @@ All pure Go, no cgo:
 
 - [neurlang/wayland](https://github.com/neurlang/wayland) — Wayland
   client, event loop, and protocol scanner
+- [godbus/dbus/v5](https://github.com/godbus/dbus) — session-bus
+  access for `internal/appearance` (the system dark/light preference;
+  #53 sanctions this one, the a11y decision does not apply)
 - [go-text/typesetting](https://github.com/go-text/typesetting) —
   Harfbuzz-grade shaping and glyph outlines
 - [golang.org/x/image](https://pkg.go.dev/golang.org/x/image) — vector

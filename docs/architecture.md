@@ -7,7 +7,8 @@ pins live. Companion documents: [input-model.md](input-model.md) (the
 input contract), [application-model.md](application-model.md) (many
 windows, one process), [threading.md](threading.md) (the goroutine
 rules and `Invoke`/`Every`), [a11y.md](a11y.md), [icons.md](icons.md),
-and [completeness.md](completeness.md) (the relm4/GTK coverage map).
+[appearance.md](appearance.md) (the system dark/light preference), and
+[completeness.md](completeness.md) (the relm4/GTK coverage map).
 
 ## Layers
 
@@ -330,9 +331,12 @@ out of prod builds with the rest of the trace facility.
 - **No in-process AT-SPI** — semantic roles and a keyboard-first
   guarantee ship instead; the decision and the integration path are
   recorded in docs/a11y.md.
-- **No live theme-change signal** — following the desktop setting
-  would pull xsettings in as a dependency; theme switches are explicit
-  (docs/icons.md).
+- **No automatic theme switching** — the toolkit never flips its own
+  palette, not even on a system dark/light change. The preference is
+  observed and offered as a signal instead (`internal/appearance`,
+  xdg-desktop-portal's color-scheme over dbus); the app wires it to
+  `SetTheme` if it wants to follow (docs/appearance.md). Theme
+  switches remain explicit.
 - **No per-widget theme overrides** — a widget carries explicit colors
   at most; restyling flows from the palette down. The reasoning and
   the derivation rules live in the theming section above.
