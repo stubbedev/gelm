@@ -23,6 +23,11 @@ type primarySelection struct {
 // pasteAt reads the primary selection into the text widget under the
 // pointer — else the keyboard-focused one — inserting at its caret.
 // Reports whether something was pasted.
+//
+// Every error rejects the paste, the same contract as the keyboard
+// paste path (pasteSelection in app.go): a hostile peer — a payload
+// past xfer.MaxPayload, or one that stalls past the transfer deadline
+// — simply pastes nothing today.
 func (p *primarySelection) pasteAt(router *widget.Router) bool {
 	if p == nil || p.src == nil {
 		return false

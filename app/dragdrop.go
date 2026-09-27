@@ -155,7 +155,9 @@ func (in *surfaceInput) DragLeave() {
 // Drop implements dragdrop.Target: fetch the payload for the accepted
 // mime and hand it to the widget. Same-process drops resolve inside
 // ReadPayload without touching the wire; cross-process ones go through
-// the offer pipe.
+// the offer pipe. Every ReadPayload error rejects the drop — past
+// xfer.MaxPayload or stalled past the transfer deadline, the payload
+// is refused (and traced), never handed to the widget truncated.
 func (in *surfaceInput) Drop(x, y float64) {
 	if in.dropInput() {
 		return

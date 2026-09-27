@@ -1,7 +1,10 @@
 // Package clipboard implements text copy and paste over the core
 // wl_data_device protocol and, when the compositor offers it, the
 // zwp_primary_selection_unstable_v1 protocol: the offer pipeline for
-// reading a selection, and data sources for claiming either.
+// reading a selection, and data sources for claiming either. The other
+// end of every transfer is a foreign client, so reads and writes are
+// bounded in size and time through internal/xfer — a hostile peer can
+// cost an error on a paste, never unbounded memory or a hung loop.
 package clipboard
 
 import (
@@ -12,7 +15,9 @@ import (
 
 	"github.com/neurlang/wayland/wl"
 
+	"github.com/stubbedev/gelm/internal/debug"
 	"github.com/stubbedev/gelm/internal/wlsession"
+	"github.com/stubbedev/gelm/internal/xfer"
 	"github.com/stubbedev/gelm/wlr"
 )
 
@@ -30,6 +35,12 @@ var mimePriority = []string{
 // ErrUnavailable reports that there is no selection or none in a text
 // format we can read.
 var ErrUnavailable = errors.New("clipboard: no text selection available")
+
+// transferTimeout bounds one offer read or source write against a
+// peer that stalls (a var so tests can shorten it): a silent peer is
+// cut off with an error instead of hanging a paste, and a consumer
+// that stops reading cannot freeze the dispatch loop.
+var transferTimeout = xfer.DefaultTimeout
 
 // pickTextMime returns the best text mime type among those present,
 // or "" when none qualify.
@@ -167,10 +178,13 @@ func (c *Clipboard) HandleZwpPrimarySelectionDeviceV1Selection(ev wlr.ZwpPrimary
 }
 
 // readOfferText drains a selection offer through a pipe: receive
-// starts the transfer on the write end, a roundtrip flushes the
-// request so the compositor dups the fd, and dropping our write end
-// yields EOF at the sender's last byte.
-func (c *Clipboard) readOfferText(receive func(string, uintptr) error, mimes map[string]bool) (string, error) {
+// starts the transfer on the write end, flush is a roundtrip so the
+// compositor dups the fd, and dropping our write end yields EOF at the
+// sender's last byte. The transfer itself is bounded against hostile
+// peers by xfer: capped at MaxPayload and cut off by the deadline,
+// with the fd drained and closed either way so the peer's pipe never
+// blocks forever.
+func (c *Clipboard) readOfferText(receive func(string, uintptr) error, flush func() error, mimes map[string]bool) (string, error) {
 	if len(mimes) == 0 {
 		return "", ErrUnavailable
 	}
@@ -189,36 +203,46 @@ func (c *Clipboard) readOfferText(receive func(string, uintptr) error, mimes map
 	// Flush the request so the compositor dups the fd before we drop
 	// our write end; dropping it is what eventually yields EOF. The
 	// close error carries no signal we could act on.
-	if err := c.sess.Roundtrip(); err != nil {
+	if err := flush(); err != nil {
 		return "", fmt.Errorf("clipboard: flush: %w", err)
 	}
 	_ = w.Close()
 
-	data, err := io.ReadAll(r)
+	data, err := xfer.Read(r, xfer.MaxPayload, transferTimeout)
 	if err != nil {
-		return "", fmt.Errorf("clipboard: read: %w", err)
+		// An oversize or stalled peer lands here: the payload is
+		// refused whole, and the fd has been drained and closed, so
+		// the peer is not left blocked on the pipe.
+		return "", fmt.Errorf("clipboard: transfer: %w", err)
 	}
 	return string(data), nil
 }
 
 // ReadText returns the current selection as text, blocking until the
 // compositor delivers it. Errors with ErrUnavailable when there is
-// nothing to read.
+// nothing to read. The transfer is bounded against hostile peers: a
+// selection past xfer.MaxPayload is refused (truncated at the cap, the
+// fd drained so the offering peer never blocks) and a peer that stalls
+// is cut off after transferTimeout — both surface here as errors, so
+// paste callers react to a rejected paste instead of an OOM or a hung
+// window.
 func (c *Clipboard) ReadText() (string, error) {
 	if c.selection == nil {
 		return "", ErrUnavailable
 	}
-	return c.readOfferText(c.selection.Receive, c.selectionMimes)
+	return c.readOfferText(c.selection.Receive, c.sess.Roundtrip, c.selectionMimes)
 }
 
 // ReadPrimary returns the current primary selection as text, blocking
 // until the compositor delivers it. Errors with ErrUnavailable when
-// the protocol is missing or there is nothing to read.
+// the protocol is missing or there is nothing to read; oversize and
+// stalled peers surface as errors exactly as in ReadText — the two
+// selections share one hardened transfer.
 func (c *Clipboard) ReadPrimary() (string, error) {
 	if c.primary == nil {
 		return "", ErrUnavailable
 	}
-	return c.readOfferText(c.primary.Receive, c.primaryMimes)
+	return c.readOfferText(c.primary.Receive, c.sess.Roundtrip, c.primaryMimes)
 }
 
 // WriteText claims the selection with s as its text content. The data
@@ -282,16 +306,23 @@ func (c *Clipboard) WritePrimary(s string, serial uint32) error {
 }
 
 // sendPayload writes a claimed selection's payload to the consumer's
-// fd and closes it, so the reader sees EOF. A zero fd means the
-// binding failed to dup the descriptor and there is nothing to
-// write to.
+// fd and closes it, so the reader sees EOF. The write is bounded by
+// the deadline — a consumer that never reads would otherwise stall
+// the dispatch loop on a full pipe — and EPIPE from one that closed
+// early ends it at once. A failed write leaves the consumer a short
+// payload plus EOF: the transfer visibly broke instead of hanging.
 func (c *Clipboard) sendPayload(out string, fd uintptr) {
-	if fd == 0 {
+	w, err := xfer.DeadlineWriter(fd, transferTimeout)
+	if err != nil {
+		// A zero fd (the binding failed to dup the descriptor) lands
+		// here too; both are routine peer-side breakage.
+		debug.Log("input", "clipboard send: %v", err)
 		return
 	}
-	f := os.NewFile(fd, "selection-send")
-	_, _ = io.WriteString(f, out)
-	_ = f.Close()
+	if _, err := io.WriteString(w, out); err != nil {
+		debug.Log("input", "clipboard send: %v", err)
+	}
+	_ = w.Close()
 }
 
 // HandleDataSourceSend implements wl.DataSourceSendHandler: a consumer

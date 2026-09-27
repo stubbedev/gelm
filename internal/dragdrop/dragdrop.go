@@ -20,6 +20,7 @@ import (
 
 	"github.com/stubbedev/gelm/internal/debug"
 	"github.com/stubbedev/gelm/internal/wlsession"
+	"github.com/stubbedev/gelm/internal/xfer"
 )
 
 // minActionVersion is the wl_data_device_manager version that gained
@@ -36,6 +37,12 @@ var ErrDragActive = errors.New("dragdrop: a drag is already active")
 
 // ErrNoPayload reports a payload read with no accepted drag behind it.
 var ErrNoPayload = errors.New("dragdrop: no drag payload available")
+
+// transferTimeout bounds one payload transfer against a peer that
+// stalls (a var so tests can shorten it); the read is also capped by
+// xfer.MaxPayload, so a hostile source can neither hang the drop nor
+// stream unbounded bytes into memory.
+var transferTimeout = xfer.DefaultTimeout
 
 // Content is the payload a drag offers: mime types best first and a
 // provider that writes the bytes for one mime on demand. OnDone fires
@@ -417,9 +424,20 @@ func (c *Controller) offeredBySelf(mime string) bool {
 }
 
 // receive transfers the payload through the offer pipe: request, flush
-// so the compositor dups the fd and asks the source to write, then
-// read to EOF. The close error carries no signal we could act on.
+// so the compositor dups the fd and asks the source to write, then read
+// to EOF under the hostile-peer guard.
 func (c *Controller) receive(offer offerAPI, mime string) ([]byte, error) {
+	return receivePayload(offer, mime, c.sess.Roundtrip, c.version)
+}
+
+// receivePayload is the wire choreography of receive, split from the
+// controller so tests can play both the offer and the flush. The
+// transfer is capped at xfer.MaxPayload and bounded by the deadline;
+// an oversize or stalled source surfaces as an error, with the fd
+// drained and closed either way so its pipe never blocks forever. A
+// truncated transfer is not finished: the drag transaction unwinds
+// through the compositor's cancel path instead.
+func receivePayload(offer offerAPI, mime string, flush func() error, version uint32) ([]byte, error) {
 	r, w, err := os.Pipe()
 	if err != nil {
 		return nil, fmt.Errorf("dragdrop: pipe: %w", err)
@@ -428,16 +446,16 @@ func (c *Controller) receive(offer offerAPI, mime string) ([]byte, error) {
 	if err := offer.Receive(mime, w.Fd()); err != nil {
 		return nil, fmt.Errorf("dragdrop: receive: %w", err)
 	}
-	if err := c.sess.Roundtrip(); err != nil {
+	if err := flush(); err != nil {
 		return nil, fmt.Errorf("dragdrop: flush: %w", err)
 	}
 	_ = w.Close()
 
-	data, err := io.ReadAll(r)
+	data, err := xfer.Read(r, xfer.MaxPayload, transferTimeout)
 	if err != nil {
-		return nil, fmt.Errorf("dragdrop: read: %w", err)
+		return nil, fmt.Errorf("dragdrop: transfer: %w", err)
 	}
-	if c.version >= minActionVersion {
+	if version >= minActionVersion {
 		_ = offer.Finish()
 	}
 	return data, nil
@@ -463,13 +481,20 @@ func (c *Controller) concludeSource(dropped bool) {
 }
 
 // HandleDataSourceSend implements wl.DataSourceSendHandler: a
-// cross-process consumer asked for our data; write it and close so the
-// reader sees EOF.
+// cross-process consumer asked for our data; write it bounded by the
+// deadline — a consumer that stops reading cannot stall the dispatch
+// loop — and close so the reader sees EOF whatever the outcome. A
+// failed write (EPIPE, deadline) leaves the consumer a short payload
+// plus EOF, evidence the transfer broke.
 func (c *Controller) HandleDataSourceSend(ev wl.DataSourceSendEvent) {
-	if ev.FdError != nil || ev.Fd == 0 || c.srcData.Write == nil {
+	if ev.FdError != nil || c.srcData.Write == nil {
 		return
 	}
-	f := os.NewFile(ev.Fd, "dragdrop-send")
+	f, err := xfer.DeadlineWriter(ev.Fd, transferTimeout)
+	if err != nil {
+		debug.Log("input", "dnd send: %v", err)
+		return
+	}
 	if err := c.srcData.Write(ev.MimeType, f); err != nil {
 		debug.Log("input", "dnd send %q: %v", ev.MimeType, err)
 	}

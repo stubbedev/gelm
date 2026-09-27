@@ -606,6 +606,12 @@ func focusedSelection(router *widget.Router) (string, bool) {
 // pasteSelection inserts the clipboard text at the focused widget's
 // cursor — one Insert, so the paste lands as one undo entry. Widgets
 // that cannot take a bulk insert fall back to typed runes.
+//
+// Every error rejects the paste: besides an empty selection this
+// covers a hostile peer — a payload past xfer.MaxPayload, or one that
+// stalls past the transfer deadline — which today simply means
+// nothing is inserted. There is no toast infra to surface it to the
+// user yet; the error stops here.
 func pasteSelection(router *widget.Router, clip *clipboard.Clipboard) {
 	text, err := clip.ReadText()
 	if err != nil {
