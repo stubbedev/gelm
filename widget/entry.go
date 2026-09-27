@@ -60,10 +60,14 @@ type Entry struct {
 }
 
 // NewEntry returns an empty entry painted with face at sizePx. Face
-// may be a render.Chain for mixed-script fallback.
+// may be a render.Chain for mixed-script fallback. A nil face panics
+// here (see requireFace) instead of failing later, in shaping.
 func NewEntry(face render.Font, sizePx float64, color render.Color) *Entry {
-	return &Entry{face: face, sizePx: sizePx, color: color}
+	return &Entry{face: requireFace("widget.NewEntry", face), sizePx: sizePx, color: color}
 }
+
+// Placeholder returns the text shown when the entry is empty.
+func (e *Entry) Placeholder() string { return e.placeholder }
 
 // SetPlaceholder sets the text shown when the entry is empty.
 func (e *Entry) SetPlaceholder(s string) {
@@ -109,10 +113,10 @@ func (e *Entry) ReadOnly() bool { return e.readOnly }
 // one deliberate exception.
 func (e *Entry) editable() bool { return e.Enabled() && !e.readOnly }
 
-// Text returns the entry contents.
 // CursorName reports the text caret shape while hovered.
 func (e *Entry) CursorName() string { return "xterm" }
 
+// Text returns the entry contents.
 func (e *Entry) Text() string {
 	return string(e.runes)
 }

@@ -56,8 +56,10 @@ type Menu struct {
 }
 
 // NewMenu returns a menu showing items, painted with face at sizePx.
-// Face may be a render.Chain for mixed-script fallback.
+// Face may be a render.Chain for mixed-script fallback. A nil face
+// panics here (see requireFace) instead of failing later, in shaping.
 func NewMenu(face render.Font, sizePx float64, items ...MenuItem) *Menu {
+	face = requireFace("widget.NewMenu", face)
 	return &Menu{
 		face:    face,
 		sizePx:  sizePx,

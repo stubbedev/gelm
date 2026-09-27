@@ -55,7 +55,7 @@ func TestToastShadowDamageInWindow(t *testing.T) {
 	h.wnd.router.Root = layer
 	h.warm(nil, 3) // present the empty frame; the toast frame lands in a clean, presented buffer
 
-	toast := widget.NewToast(nil, "Saved", 0)
+	toast := widget.NewToast(testFace(t), "Saved", 0)
 	toast.OnDismissed = func() { layer.remove(toast) }
 	layer.add(toast)
 

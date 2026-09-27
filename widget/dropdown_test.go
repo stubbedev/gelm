@@ -11,8 +11,7 @@ import (
 // the open list hangs below at a known offset.
 func newDropdown(t *testing.T, items ...string) *Dropdown {
 	t.Helper()
-	dd := NewDropdown(items, 0)
-	dd.SetFace(entryFace(t), 14)
+	dd := NewDropdown(entryFace(t), 14, items, 0)
 	sz := dd.Measure(Constraints{Max: Size{W: 400, H: 100}})
 	dd.Arrange(render.Rect{X: 10, Y: 20, W: sz.W, H: sz.H})
 	return dd
@@ -234,8 +233,7 @@ func TestDropdownOf(t *testing.T) {
 		{Label: "Dark", Value: "dark"},
 		{Label: "System", Value: "system"},
 	}
-	dd := NewDropdownOf(items, 0)
-	dd.SetFace(entryFace(t), 14)
+	dd := NewDropdownOf(entryFace(t), 14, items, 0)
 	sz := dd.Measure(Constraints{Max: Size{W: 400, H: 100}})
 	dd.Arrange(render.Rect{X: 10, Y: 20, W: sz.W, H: sz.H})
 
@@ -396,16 +394,16 @@ func TestDropdownPaintAndRole(t *testing.T) {
 		}
 	})
 
-	t.Run("face-less dropdown paints and stays closed", func(t *testing.T) {
-		dd := NewDropdown([]string{"a", "b"}, 0)
+	t.Run("dropdown with an empty item list paints and stays closed", func(t *testing.T) {
+		dd := NewDropdown(entryFace(t), 14, nil, 0)
 		sz := dd.Measure(Constraints{Max: Size{W: 400, H: 100}})
 		if sz.W <= 0 || sz.H <= 0 {
-			t.Fatalf("face-less measure = %v", sz)
+			t.Fatalf("empty measure = %v", sz)
 		}
 		dd.Arrange(render.Rect{X: 0, Y: 0, W: sz.W, H: sz.H})
 		dd.ClickAt(facePoint(dd))
 		if dd.Opened() {
-			t.Error("a dropdown without a face opened a list")
+			t.Error("a dropdown without items opened a list")
 		}
 		cv := render.New(make([]byte, render.Stride(sz.W)*sz.H), render.Stride(sz.W), sz.W, sz.H)
 		dd.Paint(cv)

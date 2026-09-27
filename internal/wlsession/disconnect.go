@@ -20,12 +20,13 @@ import (
 type DisconnectReason int
 
 const (
-	// DisconnectConnectionLost: the compositor went away without a
-	// verdict — EOF on the socket read, or EPIPE/ECONNRESET on a read
-	// or write. This is the crash/reload/upgrade case: the compositor
-	// is gone, and every proxy on the connection is dead with it.
+	// DisconnectConnectionLost means the compositor went away without
+	// a verdict — EOF on the socket read, or EPIPE/ECONNRESET on a
+	// read or write. This is the crash/reload/upgrade case: the
+	// compositor is gone, and every proxy on the connection is dead
+	// with it.
 	DisconnectConnectionLost DisconnectReason = iota
-	// DisconnectProtocol: the compositor raised a fatal
+	// DisconnectProtocol means the compositor raised a fatal
 	// wl_display.error against this client before the connection
 	// ended. That is a bug (client or compositor) rather than a
 	// restart: reconnecting would replay the fatal exchange.

@@ -74,10 +74,10 @@ func run() error {
 // newBarConfig declares a 28px top bar with an exclusive zone: the
 // compositor keeps regular windows out of the strip it covers.
 func newBarConfig(tf *render.Typeface, out *wlsession.Output, spawn func()) app.LayerConfig {
-	label := widget.NewLabel(tf, "gelm-multi bar", 12, widget.Current().Text)
+	label := widget.NewLabel(tf, 12, "gelm-multi bar", widget.Current().Text)
 	plus := widget.NewButton(
 		widget.NewBox(widget.Row, 6, 0).
-			Append(widget.NewLabel(tf, "+ window", 12, widget.Current().Text), false),
+			Append(widget.NewLabel(tf, 12, "+ window", widget.Current().Text), false),
 		8, 4)
 	plus.OnClick = spawn
 
@@ -100,8 +100,8 @@ func newBarConfig(tf *render.Typeface, out *wlsession.Output, spawn func()) app.
 // newVetoWindow opens a toplevel whose first close request is vetoed;
 // the status label says so and the second request closes for real.
 func newVetoWindow(application *app.Application, tf *render.Typeface) (*app.Window, error) {
-	status := widget.NewLabel(tf, "close requests: 0", 13, widget.Current().Text)
-	hint := widget.NewLabel(tf, "the first close is vetoed; close again to win", 12, widget.Current().TextMuted)
+	status := widget.NewLabel(tf, 13, "close requests: 0", widget.Current().Text)
+	hint := widget.NewLabel(tf, 12, "the first close is vetoed; close again to win", widget.Current().TextMuted)
 	root := widget.NewBox(widget.Column, 12, 12)
 	root.Append(hint, false)
 	root.Append(status, false)

@@ -72,11 +72,14 @@ type richRun struct {
 	start int // rune offset of the run's first rune within Text()
 }
 
-// NewRichLabel returns a rich label that paints markup with base at
-// sizePx pixels in color. Styled runs shape with the base face until
-// SetVariants provides real variants.
-func NewRichLabel(base *render.Typeface, markup string, sizePx float64, color render.Color) *RichLabel {
-	l := &RichLabel{base: base, markup: markup, sizePx: sizePx, color: color}
+// NewRichLabel returns a rich label that paints markup with face at
+// sizePx pixels in color. Face may be a render.Chain for mixed-script
+// fallback; it shapes every run until SetVariants provides real
+// variants. The argument order is the toolkit-wide constructor order:
+// face, then sizePx, then the content, then colors. A nil face panics
+// here (see requireFace) instead of failing later, in shaping.
+func NewRichLabel(face render.Font, sizePx float64, markup string, color render.Color) *RichLabel {
+	l := &RichLabel{base: requireFace("widget.NewRichLabel", face), markup: markup, sizePx: sizePx, color: color}
 	l.retext()
 	return l
 }
@@ -117,6 +120,9 @@ func (l *RichLabel) SetAlignment(a render.Alignment) {
 	l.align = a
 	l.Invalidate()
 }
+
+// Alignment returns the horizontal placement.
+func (l *RichLabel) Alignment() render.Alignment { return l.align }
 
 // faceFor resolves the face a run shapes with: bold and italic runs
 // use the variants when one is installed, and every other run - and

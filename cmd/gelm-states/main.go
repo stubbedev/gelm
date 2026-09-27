@@ -50,8 +50,8 @@ func run() error {
 	application := app.NewApplication(sess)
 	application.SetTooltipFace(tf)
 
-	hint := widget.NewLabel(tf, "m maximize  n unmaximize  f fullscreen  g unfullscreen  i minimize  esc close", 11, widget.Current().TextMuted)
-	status := widget.NewLabel(tf, "pending configure", 15, widget.Current().Text)
+	hint := widget.NewLabel(tf, 11, "m maximize  n unmaximize  f fullscreen  g unfullscreen  i minimize  esc close", widget.Current().TextMuted)
+	status := widget.NewLabel(tf, 15, "pending configure", widget.Current().Text)
 	root := widget.NewBox(widget.Column, 12, 12)
 	root.Append(hint, false)
 	root.Append(status, false)

@@ -117,7 +117,7 @@ func TestEdgePressGrabsResizeInsteadOfWidgetPress(t *testing.T) {
 		t.Fatal(err)
 	}
 	clicks := 0
-	btn := widget.NewButton(widget.NewLabel(face, "fill", 10, render.RGB(255, 255, 255)), 0, 0)
+	btn := widget.NewButton(widget.NewLabel(face, 10, "fill", render.RGB(255, 255, 255)), 0, 0)
 	btn.OnClick = func() { clicks++ }
 	root := widget.NewBox(widget.Row, 0, 0).Append(btn, true)
 	root.Measure(widget.Constraints{Max: widget.Size{W: 300, H: 200}})

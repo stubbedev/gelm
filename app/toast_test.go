@@ -4,9 +4,22 @@ import (
 	"testing"
 	"time"
 
+	"golang.org/x/image/font/gofont/goregular"
+
 	"github.com/stubbedev/gelm/render"
 	"github.com/stubbedev/gelm/widget"
 )
+
+// testFace loads the Go regular face for widget constructors; the
+// nil-face contract makes a face mandatory everywhere.
+func testFace(t testing.TB) *render.Typeface {
+	t.Helper()
+	f, err := render.LoadFont(goregular.TTF)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return f
+}
 
 // spyRoot records the Arrange rect, standing in for a window's root
 // widget.
@@ -33,7 +46,7 @@ func TestToastLayerDropsOldestPastCap(t *testing.T) {
 	l.max = 2
 	toasts := make([]*widget.Toast, 3)
 	for i := range toasts {
-		toasts[i] = widget.NewToast(nil, "toast", time.Second)
+		toasts[i] = widget.NewToast(testFace(t), "toast", time.Second)
 		toasts[i].OnDismissed = func() { l.remove(toasts[i]) }
 		l.add(toasts[i])
 	}
@@ -69,7 +82,7 @@ func TestToastLayerArrange(t *testing.T) {
 		}
 	})
 
-	first := widget.NewToast(nil, "one", 0)
+	first := widget.NewToast(testFace(t), "one", 0)
 	l.add(first)
 	l.Arrange(render.Rect{X: 0, Y: 0, W: 300, H: 200})
 
@@ -89,7 +102,7 @@ func TestToastLayerArrange(t *testing.T) {
 		}
 	})
 
-	second := widget.NewToast(nil, "two", 0)
+	second := widget.NewToast(testFace(t), "two", 0)
 	l.add(second)
 	l.Arrange(render.Rect{X: 0, Y: 0, W: 300, H: 200})
 
@@ -120,8 +133,8 @@ func TestToastLayerArrange(t *testing.T) {
 func TestToastLayerRemoveUnwraps(t *testing.T) {
 	root := &spyRoot{nat: widget.Size{W: 50, H: 40}}
 	l := newToastLayerForTest(root)
-	a := widget.NewToast(nil, "a", 0)
-	b := widget.NewToast(nil, "b", 0)
+	a := widget.NewToast(testFace(t), "a", 0)
+	b := widget.NewToast(testFace(t), "b", 0)
 	a.OnDismissed = func() { l.remove(a) }
 	b.OnDismissed = func() { l.remove(b) }
 	l.add(a)

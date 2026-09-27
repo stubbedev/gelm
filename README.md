@@ -181,7 +181,7 @@ func main() {
 	}
 
 	clicks := 0
-	count := widget.NewLabel(tf, "clicked 0 times", 15, widget.Current().Text)
+	count := widget.NewLabel(tf, 15, "clicked 0 times", widget.Current().Text)
 	button := widget.NewButton(count, 10, 8)
 	button.OnClick = func() {
 		clicks++

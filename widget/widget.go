@@ -2,6 +2,34 @@
 // measured against constraints, arranged into pixel rects, and painted onto
 // a render.Canvas. Input handling arrives in M4; HitTest is already here so
 // event dispatch can hook into the same geometry.
+//
+// # API conventions
+//
+// Constructors are positional, in one fixed order: the font first,
+// then the pixel size (sizePx, logical, when the widget paints text at
+// a configurable size), then the widget's content and initial state,
+// then colors. A nil face panics in the constructor with a message
+// naming the argument (see requireFace) — it never fails later, deep
+// in shaping.
+//
+// Event hooks are exported function fields set after construction
+// (Button.OnClick, Entry.OnChanged, Dropdown.OnSelect, ...), one per
+// event, fired synchronously from whatever produced it. The Router
+// methods and the handler interfaces they dispatch to (Clicker,
+// KeyActionHandler, HoverSetter, ...) are input plumbing, not app
+// hooks, and are not part of this convention.
+//
+// State comes in getter/setter pairs with no Get prefix: Text and
+// SetText, On and SetOn, Alignment and SetAlignment. Every Set* whose
+// state is app-meaningful has a matching getter; the router-facing
+// Set* methods (SetHovered, SetPressed, SetDragOver) are interface
+// plumbing, not state API. Bounds returns the last arranged rect, and
+// the zero rect before the first Arrange — a defined value, never a
+// panic.
+//
+// Every coordinate, size, and pixel parameter is logical pixels; the
+// device scale is applied exactly once, at the buffer boundary in the
+// app and render packages.
 package widget
 
 import (
@@ -290,7 +318,9 @@ func (n *node) Arrange(r render.Rect) {
 	n.bounds = r
 }
 
-// Bounds returns the last arranged rect.
+// Bounds returns the last arranged rect. Before the first Arrange —
+// and that includes a widget built but never put in a tree — it is the
+// zero rect, a defined value, never a panic and never stale geometry.
 func (n *node) Bounds() render.Rect {
 	return n.bounds
 }

@@ -102,6 +102,10 @@ func (i *Icon) SetTint(tint Color) {
 	i.expire()
 }
 
+// Tint returns the pinned recolor color; the zero color (the default)
+// follows the theme Accent.
+func (i *Icon) Tint() Color { return i.tint }
+
 // Err returns the resolution failure of a dynamic icon: an unknown
 // theme name, a missing file, or undecodable data. Nil until a paint
 // tried and failed.

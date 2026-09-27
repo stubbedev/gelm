@@ -239,11 +239,12 @@ func (p *Popup) HandlePopupConfigure(ev xdg.PopupConfigureEvent) {
 	}
 }
 
-// HandlePopupDone implements outside-click dismissal. It routes
-// through Dismiss like every other path — no fast lane: the surface
-// stays mapped for the exit tween and the compositor has already ended
-// the grab by the time this fires (a grab dropped while the popup is
-// mapped is exactly the wire state the exit needs).
+// HandlePopupPopupDone implements xdg.PopupPopupDoneEvent: outside-
+// click dismissal. It routes through Dismiss like every other path —
+// no fast lane: the surface stays mapped for the exit tween and the
+// compositor has already ended the grab by the time this fires (a
+// grab dropped while the popup is mapped is exactly the wire state
+// the exit needs).
 func (p *Popup) HandlePopupPopupDone(xdg.PopupPopupDoneEvent) {
 	p.Dismiss()
 }

@@ -142,15 +142,17 @@ func (a *Application) Quit() { a.quit = true }
 type WindowConfig struct {
 	// Title and AppID identify the window to the compositor.
 	Title, AppID string
-	// Width and Height request the initial size; zero lets the
-	// compositor pick.
+	// Width and Height request the initial size in logical pixels
+	// (surface coordinates; the device scale is applied once at the
+	// buffer boundary); zero lets the compositor pick.
 	Width, Height uint32
 	// MinWidth and MinHeight constrain how far the compositor may
 	// resize the window down (set_min_size on the wire); zero axes are
 	// unconstrained. Layout clamps to the same limits client-side.
 	MinWidth, MinHeight uint32
 	// MaxWidth and MaxHeight constrain how far the compositor may
-	// resize the window up (set_max_size); zero axes are unconstrained.
+	// resize the window up (set_max_size); zero axes are unconstrained,
+	// in logical pixels like every size in the toolkit.
 	MaxWidth, MaxHeight uint32
 	// Scale is the initial integer output scale the surface renders at;
 	// zero means 1. With the fractional-scale protocol the compositor's
@@ -192,8 +194,9 @@ type LayerConfig struct {
 	Anchor layersurface.Anchor
 	// Margin distances the surface from the anchored edges.
 	Margin layersurface.Margins
-	// Width and Height: an auto (zero) axis needs both edges of that
-	// axis anchored.
+	// Width and Height: the surface size in logical pixels (the device
+	// scale is applied once at the buffer boundary). An auto (zero)
+	// axis needs both edges of that axis anchored.
 	Width, Height uint32
 	// ExclusiveZone reserves space along anchored edges; negative
 	// values distance instead.

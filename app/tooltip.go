@@ -142,7 +142,7 @@ func openTooltip(sess *wlsession.Session, host Host, cfg *Config, frac120 uint32
 		debug.Log("input", "tooltip unavailable: host %T or nil face", host)
 		return nil, nil
 	}
-	lbl := widget.NewLabel(cfg.TooltipFace, text, 12, widget.Current().Text)
+	lbl := widget.NewLabel(cfg.TooltipFace, 12, text, widget.Current().Text)
 	box := widget.NewBox(widget.Row, 0, 8)
 	box.Append(lbl, false)
 	size := box.Measure(widget.Constraints{Max: widget.Size{W: 400, H: 200}})

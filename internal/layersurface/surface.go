@@ -24,6 +24,8 @@ var ErrClosed = errors.New("layersurface: closed by compositor")
 // Anchor is a bitmask of the edges the surface is anchored to.
 type Anchor uint8
 
+// Anchor edges. The numeric values are the wire values of the
+// protocol enum.
 const (
 	AnchorTop Anchor = 1 << iota
 	AnchorBottom
@@ -35,6 +37,7 @@ const (
 // are the wire values of the protocol enum.
 type Layer uint8
 
+// Stack layers, background through overlay.
 const (
 	LayerBackground Layer = iota
 	LayerBottom
@@ -46,6 +49,7 @@ const (
 // focus. The numeric values are the wire values of the protocol enum.
 type KeyboardMode uint8
 
+// Keyboard interactivity modes: none, exclusive grab, on-demand.
 const (
 	KeyboardNone KeyboardMode = iota
 	KeyboardExclusive

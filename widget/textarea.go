@@ -84,9 +84,16 @@ func (t *TextArea) SetWrap(on bool) {
 	t.InvalidateLayout()
 }
 
+// Wrap reports whether soft wrapping is on.
+func (t *TextArea) Wrap() bool { return t.wrap }
+
 // SetIndent sets how many spaces Tab inserts while focused; zero (the
 // default) inserts a tab character.
 func (t *TextArea) SetIndent(n int) { t.indent = n }
+
+// Indent returns how many spaces Tab inserts; zero means a tab
+// character.
+func (t *TextArea) Indent() int { return t.indent }
 
 // TrapTab implements the tab-trap rule: a plain Tab inside the area
 // inserts indentation instead of moving focus. Ctrl and shift variants
@@ -105,16 +112,20 @@ func (t *TextArea) TrapTab(bool) bool {
 }
 
 // NewTextArea returns an empty area painted with face at sizePx. Face
-// may be a render.Chain for mixed-script fallback.
+// may be a render.Chain for mixed-script fallback. A nil face panics
+// here (see requireFace) instead of failing later, in shaping.
 func NewTextArea(face render.Font, sizePx float64, color render.Color) *TextArea {
 	return &TextArea{
-		face:   face,
+		face:   requireFace("widget.NewTextArea", face),
 		sizePx: sizePx,
 		color:  color,
 		lines:  [][]rune{{}},
 		wrap:   true,
 	}
 }
+
+// Placeholder returns the text shown when the area is empty.
+func (t *TextArea) Placeholder() string { return t.placeholder }
 
 // SetPlaceholder sets the text shown when the area is empty.
 func (t *TextArea) SetPlaceholder(s string) {
@@ -156,10 +167,10 @@ type pos struct {
 	line, col int
 }
 
-// Text returns the contents, lines joined with newlines.
 // CursorName reports the text caret shape while hovered.
 func (t *TextArea) CursorName() string { return "xterm" }
 
+// Text returns the contents, lines joined with newlines.
 func (t *TextArea) Text() string {
 	parts := make([]string, len(t.lines))
 	for i, l := range t.lines {

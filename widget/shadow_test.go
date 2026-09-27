@@ -213,7 +213,7 @@ func TestToastShadowHitTestAndRing(t *testing.T) {
 	SetTheme(DarkTheme())
 	pinAnimClock(t)
 
-	toast := NewToast(nil, "Saved", 0)
+	toast := NewToast(testFace(t), "Saved", 0)
 	toast.Measure(Constraints{Max: Size{W: 400, H: 100}})
 	toast.Arrange(render.Rect{X: 40, Y: 40, W: 120, H: 32})
 

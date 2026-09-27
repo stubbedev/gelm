@@ -13,9 +13,10 @@ import (
 // callers can switch on them without gelm gaining a dbus dependency.
 type Role uint8
 
+// Semantic roles. RoleNone is zero: layout containers, spacers, and
+// unclassified leaves; the rest name the interactive and text widgets,
+// translated to their AT-SPI names by String.
 const (
-	// RoleNone marks widgets with no accessibility semantics: layout
-	// containers, spacers, and unclassified leaves.
 	RoleNone Role = iota
 	RoleButton
 	RoleLabel

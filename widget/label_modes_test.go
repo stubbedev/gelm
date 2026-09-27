@@ -39,7 +39,7 @@ func TestLabelWrap(t *testing.T) {
 
 	t.Run("three rows with mixed word lengths", func(t *testing.T) {
 		w := widthForLines(t, face, mixed, 3)
-		l := NewLabel(face, mixed, modePx, render.RGB(255, 255, 255))
+		l := NewLabel(face, modePx, mixed, render.RGB(255, 255, 255))
 		l.SetWrap(true)
 		got := l.Measure(Constraints{Max: Size{W: w, H: 400}})
 		if got.W != w {
@@ -51,7 +51,7 @@ func TestLabelWrap(t *testing.T) {
 	})
 
 	t.Run("a wide constraint keeps one row", func(t *testing.T) {
-		l := NewLabel(face, mixed, modePx, render.RGB(255, 255, 255))
+		l := NewLabel(face, modePx, mixed, render.RGB(255, 255, 255))
 		l.SetWrap(true)
 		got := l.Measure(Constraints{Max: Size{W: 4096, H: 400}})
 		if got.H != lineH {
@@ -64,7 +64,7 @@ func TestLabelWrap(t *testing.T) {
 
 	t.Run("an unbreakable token keeps its own overflowing row", func(t *testing.T) {
 		token := strings.Repeat("x", 40)
-		l := NewLabel(face, token, modePx, render.RGB(255, 255, 255))
+		l := NewLabel(face, modePx, token, render.RGB(255, 255, 255))
 		l.SetWrap(true)
 		got := l.Measure(Constraints{Max: Size{W: 50, H: 400}})
 		if got.H != lineH {
@@ -76,7 +76,7 @@ func TestLabelWrap(t *testing.T) {
 	})
 
 	t.Run("hard newlines split rows", func(t *testing.T) {
-		l := NewLabel(face, "aa\nbb\nc", modePx, render.RGB(255, 255, 255))
+		l := NewLabel(face, modePx, "aa\nbb\nc", render.RGB(255, 255, 255))
 		l.SetWrap(true)
 		got := l.Measure(Constraints{Max: Size{W: 4096, H: 400}})
 		if want := 3 * lineH; got.H != want {
@@ -86,7 +86,7 @@ func TestLabelWrap(t *testing.T) {
 
 	t.Run("paint puts ink on first and last rows", func(t *testing.T) {
 		w := widthForLines(t, face, mixed, 3)
-		l := NewLabel(face, mixed, modePx, render.RGB(255, 255, 255))
+		l := NewLabel(face, modePx, mixed, render.RGB(255, 255, 255))
 		l.SetWrap(true)
 		l.Measure(Constraints{Max: Size{W: w, H: 3 * lineH}})
 		const pad = 4
@@ -123,7 +123,7 @@ func TestLabelEllipsize(t *testing.T) {
 	text := "alphabetagammadeltaepsilon"
 
 	t.Run("fitting text is untouched", func(t *testing.T) {
-		l := NewLabel(face, text, modePx, render.RGB(255, 255, 255))
+		l := NewLabel(face, modePx, text, render.RGB(255, 255, 255))
 		l.SetEllipsize(EllipsizeEnd)
 		got := l.Measure(Constraints{Max: Size{W: 4096, H: 100}})
 		if got.W != l.natural.W {
@@ -136,12 +136,12 @@ func TestLabelEllipsize(t *testing.T) {
 		fits := int(math.Ceil(adv)) // >= adv, so the whole text fits
 		short := fits - 1           // strictly below adv, so it cannot
 
-		full := NewLabel(face, text, modePx, render.RGB(255, 255, 255))
+		full := NewLabel(face, modePx, text, render.RGB(255, 255, 255))
 		full.SetEllipsize(EllipsizeEnd)
 		if got := full.Measure(Constraints{Max: Size{W: fits, H: 100}}); got.W != full.natural.W {
 			t.Errorf("at the fitting width %d: width = %d, want natural %d", fits, got.W, full.natural.W)
 		}
-		cut := NewLabel(face, text, modePx, render.RGB(255, 255, 255))
+		cut := NewLabel(face, modePx, text, render.RGB(255, 255, 255))
 		cut.SetEllipsize(EllipsizeEnd)
 		got := cut.Measure(Constraints{Max: Size{W: short, H: 100}})
 		if got.W > short {
@@ -179,7 +179,7 @@ func TestLabelEllipsize(t *testing.T) {
 	t.Run("SetEllipsize reports the truncated advance", func(t *testing.T) {
 		adv := face.Shape(text, modePx).Advance()
 		w := int(adv) - 5
-		l := NewLabel(face, text, modePx, render.RGB(255, 255, 255))
+		l := NewLabel(face, modePx, text, render.RGB(255, 255, 255))
 		l.SetEllipsize(EllipsizeMiddle)
 		got := l.Measure(Constraints{Max: Size{W: w, H: 100}})
 		want := render.EllipsizeText(face, text, EllipsizeMiddle, float64(w), modePx)
@@ -204,7 +204,7 @@ func TestLabelWrapEllipsizeInteraction(t *testing.T) {
 	}
 
 	t.Run("the final row truncates, earlier rows wrap untouched", func(t *testing.T) {
-		l := NewLabel(face, text, modePx, render.RGB(255, 255, 255))
+		l := NewLabel(face, modePx, text, render.RGB(255, 255, 255))
 		l.SetWrap(true)
 		l.SetEllipsize(EllipsizeEnd)
 		rows := l.wrapped(w)
@@ -232,7 +232,7 @@ func TestLabelWrapEllipsizeInteraction(t *testing.T) {
 	})
 
 	t.Run("wrap without a mode keeps the overflowing token", func(t *testing.T) {
-		l := NewLabel(face, text, modePx, render.RGB(255, 255, 255))
+		l := NewLabel(face, modePx, text, render.RGB(255, 255, 255))
 		l.SetWrap(true)
 		rows := l.wrapped(w)
 		last := rows[len(rows)-1]
@@ -242,7 +242,7 @@ func TestLabelWrapEllipsizeInteraction(t *testing.T) {
 	})
 
 	t.Run("both modes off overflows a single clipped line", func(t *testing.T) {
-		l := NewLabel(face, text, modePx, render.RGB(255, 255, 255))
+		l := NewLabel(face, modePx, text, render.RGB(255, 255, 255))
 		got := l.Measure(Constraints{Max: Size{W: w, H: 400}})
 		if got.H != lineH {
 			t.Errorf("height = %d, want one line %d", got.H, lineH)
@@ -260,7 +260,7 @@ func TestLabelConstraintRemeasure(t *testing.T) {
 	w := widthForLines(t, face, mixed, 3)
 
 	t.Run("a narrower constraint re-wraps, a wider one reverts", func(t *testing.T) {
-		l := NewLabel(face, mixed, modePx, render.RGB(255, 255, 255))
+		l := NewLabel(face, modePx, mixed, render.RGB(255, 255, 255))
 		l.SetWrap(true)
 		if got := l.Measure(Constraints{Max: Size{W: 4096, H: 400}}); got.H != lineH {
 			t.Fatalf("wide height = %d, want one row", got.H)
@@ -274,7 +274,7 @@ func TestLabelConstraintRemeasure(t *testing.T) {
 	})
 
 	t.Run("mode changes drop the measure cache", func(t *testing.T) {
-		l := NewLabel(face, mixed, modePx, render.RGB(255, 255, 255))
+		l := NewLabel(face, modePx, mixed, render.RGB(255, 255, 255))
 		l.Measure(Constraints{Max: Size{W: w, H: 400}})
 		l.SetWrap(true)
 		if !l.measureDirty {
@@ -300,7 +300,7 @@ func TestLabelEllipsizeTooltipCombo(t *testing.T) {
 	// lives in the tooltip. The mode must shorten only what paints.
 	face := testFace(t)
 	full := "server-02.example.com: syncing 4096 blocks"
-	l := NewLabel(face, full, modePx, render.RGB(255, 255, 255))
+	l := NewLabel(face, modePx, full, render.RGB(255, 255, 255))
 	l.SetEllipsize(EllipsizeEnd)
 	l.SetTooltip(full)
 	got := l.Measure(Constraints{Max: Size{W: 90, H: 100}})

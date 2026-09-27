@@ -35,10 +35,10 @@ const (
 // menus have no mnemonics either, and the first character of type-ahead
 // would collide with Space-to-open in the text router.
 //
-// NewDropdown takes no face because hosts usually build widgets before
-// fonts settle; call SetFace right after construction. Without a face
-// the face still paints (fixed size) and simply never opens — there is
-// nothing to shape the rows with.
+// The constructor takes the face like every other text widget: face,
+// then sizePx, then the items. Face may be a render.Chain for
+// mixed-script fallback; a nil face panics there (see requireFace)
+// instead of failing later, in shaping.
 type Dropdown struct {
 	node
 	face     render.Font
@@ -65,25 +65,20 @@ type Dropdown struct {
 	OnSelect func(i int)
 }
 
-// NewDropdown returns a dropdown showing items with the selected index
-// clamped into range (-1 when there are no items).
-func NewDropdown(items []string, selected int) *Dropdown {
+// NewDropdown returns a dropdown showing items, painted with face at
+// sizePx, with the selected index clamped into range (-1 when there
+// are no items). Face may be a render.Chain for mixed-script fallback.
+func NewDropdown(face render.Font, sizePx float64, items []string, selected int) *Dropdown {
 	sel := -1
 	if len(items) > 0 {
 		sel = min(max(selected, 0), len(items)-1)
 	}
-	return &Dropdown{items: items, selected: sel}
-}
-
-// SetFace sets the font and pixel size the closed face and the
-// item rows shape with; a render.Chain adds mixed-script fallback.
-// Call it once, right after construction, before
-// the first open: the item list builds lazily from the face and is not
-// rebuilt afterwards.
-func (d *Dropdown) SetFace(face render.Font, sizePx float64) {
-	d.face = face
-	d.sizePx = sizePx
-	d.InvalidateLayout()
+	return &Dropdown{
+		face:     requireFace("widget.NewDropdown", face),
+		sizePx:   sizePx,
+		items:    items,
+		selected: sel,
+	}
 }
 
 // Selected returns the selected item index, -1 when empty.
@@ -133,10 +128,10 @@ func (d *Dropdown) SetEnabled(enabled bool) {
 	}
 }
 
-// list lazily builds the item menu from the items; it needs the face,
-// which may arrive after construction through SetFace.
+// list lazily builds the item menu from the items. The face arrived
+// at construction, so the first open is the only build.
 func (d *Dropdown) list() *Menu {
-	if d.menu != nil || d.face == nil {
+	if d.menu != nil {
 		return d.menu
 	}
 	items := make([]MenuItem, len(d.items))
@@ -160,9 +155,6 @@ func (d *Dropdown) Open() {
 		return
 	}
 	m := d.list()
-	if m == nil {
-		return
-	}
 	d.open = true
 	m.hovered = d.selected
 	d.playReveal(true)
@@ -251,19 +243,17 @@ func (d *Dropdown) arrangeList() {
 
 // Measure wants the widest item plus arrow and padding, and one row
 // height; the closed face keeps its width whatever the selection, so a
-// change never relayouts the surrounding tree. Without a face it wants
-// a fixed 80x28 placeholder.
+// change never relayouts the surrounding tree. 80px is the width
+// floor.
 func (d *Dropdown) Measure(con Constraints) Size {
 	if sz, ok := d.measureHit(con); ok {
 		return sz
 	}
-	w, h := 80, 28
-	if d.face != nil {
-		h = d.face.Shape("lg", d.sizePx).LineHeight() + 12
-		for _, label := range d.items {
-			if adv := int(d.face.Shape(label, d.sizePx).Advance()+0.5) + 14 + 24; adv > w {
-				w = adv
-			}
+	w := 80
+	h := d.face.Shape("lg", d.sizePx).LineHeight() + 12
+	for _, label := range d.items {
+		if adv := int(d.face.Shape(label, d.sizePx).Advance()+0.5) + 14 + 24; adv > w {
+			w = adv
 		}
 	}
 	return d.measureStore(con, clampSize(Size{W: w, H: h}, con))
@@ -298,11 +288,9 @@ func (d *Dropdown) Paint(cv *render.Canvas) {
 	if !d.Enabled() {
 		col = t.DisabledText()
 	}
-	if d.face != nil {
-		lineH := d.face.Shape("lg", d.sizePx).LineHeight()
-		baseline := d.bounds.Y + (d.bounds.H-lineH)/2 + int(d.face.Shape("lg", d.sizePx).Ascent()+0.5)
-		d.face.Draw(cv, d.face.Shape(d.Selection(), d.sizePx), d.bounds.X+8, baseline, col)
-	}
+	lineH := d.face.Shape("lg", d.sizePx).LineHeight()
+	baseline := d.bounds.Y + (d.bounds.H-lineH)/2 + int(d.face.Shape("lg", d.sizePx).Ascent()+0.5)
+	d.face.Draw(cv, d.face.Shape(d.Selection(), d.sizePx), d.bounds.X+8, baseline, col)
 	// The chevron: two strokes forming a v at the face's right edge.
 	cx, cy := d.bounds.X+d.bounds.W-16, d.bounds.Y+d.bounds.H/2
 	cv.Line(cx-4, cy-2, cx, cy+2, 1, col)
@@ -432,15 +420,18 @@ type DropdownOf[T any] struct {
 	OnSelect func(i int, value T)
 }
 
-// NewDropdownOf builds a typed dropdown from labeled values, showing
-// the selected index clamped into range.
-func NewDropdownOf[T any](items []DropdownItem[T], selected int) *DropdownOf[T] {
+// NewDropdownOf builds a typed dropdown from labeled values, painted
+// with face at sizePx, showing the selected index clamped into range.
+// Face may be a render.Chain for mixed-script fallback; a nil face
+// panics here, naming the argument (see requireFace).
+func NewDropdownOf[T any](face render.Font, sizePx float64, items []DropdownItem[T], selected int) *DropdownOf[T] {
+	face = requireFace("widget.NewDropdownOf", face)
 	labels := make([]string, len(items))
 	values := make([]T, len(items))
 	for i, it := range items {
 		labels[i], values[i] = it.Label, it.Value
 	}
-	d := &DropdownOf[T]{Dropdown: NewDropdown(labels, selected), values: values}
+	d := &DropdownOf[T]{Dropdown: NewDropdown(face, sizePx, labels, selected), values: values}
 	d.Dropdown.OnSelect = func(i int) {
 		if d.OnSelect != nil && i >= 0 && i < len(d.values) {
 			d.OnSelect(i, d.values[i])

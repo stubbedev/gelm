@@ -33,8 +33,11 @@ const tabBarHeight = 26
 const tabWidth = 96
 
 // NewNotebook returns an empty notebook with tab labels painted in the
-// given face; a render.Chain adds mixed-script fallback.
-func NewNotebook(face render.Font) *Notebook { return &Notebook{face: face} }
+// given face; a render.Chain adds mixed-script fallback. A nil face
+// panics here (see requireFace) instead of failing later, in shaping.
+func NewNotebook(face render.Font) *Notebook {
+	return &Notebook{face: requireFace("widget.NewNotebook", face)}
+}
 
 // AppendTab adds a page under name; the first page added becomes the
 // selected one.

@@ -22,11 +22,11 @@ func inspectTree(t *testing.T) (widget.Widget, *widget.Router, *widget.Button) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	inner := widget.NewLabel(face, "save", 13, render.RGB(255, 255, 255))
+	inner := widget.NewLabel(face, 13, "save", render.RGB(255, 255, 255))
 	button := widget.NewButton(inner, 10, 4)
 	button.SetDebugName("toolbar:save")
 	button.SetTooltip("saves the thing")
-	hint := widget.NewLabel(face, "hint", 13, render.RGB(255, 255, 255))
+	hint := widget.NewLabel(face, 13, "hint", render.RGB(255, 255, 255))
 	entry := widget.NewEntry(face, 13, render.RGB(255, 255, 255))
 	entry.SetDebugName("search")
 	column := widget.NewBox(widget.Column, 8, 4).

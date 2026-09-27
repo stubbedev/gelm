@@ -1,0 +1,110 @@
+# Changelog
+
+## Unreleased
+
+### API consistency wave (breaks; #52)
+
+One deliberate consistency pass before wayle and the 1.0 freeze. No
+deprecation shims: wayle is the only consumer, and everything below
+breaks on purpose. The conventions are also written down in the
+`widget` package doc.
+
+#### Constructors: one positional order
+
+Every constructor is positional, in one fixed order — **face, then
+sizePx (logical pixels), then the content/initial state, then
+colors**. The majority already followed it; the outliers were
+converted:
+
+- `widget.NewLabel(face, text, sizePx, color)` →
+  `NewLabel(face, sizePx, text, color)`
+- `widget.NewRichLabel(face *render.Typeface, markup, sizePx, color)` →
+  `NewRichLabel(face render.Font, sizePx, markup, color)` — the face
+  parameter also widens from `*render.Typeface` to the `render.Font`
+  interface every other text widget takes, so a `render.Chain` works
+  here too.
+- `widget.NewDropdown(items, selected)` →
+  `NewDropdown(face, sizePx, items, selected)`. The two-phase
+  `SetFace` is removed: a dropdown without a face used to paint a
+  fixed placeholder and silently never open. `NewDropdownOf` follows
+  the same order.
+
+Everything else already conforms (Entry, TextArea, Menu, Toast,
+Expander, Notebook, Button, Box, Grid, Scroll, List, Slider, Switch,
+CheckButton, Spinner, Separator, Icon family, Image family, Stack,
+Overlay, Fader, Elevation, Spacer, ProgressBar, app.Config-shaped
+constructors).
+
+#### Nil-face contract: panic at construction, naming the argument
+
+Rule (b) of the two options: a constructor that takes a font either
+receives a usable face or panics right there with a message naming the
+constructor and the argument (`widget.NewLabel: nil face`). It never
+fails later on the first `Shape` deep in shaping. Typed nils —
+`(*render.Typeface)(nil)`, `(*render.Chain)(nil)` inside the interface
+— count as nil; they used to slip past a `face == nil` check and
+panic in glyph lookup.
+
+- Applies to NewLabel, NewRichLabel, NewEntry, NewTextArea, NewMenu,
+  NewToast, NewExpander, NewNotebook, NewDropdown, NewDropdownOf.
+- `render.NewChain` enforces the same contract on its `primary`
+  (`render.NewChain: nil primary`).
+- App level keeps documented fallbacks instead: `ToastConfig.Face` nil
+  falls back to the tooltip face, then the default sans face
+  (`app.Application.resolveFace`); `app.Config.TooltipFace` nil still
+  disables tooltips. If no face can be resolved at all, dialogs and
+  message boxes return an error and toasts are dropped with a debug
+  log — a nil face never reaches a widget constructor.
+
+#### Events: exported fields
+
+Decided once: **event hooks are exported function fields** set after
+construction — `OnClick`, `OnChanged`, `OnSelect`, `OnToggled`,
+`OnDismissed`, `OnClosed`, `OnResponse`, ... No `Set*`-style hook
+setters exist or will be added. The Router and the handler interfaces
+it dispatches to (`Clicker`, `KeyActionHandler`, `HoverSetter`,
+`PressSetter`, `DragMover`, ...) are input plumbing, not app hooks,
+and keep their `Set*`-shaped method names (`SetHovered`, `SetPressed`).
+
+#### Getter/setter pairs
+
+Every `Set*` whose state is app-meaningful now has a bare-name getter
+(no `Get` prefix). Added where missing:
+
+- `Label.Alignment`, `RichLabel.Alignment`
+- `Entry.Placeholder`
+- `TextArea.Placeholder`, `TextArea.Wrap`, `TextArea.Indent`
+- `Icon.Tint`
+- `Image.PlaceholderColor`
+- `Grid.ColumnSpacing`, `Grid.RowSpacing`, `Grid.ColumnHomogeneous`,
+  `Grid.RowHomogeneous`
+
+`Bounds()` is defined before the first `Arrange`: it returns the zero
+rect — never a panic, never stale geometry.
+
+#### Units
+
+Every coordinate, size, and pixel parameter in the API is logical
+pixels; the device scale is applied exactly once, at the buffer
+boundary. `sizePx` stays the name everywhere. The `Width`/`Height`
+fields of `app.WindowConfig`, `app.LayerConfig`, and `app.DialogConfig`
+are now documented as logical (surface) pixels, matching the internal
+`layersurface.Config` and `popup.Config` docs.
+
+#### Docs
+
+`revive`'s `exported` rule is enabled in `.golangci.yml`: every
+exported symbol must carry a doc comment starting with its name, and
+`widget`, `app`, and `render` keep package docs (the `widget` one now
+spells out the conventions above). 25 missing/misplaced doc comments
+fixed across `widget`, `app`, `render`, `internal/*`, and `wlr`.
+
+#### Migration notes for wayle
+
+- Reorder `NewLabel`/`NewRichLabel` arguments; pass the face where
+  `NewDropdown` used to take items and drop `SetFace` calls.
+- Never pass a nil face: load one first (`sysfont.Sans` or
+  `render.LoadFont`); nil now panics in the constructor instead of
+  failing at first paint.
+- The docs quickstart program and the godoc examples reflect the new
+  signatures.
