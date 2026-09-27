@@ -65,7 +65,7 @@ type TooltipTexter interface {
 func IsInteractive(w Widget) bool {
 	for w != nil {
 		switch w.(type) {
-		case *Button, *Slider, *Switch, *CheckButton, *Entry, *TextArea, *Scroll:
+		case *Button, *Slider, *Switch, *CheckButton, *Entry, *TextArea, *Scroll, *Dropdown:
 			return true
 		}
 		p, ok := w.(interface{ Parent() Widget })

@@ -29,6 +29,7 @@ const (
 	RoleList
 	RoleMenu
 	RoleTabList
+	RoleComboBox
 )
 
 // String returns the lowercase role name.
@@ -58,6 +59,8 @@ func (r Role) String() string {
 		return "menu"
 	case RoleTabList:
 		return "tab-list"
+	case RoleComboBox:
+		return "combo-box"
 	default:
 		return "none"
 	}
@@ -167,6 +170,11 @@ func Describe(w Widget) A11yState {
 		st.Role = RoleMenu
 	case *Notebook:
 		st.Role = RoleTabList
+	case *Dropdown:
+		// A combo box's accessible name is its current selection.
+		if st.Name == "" {
+			st.Name = v.Selection()
+		}
 	}
 	return st
 }

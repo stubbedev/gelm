@@ -34,6 +34,7 @@ there is no CSS engine yet.
 | List | done | virtualized model rows (a viewport's worth of widgets); **single-select only** |
 | Notebook | done | tabs with close hook; ctrl+PageUp/PageDown cycles; hidden pages skipped by focus |
 | Menu | done | check/radio rows, separators, nested submenus; accelerators are display-only labels (no mnemonics) |
+| Dropdown, `DropdownOf[T]` | done | combobox: face plus an inline themed item list (a `Children` child only while open, not an `app.Popover`); Enter/Space/Down opens, arrows navigate, Esc cancels; no type-ahead |
 | Popover (`app.Popover`) | done | anchored to any widget, flips inside the host; works on layer surfaces too |
 | Dialog, MessageBox (`app`) | done | parented toplevels; **application-level** modality (xdg_shell has no modal bit); Esc/Enter responses |
 | Icon | done | raster, theme-name, file, and embedded-SVG constructors; symbolic sources follow the accent or a pinned tint |

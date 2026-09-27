@@ -84,3 +84,37 @@ func ExampleMenu() {
 	// Output:
 	// wrap: true
 }
+
+func ExampleDropdown() {
+	// A dropdown is a closed face showing the selection; Enter, Space,
+	// or Down opens the themed item list beneath it while focused,
+	// arrows move the highlight, Enter picks, Esc cancels without
+	// changing anything. Here the list opens from the keyboard, Down
+	// walks to the second row, and Enter commits it exactly once.
+	dd := widget.NewDropdown([]string{"Light", "Dark", "System"}, 0)
+	dd.SetFace(face(), 13)
+
+	var picked string
+	dd.OnSelect = func(int) { picked = dd.Selection() }
+	dd.KeyAction(widget.KeyEnter, 0)
+	dd.KeyAction(widget.KeyDown, 0)
+	dd.KeyAction(widget.KeyEnter, 0)
+	fmt.Println("picked:", picked)
+
+	// DropdownOf carries typed values behind the labels, so handlers
+	// see the value, not an index to look up.
+	outputs := []widget.DropdownItem[string]{
+		{Label: "eDP-1", Value: "/dev/drm0"},
+		{Label: "HDMI-A-1", Value: "/dev/drm1"},
+	}
+	selector := widget.NewDropdownOf(outputs, 0)
+	selector.OnSelect = func(i int, dev string) {
+		fmt.Println("output", i, "->", dev)
+	}
+	selector.SetSelected(1)
+	fmt.Println("value:", selector.Value())
+	// Output:
+	// picked: Dark
+	// output 1 -> /dev/drm1
+	// value: /dev/drm1
+}
