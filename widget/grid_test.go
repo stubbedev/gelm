@@ -141,7 +141,7 @@ func TestGridArrange(t *testing.T) {
 		}
 	})
 
-	t.Run("a smaller rect never shrinks the tracks", func(t *testing.T) {
+	t.Run("a smaller rect squeezes the tracks proportionally", func(t *testing.T) {
 		g := NewGrid(2, 0)
 		a := newStub(10, 5)
 		c := newStub(8, 5)
@@ -150,8 +150,15 @@ func TestGridArrange(t *testing.T) {
 		g.Measure(Constraints{Max: Size{W: 100, H: 100}})
 		g.Arrange(render.Rect{X: 0, Y: 0, W: 15, H: 5})
 
-		if a.rect.W != 10 || c.rect != (render.Rect{X: 12, Y: 0, W: 8, H: 5}) {
-			t.Errorf("children = %v, %v, want natural sizes kept", a.rect, c.rect)
+		// Natural 20 (10 + 2 spacing + 8) in a 15 rect: the 5px deficit
+		// splits by weight - 10:8 - with the rounding pixel to the
+		// earlier track, so 7 + 2 + 6 = 15 exactly. Overflow only at the
+		// floors, and stubs have none.
+		if a.rect != (render.Rect{X: 0, Y: 0, W: 7, H: 5}) {
+			t.Errorf("first child = %v, want the squeezed 7-wide rect", a.rect)
+		}
+		if c.rect != (render.Rect{X: 9, Y: 0, W: 6, H: 5}) {
+			t.Errorf("second child = %v, want the squeezed 6-wide rect", c.rect)
 		}
 	})
 
