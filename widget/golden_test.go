@@ -386,6 +386,19 @@ func TestGoldenCalendar(t *testing.T) {
 	NewGolden(t, cal, "calendar", goldenTheme(th))
 }
 
+// TestGoldenColorChooser pins the picker's look (#72): the SV square's
+// stacked gradients, the hue and alpha strips, the cursor ring and
+// bars, the hex entry, and both palette rows.
+func TestGoldenColorChooser(t *testing.T) {
+	face := goldenFace(t)
+	th := DarkTheme()
+	chooser := NewColorChooser(face, 12, render.RGB(0x89, 0xB4, 0xFA))
+	chooser.SetPaletteSource(func() []render.Color {
+		return []render.Color{render.RGB(0xff, 0x55, 0x55), render.RGB(0x55, 0xff, 0x55)}
+	}, nil)
+	NewGolden(t, chooser, "color-chooser", goldenTheme(th))
+}
+
 func TestGoldenPaned(t *testing.T) {
 	face := goldenFace(t)
 	th := DarkTheme()
