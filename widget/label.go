@@ -42,6 +42,7 @@ type Label struct {
 	sizePx  float64
 	color   render.Color
 	align   render.Alignment
+	dir     Direction
 	wrap    bool
 	ell     EllipsizeMode
 	shaped  *render.ShapedText
@@ -112,6 +113,25 @@ func (l *Label) SetAlignment(a render.Alignment) {
 // Alignment returns the horizontal placement.
 func (l *Label) Alignment() render.Alignment { return l.align }
 
+// SetDirection selects the base paragraph direction the text resolves
+// and lays out with. DirectionAuto (the default) reads it off the
+// text's first strong character, so a Hebrew- or Arabic-first label
+// mirrors on its own; DirectionLTR and DirectionRTL force the base,
+// and start/end alignment mirrors with it. Changing the direction
+// re-resolves the text and drops the measure cache.
+func (l *Label) SetDirection(d Direction) {
+	if l.dir == d {
+		return
+	}
+	l.dir = d
+	l.retext()
+	l.InvalidateLayout()
+}
+
+// Direction returns the base paragraph direction the label resolves
+// with.
+func (l *Label) Direction() Direction { return l.dir }
+
 // SetWrap toggles word wrapping at the offered width. Measure reports
 // the widest wrapped row, one line height tall per row, breaking at
 // Unicode UAX #14 opportunities (spaces, hyphens, CJK); a run with no
@@ -146,9 +166,10 @@ func (l *Label) SetEllipsize(mode EllipsizeMode) {
 // Ellipsize returns the label's truncation mode.
 func (l *Label) Ellipsize() EllipsizeMode { return l.ell }
 
-// retext reshapes the run and refreshes the cached natural size.
+// retext re-resolves and reshapes the run under the label's base
+// direction and refreshes the cached natural size.
 func (l *Label) retext() {
-	l.shaped = l.face.Shape(l.text, l.sizePx)
+	l.shaped = l.face.ShapeDir(l.text, l.sizePx, l.dir)
 	l.natural = Size{
 		W: int(l.shaped.Advance() + 0.5),
 		H: l.shaped.LineHeight(),
@@ -239,7 +260,7 @@ func (l *Label) Paint(cv *render.Canvas) {
 	if l.ell != EllipsizeNone && l.shaped.Advance() > float64(l.bounds.W) {
 		text = render.EllipsizeText(l.face, l.text, l.ell, float64(l.bounds.W), l.sizePx)
 	}
-	l.face.DrawAligned(cv, text, l.bounds, l.sizePx, l.color, l.align)
+	l.face.DrawAlignedDir(cv, text, l.bounds, l.sizePx, l.color, l.align, l.dir)
 }
 
 // paintWrapped draws the wrapped rows, the stack vertically centered in
@@ -252,9 +273,9 @@ func (l *Label) paintWrapped(cv *render.Canvas) {
 		y += extra / 2
 	}
 	for _, ln := range lines {
-		l.face.DrawAligned(cv, ln, render.Rect{
+		l.face.DrawAlignedDir(cv, ln, render.Rect{
 			X: l.bounds.X, Y: y, W: l.bounds.W, H: lineH,
-		}, l.sizePx, l.color, l.align)
+		}, l.sizePx, l.color, l.align, l.dir)
 		y += lineH
 	}
 }

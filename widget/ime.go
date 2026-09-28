@@ -201,14 +201,15 @@ func (e *Entry) IMESurrounding() (string, int, int) {
 
 // IMECursorRect implements IMETracker: the caret band in root
 // coordinates, for the input method's candidate window. Pan-aware, so
-// the window tracks the caret inside a panning field.
+// the window tracks the caret inside a panning field, on either
+// direction's reading edge.
 func (e *Entry) IMECursorRect() render.Rect {
 	caret := e.caretRune()
 	if caret < 0 {
 		caret = e.peAt + len(e.peText)
 	}
-	x := 8 + int(e.face.Shape(e.displayText(), e.sizePx).CaretX(caret)+0.5) - e.scrollX
-	return render.Rect{X: e.bounds.X + x, Y: e.bounds.Y + 6, W: 2, H: max(e.bounds.H-12, 0)}
+	x := e.caretX(e.shape(e.displayText()), caret)
+	return render.Rect{X: x, Y: e.bounds.Y + 6, W: 2, H: max(e.bounds.H-12, 0)}
 }
 
 // IMEMultiline implements IMETracker.
@@ -247,14 +248,6 @@ func (t *TextArea) displayLine(l int) []rune {
 	out = append(out, t.peText...)
 	out = append(out, line[t.peAt.col:]...)
 	return out
-}
-
-// spanWidthDisp returns the advance of a display-space substring of
-// line l; identical to spanWidth except on the composing line.
-func (t *TextArea) spanWidthDisp(l, from, to int) float64 {
-	line := t.displayLine(l)
-	from, to = min(max(from, 0), len(line)), min(max(to, 0), len(line))
-	return t.face.Shape(string(line[from:to]), t.sizePx).Advance()
 }
 
 // caretPos is the caret as a display-space position: inside the
@@ -371,7 +364,8 @@ func (t *TextArea) byteOffset(p pos) int {
 
 // IMECursorRect implements IMETracker: the caret rectangle in root
 // coordinates, for the input method's candidate window. Pan-aware so
-// the window tracks the caret on a panned unwrapped line.
+// the window tracks the caret on a panned unwrapped line, on either
+// direction's reading edge.
 func (t *TextArea) IMECursorRect() render.Rect {
 	t.ensureRows(t.wrapWidth())
 	caret := t.caretPos()
@@ -379,10 +373,8 @@ func (t *TextArea) IMECursorRect() render.Rect {
 		caret = pos{t.peAt.line, t.peAt.col + len(t.peText)}
 	}
 	row := t.rowOf(caret)
-	r := t.rows[row]
-	x := 8 + int(t.spanWidthDisp(r.line, r.startCol, caret.col)+0.5) - t.linePan(r.line)
 	return render.Rect{
-		X: t.bounds.X + x,
+		X: t.caretX(caret.line, caret.col),
 		Y: t.bounds.Y + 6 + row*t.lineHeight(),
 		W: 2,
 		H: t.lineHeight(),

@@ -1,6 +1,7 @@
 package widget
 
 import (
+	"math"
 	"strings"
 
 	"github.com/stubbedev/gelm/internal/text"
@@ -17,6 +18,7 @@ type TextArea struct {
 	face        render.Font
 	sizePx      float64
 	color       render.Color
+	dir         Direction
 	placeholder string
 	wrap        bool
 	indent      int // spaces per TrapTab insertion; 0 inserts a tab
@@ -64,6 +66,11 @@ type TextArea struct {
 	rows      []visualRow
 	rowsWidth int
 	rowsValid bool
+
+	// bands is the selection/underline scratch the paint reuses across
+	// frames, so the render path stays allocation-free in the steady
+	// state.
+	bands [][2]float64
 }
 
 // visualRow maps one painted row to a rune range of a logical line.
@@ -86,6 +93,35 @@ func (t *TextArea) SetWrap(on bool) {
 
 // Wrap reports whether soft wrapping is on.
 func (t *TextArea) Wrap() bool { return t.wrap }
+
+// SetDirection selects the base paragraph direction every line
+// resolves and lays out with — each line is one paragraph. DirectionAuto
+// (the default) reads it off the line's first strong character;
+// DirectionRTL additionally starts short lines at the right edge and
+// mirrors the pan. Arrow and word motion always move visually, through
+// the same resolution the paint uses, while cursor, anchor, and
+// selection stay logical line/column positions. Changing the direction
+// drops the row cache and re-pans.
+func (t *TextArea) SetDirection(d Direction) {
+	if t.dir == d {
+		return
+	}
+	t.dir = d
+	t.rowsValid = false
+	t.hasPref = false
+	t.panToCaret()
+	t.InvalidateLayout()
+}
+
+// Direction returns the base paragraph direction the area resolves
+// with.
+func (t *TextArea) Direction() Direction { return t.dir }
+
+// shapeLine shapes line rs under the area's base direction — the one
+// text path the caret, selection, and paint share.
+func (t *TextArea) shapeLine(rs []rune) *render.ShapedText {
+	return t.face.ShapeDir(string(rs), t.sizePx, t.dir)
+}
 
 // SetIndent sets how many spaces Tab inserts while focused; zero (the
 // default) inserts a tab character.
@@ -371,9 +407,22 @@ func (t *TextArea) runeWidth(r rune) float64 {
 	return t.face.Shape(string(r), t.sizePx).Advance()
 }
 
-// spanWidth returns the advance of a rune substring of line l.
-func (t *TextArea) spanWidth(l, from, to int) float64 {
-	return t.face.Shape(string(t.lines[l][from:to]), t.sizePx).Advance()
+// visualStep moves column at one visual step along line — left for
+// negative delta, right for positive — the mapping the arrow keys move
+// by over mixed-direction lines, through the shared resolution
+// (internal/text). The column it lands on stays a logical index,
+// snapped to a grapheme cluster.
+func (t *TextArea) visualStep(line []rune, at, delta int) int {
+	order := text.VisualOrder(line, text.BidiRuns(string(line), t.dir))
+	return text.VisualStep(line, order, at, delta)
+}
+
+// visualWordStep returns the column one visual word away from at along
+// line: the shared word segmentation walked in visual order, so
+// ctrl+arrows land on the word edge the eye sees.
+func (t *TextArea) visualWordStep(line []rune, at, delta int) int {
+	order := text.VisualOrder(line, text.BidiRuns(string(line), t.dir))
+	return text.VisualWordStep(line, order, at, delta)
 }
 
 // ensureRows rebuilds the visual row cache for the given available
@@ -617,9 +666,11 @@ func (t *TextArea) DeleteWordForward() {
 func (t *TextArea) CursorPos() (line, col int) { return t.cursor.line, t.cursor.col }
 
 // move collapses the selection, then moves the cursor without touching
-// the anchor when extend is set. A horizontal delta steps one grapheme
-// cluster per unit (#57); vertical motion carries the column, and the
-// landed column snaps to its line's clusters.
+// the anchor when extend is set. A horizontal delta steps one visual
+// unit — a grapheme cluster, mapped through the line's resolved
+// direction so the arrow keys move where the eye looks (#57, #68);
+// vertical motion carries the column, and the landed column snaps to
+// its line's clusters.
 func (t *TextArea) move(delta pos, extend bool) {
 	t.clearPreedit()
 	if !extend {
@@ -638,9 +689,9 @@ func (t *TextArea) move(delta pos, extend bool) {
 	line := t.lines[t.clamp(c).line]
 	switch {
 	case delta.col > 0:
-		c.col = text.NextCluster(line, c.col)
+		c.col = t.visualStep(line, c.col, 1)
 	case delta.col < 0:
-		c.col = text.PrevCluster(line, c.col)
+		c.col = t.visualStep(line, c.col, -1)
 	default:
 		c.col = min(c.col, len(line))
 	}
@@ -665,7 +716,7 @@ func (t *TextArea) moveVertical(dline int, extend bool) {
 	}
 	c := t.clamp(t.cursor)
 	if !t.hasPref {
-		t.prefX = t.spanWidth(c.line, 0, c.col)
+		t.prefX = t.shapeLine(t.lines[c.line]).CaretX(c.col)
 		t.hasPref = true
 	}
 	if t.wrap {
@@ -685,23 +736,24 @@ func (t *TextArea) moveVertical(dline int, extend bool) {
 	t.Invalidate()
 }
 
-// wordTo moves the cursor to the word edge delta points at, inside
-// the cursor's line: word start for negative delta, word end for
-// positive, over the shared word segmentation (internal/text) — words
-// are runs of grapheme clusters (#56, #57) — so motion, deletion, and
-// double-click agree on what a word is. Word
-// motion stays inside the line — a line start or end is a no-op, it
-// never jumps across the line break. With extend the selection grows
-// or shrinks from its anchor; without it an active selection first
-// collapses to the edge the motion points at.
+// wordTo moves the cursor to the word edge the visual direction delta
+// points at, inside the cursor's line: over the shared word
+// segmentation (internal/text) walked in the line's resolved visual
+// order — words are runs of grapheme clusters (#56, #57) — so motion,
+// deletion, and double-click agree on what a word is while arrows land
+// where the eye looks (#68). Word motion stays inside the line — a
+// line start or end is a no-op, it never jumps across the line break.
+// With extend the selection grows or shrinks from its anchor; without
+// it an active selection first collapses to the visually-directed
+// edge, the standard first-press behavior.
 func (t *TextArea) wordTo(delta int, extend bool) {
 	t.clearPreedit()
 	if !extend {
 		if _, _, active := t.Selection(); active {
 			start, end := t.ordered()
-			edge := start
-			if delta > 0 {
-				edge = end
+			edge := end
+			if t.visualEdge(delta, start, end) == start {
+				edge = start
 			}
 			t.cursor, t.anchor = edge, edge
 			t.hasPref = false
@@ -711,10 +763,7 @@ func (t *TextArea) wordTo(delta int, extend bool) {
 		}
 	}
 	c := t.clamp(t.cursor)
-	col := text.WordEnd(t.lines[c.line], c.col)
-	if delta < 0 {
-		col = text.WordStart(t.lines[c.line], c.col)
-	}
+	col := t.visualWordStep(t.lines[c.line], c.col, delta)
 	if col == c.col {
 		return // line boundary: nothing to step to on this line
 	}
@@ -727,10 +776,22 @@ func (t *TextArea) wordTo(delta int, extend bool) {
 	t.Invalidate()
 }
 
-// MoveWord moves the cursor one word within its line: word start
-// moving left, word end moving right, gaps (whitespace, punctuation
-// runs) skipped whole. An active selection collapses to the direction
-// edge first, without moving; the line boundaries are no-ops.
+// visualEdge returns which of two logical positions on one line sits
+// further in the visual direction delta points: the caret table's x,
+// which follows mixed-direction lines, decides.
+func (t *TextArea) visualEdge(delta int, a, b pos) pos {
+	xa := t.shapeLine(t.lines[a.line]).CaretX(a.col)
+	xb := t.shapeLine(t.lines[b.line]).CaretX(b.col)
+	if delta < 0 == (xa < xb) {
+		return a
+	}
+	return b
+}
+
+// MoveWord moves the cursor one visual word within its line: the word
+// edge the direction points at, gaps (whitespace, punctuation runs)
+// skipped whole. An active selection collapses to the visually-
+// directed edge first, without moving; the line boundaries are no-ops.
 func (t *TextArea) MoveWord(delta int) { t.wordTo(delta, false) }
 
 // MoveWordExtending is MoveWord with shift held: the selection
@@ -760,19 +821,39 @@ func (t *TextArea) linePan(l int) int {
 
 // clampPan bounds a pan for line l: zero when the line fits the
 // viewport, at most the line width plus the caret margin past the
-// right edge so a scrolled-to-end caret keeps its margin.
+// right edge so a scrolled-to-end caret keeps its margin. The value
+// slides the reading window the same way for either direction: an RTL
+// line starts flush with the right edge and the pan reveals its
+// reading end.
 func (t *TextArea) clampPan(l, x int) int {
 	avail := t.wrapWidth()
 	if t.wrap || avail <= 0 || t.face == nil || l < 0 || l >= len(t.lines) {
 		return 0
 	}
-	lineW := int(t.face.Shape(string(t.displayLine(l)), t.sizePx).Advance() + 0.5)
+	lineW := int(t.shapeLine(t.displayLine(l)).Advance() + 0.5)
 	return min(max(x, 0), max(0, lineW+caretPad-avail))
 }
 
+// caretX returns the caret bar's root-space x on line l: the caret's
+// visual row's shaped slice — which follows mixed-direction lines
+// visually — at the line origin linePan positions.
+func (t *TextArea) caretX(l, col int) int {
+	t.ensureRows(t.wrapWidth())
+	row := t.rows[t.rowOf(pos{l, min(max(col, 0), len(t.lines[l]))})]
+	rs := t.displayLine(l)[row.startCol:row.endCol]
+	sh := t.shapeLine(rs)
+	x := t.bounds.X + 8 - t.linePan(l)
+	if text.RTL(string(rs), t.dir) {
+		x += t.wrapWidth() - int(sh.Advance()+0.5)
+	}
+	return x + int(sh.CaretX(col-row.startCol)+0.5)
+}
+
 // panToCaret adjusts the caret line's pan so the caret stays visible:
-// flush with the left edge, or caretPad of following text inside the
-// right one. A view mutation — callers own the repaint.
+// flush with the reading's start edge, or caretPad of following text
+// inside the far edge — measured from the left for an LTR line, from
+// the right for an RTL one. A view mutation — callers own the
+// repaint.
 func (t *TextArea) panToCaret() {
 	if t.face == nil {
 		return
@@ -784,7 +865,11 @@ func (t *TextArea) panToCaret() {
 		t.setPan(l, 0)
 		return
 	}
-	cx := int(t.spanWidthDisp(l, 0, c.col) + 0.5)
+	sh := t.shapeLine(t.displayLine(l))
+	cx := int(sh.CaretX(c.col) + 0.5)
+	if text.RTL(string(t.displayLine(l)), t.dir) {
+		cx = int(sh.Advance()+0.5) - cx // the caret's distance from the reading start edge
+	}
 	p := t.linePan(l)
 	switch {
 	case cx < p:
@@ -876,7 +961,7 @@ func (t *TextArea) Paint(cv *render.Canvas) {
 	t.ensureRows(t.wrapWidth())
 
 	if len(t.lines) == 1 && len(t.lines[0]) == 0 && !t.composing() && t.placeholder != "" {
-		t.face.DrawAligned(cv, t.placeholder, t.bounds, t.sizePx, th.Border, render.AlignStart)
+		t.face.DrawAlignedDir(cv, t.placeholder, t.bounds, t.sizePx, th.Border, render.AlignStart, t.dir)
 		return
 	}
 	prev := cv.PushClip(render.Rect{
@@ -890,8 +975,18 @@ func (t *TextArea) Paint(cv *render.Canvas) {
 		if len(line) == 0 || r.startCol >= r.endCol {
 			continue
 		}
+		sh := t.shapeLine(line[r.startCol:r.endCol])
+		// The row's line origin: the inner rect's left for LTR, slid
+		// by the pan; flush right minus the pan for RTL, so short rows
+		// hug the edge their reading starts at.
+		rowX := t.bounds.X + 8 - pan
+		if text.RTL(string(line), t.dir) {
+			rowX += t.wrapWidth() - int(sh.Advance()+0.5)
+		}
+		box := render.Rect{X: t.bounds.X + 8, Y: t.bounds.Y + y, W: t.bounds.W - 16, H: lineH}
 		// Selection band for the portion of this row inside the
-		// selection.
+		// selection — one band per visual run, so a span crossing
+		// directions highlights disjoint pieces.
 		if active {
 			from, to := r.startCol, r.endCol
 			if r.line == start.line {
@@ -903,14 +998,17 @@ func (t *TextArea) Paint(cv *render.Canvas) {
 			if from < to {
 				sel := th.Accent
 				hl := render.RGBA(sel.R(), sel.G(), sel.B(), 90)
-				x0 := 8 + int(t.spanWidth(r.line, r.startCol, from)+0.5) - pan
-				x1 := 8 + int(t.spanWidth(r.line, r.startCol, to)+0.5) - pan
-				cv.FillRect(render.Rect{X: t.bounds.X + x0, Y: t.bounds.Y + y, W: x1 - x0, H: lineH}, hl)
+				for _, band := range sh.AppendCaretBands(t.bands[:0], from-r.startCol, to-r.startCol) {
+					cv.FillRect(render.Rect{
+						X: rowX + int(band[0]+0.5), Y: t.bounds.Y + y,
+						W: int(band[1]+0.5) - int(band[0]+0.5), H: lineH,
+					}, hl)
+				}
 			}
 		}
-		box := render.Rect{X: t.bounds.X + 8, Y: t.bounds.Y + y, W: t.bounds.W - 16, H: lineH}
 		rowClip := cv.PushClip(box)
-		t.face.DrawAligned(cv, string(line[r.startCol:r.endCol]), render.Rect{X: box.X - pan, Y: box.Y, W: box.W, H: box.H}, t.sizePx, textCol, render.AlignStart)
+		baseline := box.Y + int(math.Round((float64(box.H)-float64(sh.LineHeight()))/2+sh.Ascent()))
+		sh.Draw(cv, rowX, baseline, textCol)
 		cv.PopClip(rowClip)
 	}
 	if t.composing() {
@@ -923,11 +1021,20 @@ func (t *TextArea) Paint(cv *render.Canvas) {
 			if r.line != t.peAt.line || r.endCol <= pb || r.startCol >= pe {
 				continue
 			}
+			line := t.displayLine(r.line)
+			sh := t.shapeLine(line[r.startCol:r.endCol])
 			pan := t.linePan(r.line)
-			x0 := 8 + int(t.spanWidthDisp(r.line, r.startCol, max(r.startCol, pb))+0.5) - pan
-			x1 := 8 + int(t.spanWidthDisp(r.line, r.startCol, min(r.endCol, pe))+0.5) - pan
-			y := 6 + i*lineH
-			cv.FillRect(render.Rect{X: t.bounds.X + x0, Y: t.bounds.Y + y + lineH - 4, W: max(x1-x0, 2), H: 2}, ul)
+			rowX := t.bounds.X + 8 - pan
+			if text.RTL(string(line), t.dir) {
+				rowX += t.wrapWidth() - int(sh.Advance()+0.5)
+			}
+			for _, band := range sh.AppendCaretBands(t.bands[:0], max(r.startCol, pb)-r.startCol, min(r.endCol, pe)-r.startCol) {
+				y := 6 + i*lineH
+				cv.FillRect(render.Rect{
+					X: rowX + int(band[0]+0.5), Y: t.bounds.Y + y + lineH - 4,
+					W: max(int(band[1]+0.5)-int(band[0]+0.5), 2), H: 2,
+				}, ul)
+			}
 		}
 	}
 	// Cursor bar on the caret's visual row; hidden while the input
@@ -936,10 +1043,11 @@ func (t *TextArea) Paint(cv *render.Canvas) {
 	caret := t.caretPos()
 	if !t.composing() || t.peCur >= 0 {
 		row := t.rowOf(caret)
-		crow := t.rows[row]
-		x := 8 + int(t.spanWidthDisp(crow.line, crow.startCol, caret.col)+0.5) - t.linePan(crow.line)
 		y := 6 + row*lineH
-		cv.FillRect(render.Rect{X: t.bounds.X + x, Y: t.bounds.Y + y + 2, W: 2, H: lineH - 4}, caretCol)
+		cv.FillRect(render.Rect{
+			X: t.caretX(caret.line, caret.col), Y: t.bounds.Y + y + 2,
+			W: 2, H: lineH - 4,
+		}, caretCol)
 	}
 	cv.PopClip(prev)
 }

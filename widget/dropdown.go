@@ -6,6 +6,7 @@ import (
 
 	"github.com/stubbedev/gelm/internal/anim"
 	"github.com/stubbedev/gelm/internal/surfx"
+	"github.com/stubbedev/gelm/internal/text"
 	"github.com/stubbedev/gelm/render"
 )
 
@@ -57,6 +58,7 @@ type Dropdown struct {
 	node
 	face     render.Font
 	sizePx   float64
+	dir      Direction
 	items    []string
 	selected int
 
@@ -102,6 +104,25 @@ func NewDropdown(face render.Font, sizePx float64, items []string, selected int)
 
 // Selected returns the selected item index, -1 when empty.
 func (d *Dropdown) Selected() int { return d.selected }
+
+// SetDirection selects the base paragraph direction the selection
+// label and the open list's rows resolve and lay out with; the menu
+// inherits it. DirectionAuto (the default) reads it off the label's
+// first strong character. Changing the direction invalidates.
+func (d *Dropdown) SetDirection(dir Direction) {
+	if d.dir == dir {
+		return
+	}
+	d.dir = dir
+	if d.menu != nil {
+		d.menu.SetDirection(dir)
+	}
+	d.Invalidate()
+}
+
+// Direction returns the base paragraph direction the labels resolve
+// with.
+func (d *Dropdown) Direction() Direction { return d.dir }
 
 // Selection returns the selected item's label, empty when none.
 func (d *Dropdown) Selection() string {
@@ -158,6 +179,7 @@ func (d *Dropdown) list() *Menu {
 		items[i] = MenuItem{Label: label, OnClick: func() { d.selectIndex(i) }}
 	}
 	d.menu = NewMenu(d.face, d.sizePx, items...)
+	d.menu.SetDirection(d.dir)
 	// Menu activation dismisses before the row fires, so the list is
 	// closed (and its pixels invalidated) by the time OnSelect runs.
 	d.menu.OnDismiss = d.Close
@@ -309,7 +331,14 @@ func (d *Dropdown) Paint(cv *render.Canvas) {
 	}
 	lineH := d.face.Shape("lg", d.sizePx).LineHeight()
 	baseline := d.bounds.Y + (d.bounds.H-lineH)/2 + int(d.face.Shape("lg", d.sizePx).Ascent()+0.5)
-	d.face.Draw(cv, d.face.Shape(d.Selection(), d.sizePx), d.bounds.X+8, baseline, col)
+	sh := d.face.ShapeDir(d.Selection(), d.sizePx, d.dir)
+	lx := d.bounds.X + 8
+	if text.RTL(d.Selection(), d.dir) {
+		// A right-to-left selection reads from the right edge; keep
+		// clear of the chevron.
+		lx = d.bounds.X + d.bounds.W - 28 - int(sh.Advance()+0.5)
+	}
+	d.face.Draw(cv, sh, lx, baseline, col)
 	// The chevron: two strokes forming a v at the face's right edge.
 	cx, cy := d.bounds.X+d.bounds.W-16, d.bounds.Y+d.bounds.H/2
 	cv.Line(cx-4, cy-2, cx, cy+2, 1, col)

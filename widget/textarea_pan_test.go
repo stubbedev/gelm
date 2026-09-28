@@ -19,10 +19,11 @@ func newUnwrappedArea(t *testing.T, s string) *TextArea {
 }
 
 // areaCaretX reports the caret bar's root-space x: the same math Paint
-// uses, the caret line's text at -pan inside the padded area.
+// uses, the shaped line's caret table at the line origin linePan
+// positions.
 func areaCaretX(ta *TextArea) int {
 	caret := ta.caretPos()
-	return ta.bounds.X + 8 + int(ta.spanWidthDisp(caret.line, 0, caret.col)+0.5) - ta.linePan(caret.line)
+	return ta.caretX(caret.line, caret.col)
 }
 
 // assertAreaCaretInside fails when the caret sits outside the padded
@@ -84,7 +85,7 @@ func TestTextAreaPanPerLogicalLine(t *testing.T) {
 		}
 		ta.ensureRows(ta.wrapWidth())
 		r := ta.rows[ta.rowOf(ta.clamp(ta.cursor))]
-		if w := int(ta.spanWidth(r.line, r.startCol, r.endCol) + 0.5); w > ta.wrapWidth() {
+		if w := int(ta.face.Shape(string(ta.lines[r.line][r.startCol:r.endCol]), ta.sizePx).Advance() + 0.5); w > ta.wrapWidth() {
 			t.Errorf("wrapped row is %dpx wide in a %dpx viewport", w, ta.wrapWidth())
 		}
 	})

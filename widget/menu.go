@@ -7,6 +7,7 @@ import (
 	"github.com/unxed/xkb-go"
 
 	"github.com/stubbedev/gelm/internal/logutil"
+	"github.com/stubbedev/gelm/internal/text"
 	"github.com/stubbedev/gelm/render"
 )
 
@@ -61,6 +62,7 @@ type Menu struct {
 	node
 	face      render.Font
 	sizePx    float64
+	dir       Direction
 	items     []MenuItem
 	hovered   int
 	itemH     int
@@ -97,6 +99,22 @@ func NewMenu(face render.Font, sizePx float64, items ...MenuItem) *Menu {
 // injected library logger at Debug level (the rows still render; only
 // the duplicate shortcut is dropped). Tests swap it to capture.
 var menuDebug = func(msg string) { logutil.L().Debug(msg) }
+
+// SetDirection selects the base paragraph direction the row labels
+// resolve and lay out with: DirectionAuto (the default) reads it off
+// each label's first strong character, and a right-to-left label hugs
+// the row's right edge. Changing the direction invalidates.
+func (m *Menu) SetDirection(d Direction) {
+	if m.dir == d {
+		return
+	}
+	m.dir = d
+	m.Invalidate()
+}
+
+// Direction returns the base paragraph direction the labels resolve
+// with.
+func (m *Menu) Direction() Direction { return m.dir }
 
 // resolveMnemonics assigns each row its Alt-letter: explicit Mnemonic
 // letters first (first declaration wins; duplicates drop with a Debug
@@ -184,7 +202,10 @@ func (m *Menu) nextSelectable(i, dir int) int {
 }
 
 // Paint draws the item rows with the hovered one highlighted, item
-// indicators, accelerator labels, and submenu arrows.
+// indicators, accelerator labels, and submenu arrows. Labels resolve
+// under the menu's base direction: a right-to-left label shapes
+// reordered and hugs the row's right edge; the check/radio indicators,
+// accelerators, and submenu arrows keep their positions.
 func (m *Menu) Paint(cv *render.Canvas) {
 	t := Current()
 	cv.RoundedRect(m.bounds, t.Radius, t.Surface)
@@ -224,7 +245,18 @@ func (m *Menu) Paint(cv *render.Canvas) {
 			col = t.DisabledText()
 		}
 		baseline := row.Y + (row.H-lineH)/2 + int(m.face.Shape("lg", m.sizePx).Ascent()+0.5)
-		sh := m.face.Shape(it.Label, m.sizePx)
+		sh := m.face.ShapeDir(it.Label, m.sizePx, m.dir)
+		if text.RTL(it.Label, m.dir) {
+			// A right-to-left label reads from the row's right edge;
+			// keep clear of the accelerator and submenu arrow.
+			x = row.X + row.W - 12 - int(sh.Advance()+0.5)
+			if it.Accel != "" {
+				x -= int(m.face.Shape(it.Accel, m.sizePx).Advance()+0.5) + 16
+			}
+			if len(it.Items) > 0 {
+				x -= 14
+			}
+		}
 		m.face.Draw(cv, sh, x, baseline, col)
 		if ri := m.mnemRunes[i]; ri >= 0 {
 			// The mnemonic underline: a strip under the claimed letter,
