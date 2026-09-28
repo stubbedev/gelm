@@ -59,3 +59,22 @@ jobs:
         with:
           name: benchmarks-${{ github.sha }}
           path: bench.txt
+
+  # The Hyprland side of the compositor-in-the-loop gate (#66): the
+  # same suite the check job's sway gate runs, against Hyprland in a
+  # private NixOS VM (own kernel, own DRM node - aquamarine cannot
+  # boot without a real one, and hosted runners have no GPU to lend).
+  # Starts allow-failure while stability settles on shared runners
+  # (KVM, llvmpipe and Hyprland timings all move); promote to a
+  # blocking gate once it has been green for a sustained window.
+  hyprland:
+    continue-on-error: true
+    timeout-minutes: 45
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cachix/install-nix-action@v31
+        with:
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Hyprland compositor-in-the-loop gate (private VM)
+        run: nix build -L .#checks.x86_64-linux.gelm-hyprland-vm

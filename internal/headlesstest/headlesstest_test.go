@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -169,6 +170,39 @@ func TestSwayRecipePinsTheShowcase(t *testing.T) {
 	} {
 		if !strings.Contains(cfg, want) {
 			t.Errorf("test-env sway config lacks %q; keep it in sync with internal/headlesstest:\n%s", want, cfg)
+		}
+	}
+}
+
+// TestHyprlandVMRecipePinsTheShowcase is the sway recipe guard's twin
+// for the Hyprland VM gate: the VM's windowrules must pin the same
+// floating sizes and positions (Hyprland 0.56 legacy rule syntax:
+// effects and match:class fields, comma-separated), or every traced
+// coordinate is compositor-relative to a tiling layout instead. The
+// dots in the app_ids are regex-escaped in the conf and the escapes
+// are doubled again by the nix ” string, so the guard matches the
+// escaped source form.
+func TestHyprlandVMRecipePinsTheShowcase(t *testing.T) {
+	root, err := ModuleDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(root, "tests", "hyprland-vm.nix"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := string(data)
+	nixClass := func(appID string) string {
+		return strings.ReplaceAll(regexp.QuoteMeta(appID), `\`, `\\`)
+	}
+	for _, want := range []string{
+		fmt.Sprintf("match:class ^(%s)$, size %d %d, move 0 0", nixClass(AppID), showcaseW, showcaseH),
+		fmt.Sprintf("match:class ^(%s)$, size %d %d, move 40 40", nixClass(StatesAppID), statesW, statesH),
+		fmt.Sprintf("match:class ^(%s)$, size %d %d, move 0 0", nixClass(MultilistAppID), multilistW, multilistH),
+		"match:title ^modal dialog$",
+	} {
+		if !strings.Contains(cfg, want) {
+			t.Errorf("Hyprland VM config lacks %q; keep it in sync with internal/headlesstest:\n%s", want, cfg)
 		}
 	}
 }

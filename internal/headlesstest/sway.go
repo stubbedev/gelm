@@ -29,12 +29,26 @@ const ipcRunCommand = 0
 // microseconds, so anything past this is a broken session.
 const ipcTimeout = 5 * time.Second
 
-// SwayCommand runs one sway command (swaymsg's language) against the
-// session's compositor and fails when the command itself failed (the
-// reply carries one JSON object per command, each with a success flag
-// and an error string).
-func (e *Env) SwayCommand(command string) error {
-	sock, err := e.ipcSocket()
+// swayCompositor names the artifacts the test-env recipe creates and
+// speaks sway's i3 IPC for compositor-driven window actions.
+type swayCompositor struct{}
+
+func (swayCompositor) Name() string       { return "sway" }
+func (swayCompositor) ConfigName() string { return "sway.cfg" }
+func (swayCompositor) PIDName() string    { return "sway.pid" }
+func (swayCompositor) LogName() string    { return "sway.log" }
+
+// CloseWindow kills the client window with the given app_id.
+func (swayCompositor) CloseWindow(dir, appID string) error {
+	return swayIPCCommand(dir, `[app_id="`+appID+`"] kill`)
+}
+
+// swayIPCCommand runs one sway command (swaymsg's language) against
+// the session's compositor and fails when the command itself failed
+// (the reply carries one JSON object per command, each with a success
+// flag and an error string).
+func swayIPCCommand(dir, command string) error {
+	sock, err := swayIPCSocket(dir)
 	if err != nil {
 		return err
 	}
@@ -82,15 +96,15 @@ func (e *Env) SwayCommand(command string) error {
 	return nil
 }
 
-// ipcSocket finds the sway IPC socket in the session's private runtime
-// dir; sway names it sway-ipc.<uid>.<pid>.sock.
-func (e *Env) ipcSocket() (string, error) {
-	matches, err := filepath.Glob(filepath.Join(e.Dir, "sway-ipc.*.sock"))
+// swayIPCSocket finds the sway IPC socket in the session's private
+// runtime dir; sway names it sway-ipc.<uid>.<pid>.sock.
+func swayIPCSocket(dir string) (string, error) {
+	matches, err := filepath.Glob(filepath.Join(dir, "sway-ipc.*.sock"))
 	if err != nil {
 		return "", err
 	}
 	if len(matches) == 0 {
-		return "", errors.New("headlesstest: no sway IPC socket in " + e.Dir + "; the test-env recipe's compositor must keep its default IPC enabled")
+		return "", errors.New("headlesstest: no sway IPC socket in " + dir + "; the test-env recipe's compositor must keep its default IPC enabled")
 	}
 	return matches[0], nil
 }

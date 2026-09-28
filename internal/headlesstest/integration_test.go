@@ -636,8 +636,8 @@ func TestHeadlessWindowStates(t *testing.T) {
 	// closes the window (sway kill, the real xdg_toplevel.close event).
 	// The client must tear down cleanly - no panic, exit 0.
 	tapUntil('f', "fullscreen=true")
-	if err := testEnv.SwayCommand(`[app_id="` + StatesAppID + `"] kill`); err != nil {
-		t.Fatalf("sway close: %v", err)
+	if err := testEnv.CloseWindow(StatesAppID); err != nil {
+		t.Fatalf("compositor close: %v", err)
 	}
 	select {
 	case <-exited:
