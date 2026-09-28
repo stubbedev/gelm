@@ -1,6 +1,7 @@
 package widget
 
 import (
+	"github.com/stubbedev/gelm/internal/style"
 	"github.com/stubbedev/gelm/render"
 )
 
@@ -37,22 +38,30 @@ func (b *Button) Measure(con Constraints) Size {
 	if sz, ok := b.measureHit(con); ok {
 		return sz
 	}
+	pad := b.pad()
 	inner := Constraints{
 		Min: Size{},
-		Max: Size{W: max(0, con.Max.W-2*b.padding), H: max(0, con.Max.H-2*b.padding)},
+		Max: Size{W: max(0, con.Max.W-2*pad), H: max(0, con.Max.H-2*pad)},
 	}
 	nat := b.child.Measure(inner)
-	return b.measureStore(con, clampSize(Size{W: nat.W + 2*b.padding, H: nat.H + 2*b.padding}, con))
+	return b.measureStore(con, clampSize(Size{W: nat.W + 2*pad, H: nat.H + 2*pad}, con))
+}
+
+// pad is the effective inner padding: the stylesheet's when set, else
+// the constructor default.
+func (b *Button) pad() int {
+	return picki(b.style(b), style.PropPadding, b.padding)
 }
 
 // Arrange insets the child by the padding inside r.
 func (b *Button) Arrange(r render.Rect) {
 	b.ArrangeRoot(r)
+	pad := b.pad()
 	b.child.Arrange(render.Rect{
-		X: r.X + b.padding,
-		Y: r.Y + b.padding,
-		W: max(0, r.W-2*b.padding),
-		H: max(0, r.H-2*b.padding),
+		X: r.X + pad,
+		Y: r.Y + pad,
+		W: max(0, r.W-2*pad),
+		H: max(0, r.H-2*pad),
 	})
 	setParents(b, b.child)
 }
@@ -67,18 +76,32 @@ func (b *Button) ArrangeRoot(r render.Rect) {
 // surface and the child paints through the shared disabled fade, so
 // whatever a button wraps (label, icon) mutes without the child
 // knowing about the state.
+//
+// The stylesheet layers between the programmatic colors and the theme
+// per state slot, and border-width rounds the fill down inside a
+// border-color stroke.
 func (b *Button) Paint(cv *render.Canvas) {
 	t := Current()
-	bg := t.resolve(b.Bg, t.Surface)
+	v := b.style(b)
+	var bg, prog render.Color
 	switch {
 	case !IsEnabled(b):
-		bg = t.resolve(b.Bg, t.DisabledSurface())
+		bg, prog = t.DisabledSurface(), b.Bg
 	case b.Pressed:
-		bg = t.resolve(b.BgPressed, t.SurfacePressed)
+		bg, prog = t.PressedSurface(), b.BgPressed
 	case b.Hovered:
-		bg = t.resolve(b.BgHover, t.SurfaceHover)
+		bg, prog = t.HoverSurface(), b.BgHover
+	default:
+		bg, prog = t.Surface, b.Bg
 	}
-	cv.RoundedRect(b.bounds, b.radius, bg)
+	fill := pickc(prog, v, style.PropBackgroundColor, bg)
+	radius := picki(v, style.PropBorderRadius, b.radius)
+	if bw := picki(v, style.PropBorderWidth, 0); bw > 0 {
+		cv.RoundedRect(b.bounds, radius, pickc(0, v, style.PropBorderColor, t.Border))
+		cv.RoundedRect(shrinkRect(b.bounds, bw), max(0, radius-bw), fill)
+	} else {
+		cv.RoundedRect(b.bounds, radius, fill)
+	}
 	if IsEnabled(b) {
 		b.child.Paint(cv)
 		return
@@ -120,7 +143,7 @@ func (b *Button) SetHovered(on bool) {
 		return
 	}
 	b.Hovered = on
-	b.Invalidate()
+	b.invalidateStyle()
 }
 
 // SetPressed implements PressSetter; the pressed shade repaints.
@@ -129,7 +152,7 @@ func (b *Button) SetPressed(on bool) {
 		return
 	}
 	b.Pressed = on
-	b.Invalidate()
+	b.invalidateStyle()
 }
 
 // KeyAction implements KeyActionHandler: Enter activates the button

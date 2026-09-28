@@ -204,6 +204,9 @@ func (a *Application) OpenPopover(host Host, cfg PopoverConfig) (*Popover, error
 
 	anchor := cfg.Anchor.Bounds()
 	bw, bh := host.Size()
+	// The popover's content styles as the `popover` element (css.md):
+	// whatever widget tree the app hands over IS the card.
+	nameSurfaceElement(cfg.Content, elemPopover)
 	size := cfg.Content.Measure(widget.Constraints{Max: widget.Size{W: bw, H: 600}})
 	x, y := anchorOrigin(render.Rect{W: bw, H: bh}, anchor, size, cfg.Gravity)
 	// The shadow gutter rides on the surface: it grows the popup on

@@ -3,6 +3,7 @@ package widget
 import (
 	"math"
 
+	"github.com/stubbedev/gelm/internal/style"
 	"github.com/stubbedev/gelm/render"
 )
 
@@ -166,10 +167,59 @@ func (l *Label) SetEllipsize(mode EllipsizeMode) {
 // Ellipsize returns the label's truncation mode.
 func (l *Label) Ellipsize() EllipsizeMode { return l.ell }
 
+// effStyleIn resolves the paint parameters one cascade value implies:
+// the face (a font-family/font-weight declaration shaped through the
+// installed face resolver, else the constructor face) and the size
+// (font-size, else the constructor size).
+func (l *Label) effStyleIn(v *style.Values) (render.Font, float64) {
+	px := fontPx(v, l.sizePx)
+	if !v.Has(style.PropFontFamily) && !v.Has(style.PropFontWeight) {
+		return l.face, px
+	}
+	family, weight := "", 0
+	if v.Has(style.PropFontFamily) {
+		family = v.FontFamily
+	}
+	if v.Has(style.PropFontWeight) {
+		weight = v.FontWeight
+	}
+	if f, ok := resolveFace(family, weight); ok {
+		return f, px
+	}
+	return l.face, px
+}
+
+// effStyle is effStyleIn over the widget's current cascade.
+func (l *Label) effStyle() (render.Font, float64) { return l.effStyleIn(l.style(l)) }
+
+// styleRestyled implements styleRestyler: a changed effective face or
+// size reshapes the cached run and drops the measure cache.
+func (l *Label) styleRestyled(old, new style.Values) {
+	of, opx := l.effStyleIn(&old)
+	nf, npx := l.effStyleIn(&new)
+	if of != nf || opx != npx {
+		l.retext()
+		l.InvalidateLayout()
+	}
+}
+
+// textColor is the ink: the programmatic color when set, else the
+// stylesheet's (direct or inherited), else the constructor value —
+// zero paints nothing, the no-stylesheet behavior.
+func (l *Label) textColor(v *style.Values) render.Color {
+	return pickc(l.color, v, style.PropColor, l.color)
+}
+
+// padding is the content inset, the stylesheet's when set.
+func (l *Label) padding() int {
+	return picki(l.style(l), style.PropPadding, 0)
+}
+
 // retext re-resolves and reshapes the run under the label's base
 // direction and refreshes the cached natural size.
 func (l *Label) retext() {
-	l.shaped = l.face.ShapeDir(l.text, l.sizePx, l.dir)
+	face, px := l.effStyle()
+	l.shaped = face.ShapeDir(l.text, px, l.dir)
 	l.natural = Size{
 		W: int(l.shaped.Advance() + 0.5),
 		H: l.shaped.LineHeight(),
@@ -192,6 +242,7 @@ func (l *Label) Measure(con Constraints) Size {
 // current text and modes. Fit checks compare the raw advance against
 // the offered width - the rounded natural size can lie by a pixel.
 func (l *Label) measureNatural(con Constraints) Size {
+	face, px := l.effStyle()
 	lineH := l.shaped.LineHeight()
 	if !l.wrap {
 		if l.shaped.Advance() <= float64(con.Max.W) {
@@ -202,20 +253,20 @@ func (l *Label) measureNatural(con Constraints) Size {
 			// Overflow: claim the offered box and clip, as before.
 			return clampSize(l.natural, con)
 		}
-		truncated := render.EllipsizeText(l.face, l.text, l.ell, float64(con.Max.W), l.sizePx)
+		truncated := render.EllipsizeText(face, l.text, l.ell, float64(con.Max.W), px)
 		return clampSize(Size{
-			W: int(l.face.Shape(truncated, l.sizePx).Advance() + 0.5),
+			W: int(face.Shape(truncated, px).Advance() + 0.5),
 			H: lineH,
 		}, con)
 	}
 	rows := l.wrapped(float64(con.Max.W))
 	w := 0.0
 	for _, ln := range rows {
-		w = math.Max(w, l.face.Shape(ln, l.sizePx).Advance())
+		w = math.Max(w, face.Shape(ln, px).Advance())
 	}
 	return clampSize(Size{
 		W: int(w + 0.5),
-		H: len(rows) * lineH,
+		H: len(rows)*lineH + 2*l.padding(),
 	}, con)
 }
 
@@ -223,9 +274,10 @@ func (l *Label) measureNatural(con Constraints) Size {
 // mode is set - the shared body of Measure and Paint, so the label
 // reports and draws the same rows.
 func (l *Label) wrapped(width float64) []string {
-	lines := render.WrapText(l.face, l.text, width, l.sizePx)
+	face, px := l.effStyle()
+	lines := render.WrapText(face, l.text, width, px)
 	if last := len(lines) - 1; l.ell != EllipsizeNone && lines[last] != "" {
-		lines[last] = render.EllipsizeText(l.face, lines[last], l.ell, width, l.sizePx)
+		lines[last] = render.EllipsizeText(face, lines[last], l.ell, width, px)
 	}
 	return lines
 }
@@ -236,13 +288,14 @@ func (l *Label) wrapped(width float64) []string {
 // height below which nothing paints. Without wrap there is no width
 // floor: clipping and ellipsizing own the narrow rects by design.
 func (l *Label) MinSize() Size {
+	face, px := l.effStyle()
 	floor := Size{H: l.shaped.LineHeight()}
 	if !l.wrap || l.text == "" {
 		return floor
 	}
 	w := 0.0
-	for _, tok := range render.WrapText(l.face, l.text, 1, l.sizePx) {
-		w = math.Max(w, l.face.Shape(tok, l.sizePx).Advance())
+	for _, tok := range render.WrapText(face, l.text, 1, px) {
+		w = math.Max(w, face.Shape(tok, px).Advance())
 	}
 	floor.W = int(w + 0.5)
 	return floor
@@ -252,30 +305,33 @@ func (l *Label) MinSize() Size {
 // wrapping is on, the single line ellipsized as configured otherwise.
 // Nothing is painted when the rect cannot hold one line.
 func (l *Label) Paint(cv *render.Canvas) {
+	face, px := l.effStyle()
+	col := l.textColor(l.style(l))
+	pad := l.padding()
 	if l.wrap {
-		l.paintWrapped(cv)
+		l.paintWrapped(cv, face, px, col, pad)
 		return
 	}
 	text := l.text
-	if l.ell != EllipsizeNone && l.shaped.Advance() > float64(l.bounds.W) {
-		text = render.EllipsizeText(l.face, l.text, l.ell, float64(l.bounds.W), l.sizePx)
+	if l.ell != EllipsizeNone && l.shaped.Advance() > float64(l.bounds.W-2*pad) {
+		text = render.EllipsizeText(face, l.text, l.ell, float64(l.bounds.W-2*pad), px)
 	}
-	l.face.DrawAlignedDir(cv, text, l.bounds, l.sizePx, l.color, l.align, l.dir)
+	face.DrawAlignedDir(cv, text, shrinkRect(l.bounds, pad), px, col, l.align, l.dir)
 }
 
 // paintWrapped draws the wrapped rows, the stack vertically centered in
 // a taller rect, each row aligned like a single line.
-func (l *Label) paintWrapped(cv *render.Canvas) {
-	lines := l.wrapped(float64(l.bounds.W))
+func (l *Label) paintWrapped(cv *render.Canvas, face render.Font, px float64, col render.Color, pad int) {
+	lines := l.wrapped(float64(l.bounds.W - 2*pad))
 	lineH := l.shaped.LineHeight()
-	y := l.bounds.Y
-	if extra := l.bounds.H - len(lines)*lineH; extra > 0 {
+	y := l.bounds.Y + pad
+	if extra := l.bounds.H - 2*pad - len(lines)*lineH; extra > 0 {
 		y += extra / 2
 	}
 	for _, ln := range lines {
-		l.face.DrawAlignedDir(cv, ln, render.Rect{
-			X: l.bounds.X, Y: y, W: l.bounds.W, H: lineH,
-		}, l.sizePx, l.color, l.align, l.dir)
+		face.DrawAlignedDir(cv, ln, render.Rect{
+			X: l.bounds.X + pad, Y: y, W: l.bounds.W - 2*pad, H: lineH,
+		}, px, col, l.align, l.dir)
 		y += lineH
 	}
 }

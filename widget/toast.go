@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/stubbedev/gelm/internal/anim"
+	"github.com/stubbedev/gelm/internal/style"
 	"github.com/stubbedev/gelm/internal/surfx"
 	"github.com/stubbedev/gelm/render"
 )
@@ -109,6 +110,7 @@ func (t *Toast) SetHovered(on bool) {
 		return
 	}
 	t.hovered = on
+	t.styleDirty = true
 	if on {
 		t.stopTimer()
 		if t.leaving {
@@ -243,7 +245,8 @@ func (t *Toast) invalidateFrame() {
 // grown by the slide, which the moving card and its falloff never
 // exceed.
 func (t *Toast) paintExtent() render.Rect {
-	ring := Current().ShadowRing(t.bounds)
+	_, blur := effShadow(t, Current())
+	ring := ringFor(t.bounds, blur)
 	if ring.Empty() {
 		return t.bounds
 	}
@@ -255,7 +258,8 @@ func (t *Toast) paintExtent() render.Rect {
 // both — nothing animates while hidden.
 func (t *Toast) Arrange(r render.Rect) {
 	t.node.Arrange(r)
-	t.ring.sync(&t.node)
+	_, blur := effShadow(t, Current())
+	t.ring.syncRing(&t.node, ringFor(t.bounds, blur))
 	vis := !r.Empty()
 	if vis == t.visible {
 		t.layoutAction()
@@ -334,30 +338,37 @@ func (t *Toast) Measure(con Constraints) Size {
 // ring plus the slide when one is owed — so the animation never paints
 // outside its damage rect. The shadow rides the card (it shifts with
 // the same dy), which is why it clips to the extent, not the bounds.
+// The stylesheet's box-shadow, background-color, border-radius, and
+// color override the theme's.
 func (t *Toast) Paint(cv *render.Canvas) {
 	p := math01(t.progress)
 	if p <= 0 || t.bounds.Empty() {
 		return
 	}
 	th := Current()
+	v := t.style(t)
+	col, blur := effShadow(t, th)
+	radius := picki(v, style.PropBorderRadius, th.Radius)
+	fill := pickc(0, v, style.PropBackgroundColor, th.Surface)
+	ink := pickc(0, v, style.PropColor, th.Text)
 	prev := cv.PushClip(t.paintExtent())
 	dy := int((1 - p) * toastSlide)
 	card := t.bounds
 	card.Y += dy
-	if col, blur := th.shadowPaint(p); blur != 0 {
-		cv.Shadow(card, th.Radius, blur, col)
+	if blur > 0 {
+		cv.Shadow(card, radius, blur, scaleAlpha(col, p))
 	}
-	cv.RoundedRect(card, th.Radius, scaleAlpha(th.Surface, p))
+	cv.RoundedRect(card, radius, scaleAlpha(fill, p))
 	if t.face != nil {
 		sh := t.face.Shape(t.text, t.sizePx)
 		baseline := card.Y + (card.H-sh.LineHeight())/2 + int(sh.Ascent()+0.5)
-		t.face.Draw(cv, sh, card.X+toastPadX, baseline, scaleAlpha(th.Text, p))
+		t.face.Draw(cv, sh, card.X+toastPadX, baseline, scaleAlpha(ink, p))
 	}
 	if t.action != "" && t.face != nil {
 		rect := t.actionRect
 		rect.Y += dy
 		if t.hovered && rect.Contains(t.hoverPt.X, t.hoverPt.Y) {
-			cv.RoundedRect(rect, th.Radius, scaleAlpha(th.SurfaceHover, p))
+			cv.RoundedRect(rect, radius, scaleAlpha(th.SurfaceHover, p))
 		}
 		sh := t.face.Shape(t.action, t.sizePx)
 		baseline := rect.Y + (rect.H-sh.LineHeight())/2 + int(sh.Ascent()+0.5)

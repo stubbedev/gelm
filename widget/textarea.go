@@ -4,6 +4,7 @@ import (
 	"math"
 	"strings"
 
+	"github.com/stubbedev/gelm/internal/style"
 	"github.com/stubbedev/gelm/internal/text"
 	"github.com/stubbedev/gelm/render"
 )
@@ -911,9 +912,11 @@ func (t *TextArea) colForX(l int, x float64) int {
 // then stops widening the layout at the cap and pans inside it.
 func (t *TextArea) Measure(con Constraints) Size {
 	lineH := t.face.Shape("lg", t.sizePx).LineHeight()
+	v := t.style(t)
 	if t.wrap && con.Max.W > 16 {
 		t.ensureRows(con.Max.W - 16)
-		return clampSize(Size{W: con.Max.W, H: lineH*len(t.rows) + 12}, con)
+		h := lineH*len(t.rows) + 12
+		return clampSize(Size{W: con.Max.W, H: max(h, picki(v, style.PropMinHeight, 0))}, con)
 	}
 	w := 16
 	for l := range t.lines {
@@ -926,7 +929,20 @@ func (t *TextArea) Measure(con Constraints) Size {
 		w = min(w, max(t.MaxWidth, 16))
 	}
 	h := lineH*len(t.lines) + 12
+	// The stylesheet's min-* floors hold before the constraints clamp.
+	w = max(w, picki(v, style.PropMinWidth, 0))
+	h = max(h, picki(v, style.PropMinHeight, 0))
 	return clampSize(Size{W: w, H: h}, con)
+}
+
+// MinSize implements MinSizer: the stylesheet's min-* floors when set,
+// no floor otherwise (the zero Size).
+func (t *TextArea) MinSize() Size {
+	v := t.style(t)
+	return Size{
+		W: picki(v, style.PropMinWidth, 0),
+		H: picki(v, style.PropMinHeight, 0),
+	}
 }
 
 // lineHeight returns the integer line height of the font.
@@ -940,22 +956,27 @@ func (t *TextArea) lineHeight() int {
 // inner rect, per logical line. The placeholder only shows on an empty
 // area and never pans. State colors follow Entry: disabled fills with
 // the derived disabled surface and fades the text; read-only keeps the
-// text and fades only the caret.
+// text and fades only the caret. The stylesheet's background-color,
+// color, and border-radius override the theme's.
 func (t *TextArea) Paint(cv *render.Canvas) {
 	th := Current()
+	v := t.style(t)
 	enabled := IsEnabled(t)
 	bg := th.Surface
 	if !enabled {
 		bg = th.DisabledSurface()
 	}
-	cv.RoundedRect(t.bounds, th.Radius, bg)
-	textCol, caretCol := t.color, t.color
+	bg = pickc(0, v, style.PropBackgroundColor, bg)
+	radius := picki(v, style.PropBorderRadius, th.Radius)
+	textCol := pickc(t.color, v, style.PropColor, t.color)
+	caretCol := textCol
 	if !enabled {
 		textCol = scaleAlpha(textCol, disabledFade)
 		caretCol = textCol
 	} else if t.readOnly {
 		caretCol = scaleAlpha(caretCol, disabledFade)
 	}
+	cv.RoundedRect(t.bounds, radius, bg)
 	lineH := t.lineHeight()
 	start, end, active := t.Selection()
 	t.ensureRows(t.wrapWidth())

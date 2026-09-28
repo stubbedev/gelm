@@ -3,6 +3,7 @@ package widget
 import (
 	"slices"
 
+	"github.com/stubbedev/gelm/internal/style"
 	"github.com/stubbedev/gelm/render"
 )
 
@@ -202,10 +203,11 @@ func (b *Box) Measure(con Constraints) Size {
 	if sz, ok := b.measureHit(con); ok {
 		return sz
 	}
-	innerCross := max(0, b.crossMax(con)-2*b.padding)
-	availMain := max(0, b.main(con.Max)-2*b.padding-b.spacing*(len(b.child)-1))
+	pad := b.pad()
+	innerCross := max(0, b.crossMax(con)-2*pad)
+	availMain := max(0, b.main(con.Max)-2*pad-b.spacing*(len(b.child)-1))
 
-	total := 2 * b.padding
+	total := 2 * pad
 	cross := 0
 	for i, c := range b.child {
 		nat := c.w.Measure(Constraints{Max: b.withMain(Size{W: innerCross, H: innerCross}, availMain)})
@@ -216,8 +218,14 @@ func (b *Box) Measure(con Constraints) Size {
 	if len(b.child) > 0 {
 		total -= b.spacing
 	}
-	cross += 2 * b.padding
+	cross += 2 * pad
 	return b.measureStore(con, clampSize(b.withMain(Size{W: cross, H: cross}, total), con))
+}
+
+// pad is the effective padding: the stylesheet's when set, else the
+// constructor default.
+func (b *Box) pad() int {
+	return picki(b.style(b), style.PropPadding, b.padding)
 }
 
 // Arrange positions the children inside r: the inner rect after padding,
@@ -225,11 +233,12 @@ func (b *Box) Measure(con Constraints) Size {
 // stretched across the cross axis.
 func (b *Box) Arrange(r render.Rect) {
 	b.ArrangeRoot(r)
+	pad := b.pad()
 	inner := render.Rect{
-		X: r.X + b.padding,
-		Y: r.Y + b.padding,
-		W: r.W - 2*b.padding,
-		H: r.H - 2*b.padding,
+		X: r.X + pad,
+		Y: r.Y + pad,
+		W: r.W - 2*pad,
+		H: r.H - 2*pad,
 	}
 	if inner.Empty() {
 		for _, c := range b.child {
@@ -283,8 +292,14 @@ func (b *Box) ArrangeRoot(r render.Rect) {
 	b.node.Arrange(r)
 }
 
-// Paint paints the children in order.
+// Paint fills the background when the stylesheet gives the box one
+// (a bare box paints nothing — theme-only boxes are transparent), then
+// paints the children in order.
 func (b *Box) Paint(cv *render.Canvas) {
+	v := b.style(b)
+	if bg := pickc(0, v, style.PropBackgroundColor, 0); bg != 0 {
+		cv.RoundedRect(b.bounds, picki(v, style.PropBorderRadius, 0), bg)
+	}
 	for _, c := range b.child {
 		c.w.Paint(cv)
 	}

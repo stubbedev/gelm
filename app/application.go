@@ -109,6 +109,10 @@ func NewApplication(sess *wlsession.Session) *Application {
 	// Async image loads (widget.Image file/URL sources) deliver through
 	// the loop queue - the only sanctioned bridge (docs/threading.md).
 	widget.SetInvoker(a.Invoke)
+	// Stylesheet files hot-reload through the loop's timer wheel: the
+	// widget package cannot reach it, so the app lends it a scheduler —
+	// one stat per second once a file is loaded, nothing before.
+	widget.SetStylesheetPoller(func(fn func()) { a.Every(time.Second, fn) })
 	// Tree mutations (Box.Remove/RemoveAt/Clear/InsertAt, Stack.Remove,
 	// Scroll.SetChild, ...) must not leave a window's router pointing at
 	// a detached widget: the hook drops hover, press, focus, and

@@ -385,11 +385,29 @@ func (r *Router) Press(button uint32, p Point) {
 	if hit != nil && !IsEnabled(hit) {
 		return
 	}
+	setFocusStyle(r.focus, hit)
 	r.focus = hit
 	r.pressed = hit
 	r.dragging = hit != nil
 	if pr, ok := hit.(PressSetter); ok {
 		pr.SetPressed(true)
+	}
+}
+
+// setFocusStyle flips the :focus style bit between the old and new
+// focus and restyles both — the router is the one writer of focus, so
+// the bit stays in step with r.focus by construction.
+func setFocusStyle(old, new Widget) {
+	if old == new {
+		return
+	}
+	if n := nodeOf(old); n != nil && n.focused {
+		n.focused = false
+		n.invalidateStyle()
+	}
+	if n := nodeOf(new); n != nil && !n.focused {
+		n.focused = true
+		n.invalidateStyle()
 	}
 }
 
@@ -490,7 +508,9 @@ func (r *Router) Forget(w Widget) {
 		r.CancelPress()
 	}
 	if inSubtree(r.focus, w) {
+		setFocusStyle(r.focus, nil)
 		r.focus = r.focusAfter(w)
+		setFocusStyle(nil, r.focus)
 	}
 	if inSubtree(r.dragTarget, w) {
 		r.applyDragTarget(nil, false)
@@ -713,6 +733,7 @@ func (r *Router) focusStep(dir int) {
 	} else if dir < 0 {
 		idx = len(order) - 1
 	}
+	setFocusStyle(r.focus, order[idx])
 	r.focus = order[idx]
 }
 
@@ -726,7 +747,9 @@ func (r *Router) dropDisabledFocus() {
 	if r.focus == nil || IsEnabled(r.focus) {
 		return
 	}
-	r.focus = r.focusAfter(r.focus)
+	next := r.focusAfter(r.focus)
+	setFocusStyle(r.focus, next)
+	r.focus = next
 }
 
 // focusAfter returns the first focusable, enabled widget after skip

@@ -394,8 +394,9 @@ func (l *RichLabel) HoverMove(p Point) {
 
 // SetHovered forgets the pointer position on leave.
 func (l *RichLabel) SetHovered(on bool) {
-	if !on {
+	if !on && l.hoverValid {
 		l.hoverValid = false
+		l.invalidateStyle()
 	}
 }
 

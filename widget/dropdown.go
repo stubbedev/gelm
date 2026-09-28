@@ -414,7 +414,7 @@ func (d *Dropdown) SetHovered(on bool) {
 		return
 	}
 	d.hovered = on
-	d.Invalidate()
+	d.invalidateStyle()
 }
 
 // KeyAction implements KeyActionHandler: closed, Enter or Down opens;
