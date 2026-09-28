@@ -3,12 +3,16 @@ package app
 import (
 	"errors"
 	"fmt"
+	"slices"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/unxed/xkb-go"
 
 	"github.com/stubbedev/gelm/internal/debug"
 	"github.com/stubbedev/gelm/internal/surfx"
+	"github.com/stubbedev/gelm/internal/sysfont"
 	"github.com/stubbedev/gelm/internal/wlsession"
 	"github.com/stubbedev/gelm/render"
 	"github.com/stubbedev/gelm/widget"
@@ -254,6 +258,161 @@ func (a *Application) ColorChooserDialog(parent *Window, initial render.Color, o
 					onColor(chooser.Color())
 				}
 			}
+		},
+	})
+}
+
+// fontFilter narrows a family list by the chooser's controls: query
+// is a case-insensitive substring over the family name, monoOnly keeps
+// families whose regular face is fixed-width (isMono classifies,
+// cached by the caller). Deterministic: the result keeps the input
+// order.
+func fontFilter(families []string, query string, monoOnly bool, isMono func(string) bool) []string {
+	query = strings.ToLower(strings.TrimSpace(query))
+	out := families[:0:0]
+	for _, fam := range families {
+		if query != "" && !strings.Contains(fam, query) {
+			continue
+		}
+		if monoOnly && !isMono(fam) {
+			continue
+		}
+		out = append(out, fam)
+	}
+	return out
+}
+
+// fontRowModel serves the chooser's family list: rows lazily render in
+// their own family's face (the virtualized list only builds the rows
+// it shows, so only the visible faces ever parse).
+type fontRowModel struct {
+	face render.Font
+	fams []string
+}
+
+func (m *fontRowModel) Len() int { return len(m.fams) }
+
+func (m *fontRowModel) Row(i int) widget.Widget {
+	return widget.NewLabel(m.face, 13, sysfont.FamilyDisplay(m.fams[i]), widget.Current().Text)
+}
+
+// FontChooserDialog opens a modal font picker (#74): a searchable,
+// virtualized family list (each row lazily rendered in its own
+// family's face), a size entry with a synced slider, a monospace
+// filter toggle, and a live preview line shaped through the same
+// fallback chain production text uses. Confirming responds "ok" and
+// fires onFont with the family name sysfont.Best accepts and the
+// chosen pixel size; Esc responds "cancel". The monospace toggle
+// classifies families by their fixed-width flag on first use (cached;
+// face parses ride the shared face cache).
+func (a *Application) FontChooserDialog(parent *Window, initialFamily string, initialSize float64, onFont func(family string, size float64)) (*Dialog, error) {
+	face := a.resolveFace(nil)
+	if face == nil {
+		return nil, errors.New("app: font chooser text face unavailable: no configured tooltip face and the system has no sans font")
+	}
+	families, err := sysfont.Families()
+	if err != nil {
+		return nil, fmt.Errorf("app: font chooser: %w", err)
+	}
+	if initialSize <= 0 {
+		initialSize = 13
+	}
+
+	th := widget.Current()
+	monoCache := map[string]bool{}
+	isMono := func(fam string) bool {
+		if v, ok := monoCache[fam]; ok {
+			return v
+		}
+		v := false
+		if tf, err := sysfont.Best(fam, 13); err == nil {
+			v = tf.IsMonospace()
+		}
+		monoCache[fam] = v
+		return v
+	}
+
+	model := &fontRowModel{face: face, fams: slices.Clone(families)}
+	list := widget.NewList(model, 26)
+	if idx := slices.Index(model.fams, strings.ToLower(strings.TrimSpace(initialFamily))); idx >= 0 {
+		list.Select(idx)
+	}
+
+	search := widget.NewEntry(face, 13, th.Text)
+	search.SetPlaceholder("search families")
+	mono := widget.NewCheckButton(false)
+	sizeEntry := widget.NewEntry(face, 13, th.Text)
+	sizeEntry.SetText(strconv.FormatFloat(initialSize, 'f', -1, 64))
+	size := widget.NewSlider(6, 72, 1, initialSize)
+
+	// The preview rebuilds its face through the production chain on
+	// every applied family or size change: what you see is what ships.
+	preview := widget.NewLabel(face, initialSize, "The quick brown fox jumps over the lazy dog 0123", th.Text)
+	chosenSize := func() float64 {
+		if v, err := strconv.ParseFloat(strings.TrimSpace(sizeEntry.Text()), 64); err == nil && v > 0 && v <= 512 {
+			return v
+		}
+		return size.Value()
+	}
+	refreshPreview := func() {
+		fam := ""
+		if i := list.Selected(); i >= 0 && i < len(model.fams) {
+			fam = model.fams[i]
+		}
+		if tf, err := sysfont.Best(fam, 13); err == nil {
+			preview.SetFace(sysfont.Fallback(tf))
+		}
+		preview.SetSizePx(chosenSize())
+	}
+
+	refilter := func() {
+		model.fams = fontFilter(families, search.Text(), mono.Checked(), isMono)
+		list.Changed()
+		refreshPreview()
+	}
+	search.OnChanged = func(string) { refilter() }
+	mono.OnChanged = func(bool) { refilter() }
+	size.OnChanged = func(v float64) {
+		sizeEntry.SetText(strconv.FormatFloat(v, 'f', -1, 64))
+		refreshPreview()
+	}
+	sizeEntry.OnChanged = func(string) { refreshPreview() }
+	list.OnSelect = func(int) { refreshPreview() }
+
+	controls := widget.NewBox(widget.Row, 8, 0)
+	controls.Append(search, true)
+	controls.Append(mono, false)
+	sizeRow := widget.NewBox(widget.Row, 8, 0)
+	sizeRow.Append(widget.NewLabel(face, 12, "size", th.TextMuted), false)
+	sizeRow.Append(size, true)
+	sizeRow.Append(sizeEntry, false)
+	root := widget.NewBox(widget.Column, 8, 8)
+	root.Append(controls, false)
+	root.Append(list, true)
+	root.Append(sizeRow, false)
+	root.Append(preview, false)
+	refreshPreview()
+
+	return a.NewDialog(parent, DialogConfig{
+		Title:   "Pick a font",
+		Width:   380,
+		Height:  420,
+		Content: root,
+		Buttons: []DialogButton{
+			{Label: "Cancel", Response: "cancel"},
+			{Label: "Select", Response: "ok"},
+		},
+		DefaultResponse: "ok",
+		CancelResponse:  "cancel",
+		OnResponse: func(resp string) {
+			if resp != "ok" || onFont == nil {
+				return
+			}
+			fam := ""
+			if i := list.Selected(); i >= 0 && i < len(model.fams) {
+				fam = model.fams[i]
+			}
+			onFont(fam, chosenSize())
 		},
 	})
 }
