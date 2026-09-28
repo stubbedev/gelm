@@ -221,10 +221,15 @@ func Play(steps ...Step) Cancel {
 		if instant {
 			it.dur = 0 // reduced motion: the tween lands at launch
 		}
-		if it.dur <= 0 {
+		if it.dur <= 0 && it.at <= 0 {
 			it.fn(1) // a zero-duration tween delivers its end state once
 			continue
 		}
+		// A zero-duration tween that sits after a delay keeps its
+		// schedule even under reduced motion: timing skeletons (a
+		// toast's timeout, a type-ahead's idle reset) hold their delays,
+		// only the motion collapses. It lands as a step whose window
+		// closes the moment it starts, so Tick fires it once, on time.
 		easing := it.easing
 		if easing == nil {
 			easing = EaseOutCubic
@@ -330,7 +335,12 @@ func Tick(now time.Time) bool {
 			keep = append(keep, t) // a sequence's later step, still waiting
 			continue
 		}
-		p := float64(now.Sub(t.start)) / float64(t.end.Sub(t.start))
+		var p float64
+		if t.end.Sub(t.start) == 0 {
+			p = 1 // a zero-length window: a delayed instant-mode landing
+		} else {
+			p = float64(now.Sub(t.start)) / float64(t.end.Sub(t.start))
+		}
 		if p >= 1 {
 			p = 1
 			t.done = true
