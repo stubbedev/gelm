@@ -261,8 +261,8 @@ ends the loop. This exact program is kept compiling (and honest) as
 
 ## Roadmap
 
-Milestones from the plan: M1 paint, M2 widgets, and M4 input are in;
-M3 theming is palette-only (CSS engine ahead); M5 apps (bar, OSD,
+Milestones from the plan: M1 paint, M2 widgets, M3 theming (palette
+plus the CSS override layer), and M4 input are in; M5 apps (bar, OSD,
 launcher, lock screen, settings) is where the demos point. Long term:
 GTK-class completeness, tiers T1-T4 in the issue.
 
