@@ -14,6 +14,7 @@ import (
 	"github.com/neurlang/wayland/xdg"
 
 	"github.com/stubbedev/gelm/internal/debug"
+	"github.com/stubbedev/gelm/wlr"
 )
 
 // ErrNotConfigured reports a draw attempt before the first configure
@@ -124,6 +125,11 @@ type Window struct {
 
 	wmBase     *xdg.WmBase
 	decoration *xdeco.ZxdgToplevelDecorationV1
+	// dialog is this toplevel's xdg_dialog_v1 object, created on the
+	// first SetModal; dialogModalled tracks the live hint; closing the
+	// window unsets and destroys it.
+	dialog         *wlr.DialogV1
+	dialogModalled bool
 
 	// onCloseRequest vetoes the compositor's close request when it
 	// returns false (an unsaved-changes prompt, for instance); nil
@@ -347,10 +353,11 @@ func (w *Window) SetParent(parent *Window) {
 
 // HandleToplevelClose marks the window closed unless a close-request
 // veto rejects it.
-func (w *Window) HandleToplevelClose(xdg.ToplevelCloseEvent) {
+func (w *Window) HandleToplevelClose(ev xdg.ToplevelCloseEvent) {
 	if w.onCloseRequest != nil && !w.onCloseRequest() {
 		return
 	}
+	w.teardownDialog()
 	w.closed = true
 }
 
@@ -371,7 +378,10 @@ func (w *Window) Closed() bool { return w.closed }
 
 // Close marks the window closed from the client side (a keybinding, for
 // instance). The next loop check exits.
-func (w *Window) Close() { w.closed = true }
+func (w *Window) Close() {
+	w.teardownDialog()
+	w.closed = true
+}
 
 // Size returns the last configured size in surface (logical) pixels. An
 // unconfigured window reports zeros.
@@ -398,4 +408,57 @@ func (w *Window) Decorate(mgr *xdeco.ZxdgDecorationManagerV1) error {
 	}
 	w.decoration = dec
 	return dec.SetMode(xdeco.ZxdgToplevelDecorationV1ModeServerSide)
+}
+
+// SetModal hints, through the optional xdg-dialog-v1 protocol, that
+// this parented toplevel is a modal dialog of its parent: the
+// compositor then blocks input to the parent itself, where the
+// toolkit's application-level block only covers this client's
+// windows. The hint rides the surface's next commit, so it should be
+// sent before the first one for the compositor to map the dialog
+// modal from the start.
+//
+// A nil manager (compositor without the global) or a wireless window
+// (tests) is a silent no-op — modality degrades to the
+// application-level block, which callers keep as the floor. The
+// dialog object is created lazily on the first call and reused after;
+// closing the window unsets and destroys it.
+func (w *Window) SetModal(mgr *wlr.WmDialogV1, modal bool) error {
+	if mgr == nil || w.Toplevel == nil {
+		return nil
+	}
+	if w.dialog == nil {
+		d, err := mgr.GetDialog(w.Toplevel)
+		if err != nil {
+			return fmt.Errorf("window: get_xdg_dialog: %w", err)
+		}
+		w.dialog = d
+	}
+	if modal {
+		if err := w.dialog.SetModal(); err != nil {
+			return err
+		}
+		w.dialogModalled = true
+		return nil
+	}
+	w.dialogModalled = false
+	return w.dialog.UnsetModal()
+}
+
+// ModalHinted reports whether the xdg-dialog modality hint is set on
+// this window (SetModal succeeded with modal true). The compositor's
+// own presentation of the hint is not observable.
+func (w *Window) ModalHinted() bool { return w.dialog != nil && w.dialogModalled }
+
+// teardownDialog drops the xdg-dialog hint on window teardown: unset,
+// then destroy (destroying the object before the toplevel also
+// unapplies its effects, per the protocol). Idempotent.
+func (w *Window) teardownDialog() {
+	if w.dialog == nil {
+		return
+	}
+	_ = w.dialog.UnsetModal()
+	_ = w.dialog.Destroy()
+	w.dialog = nil
+	w.dialogModalled = false
 }

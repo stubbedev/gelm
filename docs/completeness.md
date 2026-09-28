@@ -36,7 +36,7 @@ allocation/syscall reduction sweep (#77) is gated behind the epic.
 | ListView | virtualized `List`; single/browse/multiple selection modes with rubber-band drag and edge auto-scroll (#60) | widget/list.go |
 | Menu | check/radio rows, submenus, keyboard nav; accelerators display-only | widget/menu.go |
 | Popover | `app.Popover`, widget-anchored, works on layer surfaces | app/popover.go |
-| Dialog, MessageBox | `app.Dialog`, `app.MessageBox`; application-level modality (xdg_shell has no modal bit) | app/dialog.go |
+| Dialog, MessageBox | `app.Dialog`, `app.MessageBox`; window-level modality through xdg-dialog-v1 with the application-level block as the floor (#61) | app/dialog.go, internal/wlsession/dialog.go |
 | Tooltip | `SetTooltip` on any widget, 500ms dwell | widget/widget.go, app/tooltip.go |
 | Drag and drop | `DragSource`/`DragEnterer` per widget, mime negotiation, cross-window | app/dragdrop.go, internal/dragdrop |
 | Icon | raster/theme/file/embedded-SVG constructors, symbolic recoloring | widget/icon.go, [icons.md](icons.md) |
@@ -60,6 +60,7 @@ allocation/syscall reduction sweep (#77) is gated behind the epic.
 | Idle inhibit | zwp_idle_inhibit: `InhibitIdle`, nil-safe `IdleInhibitor` (#33) | internal/wlsession/idleinhibit.go |
 | Shortcut grab (games, VMs) | keyboard-shortcuts-inhibit: `InhibitShortcuts`, focus-tracked `ShortcutsInhibitor` (#33) | internal/wlsession/shortinhibit.go |
 | Output naming | xdg-output: logical-name/geometry lookup per output (#33) | internal/wlsession/xdgoutput.go |
+| Dialog modality | xdg-dialog-v1: parented dialogs hint `set_modal`, compositor blocks the parent's input; silent degrade without the global (#61) | internal/wlsession/dialog.go, internal/window |
 | Wire bindings | generated pure-Go proxies for all of the above | wlr/ |
 | Accessibility | semantic roles + `DescribeTree`, keyboard-first guarantee; **no in-process AT-SPI** (a non-goal, see below) | widget/a11y.go, [a11y.md](a11y.md) |
 | Icon themes | freedesktop icon-theme spec in pure Go; theme switches are explicit | internal/icons, [icons.md](icons.md) |
@@ -92,9 +93,6 @@ signal) are in [architecture.md](architecture.md) "Non-goals".
 Honest deferrals, each with its pointer — none of these block the
 declared use cases:
 
-- **Dialog modality is application-level only** — xdg_shell has no
-  modal bit (README matrix, app/dialog.go); xdg-dialog-v1 changes that,
-  filed as #61.
 - **No Dropdown type-ahead** — decided against in #28: menus have no
   mnemonics either, and a typed character collides with Space-opens in
   the text router (documented on the type, widget/dropdown.go).

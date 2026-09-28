@@ -129,9 +129,10 @@ type Session struct {
 	comp *compose.State
 
 	// Shell-integration protocols (toplevel.go, activation.go,
-	// idleinhibit.go, shortinhibit.go, xdgoutput.go), each seen
-	// through a narrow interface so tests can substitute recorders;
-	// nil on the no-protocol path.
+	// idleinhibit.go, shortinhibit.go, xdgoutput.go, dialog.go), each
+	// seen through a narrow interface so tests can substitute recorders;
+	// nil on the no-protocol path. The xdg-dialog manager is a plain
+	// proxy (its only consumer, window.SetModal, takes it as-is).
 	foreignToplevelMgr  foreignToplevelManagerAPI
 	toplevels           []*Toplevel
 	activation          activationAPI
@@ -139,6 +140,7 @@ type Session struct {
 	idleInhibitMgr      idleInhibitAPI
 	shortcutsInhibitMgr shortcutsInhibitAPI
 	xdgOutputMgr        xdgOutputMaker
+	dialogMgr           *wlr.WmDialogV1
 
 	pointerEnterSerial uint32
 
@@ -406,6 +408,8 @@ func (s *Session) HandleRegistryGlobal(ev wl.RegistryGlobalEvent) {
 		s.bindShortcutsInhibitManager(ev)
 	case "zxdg_output_manager_v1":
 		s.bindXdgOutputManager(ev)
+	case "xdg_wm_dialog_v1":
+		s.bindDialogManager(ev)
 	}
 }
 

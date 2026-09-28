@@ -13,6 +13,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/unxed/xkb-go"
+
 	"github.com/stubbedev/gelm/app"
 	"github.com/stubbedev/gelm/internal/debug"
 	"github.com/stubbedev/gelm/internal/sysfont"
@@ -82,14 +84,47 @@ func run() error {
 	root.Append(widget.NewLabel(tf, 12, title, widget.Current().TextMuted), false)
 	root.Append(list, true)
 
-	w, err := application.NewWindow(app.WindowConfig{
+	var dialog *app.Dialog
+	dialogs := 0
+	var w *app.Window
+	w, err = application.NewWindow(app.WindowConfig{
 		Title:      title,
 		AppID:      "dev.stubbe.gelm.multilist",
 		Width:      300,
 		Height:     300,
 		Root:       root,
 		Background: widget.Current().Bg,
-		OnClosed:   func() { debug.Log("demo", "closed") },
+		OnKey: func(_ *widget.Router, code uint32, mods wlsession.Mods) {
+			// d opens a modal dialog parented to this window, so the
+			// headless suite can drive the dialog-modality lifecycle
+			// (open, block, respond, restore) end to end.
+			if mods&wlsession.ModCtrl != 0 || sess.KeySym(code) != xkb.Keysym('d') {
+				return
+			}
+			if dialog != nil && !dialog.Closed() {
+				return
+			}
+			d, err := application.NewDialog(w, app.DialogConfig{
+				Title:  "modal dialog",
+				Width:  320,
+				Height: 110,
+				Content: widget.NewLabel(tf, 13,
+					"input to the parent window is blocked while I am open",
+					widget.Current().Text),
+				Buttons:         []app.DialogButton{{Label: "OK", Response: "ok"}},
+				DefaultResponse: "ok",
+				CancelResponse:  "ok",
+				OnResponse:      func(resp string) { debug.Log("demo", "dialog response %s", resp) },
+			})
+			if err != nil {
+				debug.Log("demo", "dialog error %v", err)
+				return
+			}
+			dialog = d
+			dialogs++
+			debug.Log("demo", "dialog open %d", dialogs)
+		},
+		OnClosed: func() { debug.Log("demo", "closed") },
 	})
 	if err != nil {
 		return err

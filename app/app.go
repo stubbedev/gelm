@@ -157,6 +157,11 @@ func (in *surfaceInput) dropInput() bool { return in.blocked != nil && in.blocke
 // HandlePointerEnter implements wlsession.SurfacePointerHandler.
 func (in *surfaceInput) HandlePointerEnter(x, y float64) {
 	if in.dropInput() {
+		// The position still tracks while blocked: the block owns
+		// routing, not bookkeeping, so a press that arrives after the
+		// block lifts routes where the pointer actually is — never
+		// where it sat when the block began.
+		in.x, in.y = x, y
 		return
 	}
 	in.move(x, y)
@@ -165,6 +170,7 @@ func (in *surfaceInput) HandlePointerEnter(x, y float64) {
 // HandlePointerMotion implements wlsession.SurfacePointerHandler.
 func (in *surfaceInput) HandlePointerMotion(x, y float64) {
 	if in.dropInput() {
+		in.x, in.y = x, y
 		return
 	}
 	in.move(x, y)
