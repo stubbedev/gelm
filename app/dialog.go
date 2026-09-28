@@ -202,6 +202,62 @@ func (a *Application) blockAll(blocked bool) {
 	}
 }
 
+// customPalette is the process session's color picks: every color a
+// ColorChooserDialog confirms lands here (deduped, most recent first,
+// capped), and every later dialog offers them back as swatches.
+var customPalette []render.Color
+
+// paletteCap bounds the session palette.
+const paletteCap = 16
+
+// rememberPick records a confirmed color in the session palette.
+func rememberPick(col render.Color) {
+	for i, c := range customPalette {
+		if c == col {
+			customPalette = append(customPalette[:i], customPalette[i+1:]...)
+			break
+		}
+	}
+	customPalette = append([]render.Color{col}, customPalette...)
+	if len(customPalette) > paletteCap {
+		customPalette = customPalette[:paletteCap]
+	}
+}
+
+// ColorChooserDialog opens a modal color picker (#72): an SV square,
+// hue and alpha strips, a hex entry, theme-derived presets, and the
+// session's custom palette. Confirming responds "ok" and fires
+// onColor with the exact picked color (and the pick joins the session
+// palette); Esc responds "cancel".
+func (a *Application) ColorChooserDialog(parent *Window, initial render.Color, onColor func(render.Color)) (*Dialog, error) {
+	face := a.resolveFace(nil)
+	if face == nil {
+		return nil, errors.New("app: color chooser text face unavailable: no configured tooltip face and the system has no sans font")
+	}
+	chooser := widget.NewColorChooser(face, 13, initial)
+	chooser.SetPaletteSource(func() []render.Color { return customPalette }, rememberPick)
+	return a.NewDialog(parent, DialogConfig{
+		Title:   "Pick a color",
+		Width:   300,
+		Height:  310,
+		Content: chooser,
+		Buttons: []DialogButton{
+			{Label: "Cancel", Response: "cancel"},
+			{Label: "Select", Response: "ok"},
+		},
+		DefaultResponse: "ok",
+		CancelResponse:  "cancel",
+		OnResponse: func(resp string) {
+			if resp == "ok" {
+				rememberPick(chooser.Color())
+				if onColor != nil {
+					onColor(chooser.Color())
+				}
+			}
+		},
+	})
+}
+
 // CalendarDialog opens a modal calendar picker: a widget.Calendar
 // starting at initial, responding "select" with the chosen date
 // through OnResponse when a day is picked (the dialog closes) and
