@@ -844,9 +844,11 @@ func (t *TextArea) caretX(l, col int) int {
 	t.ensureRows(t.wrapWidth())
 	row := t.rows[t.rowOf(pos{l, min(max(col, 0), len(t.lines[l]))})]
 	rs := t.displayLine(l)[row.startCol:row.endCol]
-	sh := t.shapeLine(rs)
+	// One conversion serves both the shape cache key and the RTL read.
+	s := string(rs)
+	sh := t.face.ShapeDir(s, t.sizePx, t.dir)
 	x := t.bounds.X + 8 - t.linePan(l)
-	if text.RTL(string(rs), t.dir) {
+	if text.RTL(s, t.dir) {
 		x += t.wrapWidth() - int(sh.Advance()+0.5)
 	}
 	return x + int(sh.CaretX(col-row.startCol)+0.5)
@@ -868,9 +870,11 @@ func (t *TextArea) panToCaret() {
 		t.setPan(l, 0)
 		return
 	}
-	sh := t.shapeLine(t.displayLine(l))
+	// One conversion serves both the shape cache key and the RTL read.
+	line := string(t.displayLine(l))
+	sh := t.face.ShapeDir(line, t.sizePx, t.dir)
 	cx := int(sh.CaretX(c.col) + 0.5)
-	if text.RTL(string(t.displayLine(l)), t.dir) {
+	if text.RTL(line, t.dir) {
 		cx = int(sh.Advance()+0.5) - cx // the caret's distance from the reading start edge
 	}
 	p := t.linePan(l)
@@ -991,6 +995,10 @@ func (t *TextArea) Paint(cv *render.Canvas) {
 		X: t.bounds.X + 8, Y: t.bounds.Y,
 		W: max(t.bounds.W-16, 0), H: t.bounds.H,
 	})
+	// Rows of one line are contiguous in the row cache, so the line's
+	// string form — the RTL read below — converts once per line, not
+	// once per row.
+	lastLine, lineStr := -1, ""
 	for i, r := range t.rows {
 		pan := t.linePan(r.line)
 		line := t.displayLine(r.line)
@@ -998,12 +1006,15 @@ func (t *TextArea) Paint(cv *render.Canvas) {
 		if len(line) == 0 || r.startCol >= r.endCol {
 			continue
 		}
+		if r.line != lastLine {
+			lastLine, lineStr = r.line, string(line)
+		}
 		sh := t.shapeLine(line[r.startCol:r.endCol])
 		// The row's line origin: the inner rect's left for LTR, slid
 		// by the pan; flush right minus the pan for RTL, so short rows
 		// hug the edge their reading starts at.
 		rowX := t.bounds.X + 8 - pan
-		if text.RTL(string(line), t.dir) {
+		if text.RTL(lineStr, t.dir) {
 			rowX += t.wrapWidth() - int(sh.Advance()+0.5)
 		}
 		box := render.Rect{X: t.bounds.X + 8, Y: t.bounds.Y + y, W: t.bounds.W - 16, H: lineH}
