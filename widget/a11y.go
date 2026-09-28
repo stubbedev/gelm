@@ -31,6 +31,7 @@ const (
 	RoleMenu
 	RoleTabList
 	RoleComboBox
+	RoleSplitter
 )
 
 // String returns the lowercase role name.
@@ -62,6 +63,8 @@ func (r Role) String() string {
 		return "tab-list"
 	case RoleComboBox:
 		return "combo-box"
+	case RoleSplitter:
+		return "splitter"
 	default:
 		return "none"
 	}

@@ -371,6 +371,25 @@ func hoverMenuRow(m *Menu, itemH, i int) {
 	m.HoverMove(Point{X: bs.X + 12, Y: bs.Y + 4 + i*itemH + itemH/2})
 }
 
+// TestGoldenPaned pins both orientations of the splitter (#71): the
+// themed handle bar at the arranged position and the panes laid around
+// it.
+func TestGoldenPaned(t *testing.T) {
+	face := goldenFace(t)
+	th := DarkTheme()
+	row := NewPaned(Row,
+		NewLabel(face, 13, "start pane", th.Text),
+		NewLabel(face, 13, "end pane", th.Text))
+	NewGolden(t, row, "paned-row", goldenTheme(th), goldenFrame(220, 60),
+		goldenAfterArrange(func() { row.SetPosition(120) }))
+
+	col := NewPaned(Column,
+		NewLabel(face, 13, "top pane", th.Text),
+		NewLabel(face, 13, "bottom pane", th.Text))
+	NewGolden(t, col, "paned-column", goldenTheme(th), goldenFrame(220, 90),
+		goldenAfterArrange(func() { col.SetPosition(40) }))
+}
+
 // TestGoldenGridSqueeze pins the deficit negotiation (#67): tracks
 // shrink proportionally into an under-sized rect, wrapping labels
 // rest at their token floors while floorless tracks collapse, and a
