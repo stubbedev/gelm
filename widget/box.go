@@ -32,9 +32,14 @@ type childEntry struct {
 // (the remainder is dropped). Children never shrink below their measured
 // size; when the natural sizes overflow the available space they overflow
 // the box, and the painter's clip decides what is visible.
+//
+// A row's start/end semantics mirror with the box's direction: an RTL
+// row flows from the right edge, so the first child sits rightmost,
+// where an RTL reader starts. Columns are unaffected.
 type Box struct {
 	node
 	axis    Axis
+	dir     Direction
 	spacing int
 	padding int
 	child   []*childEntry
@@ -49,6 +54,21 @@ func (b *Box) Children() []Widget {
 	}
 	return out
 }
+
+// SetDirection selects the base direction the box's main axis flows
+// along: an RTL row lays its children out right to left, mirroring
+// start/end placement. Columns ignore it. Changing the direction
+// re-arranges.
+func (b *Box) SetDirection(d Direction) {
+	if b.dir == d {
+		return
+	}
+	b.dir = d
+	b.InvalidateLayout()
+}
+
+// Direction returns the base direction the main axis flows along.
+func (b *Box) Direction() Direction { return b.dir }
 
 // NewBox returns an empty box along axis with the given spacing between
 // children and padding on every side.
@@ -236,6 +256,7 @@ func (b *Box) Arrange(r render.Rect) {
 	extra := max(0, free) / max(1, expanders)
 
 	pos := 0
+	rtl := b.axis == Row && b.dir == DirectionRTL
 	for _, c := range b.child {
 		size := b.main(c.nat)
 		if c.expand {
@@ -243,7 +264,11 @@ func (b *Box) Arrange(r render.Rect) {
 		}
 		var rect render.Rect
 		if b.axis == Row {
-			rect = render.Rect{X: inner.X + pos, Y: inner.Y, W: size, H: inner.H}
+			x := inner.X + pos
+			if rtl {
+				x = inner.X + inner.W - pos - size // the row flows from the right edge
+			}
+			rect = render.Rect{X: x, Y: inner.Y, W: size, H: inner.H}
 		} else {
 			rect = render.Rect{X: inner.X, Y: inner.Y + pos, W: inner.W, H: size}
 		}

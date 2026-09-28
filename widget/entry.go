@@ -1,6 +1,8 @@
 package widget
 
 import (
+	"math"
+
 	"github.com/stubbedev/gelm/internal/text"
 	"github.com/stubbedev/gelm/render"
 )
@@ -13,6 +15,7 @@ type Entry struct {
 	face        render.Font
 	sizePx      float64
 	color       render.Color
+	dir         Direction
 	placeholder string
 
 	// OnChanged fires after the contents change, whatever the
@@ -57,6 +60,11 @@ type Entry struct {
 	peText []rune
 	peAt   int
 	peCur  int
+
+	// bands is the selection/underline scratch the paint reuses across
+	// frames, so the render path stays allocation-free in the steady
+	// state.
+	bands [][2]float64
 }
 
 // NewEntry returns an empty entry painted with face at sizePx. Face
@@ -68,6 +76,33 @@ func NewEntry(face render.Font, sizePx float64, color render.Color) *Entry {
 
 // Placeholder returns the text shown when the entry is empty.
 func (e *Entry) Placeholder() string { return e.placeholder }
+
+// SetDirection selects the base paragraph direction the contents
+// resolve and lay out with. DirectionAuto (the default) reads it off
+// the text's first strong character; DirectionRTL additionally hugs
+// short text against the right edge, where its reading starts, and
+// mirrors the pan. Arrow and word motion always move visually - the
+// mapping runs through the same resolution (internal/text) the paint
+// uses - while cursor, anchor, and selection stay logical rune
+// indexes. Changing the direction re-pans and invalidates.
+func (e *Entry) SetDirection(d Direction) {
+	if e.dir == d {
+		return
+	}
+	e.dir = d
+	e.panToCaret()
+	e.InvalidateLayout()
+}
+
+// Direction returns the base paragraph direction the entry resolves
+// with.
+func (e *Entry) Direction() Direction { return e.dir }
+
+// shape shapes display text under the entry's base direction - the
+// one text path the field's caret, selection, and paint share.
+func (e *Entry) shape(s string) *render.ShapedText {
+	return e.face.ShapeDir(s, e.sizePx, e.dir)
+}
 
 // SetPlaceholder sets the text shown when the entry is empty.
 func (e *Entry) SetPlaceholder(s string) {
@@ -366,7 +401,8 @@ func (e *Entry) DeleteWordForward() {
 // stepClusters moves the cursor delta grapheme clusters — the editing
 // unit (#57): an emoji family, a flag, or a base rune with its marks
 // steps as one. Positions stay rune indexes; segmentation maps the
-// steps.
+// steps. This is the logical mapping MoveCursor serves; the arrow keys
+// step visually instead (stepVisually).
 func (e *Entry) stepClusters(delta int) {
 	step := max(min(delta, 1), -1)
 	for range max(delta, -delta) {
@@ -376,6 +412,62 @@ func (e *Entry) stepClusters(delta int) {
 			e.cursor = text.PrevCluster(e.runes, e.cursor)
 		}
 	}
+}
+
+// stepVisually moves the cursor delta visual steps over the display
+// shape — left for negative delta, right for positive — the mapping
+// the arrow keys move by over mixed-direction text. The display
+// resolves under the entry's base direction (internal/text, cached);
+// the positions it lands on stay logical rune indexes, snapped to
+// grapheme clusters.
+func (e *Entry) stepVisually(delta int) {
+	disp := e.displayText()
+	rs := []rune(disp)
+	order := text.VisualOrder(rs, text.BidiRuns(disp, e.dir))
+	step := max(min(delta, 1), -1)
+	for range max(delta, -delta) {
+		e.cursor = text.VisualStep(rs, order, e.cursor, step)
+	}
+}
+
+// collapseToEdge drops any selection, parking the cursor at its
+// visually outermost boundary in the direction delta points — the
+// caret x decides for a span crossing runs — so the first press of an
+// arrow backs out of the selection from the side it moved from.
+func (e *Entry) collapseToEdge(delta int) {
+	start, end, _ := e.Selection()
+	sh := e.shape(e.displayText())
+	lo, hi := start, end
+	if sh.CaretX(lo) > sh.CaretX(hi) {
+		lo, hi = hi, lo
+	}
+	edge := hi
+	if delta < 0 {
+		edge = lo
+	}
+	e.cursor, e.anchor = edge, edge
+	e.panToCaret()
+	e.Invalidate()
+}
+
+// moveVisually is MoveCursor with the arrow keys' visual mapping: the
+// cursor moves one visual step while staying a logical rune index. An
+// active selection collapses to the visually-directed edge first,
+// without moving further — the standard first-press behavior.
+func (e *Entry) moveVisually(delta int, extend bool) {
+	e.clearPreedit()
+	if !extend {
+		if _, _, active := e.Selection(); active {
+			e.collapseToEdge(delta)
+			return
+		}
+	}
+	e.stepVisually(delta)
+	if !extend {
+		e.anchor = e.cursor
+	}
+	e.panToCaret()
+	e.Invalidate()
 }
 
 // MoveCursor moves the cursor by delta grapheme clusters, clamped to
@@ -411,33 +503,25 @@ func (e *Entry) MoveCursorExtending(delta int) {
 	e.Invalidate()
 }
 
-// wordTo moves the cursor to the word edge delta points at — the
-// start of the word before the caret for negative delta, the end of
-// the word after it for positive — over the shared word segmentation
-// (internal/text), so motion, deletion, and double-click agree on
-// what a word is. With extend the selection grows or shrinks from its
-// anchor; without it an active selection first collapses to the edge
-// the motion points at, the standard first-press behavior.
+// wordTo moves the cursor to the word edge the visual direction delta
+// points at — over the shared word segmentation (internal/text) walked
+// in the display's visual order, so motion, deletion, and double-click
+// agree on what a word is while arrows land where the eye looks.
+// With extend the selection grows or shrinks from its anchor; without
+// it an active selection first collapses to the visually-directed
+// edge, the standard first-press behavior.
 func (e *Entry) wordTo(delta int, extend bool) {
 	e.clearPreedit()
 	if !extend {
 		if _, _, active := e.Selection(); active {
-			start, end, _ := e.Selection()
-			edge := start
-			if delta > 0 {
-				edge = end
-			}
-			e.cursor, e.anchor = edge, edge
-			e.panToCaret()
-			e.Invalidate()
+			e.collapseToEdge(delta)
 			return
 		}
 	}
-	if delta > 0 {
-		e.cursor = text.WordEnd(e.runes, e.cursor)
-	} else {
-		e.cursor = text.WordStart(e.runes, e.cursor)
-	}
+	disp := e.displayText()
+	rs := []rune(disp)
+	order := text.VisualOrder(rs, text.BidiRuns(disp, e.dir))
+	e.cursor = text.VisualWordStep(e.runes, order, e.cursor, delta)
 	if !extend {
 		e.anchor = e.cursor
 	}
@@ -445,10 +529,10 @@ func (e *Entry) wordTo(delta int, extend bool) {
 	e.Invalidate()
 }
 
-// MoveWord moves the cursor one word: word start moving left, word end
-// moving right, gaps (whitespace, punctuation runs) skipped whole. An
-// active selection collapses to the direction edge first, without
-// moving.
+// MoveWord moves the cursor one visual word: the word edge the
+// direction points at, gaps (whitespace, punctuation runs) skipped
+// whole. An active selection collapses to the visually-directed edge
+// first, without moving.
 func (e *Entry) MoveWord(delta int) { e.wordTo(delta, false) }
 
 // MoveWordExtending is MoveWord with shift held: the selection
@@ -489,9 +573,29 @@ func (e *Entry) panCaret() int {
 	return e.peAt + len(e.peText)
 }
 
-// panToCaret adjusts scrollX so the caret stays visible: flush with
-// the left edge, or caretPad of following text inside the right one.
-// A view mutation — callers own the repaint.
+// lineX is the screen x of the display line's left edge inside the
+// inner rect. For a left-to-right line the pan pulls the line left of
+// the inner rect's left edge; for a right-to-left one the line starts
+// flush with the right edge — where its reading starts — and the pan
+// slides the window toward the reading end, mirroring LTR exactly with
+// the caret's distance from the right edge in the caret's role.
+func (e *Entry) lineX(sh *render.ShapedText) int {
+	left := e.bounds.X + 8
+	if !text.RTL(e.displayText(), e.dir) {
+		return left - e.scrollX
+	}
+	return left + e.innerRect().W - int(sh.Advance()+0.5) + e.scrollX
+}
+
+// caretX is the screen x of the caret before display rune caret.
+func (e *Entry) caretX(sh *render.ShapedText, caret int) int {
+	return e.lineX(sh) + int(sh.CaretX(caret)+0.5)
+}
+
+// panToCaret adjusts scrollX so the caret stays visible: flush with the
+// reading's start edge, or caretPad of following text inside the far
+// edge — measured from the left for an LTR line, from the right for an
+// RTL one. A view mutation — callers own the repaint.
 func (e *Entry) panToCaret() {
 	if e.face == nil {
 		return
@@ -501,7 +605,11 @@ func (e *Entry) panToCaret() {
 		e.scrollX = 0
 		return
 	}
-	cx := int(e.face.Shape(e.displayText(), e.sizePx).CaretX(e.panCaret()) + 0.5)
+	sh := e.shape(e.displayText())
+	cx := int(sh.CaretX(e.panCaret()) + 0.5)
+	if text.RTL(e.displayText(), e.dir) {
+		cx = int(sh.Advance()+0.5) - cx // the caret's distance from the reading start edge
+	}
 	switch {
 	case cx < e.scrollX:
 		e.scrollX = cx
@@ -518,7 +626,7 @@ func (e *Entry) clampPan() {
 	avail := e.innerRect().W
 	textW := 0
 	if e.face != nil && avail > 0 {
-		textW = int(e.face.Shape(e.displayText(), e.sizePx).Advance() + 0.5)
+		textW = int(e.shape(e.displayText()).Advance() + 0.5)
 	}
 	if avail <= 0 {
 		e.scrollX = 0
@@ -583,39 +691,43 @@ func (e *Entry) Paint(cv *render.Canvas) {
 	}
 	disp := e.displayText()
 	if len(e.runes) == 0 && !e.composing() && e.placeholder != "" {
-		e.face.DrawAligned(cv, e.placeholder, e.bounds, e.sizePx, t.Border, render.AlignStart)
+		e.face.DrawAlignedDir(cv, e.placeholder, e.bounds, e.sizePx, t.Border, render.AlignStart, e.dir)
 		return
 	}
 	// The highlight and the caret map through the display shape: in
 	// masked modes the band covers dots, never the runes behind them.
-	// Everything content-side sits at -scrollX inside the viewport.
-	sh := e.face.Shape(disp, e.sizePx)
-	bx := e.bounds.X + 8 - e.scrollX
+	// The line origin comes from lineX, so a right-to-left line hugs
+	// the right edge and pans mirrored, and a selection across mixed
+	// directions highlights one band per visual run.
+	sh := e.shape(disp)
+	lx := e.lineX(sh)
 	prev := cv.PushClip(e.innerRect())
 	if start, end, active := e.Selection(); active {
-		x0 := bx + int(sh.CaretX(start)+0.5)
-		x1 := bx + int(sh.CaretX(end)+0.5)
 		a := t.Accent
-		cv.FillRect(render.Rect{X: x0, Y: e.bounds.Y + 4, W: x1 - x0, H: e.bounds.H - 8},
-			render.RGBA(a.R(), a.G(), a.B(), 90))
+		for _, band := range sh.AppendCaretBands(e.bands[:0], start, end) {
+			cv.FillRect(render.Rect{
+				X: lx + int(band[0]+0.5), Y: e.bounds.Y + 4,
+				W: int(band[1]+0.5) - int(band[0]+0.5), H: e.bounds.H - 8,
+			}, render.RGBA(a.R(), a.G(), a.B(), 90))
+		}
 	}
-	e.face.DrawAligned(cv, disp, render.Rect{X: bx, Y: e.bounds.Y, W: e.bounds.W, H: e.bounds.H}, e.sizePx, textCol, render.AlignStart)
+	baseline := e.bounds.Y + int(math.Round((float64(e.bounds.H)-float64(sh.LineHeight()))/2+sh.Ascent()))
+	sh.Draw(cv, lx, baseline, textCol)
 	if e.composing() {
 		// Accent underline under the composing range.
 		a := t.Accent
-		x0 := bx + int(sh.CaretX(e.peAt)+0.5)
-		x1 := bx + int(sh.CaretX(e.peAt+len(e.peText))+0.5)
-		cv.FillRect(render.Rect{
-			X: x0, Y: e.bounds.Y + e.bounds.H - 8,
-			W: max(x1-x0, 2), H: 2,
-		}, render.RGBA(a.R(), a.G(), a.B(), 200))
+		for _, band := range sh.AppendCaretBands(e.bands[:0], e.peAt, e.peAt+len(e.peText)) {
+			cv.FillRect(render.Rect{
+				X: lx + int(band[0]+0.5), Y: e.bounds.Y + e.bounds.H - 8,
+				W: max(int(band[1]+0.5)-int(band[0]+0.5), 2), H: 2,
+			}, render.RGBA(a.R(), a.G(), a.B(), 200))
+		}
 	}
 	// Cursor bar after the text before the caret; hidden while the
 	// input method hides its composing caret. Every frame reads the
 	// same offset, so a repaint (blink or otherwise) never jumps it.
 	if caret := e.caretRune(); caret >= 0 {
-		x := bx + int(sh.CaretX(caret)+0.5)
-		cv.FillRect(render.Rect{X: x, Y: e.bounds.Y + 6, W: 2, H: e.bounds.H - 12}, caretCol)
+		cv.FillRect(render.Rect{X: e.caretX(sh, caret), Y: e.bounds.Y + 6, W: 2, H: e.bounds.H - 12}, caretCol)
 	}
 	cv.PopClip(prev)
 }
@@ -638,13 +750,14 @@ func (e *Entry) HitTest(p Point) Widget {
 
 // ClickAt places the cursor (and the selection anchor) at the clicked
 // text position, dropping the composing display. The mapping runs
-// through the display shape and the pan — x + scrollX — so a click on
-// a half-visible rune lands on that rune, snapped to the start of its
-// grapheme cluster (#57). Masked modes keep the cursor a logical index.
+// through the display shape's caret table — which follows the line
+// visually — and the pan, so a click on a half-visible rune lands on
+// that rune, snapped to the start of its grapheme cluster (#57).
+// Masked modes keep the cursor a logical index.
 func (e *Entry) ClickAt(p Point) {
 	e.clearPreedit()
-	x := float64(p.X - e.bounds.X - 8 + e.scrollX)
-	e.cursor = text.SnapCluster(e.runes, e.face.Shape(e.displayText(), e.sizePx).CaretAt(x))
+	sh := e.shape(e.displayText())
+	e.cursor = text.SnapCluster(e.runes, sh.CaretAt(float64(p.X-e.lineX(sh))))
 	e.anchor = e.cursor
 	e.Invalidate()
 }
@@ -658,8 +771,8 @@ func (e *Entry) DragMove(p Point) {
 	inner := e.innerRect()
 	e.scrollX = edgePan(p.X, inner.X, inner.X+inner.W, e.scrollX)
 	e.clampPan()
-	x := float64(p.X - e.bounds.X - 8 + e.scrollX)
-	e.cursor = text.SnapCluster(e.runes, e.face.Shape(e.displayText(), e.sizePx).CaretAt(x))
+	sh := e.shape(e.displayText())
+	e.cursor = text.SnapCluster(e.runes, sh.CaretAt(float64(p.X-e.lineX(sh))))
 	e.Invalidate()
 }
 
@@ -671,8 +784,8 @@ func (e *Entry) DoubleClickAt(p Point) {
 	if len(e.runes) == 0 {
 		return
 	}
-	x := float64(p.X - e.bounds.X - 8 + e.scrollX)
-	c := e.face.Shape(e.displayText(), e.sizePx).CaretAt(x)
+	sh := e.shape(e.displayText())
+	c := sh.CaretAt(float64(p.X - e.lineX(sh)))
 	start, end := text.WordRun(e.runes, c)
 	e.cursor, e.anchor = end, start
 	e.panToCaret()
@@ -754,9 +867,9 @@ func (e *Entry) KeyAction(a KeyAction, mods Mods) {
 				e.MoveWord(-1)
 			}
 		} else if shift {
-			e.MoveCursorExtending(-1)
+			e.moveVisually(-1, true)
 		} else {
-			e.MoveCursor(-1)
+			e.moveVisually(-1, false)
 		}
 	case KeyRight:
 		if ctrl {
@@ -766,9 +879,9 @@ func (e *Entry) KeyAction(a KeyAction, mods Mods) {
 				e.MoveWord(1)
 			}
 		} else if shift {
-			e.MoveCursorExtending(1)
+			e.moveVisually(1, true)
 		} else {
-			e.MoveCursor(1)
+			e.moveVisually(1, false)
 		}
 	case KeyHome:
 		if shift {

@@ -46,6 +46,7 @@ allocation/syscall reduction sweep (#77) is gated behind the epic.
 | Image | raster `Image`: `ImageFit`/`ImageCover`/`ImageNone`, async file/URL decode, LRU pixel cache (#35) | widget/image.go, internal/imgcache |
 | Font selection | `sysfont.Sans`/`Monospace`/`Serif`/`Best(family, size)`, system-store fallback chains (#31); `Families()` enumeration + `app.FontChooserDialog` (#74) | internal/sysfont, app/dialog.go |
 | Font fallback | `render.Chain`: per-rune coverage, bitmap/CBDT/sbix color-emoji strikes (#31) | render/text.go, internal/sysfont |
+| RTL/bidirectional text | UAX #9 resolution shared by every text path (internal/text, cached by text + direction), visual-order shaping in `render`, a `Direction` (LTR/RTL/auto) on Label, RichLabel, Entry, TextArea, Menu, Dropdown, and Box; start/end alignment and Box row flow mirror, arrows and word motion move visually while cursor and selection stay logical (#68) | internal/text/bidi.go, render/text.go, widget/direction.go |
 | Theming | typed `Theme` palette value with copying `With*` constructors, dark/light presets, WCAG contrast guard reporting through the injectable logger (#32, #55) — no CSS engine (a non-goal, see below) | widget/theme.go, [architecture.md](architecture.md) "Theming" |
 | Library logging | injectable `*slog.Logger` (`wlsession.SetLogger`, `app.SetLogger`), silent by default (nil discards); Warn = degraded-but-running, Error = terminal, Debug = protocol chatter (#55) | internal/logutil, internal/wlsession/logger.go, [input-model.md](input-model.md) |
 | State/threading (Components, Workers, Commands) | callbacks on one loop goroutine + `Application.Invoke`/`Every`; off-loop mutation trips the guard; relm4 concept mapping (#27) | app/invoke.go, widget/thread.go, [threading.md](threading.md) |
@@ -75,8 +76,6 @@ Audited in #36; the reasons stay recorded in
 [architecture.md](architecture.md) "Non-goals". The third pass promoted
 every one that relm4 parity requires — each now filed under [#59](https://github.com/stubbedev/gelm/issues/59):
 
-- **RTL/bidirectional text** — no wayle use case; revisit if ever
-  needed. Filed as #68.
 - **GtkCss analog** — rejected on cost; #32 scopes styling to the typed
   `Theme` struct instead. Revisited per the maintainer: conditional
   design doc #75, engine #76.

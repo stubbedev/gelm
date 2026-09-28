@@ -11,11 +11,11 @@ require (
 	github.com/srwiley/rasterx v0.0.0-20220730225603-2ab79fcdd4ef
 	github.com/unxed/xkb-go v0.1.8
 	golang.org/x/image v0.46.0
+	golang.org/x/text v0.42.0
 )
 
 require (
 	github.com/yalue/native_endian v1.0.2 // indirect
 	golang.org/x/net v0.45.0 // indirect
 	golang.org/x/sys v0.48.0 // indirect
-	golang.org/x/text v0.42.0 // indirect
 )

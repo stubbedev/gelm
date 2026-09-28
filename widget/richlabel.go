@@ -5,6 +5,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/stubbedev/gelm/internal/text"
 	"github.com/stubbedev/gelm/render"
 )
 
@@ -39,6 +40,7 @@ type RichLabel struct {
 	sizePx   float64
 	color    render.Color
 	align    render.Alignment
+	dir      Direction
 
 	// runs is the parsed (or literal fallback) run list; shaped
 	// mirrors it with per-run shaping and metrics.
@@ -124,6 +126,25 @@ func (l *RichLabel) SetAlignment(a render.Alignment) {
 // Alignment returns the horizontal placement.
 func (l *RichLabel) Alignment() render.Alignment { return l.align }
 
+// SetDirection selects the base paragraph direction the line resolves
+// and lays out with. DirectionAuto (the default) reads it off the
+// line's first strong character; the resolution spans the whole line,
+// so styled spans reorder together. Start/end alignment mirrors with
+// the resolved direction. Changing the direction re-resolves the line
+// and drops the measure cache.
+func (l *RichLabel) SetDirection(d Direction) {
+	if l.dir == d {
+		return
+	}
+	l.dir = d
+	l.retext()
+	l.InvalidateLayout()
+}
+
+// Direction returns the base paragraph direction the line resolves
+// with.
+func (l *RichLabel) Direction() Direction { return l.dir }
+
 // faceFor resolves the face a run shapes with: bold and italic runs
 // use the variants when one is installed, and every other run - and
 // any variant the provider cannot supply - uses the base face.
@@ -136,27 +157,55 @@ func (l *RichLabel) faceFor(st TextStyle) render.Font {
 	return l.base
 }
 
-// retext re-parses the markup, reshapes every run, and refreshes the
-// cached natural size. Runs rejected by the parser render literally.
+// retext re-parses the markup, resolves the line's directional runs
+// over the whole text, and reshapes every styled span the runs touch.
+// The line resolves once — a bold Hebrew word and its plain Latin
+// neighbor reorder together — and each visual piece keeps its span's
+// face and style; inside a right-to-left run the spans draw in reverse,
+// so the pieces' slice is already the visual order. Runs rejected by
+// the parser render literally.
 func (l *RichLabel) retext() {
-	runs, ok := ParseMarkup(l.markup)
+	spans, ok := ParseMarkup(l.markup)
 	if !ok {
-		runs = []MarkupRun{{Text: l.markup}}
+		spans = []MarkupRun{{Text: l.markup}}
 	}
-	l.runs = runs
-	l.shaped = make([]*richRun, 0, len(runs))
+	l.runs = spans
 	var sb strings.Builder
-	asc, desc, adv := 0.0, 0.0, 0.0
-	runeOff := 0
-	for _, r := range runs {
+	for _, r := range spans {
 		sb.WriteString(r.Text)
-		face := l.faceFor(r.Style)
-		sh := face.Shape(r.Text, l.sizePx)
-		asc = math.Max(asc, sh.Ascent())
-		desc = math.Max(desc, sh.Descent())
-		adv += sh.Advance()
-		l.shaped = append(l.shaped, &richRun{sh: sh, face: face, style: r.Style, start: runeOff})
-		runeOff += utf8.RuneCountInString(r.Text)
+	}
+	line := sb.String()
+	l.text = line
+	l.shaped = make([]*richRun, 0, len(spans))
+	// Span rune spans, to intersect the styled spans with the
+	// directional runs.
+	spanStart := make([]int, len(spans)+1)
+	for i, r := range spans {
+		spanStart[i+1] = spanStart[i] + utf8.RuneCountInString(r.Text)
+	}
+	rs := []rune(line)
+	asc, desc, adv := 0.0, 0.0, 0.0
+	for _, br := range text.BidiRuns(line, l.dir) {
+		dir := DirectionLTR
+		if br.RTL {
+			dir = DirectionRTL
+		}
+		for i := range spans {
+			k := i
+			if br.RTL {
+				k = len(spans) - 1 - i // visual order inside the run
+			}
+			lo, hi := max(br.Start, spanStart[k]), min(br.End, spanStart[k+1])
+			if lo >= hi {
+				continue
+			}
+			face := l.faceFor(spans[k].Style)
+			sh := face.ShapeDir(string(rs[lo:hi]), l.sizePx, dir)
+			asc = math.Max(asc, sh.Ascent())
+			desc = math.Max(desc, sh.Descent())
+			adv += sh.Advance()
+			l.shaped = append(l.shaped, &richRun{sh: sh, face: face, style: spans[k].Style, start: lo})
+		}
 	}
 	if len(l.shaped) == 0 {
 		// Empty text still reserves the font's line height, like
@@ -165,8 +214,7 @@ func (l *RichLabel) retext() {
 		asc, desc = sh.Ascent(), sh.Descent()
 	}
 	l.lineAsc, l.lineDesc, l.advance = asc, desc, adv
-	l.runes = runeOff
-	l.text = sb.String()
+	l.runes = spanStart[len(spans)]
 	l.natural = Size{W: int(adv + 0.5), H: int(math.Ceil(asc + desc))}
 }
 
@@ -180,14 +228,24 @@ func (l *RichLabel) Measure(con Constraints) Size {
 }
 
 // lineGeom resolves the aligned line origin and the runs' shared
-// baseline. ok is false when the arranged box cannot hold one line,
-// the same guard a plain label's DrawAligned applies.
+// baseline, mirroring start and end for a right-to-left line. ok is
+// false when the arranged box cannot hold one line, the same guard a
+// plain label's DrawAligned applies.
 func (l *RichLabel) lineGeom() (lineX float64, baseline int, ok bool) {
 	lineH := l.natural.H
 	if l.bounds.H < lineH {
 		return 0, 0, false
 	}
-	switch l.align {
+	align := l.align
+	if text.RTL(l.text, l.dir) {
+		switch align {
+		case render.AlignStart:
+			align = render.AlignEnd
+		case render.AlignEnd:
+			align = render.AlignStart
+		}
+	}
+	switch align {
 	case render.AlignCenter:
 		lineX = float64(l.bounds.X) + (float64(l.bounds.W)-l.advance)/2
 	case render.AlignEnd:
@@ -290,6 +348,9 @@ func (l *RichLabel) SelectionBands(start, end int) []render.Rect {
 		cs := r.sh.CaretPositions()
 		x0 := int(math.Round(runX + cs[lo]))
 		x1 := int(math.Round(runX + cs[hi]))
+		if x1 < x0 {
+			x0, x1 = x1, x0 // an RTL piece's caret table runs backwards
+		}
 		if x1 <= x0 {
 			continue
 		}
