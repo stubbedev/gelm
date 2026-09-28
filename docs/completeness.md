@@ -55,7 +55,7 @@ allocation/syscall reduction sweep (#77) is gated behind the epic.
 | relm4/GTK area | gelm's answer | Where |
 | --- | --- | --- |
 | Windows | xdg-shell toplevels and zwlr-layer-shell surfaces, close veto, interactive resize, min/max | internal/window, internal/layersurface |
-| Clipboard | wl_data_device + primary selection (copy-on-select, middle-click) | internal/clipboard, internal/wlsession/primary.go |
+| Clipboard | wl_data_device + primary selection (copy-on-select, middle-click); image payloads - png claims and reads, jpeg reads, the widget.Image paste surface with off-loop decode (#69) | internal/clipboard, internal/wlsession/primary.go |
 | IME | zwp_text_input_v3 into Entry and TextArea | internal/wlsession/textinput.go |
 | Fractional scale | wp_viewporter + wp_fractional_scale_v1, live rescale; integer fallback | internal/scale |
 | Taskbar/window list | wlr-foreign-toplevel-management: `Toplevels()`, per-handle Activate/minimize/maximize/Close, `OnToplevel*` hooks (#33) | internal/wlsession/toplevel.go |
@@ -77,7 +77,6 @@ every one that relm4 parity requires — each now filed under [#59](https://gith
 
 - **RTL/bidirectional text** — no wayle use case; revisit if ever
   needed. Filed as #68.
-- **Clipboard images** — wayle is text-only for clipboard. Filed as #69.
 - **GtkCss analog** — rejected on cost; #32 scopes styling to the typed
   `Theme` struct instead. Revisited per the maintainer: conditional
   design doc #75, engine #76.

@@ -141,6 +141,11 @@ type Image struct {
 	// not fire for synchronous sources, which are ready at
 	// construction.
 	OnLoaded func(img *Image)
+	// OnPasteImage fires on the loop goroutine when a pasted image
+	// (the ctrl+v payload an ImagePaster receives) finished decoding:
+	// the widget has already taken it as its source. The Image is the
+	// paste surface — Entry and TextArea are text-only by design.
+	OnPasteImage func(img image.Image)
 
 	// load state: img is the decoded source, loadErr the sticky decode
 	// failure, loaded/loading where the load stands, and gen bumps on
@@ -327,6 +332,49 @@ func (im *Image) Paint(cv *render.Canvas) {
 func (im *Image) HitTest(p Point) Widget {
 	return im.HitLeaf(im, p)
 }
+
+// PasteImage implements ImagePaster: the pasted encoded bytes (with
+// the mime they arrived as, for error messages) become the widget's
+// source, decoded off the loop goroutine through the same invoker
+// bridge as file loads — a large PNG never stalls the loop — and then
+// handed to OnPasteImage. Without an invoker the decode settles
+// synchronously, like every other source.
+func (im *Image) PasteImage(data []byte, mime string) {
+	gen := im.gen + 1
+	im.gen = gen
+	im.img, im.loadErr = nil, nil
+	im.loaded = false
+	im.InvalidateLayout()
+	if !hasInvoker() {
+		img, err := decodeImageData(data, "pasted "+mime)
+		im.applyPaste(gen, img, err)
+		return
+	}
+	im.loading = true
+	go func() {
+		img, err := decodeImageData(data, "pasted "+mime)
+		invoke(func() { im.applyPaste(gen, img, err) })
+	}()
+}
+
+// applyPaste records a settled paste on the loop goroutine and fires
+// OnPasteImage; a superseded source drops the result, like
+// applyLoad.
+func (im *Image) applyPaste(gen uint64, img image.Image, err error) {
+	if gen != im.gen {
+		return
+	}
+	im.img, im.loadErr, im.loaded, im.loading = img, err, true, false
+	if err == nil && im.OnPasteImage != nil {
+		im.OnPasteImage(img)
+	}
+	im.InvalidateLayout()
+}
+
+// KeyAction implements KeyActionHandler: an Image with an
+// OnPasteImage hook is a paste target, so it joins focus traversal —
+// the actions themselves are none of its own.
+func (im *Image) KeyAction(KeyAction, Mods) {}
 
 // ensureSettled kicks the first load of a file/URL source. Without an
 // invoker installed there is no loop goroutine to deliver through, so
