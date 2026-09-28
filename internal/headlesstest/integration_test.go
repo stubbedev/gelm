@@ -648,3 +648,116 @@ func TestHeadlessWindowStates(t *testing.T) {
 		t.Errorf("client outlived the compositor close while fullscreen; log tail:\n%s", tailTraces(w, 25))
 	}
 }
+
+// startMultilistClient launches the multi-select list client
+// (cmd/gelm-multilist) and returns it with a trace watcher and the row
+// centers the client traced after mapping at the pinned size.
+func startMultilistClient(t *testing.T) (*Client, *LogWatcher, [][2]int) {
+	t.Helper()
+	bin, err := BuildClient(testEnv.Dir, "./cmd/gelm-multilist", "gelm-multilist")
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := testEnv.StartClient(bin, "client-"+t.Name(), "input,frame,demo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(c.Stop)
+	w, err := c.Watch()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.Wait("demo", fmt.Sprintf("mapped %dx%d", multilistW, multilistH), traceTimeout); err != nil {
+		t.Fatalf("multilist never mapped at the pinned %dx%d: %v", multilistW, multilistH, err)
+	}
+	rows := make([][2]int, multilistRows)
+	for i := range rows {
+		tr, err := w.Wait("demo", fmt.Sprintf("row %d center ", i), traceTimeout)
+		if err != nil {
+			t.Fatalf("row %d center trace missing: %v", i, err)
+		}
+		var x, y int
+		if _, err := fmt.Sscanf(tr.Message, fmt.Sprintf("row %d center (%%d,%%d)", i), &x, &y); err != nil {
+			t.Fatalf("bad row trace %q: %v", tr.Message, err)
+		}
+		rows[i] = [2]int{x, y}
+	}
+	return c, w, rows
+}
+
+// TestHeadlessListMultiSelect drives the multiple-selection list model
+// (#60) through the compositor: clicks toggle, ctrl+space toggles the
+// cursor row, shift+arrows extend from the anchor, ctrl+a selects
+// everything, a pointer drag rubber-bands a range, and a rapid second
+// click activates the row instead of toggling it back out.
+func TestHeadlessListMultiSelect(t *testing.T) {
+	requireEnv(t)
+	_, w, rows := startMultilistClient(t)
+	in := newInput(t)
+
+	// Click row 2: the toggle lands through the compositor's pointer
+	// path and focuses the list for the keyboard half of the test.
+	if err := clickUntil(w, in, "demo", rows[2][0], rows[2][1], BTNLeft, "selection [2]"); err != nil {
+		t.Fatalf("click on row 2 never toggled it in: %v", err)
+	}
+
+	// ctrl+space toggles the cursor row back out, then in.
+	for pass := range 2 {
+		expect := "selection [none]"
+		if pass == 1 {
+			expect = "selection [2]"
+		}
+		if err := in.Combo(KeySpace); err != nil {
+			t.Fatalf("ctrl+space: %v", err)
+		}
+		if _, err := w.Wait("demo", expect, traceTimeout); err != nil {
+			t.Errorf("ctrl+space pass %d never produced %q: %v", pass+1, expect, err)
+		}
+	}
+
+	// shift+Down extends the anchor range.
+	if err := in.mods(ModShift); err != nil {
+		t.Fatalf("shift: %v", err)
+	}
+	if err := in.Tap(KeyDown); err != nil {
+		t.Fatalf("shift+down: %v", err)
+	}
+	if err := in.mods(0); err != nil {
+		t.Fatalf("shift release: %v", err)
+	}
+	if _, err := w.Wait("demo", "selection [2,3]", traceTimeout); err != nil {
+		t.Errorf("shift+down never extended the anchor range: %v", err)
+	}
+
+	// ctrl+a takes everything through the select-all route.
+	if err := in.Combo(KeyA); err != nil {
+		t.Fatalf("ctrl+a: %v", err)
+	}
+	if _, err := w.Wait("demo", "selection [0,1,2,3,4,5,6,7,8,9]", traceTimeout); err != nil {
+		t.Errorf("ctrl+a never selected everything: %v", err)
+	}
+
+	// A pointer drag rubber-bands a range and reports it once.
+	if err := in.DragTo(rows[5][0], rows[5][1], rows[7][0], rows[7][1], 4); err != nil {
+		t.Fatalf("drag rows 5..7: %v", err)
+	}
+	if _, err := w.Wait("demo", "selection [5,6,7]", traceTimeout); err != nil {
+		t.Errorf("the drag never rubber-banded [5,6,7]: %v", err)
+	}
+
+	// A rapid second click on a row activates it (double-click opens)
+	// without toggling its membership back out: the first click removes
+	// row 6 from the set, the pair then activates it.
+	if err := in.ClickAt(rows[6][0], rows[6][1], BTNLeft); err != nil {
+		t.Fatalf("first click on row 6: %v", err)
+	}
+	if _, err := w.Wait("demo", "selection [5,7]", traceTimeout); err != nil {
+		t.Errorf("the first click of the pair never toggled row 6 out: %v", err)
+	}
+	if err := in.ClickAt(rows[6][0], rows[6][1], BTNLeft); err != nil {
+		t.Fatalf("second click on row 6: %v", err)
+	}
+	if _, err := w.Wait("demo", "activated 6", traceTimeout); err != nil {
+		t.Errorf("the rapid pair never activated row 6: %v", err)
+	}
+}

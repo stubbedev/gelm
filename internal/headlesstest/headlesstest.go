@@ -54,3 +54,18 @@ const (
 	outputW = 1280
 	outputH = 800
 )
+
+// MultilistAppID is the Wayland app_id of the multi-select list
+// client (cmd/gelm-multilist). The recipe's sway rule pins it to a
+// floating window beside the showcase, so the row centers the client
+// traces are compositor coordinates.
+const MultilistAppID = "dev.stubbe.gelm.multilist"
+
+// multilistW and multilistH mirror the multilist client's requested
+// (and recipe-pinned) floating size; multilistRows mirrors its row
+// count (cmd/gelm-multilist).
+const (
+	multilistW    = 300
+	multilistH    = 300
+	multilistRows = 10
+)
