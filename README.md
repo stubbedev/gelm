@@ -17,12 +17,15 @@ composition, fractional scaling with live rescale, and an animation
 clock. Theming is a composable palette value (`widget.SetTheme`,
 `widget.DarkTheme().WithAccentHex("#a6e3a1").WithPadding(8)`-style
 chaining, dark and light presets); state shades derive from the
-palette and there is no CSS engine and deliberately no per-widget
-theme overrides (see [docs/architecture.md](docs/architecture.md),
-"Theming"). The system's dark/light preference is available as a
-signal, not an automatic switch: `internal/appearance` watches
-xdg-desktop-portal's `color-scheme` (pure Go, no cgo) and the app
-wires it to `SetTheme` — see [docs/appearance.md](docs/appearance.md).
+palette, and a GTK-flavored CSS subset layers on top as an override —
+`widget.LoadStylesheetFile("theme.css")` with element/class/id/state
+selectors, hot reload on file change, and classes/ids per widget
+(`b.AddClass("destructive")`, `b.SetID("save-button")`); see
+[docs/css.md](docs/css.md). The system's dark/light preference is
+available as a signal, not an automatic switch: `internal/appearance`
+watches xdg-desktop-portal's `color-scheme` (pure Go, no cgo) and the
+app wires it to `SetTheme` — see
+[docs/appearance.md](docs/appearance.md).
 
 The compositor-in-the-loop gate runs the same input suite on both
 compositors: sway is the primary required gate (`just headless`), and

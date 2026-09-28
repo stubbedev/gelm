@@ -1,9 +1,10 @@
 # gelm CSS support — design
 
-Status: **spec** (ticket #75). Ticket #76 builds exactly what this
-document commits to, nothing more. The numbers in "Performance
-envelope" come from the prototype in `bench/css-proto` and are the bar
-#76 has to meet, not aspirations.
+Status: **implemented** (#76). The section at the end records what
+shipped and the measured numbers; the rest of this document is the
+reviewed spec (#75) that #76 builds exactly, nothing more. The
+numbers in "Performance envelope" come from the prototype in
+`bench/css-proto` and are the bar the implementation had to meet.
 
 The maintainer's goal restated: GTK-flavored CSS as an **override
 layer on top of the typed `Theme`** — the palette stays the source of
@@ -203,3 +204,113 @@ semantic text, not style hooks).
 6. docs/css.md gains an "implemented" section; README theming row and
    architecture.md non-goals updated (done for the non-goals in this
    ticket).
+
+## Implemented (#76)
+
+The subset above shipped as scoped. Where the code lives and the two
+decisions the spec left open:
+
+- **Engine** — `internal/style`: the hand-rolled byte-oriented parser
+  (`parse.go`, the markup-parser style: no regexp, one pass, warnings
+  through the library logger at Warn, warn-and-skip-rule throughout)
+  and the bucketed matcher/cascader (`match.go`). Rules are indexed by
+  their rightmost simple selector (element/class/id/universal
+  buckets), specificity packs into one comparable rank
+  `(ids, classes+states, elements, source order)`, and the cascade is
+  a best-per-property rank compare over a scratch workspace —
+  `Sheet.Match` allocates nothing (pinned by
+  `TestValuesNoAllocationPerMatch`).
+- **Widget side** — `widget/style.go`: `LoadStylesheet`/
+  `LoadStylesheetFile` (atomic install, generation bump), the
+  `AddClass`/`RemoveClass`/`HasClass`/`SetID` methods on the shared
+  node, and the per-widget computed style. The app installs the
+  hot-reload poller once (`app` lends its timer wheel via
+  `widget.SetStylesheetPoller`; one stat per second after the first
+  file load, nothing before).
+- **Computed style, where it lives** — one `style.Values` struct per
+  node, holding the winning declaration per property with a set mask.
+  Consumers read it exactly where they read `Theme` fields today,
+  layering programmatic widget color above the cascade above the
+  theme (`pickc`/`picki`). The set mask is what keeps the no-stylesheet
+  pixels bit-for-bit: nothing set, nothing changes.
+- **Invalidation flow** — three stamps, no walks. A stylesheet load
+  bumps `styleGen`; the measure caches and the damage collector notice
+  per widget by stamp compare (the `themeGen` pattern), and each
+  widget's cascade recomputes lazily on first read. Class, id, and
+  state changes mark only the widget; the diff at recompute decides
+  the rest: repaint self if values moved, `InvalidateLayout` if a
+  layout-affecting one did, mark the subtree when an inherited one did
+  — the damage collector recomputes pre-order, so an inherited change
+  lands in the same drain. Steady-state paint reads the struct; two
+  integer compares, zero style calls (the styled paint benchmark sits
+  on the unstyled one).
+- **Inheritance** — `color` and the `font-*` group inherit from the
+  parent's computed style (recomputed on demand up the chain); the
+  root's fallback is whatever the widget painted before the cascade
+  spoke (its constructor color, the theme at paint), so a stylesheet
+  that sets nothing anywhere changes nothing.
+
+### Property consumers as implemented
+
+The spec table's full consumer list is the direction; these are the
+widgets that honor each property today, each with a golden:
+
+| Property | Consumer(s) in this change | Golden |
+| --- | --- | --- |
+| `color` | Label (direct and inherited), Entry, TextArea, Toast ink | `css-label-color`, `css-label-color-inherited` |
+| `background-color` | Button, Entry, Box (a bare box fills only when styled), TextArea, Toast, Elevation plate (`dialog`) | `css-button-properties`, `css-entry-min-border`, `css-textarea-background`, `css-dialog-card` |
+| `padding` | Button (measure + arrange), Box, Entry text inset, Label content inset | `css-button-properties` |
+| `font-family` | Label, through the app-installed face resolver (`widget.SetFaceResolver`; without one the constructor face stays, the same graceful no-op as an unknown element name) | `css-label-font-family` |
+| `font-size` | Label (reshape + relayout), Entry (shape, measure, caret) | `css-label-font-size` |
+| `font-weight` | Label, through the same resolver (`normal`/`bold`/number) | `css-label-font-weight` |
+| `border-radius` | Button, Entry, Toast, Elevation | `css-button-properties`, `css-dialog-card` |
+| `border-width`, `border-color` | Button and Entry stroke their outline (the fill shrinks inside the ring) | `css-button-properties`, `css-entry-min-border` |
+| `box-shadow` | Toast and Elevation (`COLOR BLUR` or `none`; the damage ring follows the effective blur) | `css-toast-shadow`, `css-dialog-card` |
+| `min-width`, `min-height` | Entry and TextArea: `MinSize` floors for negotiating containers, and Measure claims the floor before the constraints clamp | `css-entry-min-border` |
+
+The element-name list: every node-embedding widget type lowercased
+(pinned by `TestCSSElementNames`), plus `dialog`, `popover`, `tooltip`
+— named by their app constructors onto the widget that paints the
+card (pinned in `app/style_test.go`) — and `toast`, a widget type.
+
+### Measured numbers
+
+`BenchmarkStyleGallery` (widget package, the #45 harness gallery
+showcase tree, 73 widgets, the 25-rule `galleryCSS` — element/class/
+id/state selectors, descendant and child combinators, one id rule,
+one universal; Intel i5-10400F, the prototype's machine class,
+recorded 2026-09-28):
+
+| Benchmark | Prototype bar | Implemented |
+| --- | --- | --- |
+| Full-tree restyle | ~59 µs over ~200 nodes (~295 ns/widget), 261 allocs | **11.4 µs over 73 widgets (~156 ns/widget)**, 9 allocs — all in the benchmark's `Children()` walk, none in the engine (`Sheet.Match` is 0 allocs) |
+| Single-widget restyle, class toggle | ~274 ns | **~170 ns, 0 allocs** |
+| Steady-frame paint, stylesheet loaded | ~880 ns read, 0 allocs | paint benchmark unchanged against the unstyled `BenchmarkShowcasePaint` (1.84 ms vs 1.83 ms full-window paint); the paint path reads the computed struct only |
+
+The full restyle sits two orders of magnitude under the 16.6 ms frame
+budget; the engine's per-widget buffers (scratch, reusable ancestor
+adapters, rank table) are what replaced the prototype's 261 allocs.
+
+### Deviations from the spec's letter, with reasons
+
+- **Constructor metrics are defaults, not the programmatic layer.**
+  The cascade's programmatic layer is colors (the spec's `button.SetBg`
+  example). Constructor sizes — a button's padding, a label's
+  sizePx — act as the default the stylesheet overrides, or a label's
+  `font-size: 20` could never apply to a constructed label. Explicit
+  per-widget colors keep their above-the-cascade seat.
+- **`:focus` rides the router, `:hover`/`:active` ride the widgets' own
+  fields.** The router is the one writer of focus, so it flips the
+  style bit (`setFocusStyle`); hover and press stay in the fields the
+  router already drives, which the matcher reads per compute — the
+  setters mark the cascade stale.
+- **`font-family`/`font-weight` resolve through an injectable face
+  resolver** (`widget.SetFaceResolver`) rather than reaching into
+  `internal/sysfont` directly: face loading is the app's font store's
+  job, goldens never consult host fonts, and without a resolver the
+  declarations keep the constructor face — degraded but running, like
+  an unknown element name.
+- **Popover names its content tree** (the card the app hands over is
+  the popover surface), and the dialog names its Elevation card — or
+  the plain root box when client shadows are off. There is no separate
+  popover widget to name.
