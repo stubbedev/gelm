@@ -1,0 +1,36 @@
+goos: linux
+goarch: amd64
+pkg: github.com/stubbedev/gelm/render
+cpu: Intel(R) Core(TM) i5-10400F CPU @ 2.90GHz
+BenchmarkShape200-12         	17772664	        66.62 ns/op	       0 B/op	       0 allocs/op
+BenchmarkShape200-12         	17969892	        65.85 ns/op	       0 B/op	       0 allocs/op
+BenchmarkShape200-12         	17814214	        66.43 ns/op	       0 B/op	       0 allocs/op
+BenchmarkShape200-12         	17945253	        65.34 ns/op	       0 B/op	       0 allocs/op
+BenchmarkShape200-12         	18284524	        65.39 ns/op	       0 B/op	       0 allocs/op
+BenchmarkShape200-12         	18199105	        65.40 ns/op	       0 B/op	       0 allocs/op
+BenchmarkShape200Cold-12     	   44880	     26420 ns/op	   20481 B/op	      10 allocs/op
+BenchmarkShape200Cold-12     	   45232	     26407 ns/op	   20481 B/op	      10 allocs/op
+BenchmarkShape200Cold-12     	   45486	     26356 ns/op	   20480 B/op	      10 allocs/op
+BenchmarkShape200Cold-12     	   46044	     26241 ns/op	   20480 B/op	      10 allocs/op
+BenchmarkShape200Cold-12     	   45931	     26332 ns/op	   20480 B/op	      10 allocs/op
+BenchmarkShape200Cold-12     	   45484	     26330 ns/op	   20480 B/op	      10 allocs/op
+BenchmarkChainShape200-12    	17727549	        65.75 ns/op	       0 B/op	       0 allocs/op
+BenchmarkChainShape200-12    	17888241	        65.87 ns/op	       0 B/op	       0 allocs/op
+BenchmarkChainShape200-12    	17236687	        67.88 ns/op	       0 B/op	       0 allocs/op
+BenchmarkChainShape200-12    	17463885	        68.99 ns/op	       0 B/op	       0 allocs/op
+BenchmarkChainShape200-12    	17320706	        68.78 ns/op	       0 B/op	       0 allocs/op
+BenchmarkChainShape200-12    	17243296	        70.41 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDrawText-12         	   54770	     21910 ns/op	       1 B/op	       0 allocs/op
+BenchmarkDrawText-12         	   54675	     22004 ns/op	       1 B/op	       0 allocs/op
+BenchmarkDrawText-12         	   54284	     22333 ns/op	       1 B/op	       0 allocs/op
+BenchmarkDrawText-12         	   54694	     21981 ns/op	       1 B/op	       0 allocs/op
+BenchmarkDrawText-12         	   54691	     21822 ns/op	       1 B/op	       0 allocs/op
+BenchmarkDrawText-12         	   54074	     22070 ns/op	       1 B/op	       0 allocs/op
+BenchmarkDrawTextCold-12     	    8890	    116238 ns/op	   83384 B/op	     377 allocs/op
+BenchmarkDrawTextCold-12     	   10396	    115266 ns/op	   83384 B/op	     377 allocs/op
+BenchmarkDrawTextCold-12     	    9397	    115472 ns/op	   83384 B/op	     377 allocs/op
+BenchmarkDrawTextCold-12     	   10000	    115943 ns/op	   83384 B/op	     377 allocs/op
+BenchmarkDrawTextCold-12     	    8941	    115626 ns/op	   83384 B/op	     377 allocs/op
+BenchmarkDrawTextCold-12     	    9972	    115137 ns/op	   83384 B/op	     377 allocs/op
+PASS
+ok  	github.com/stubbedev/gelm/render	35.332s

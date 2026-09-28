@@ -1,0 +1,2 @@
+strace: attach: ptrace(PTRACE_SEIZE, 1972562): Operation not permitted
+strace: sysctl kernel.yama.ptrace_scope = 1 may be restricting this attach
