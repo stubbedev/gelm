@@ -50,6 +50,7 @@ deliberate non-goals and the honest, deferred gaps — lives in
 | Dialog, MessageBox (`app`) | done | parented toplevels; modality is window-level through xdg-dialog-v1 where the compositor offers it (input to the parent is compositor-blocked) with the application-level block as the floor; Esc/Enter responses |
 | Icon | done | raster, theme-name, file, and embedded-SVG constructors; symbolic sources follow the accent or a pinned tint |
 | Box, Stack, Overlay, Scroll | done | the containers; row/column layout with expanding children |
+| Paned | done | two panes with a draggable themed divider; MinSizer-floor clamps, keyboard nudges, GTK keep-child-one resize semantics |
 | Tooltips | done | `SetTooltip` on any widget, 500ms dwell; toplevel hosts only |
 | Drag source / drop target | done | `widget.DragSource` + `DragEnterer` per widget; mime negotiation, highlight, cross-window drops |
 
