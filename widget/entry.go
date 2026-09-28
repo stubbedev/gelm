@@ -23,7 +23,13 @@ type Entry struct {
 	// source: typing, editing keys, clipboard, or SetText.
 	OnChanged func(string)
 
-	runes  []rune
+	runes []rune
+	// disp is the string form of runes, refreshed by setRunes: the
+	// paint and measure paths read the display text several times per
+	// frame, and re-converting the runes per read was the entry's
+	// largest steady allocation. Every mutation of runes goes through
+	// setRunes, so disp cannot drift.
+	disp   string
 	cursor int
 	anchor int // selection anchor; equals cursor when nothing is selected
 
@@ -217,7 +223,7 @@ func (e *Entry) snapshot() entryState {
 // signal the edit fired. The pan follows the restored caret — the
 // history stores editing state, not view state.
 func (e *Entry) applyEntry(s entryState) {
-	e.runes = append([]rune{}, s.runes...)
+	e.setRunes(append([]rune{}, s.runes...))
 	e.cursor, e.anchor = s.cursor, s.anchor
 	e.panToCaret()
 	e.InvalidateLayout()
@@ -229,6 +235,14 @@ func (e *Entry) changed() {
 	if e.OnChanged != nil {
 		e.OnChanged(e.Text())
 	}
+}
+
+// setRunes replaces the contents and refreshes the string form the
+// paint and measure paths read. Every mutation of e.runes goes through
+// here, so displayText never re-converts the runes per read.
+func (e *Entry) setRunes(rs []rune) {
+	e.runes = rs
+	e.disp = string(rs)
 }
 
 // SelectedText implements SelectedTexter.
@@ -247,7 +261,7 @@ func (e *Entry) SetText(s string) {
 	if s == e.Text() {
 		return
 	}
-	e.runes = []rune(s)
+	e.setRunes([]rune(s))
 	e.cursor = len(e.runes)
 	e.anchor = e.cursor
 	e.hist.reset() // app-driven replacement is not an edit to back out of
@@ -282,7 +296,7 @@ func (e *Entry) collapse() {
 	e.clearPreedit()
 	start, end, active := e.Selection()
 	if active {
-		e.runes = append(e.runes[:start], e.runes[end:]...)
+		e.setRunes(append(e.runes[:start], e.runes[end:]...))
 	}
 	e.anchor = start
 	e.cursor = start
@@ -299,7 +313,7 @@ func (e *Entry) splice(s string) {
 	e.clearPreedit()
 	e.collapse()
 	r := []rune(s)
-	e.runes = append(e.runes[:e.cursor], append(append([]rune{}, r...), e.runes[e.cursor:]...)...)
+	e.setRunes(append(e.runes[:e.cursor], append(append([]rune{}, r...), e.runes[e.cursor:]...)...))
 	e.cursor = text.SnapClusterForward(e.runes, e.cursor+len(r))
 	e.anchor = e.cursor
 	e.panToCaret()
@@ -334,7 +348,7 @@ func (e *Entry) Backspace() {
 		e.InvalidateLayout()
 		e.changed()
 	} else if start := text.PrevCluster(e.runes, e.cursor); start < e.cursor {
-		e.runes = append(e.runes[:start], e.runes[e.cursor:]...)
+		e.setRunes(append(e.runes[:start], e.runes[e.cursor:]...))
 		e.cursor, e.anchor = start, start
 		e.panToCaret()
 		e.InvalidateLayout()
@@ -357,7 +371,7 @@ func (e *Entry) Delete() {
 		e.InvalidateLayout()
 		e.changed()
 	} else if end := text.NextCluster(e.runes, e.cursor); end > e.cursor {
-		e.runes = append(e.runes[:e.cursor], e.runes[end:]...)
+		e.setRunes(append(e.runes[:e.cursor], e.runes[end:]...))
 		e.panToCaret()
 		e.InvalidateLayout()
 		e.changed()
@@ -380,7 +394,7 @@ func (e *Entry) DeleteWordBackward() {
 		e.InvalidateLayout()
 		e.changed()
 	} else if start := text.WordStart(e.runes, e.cursor); start < e.cursor {
-		e.runes = append(e.runes[:start], e.runes[e.cursor:]...)
+		e.setRunes(append(e.runes[:start], e.runes[e.cursor:]...))
 		e.cursor, e.anchor = start, start
 		e.panToCaret()
 		e.InvalidateLayout()

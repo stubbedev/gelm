@@ -53,11 +53,16 @@ func (e *Entry) Revealing() bool { return e.reveal }
 // displayText is the string on show: the display runes (contents with
 // any composing text spliced in) with echo masking applied. Masked
 // modes keep the rune count — one dot per rune, or none — so caret,
-// click, and selection math operate on the same indices as ever.
+// click, and selection math operate on the same indices as ever. The
+// unmasked, not-composing read — every steady frame — is the string
+// setRunes keeps fresh, not a fresh conversion.
 func (e *Entry) displayText() string {
 	rs := e.displayRunes()
 	switch {
 	case e.echo == EchoNormal || e.reveal:
+		if !e.composing() {
+			return e.disp
+		}
 		return string(rs)
 	case e.echo == EchoNone:
 		return ""

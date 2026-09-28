@@ -140,3 +140,41 @@ func TestEntryEcho(t *testing.T) {
 		}
 	})
 }
+
+// TestEntryDisplayTracksContents pins the setRunes discipline: the
+// cached display string must equal the runes after every mutation path
+// (typing, splice, delete, word deletes, undo/redo, restore, IME
+// replace). A missed site would leave the paint reading stale text.
+func TestEntryDisplayTracksContents(t *testing.T) {
+	e := NewEntry(entryFace(t), 14, render.RGB(255, 255, 255))
+	check := func(when string) {
+		t.Helper()
+		if string(e.runes) != e.disp {
+			t.Errorf("%s: display %q drifted from contents %q", when, e.disp, string(e.runes))
+		}
+		if got := e.displayText(); got != string(e.runes) {
+			t.Errorf("%s: displayText %q != contents %q", when, got, string(e.runes))
+		}
+	}
+	e.SetText("hello")
+	for _, r := range " world" {
+		e.InsertRune(r)
+		check("InsertRune " + string(r))
+	}
+	e.SelectAll()
+	e.InsertRune('x')
+	check("replace selection")
+	e.Undo()
+	check("undo")
+	e.Redo()
+	check("redo")
+	e.SetText("again")
+	check("SetText")
+	e.SelectAll()
+	e.Backspace()
+	check("Backspace over selection")
+	e.Undo()
+	check("undo restore")
+	e.IMEDelete(1, 1)
+	check("IME delete")
+}
