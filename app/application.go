@@ -73,9 +73,15 @@ type Application struct {
 	// (docs/appearance.md).
 	appearance     *appearance.Monitor
 	stopIconFollow func()
-	quit           bool
-	rep            *keyRepeater
-	kicker         *loopKicker
+	// windowIcons (windowicon.go): per-window overrides and the app
+	// default posted through xdg-toplevel-icon-v1, plus the icons
+	// currently applied to live host windows.
+	windowIcons  map[*Window]*postedIcon
+	appliedIcons map[*hostWindow]*postedIcon
+	defaultIcon  *postedIcon
+	quit         bool
+	rep          *keyRepeater
+	kicker       *loopKicker
 	// queues is the Invoke/Every plumbing and wake the loop-kick call;
 	// wake is a field so tests can drive Invoke without a session.
 	queues loopQueues
@@ -85,15 +91,17 @@ type Application struct {
 // NewApplication binds an application to a connected session.
 func NewApplication(sess *wlsession.Session) *Application {
 	a := &Application{
-		sess:    sess,
-		accels:  newAccelTable(),
-		primary: &primarySelection{},
-		dnd:     dragdrop.New(sess),
-		rep:     newKeyRepeater(sess.RepeatInfo()),
-		kicker:  &loopKicker{},
-		ime:     newIMEController(sess),
-		wake:    sess.WakeAfter,
-		step:    sess.Step,
+		sess:         sess,
+		accels:       newAccelTable(),
+		primary:      &primarySelection{},
+		dnd:          dragdrop.New(sess),
+		rep:          newKeyRepeater(sess.RepeatInfo()),
+		kicker:       &loopKicker{},
+		ime:          newIMEController(sess),
+		wake:         sess.WakeAfter,
+		step:         sess.Step,
+		windowIcons:  make(map[*Window]*postedIcon),
+		appliedIcons: make(map[*hostWindow]*postedIcon),
 	}
 	// Async image loads (widget.Image file/URL sources) deliver through
 	// the loop queue - the only sanctioned bridge (docs/threading.md).
@@ -510,6 +518,7 @@ func (a *Application) Run() error {
 			kept = append(kept, w)
 		}
 		a.windows = kept
+		a.reapWindowIcons()
 		if a.quit || len(a.windows) == 0 {
 			return ErrClosed
 		}

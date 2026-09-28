@@ -64,6 +64,7 @@ allocation/syscall reduction sweep (#77) is gated behind the epic.
 | Shortcut grab (games, VMs) | keyboard-shortcuts-inhibit: `InhibitShortcuts`, focus-tracked `ShortcutsInhibitor` (#33) | internal/wlsession/shortinhibit.go |
 | Output naming | xdg-output: logical-name/geometry lookup per output (#33) | internal/wlsession/xdgoutput.go |
 | Dialog modality | xdg-dialog-v1: parented dialogs hint `set_modal`, compositor blocks the parent's input; silent degrade without the global (#61) | internal/wlsession/dialog.go, internal/window |
+| Window icons | xdg-toplevel-icon-v1: `Application.SetIcon`/`SetWindowIcon`, buffers at the compositor's preferred sizes, silent degrade without the global (#70) | internal/wlsession/toplevelicon.go, app/windowicon.go |
 | Wire bindings | generated pure-Go proxies for all of the above | wlr/ |
 | Accessibility | semantic roles + `DescribeTree`, keyboard-first guarantee; **no in-process AT-SPI** (a non-goal, see below) | widget/a11y.go, [a11y.md](a11y.md) |
 | Icon themes | freedesktop icon-theme spec in pure Go; live icon-theme setting followed through the portal monitor (#64) | internal/icons, [icons.md](icons.md) |
@@ -77,8 +78,6 @@ every one that relm4 parity requires — each now filed under [#59](https://gith
 - **RTL/bidirectional text** — no wayle use case; revisit if ever
   needed. Filed as #68.
 - **Clipboard images** — wayle is text-only for clipboard. Filed as #69.
-- **Window icons** — Wayland had no client window icons;
-  xdg-toplevel-icon-v1 supersedes that, filed as #70.
 - **GtkCss analog** — rejected on cost; #32 scopes styling to the typed
   `Theme` struct instead. Revisited per the maintainer: conditional
   design doc #75, engine #76.
