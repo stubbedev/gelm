@@ -263,13 +263,11 @@ aliasing:
 so the next frame repaints every widget (rule 3's damage walk).
 Explicit per-widget colors (`button.Bg`) always win over the palette.
 
-**No per-widget theme overrides.** A widget cannot carry its own
-partial theme; it carries explicit colors at most, and restyling
-flows one way, from the palette down. GTK's CSS machinery paid for
-cascade, specificity, and per-widget style contexts across every
-widget; the cost bought little in a compositor toolkit where the
-palette already restyles everything on the next frame. Branching
-palettes are values — build a second `Theme` and swap it.
+**No per-widget theme overrides.** Superseded by the CSS design
+([css.md](css.md), #75): a stylesheet restyles widgets per class and
+state above the palette, while programmatic per-widget colors remain
+the top of the cascade and restyling still flows one way, from the
+palette down, when no stylesheet is loaded.
 
 **Derived state colors live on the palette, not in widgets.** Hover,
 pressed, and disabled appearances are methods on `Theme`
@@ -337,21 +335,23 @@ applies; a theme is never rejected for its colors.
   xdg-desktop-portal's color-scheme over dbus); the app wires it to
   `SetTheme` if it wants to follow (docs/appearance.md). Theme
   switches remain explicit.
-- **No per-widget theme overrides** — a widget carries explicit colors
-  at most; restyling flows from the palette down. The reasoning and
-  the derivation rules live in the theming section above.
+- **No per-widget theme overrides** — superseded by the CSS design
+  ([css.md](css.md), #75): a stylesheet is a supported per-class,
+  per-state override layer above the palette, while programmatic
+  widget colors stay above the cascade and restyling still flows down
+  from the palette when no stylesheet is loaded.
 - **No actor model or component framework** — widgets are retained
   objects with plain Go callbacks (docs/application-model.md).
-- **No RTL/bidirectional text** — no wayle use case; revisit if ever
-  needed.
-- **No clipboard images** — wayle is text-only for clipboard;
-  internal/clipboard offers and accepts text mime types only.
-- **No window icons** — Wayland has no client window icons.
-- **No GtkCss analog** — rejected on cost; styling is scoped to the
-  typed `Theme` struct (theming section above), and per-widget
-  overrides stay out with it.
-- **No Paned (draggable splitter)** — no wayle layout needs it; file
-  it later if the settings UI wants one.
-- **No color picker, calendar, or font chooser** — application-dialog
-  territory gelm does not aim at. The full capability map lives in
-  [completeness.md](completeness.md).
+- **No RTL/bidirectional text** — superseded by relm4 parity (#68):
+  bidi resolution, mirroring, and logical-order editing ship in the
+  text path.
+- **No clipboard images** — superseded (#69): image payloads are
+  offered and accepted alongside text.
+- **No window icons** — superseded (#70): xdg-toplevel-icon-v1.
+- **No GtkCss analog** — superseded by the CSS design
+  ([css.md](css.md), #75): a scoped, cached override layer on the
+  typed `Theme`, not a full GTK CSS object model.
+- **No Paned (draggable splitter)** — superseded (#71): `widget.Paned`.
+- **No color picker, calendar, or font chooser** — superseded
+  (#72–#74): `ColorChooser`, `Calendar`, `FontChooserDialog`. The full
+  capability map lives in [completeness.md](completeness.md).
