@@ -270,8 +270,12 @@ type Scroll struct {
 
 	// auto-hide: bar alpha 0..1, the time of the last scroll or hover
 	// change, and the running fade's Cancel so a fresh fade replaces
-	// the previous one mid-flight.
+	// the previous one mid-flight. fadeTarget is the target the running
+	// fade aims at: a second request for the same target would restart
+	// the same animation, so the wheel path (one fadeTo per tick)
+	// skips it.
 	alpha      float64
+	fadeTarget float64
 	hovered    bool
 	lastInput  time.Time
 	cancelFade anim.Cancel
@@ -379,15 +383,21 @@ func (s *Scroll) showBars() {
 // fadeTo animates the bar alpha toward to, canceling any fade still
 // running: the new tween's first callback takes over from the old
 // one's last value. Each step invalidates the gutter strips so the
-// fading bars repaint.
+// fading bars repaint. A fade already running toward the same target
+// keeps running - a wheel tick per frame would otherwise restart the
+// same tween (a fresh Tween per tick) and stretch the fade forever.
 func (s *Scroll) fadeTo(to float64) {
 	if (to == 1 && s.alpha == 1) || (to == 0 && s.alpha == 0) {
+		return
+	}
+	if s.cancelFade != nil && s.fadeTarget == to {
 		return
 	}
 	if s.cancelFade != nil {
 		s.cancelFade()
 	}
 	from := s.alpha
+	s.fadeTarget = to
 	s.cancelFade = anim.Start(barFade, func(t float64) {
 		s.alpha = from + (to-from)*t
 		s.invalidateBars()
