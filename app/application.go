@@ -79,9 +79,12 @@ type Application struct {
 	windowIcons  map[*Window]*postedIcon
 	appliedIcons map[*hostWindow]*postedIcon
 	defaultIcon  *postedIcon
-	quit         bool
-	rep          *keyRepeater
-	kicker       *loopKicker
+	// stopA11y stops the tagged AT-SPI bridge (app/atspi.go,
+	// //go:build atspi); the untagged core only sees the stop hook.
+	stopA11y func()
+	quit     bool
+	rep      *keyRepeater
+	kicker   *loopKicker
 	// queues is the Invoke/Every plumbing and wake the loop-kick call;
 	// wake is a field so tests can drive Invoke without a session.
 	queues loopQueues
@@ -443,6 +446,11 @@ func (a *Application) Run() error {
 		// on the disconnect path too — timers and invokes die with the
 		// loop, whatever killed it.
 		a.queues.shutdown()
+		// The tagged AT-SPI bridge dies with the loop: its samplers hop
+		// through Invoke, which shutdown just drained.
+		if a.stopA11y != nil {
+			a.stopA11y()
+		}
 		// Unwind the NewApplication icon-follow wiring: stop the cache's
 		// subscription, then the monitor's goroutines and connection.
 		if a.stopIconFollow != nil {

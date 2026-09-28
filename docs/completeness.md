@@ -66,7 +66,7 @@ allocation/syscall reduction sweep (#77) is gated behind the epic.
 | Dialog modality | xdg-dialog-v1: parented dialogs hint `set_modal`, compositor blocks the parent's input; silent degrade without the global (#61) | internal/wlsession/dialog.go, internal/window |
 | Window icons | xdg-toplevel-icon-v1: `Application.SetIcon`/`SetWindowIcon`, buffers at the compositor's preferred sizes, silent degrade without the global (#70) | internal/wlsession/toplevelicon.go, app/windowicon.go |
 | Wire bindings | generated pure-Go proxies for all of the above | wlr/ |
-| Accessibility | semantic roles + `DescribeTree`, keyboard-first guarantee; **no in-process AT-SPI** (a non-goal, see below) | widget/a11y.go, [a11y.md](a11y.md) |
+| Accessibility | semantic roles + `DescribeTree`, keyboard-first guarantee; in-process AT-SPI bridge behind the `atspi` build tag (#65) | widget/a11y.go, internal/atspi, [a11y.md](a11y.md) |
 | Icon themes | freedesktop icon-theme spec in pure Go; live icon-theme setting followed through the portal monitor (#64) | internal/icons, [icons.md](icons.md) |
 
 ## Deliberate non-goals
@@ -89,8 +89,6 @@ signal) are in [architecture.md](architecture.md) "Non-goals".
 Honest deferrals, each with its pointer — none of these block the
 declared use cases:
 
-- **No in-process AT-SPI** — the integration path is recorded, not
-  built ([a11y.md](a11y.md)); filed as #65.
 - **Compositor-in-the-loop tests run on headless sway only** — the
   automated gate (`just headless`, internal/headlesstest) boots wlroots'
   headless backend; Hyprland is verified manually (README "Status"),

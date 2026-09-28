@@ -14,6 +14,15 @@ headless_test_dir := "/tmp/gelm-test-env-24"
 # Run every release gate in order: vet, lint, test, build.
 check: vet lint test build
 
+# The tagged AT-SPI bridge (#65): build everything with the tag set
+# (default builds carry none of it) and run the bridge's bus-level
+# tests - a private dbus-daemon plays the accessibility bus, a second
+# connection plays the registry and the assistive technology. No
+# compositor, no at-spi2-core needed.
+atspi:
+    go build -tags atspi ./...
+    go test -tags atspi ./internal/atspi/
+
 # Run the compositor-in-the-loop input tests (internal/headlesstest):
 # boots a private headless sway with the test-env recipe, then runs
 # the suite against it with GELM_HEADLESS=1 - the tests attach to the
