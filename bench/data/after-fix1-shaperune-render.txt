@@ -1,0 +1,48 @@
+goos: linux
+goarch: amd64
+pkg: github.com/stubbedev/gelm/render
+cpu: Intel(R) Core(TM) i5-10400F CPU @ 2.90GHz
+BenchmarkShape200-12         	18259729	        64.78 ns/op	       0 B/op	       0 allocs/op
+BenchmarkShape200-12         	18505237	        65.17 ns/op	       0 B/op	       0 allocs/op
+BenchmarkShape200-12         	18476625	        65.20 ns/op	       0 B/op	       0 allocs/op
+BenchmarkShape200-12         	18224022	        64.99 ns/op	       0 B/op	       0 allocs/op
+BenchmarkShape200-12         	18322154	        65.61 ns/op	       0 B/op	       0 allocs/op
+BenchmarkShape200-12         	18420313	        65.41 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDrawAligned-12      	   59715	     20002 ns/op	       1 B/op	       0 allocs/op
+BenchmarkDrawAligned-12      	   61384	     19874 ns/op	       1 B/op	       0 allocs/op
+BenchmarkDrawAligned-12      	   60354	     19547 ns/op	       1 B/op	       0 allocs/op
+BenchmarkDrawAligned-12      	   61909	     19514 ns/op	       1 B/op	       0 allocs/op
+BenchmarkDrawAligned-12      	   61852	     19465 ns/op	       1 B/op	       0 allocs/op
+BenchmarkDrawAligned-12      	   60984	     19797 ns/op	       1 B/op	       0 allocs/op
+BenchmarkCanvasPaint-12      	    5836	    204330 ns/op	       0 B/op	       0 allocs/op
+BenchmarkCanvasPaint-12      	    5947	    202319 ns/op	       0 B/op	       0 allocs/op
+BenchmarkCanvasPaint-12      	    5979	    202229 ns/op	       0 B/op	       0 allocs/op
+BenchmarkCanvasPaint-12      	    5913	    202310 ns/op	       0 B/op	       0 allocs/op
+BenchmarkCanvasPaint-12      	    5913	    204855 ns/op	       0 B/op	       0 allocs/op
+BenchmarkCanvasPaint-12      	    5950	    202832 ns/op	       0 B/op	       0 allocs/op
+BenchmarkShape200Cold-12     	   45786	     26049 ns/op	   20481 B/op	      10 allocs/op
+BenchmarkShape200Cold-12     	   45994	     25857 ns/op	   20480 B/op	      10 allocs/op
+BenchmarkShape200Cold-12     	   46280	     25909 ns/op	   20480 B/op	      10 allocs/op
+BenchmarkShape200Cold-12     	   46417	     25870 ns/op	   20480 B/op	      10 allocs/op
+BenchmarkShape200Cold-12     	   46369	     25587 ns/op	   20480 B/op	      10 allocs/op
+BenchmarkShape200Cold-12     	   46791	     25660 ns/op	   20480 B/op	      10 allocs/op
+BenchmarkChainShape200-12    	17871996	        66.97 ns/op	       0 B/op	       0 allocs/op
+BenchmarkChainShape200-12    	18106287	        67.47 ns/op	       0 B/op	       0 allocs/op
+BenchmarkChainShape200-12    	17796492	        67.00 ns/op	       0 B/op	       0 allocs/op
+BenchmarkChainShape200-12    	17644927	        67.21 ns/op	       0 B/op	       0 allocs/op
+BenchmarkChainShape200-12    	17862672	        66.92 ns/op	       0 B/op	       0 allocs/op
+BenchmarkChainShape200-12    	17447091	        68.31 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDrawText-12         	   53749	     22342 ns/op	       1 B/op	       0 allocs/op
+BenchmarkDrawText-12         	   54128	     22284 ns/op	       1 B/op	       0 allocs/op
+BenchmarkDrawText-12         	   53841	     22168 ns/op	       1 B/op	       0 allocs/op
+BenchmarkDrawText-12         	   52044	     22742 ns/op	       1 B/op	       0 allocs/op
+BenchmarkDrawText-12         	   53329	     22276 ns/op	       1 B/op	       0 allocs/op
+BenchmarkDrawText-12         	   54440	     22028 ns/op	       1 B/op	       0 allocs/op
+BenchmarkDrawTextCold-12     	    8793	    117534 ns/op	   83384 B/op	     377 allocs/op
+BenchmarkDrawTextCold-12     	   10000	    115084 ns/op	   83384 B/op	     377 allocs/op
+BenchmarkDrawTextCold-12     	    9776	    115781 ns/op	   83384 B/op	     377 allocs/op
+BenchmarkDrawTextCold-12     	   10000	    114822 ns/op	   83384 B/op	     377 allocs/op
+BenchmarkDrawTextCold-12     	   10000	    115360 ns/op	   83384 B/op	     377 allocs/op
+BenchmarkDrawTextCold-12     	    9051	    115277 ns/op	   83384 B/op	     377 allocs/op
+PASS
+ok  	github.com/stubbedev/gelm/render	49.865s

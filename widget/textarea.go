@@ -403,9 +403,11 @@ func (t *TextArea) collapse() {
 // TextLen returns the number of logical lines, for tests and callers.
 func (t *TextArea) TextLen() int { return len(t.lines) }
 
-// runeWidth returns one rune's shaped advance.
+// runeWidth returns one rune's shaped advance. ShapeRune keeps the
+// per-rune probes of the wrap walk allocation-free (one probe per rune
+// per rebuild, every one of which used to build a one-rune string).
 func (t *TextArea) runeWidth(r rune) float64 {
-	return t.face.Shape(string(r), t.sizePx).Advance()
+	return t.face.ShapeRune(r, t.sizePx).Advance()
 }
 
 // visualStep moves column at one visual step along line — left for
