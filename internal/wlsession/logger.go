@@ -43,6 +43,7 @@ var optionalGlobals = []string{
 	"zwp_keyboard_shortcuts_inhibit_manager_v1",
 	"zxdg_output_manager_v1",
 	"xdg_wm_dialog_v1",
+	"xdg_toplevel_icon_manager_v1",
 }
 
 // logOptionalGlobals reports at Debug which optional protocols the

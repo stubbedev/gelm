@@ -141,6 +141,11 @@ type Session struct {
 	shortcutsInhibitMgr shortcutsInhibitAPI
 	xdgOutputMgr        xdgOutputMaker
 	dialogMgr           *wlr.WmDialogV1
+	// toplevelIconMgr (toplevelicon.go) posts window icons; iconSizes
+	// are the compositor's preferred sizes, complete at iconSizesDone.
+	toplevelIconMgr *wlr.ToplevelIconManagerV1
+	iconSizes       []int
+	iconSizesDone   bool
 
 	pointerEnterSerial uint32
 
@@ -410,6 +415,8 @@ func (s *Session) HandleRegistryGlobal(ev wl.RegistryGlobalEvent) {
 		s.bindXdgOutputManager(ev)
 	case "xdg_wm_dialog_v1":
 		s.bindDialogManager(ev)
+	case "xdg_toplevel_icon_manager_v1":
+		s.bindToplevelIconManager(ev)
 	}
 }
 

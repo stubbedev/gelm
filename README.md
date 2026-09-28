@@ -62,6 +62,7 @@ deliberate non-goals and the honest, deferred gaps — lives in
 | Piece | Status | Notes and caveats |
 | --- | --- | --- |
 | xdg-shell | done | toplevels: title/app-id, min/max, close-request veto, ping/pong, interactive resize edges (6 logical px), xdg_popup menus and popovers |
+| Window icons | done | `Application.SetIcon`/`SetWindowIcon` through xdg-toplevel-icon-v1: square shm buffers rasterized at the compositor’s preferred sizes (fixed ladder without a preference); silent Debug no-op where the protocol is absent (icon goes to the compositor/taskbar, not a WM_HINTS analog) |
 | wlr-layer-shell | done | layer, anchors, margins, exclusive zone, keyboard interactivity; popups via `get_popup` |
 | xdg-decoration | optional | server-side decorations when the compositor decorates; silently skipped otherwise (decorated windows opt out of client resize edges) |
 | wl_data_device | done | clipboard (ctrl+c/x/v) and drag and drop, including cross-window; `set_actions`/`finish` gated on data-device v3 |
