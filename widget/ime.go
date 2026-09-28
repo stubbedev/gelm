@@ -177,7 +177,7 @@ func (e *Entry) IMEDelete(before, after int) {
 	if start >= end {
 		return
 	}
-	e.runes = append(e.runes[:start], e.runes[end:]...)
+	e.setRunes(append(e.runes[:start], e.runes[end:]...))
 	e.cursor, e.anchor = start, start
 	e.panToCaret()
 	e.hist.record(snap, e.snapshot())
