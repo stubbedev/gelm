@@ -20,8 +20,12 @@ func BenchmarkPointerMove(b *testing.B) {
 	show.root.Arrange(render.Rect{X: 0, Y: 0, W: showW, H: showH})
 	r := &Router{Root: show.root}
 	pts := []Point{
-		{X: 400, Y: 200}, {X: 420, Y: 240}, {X: 100, Y: 120},
-		{X: 300, Y: 400}, {X: 200, Y: 60}, {X: 450, Y: 300},
+		{X: 400, Y: 200},
+		{X: 420, Y: 240},
+		{X: 100, Y: 120},
+		{X: 300, Y: 400},
+		{X: 200, Y: 60},
+		{X: 450, Y: 300},
 	}
 	b.ReportAllocs()
 	for b.Loop() {
@@ -52,8 +56,11 @@ func BenchmarkDragHover(b *testing.B) {
 	r := &Router{Root: show.root}
 	r.DragEnter(nil, Point{X: 400, Y: 200})
 	pts := []Point{
-		{X: 400, Y: 200}, {X: 420, Y: 240}, {X: 100, Y: 120},
-		{X: 300, Y: 400}, {X: 450, Y: 300},
+		{X: 400, Y: 200},
+		{X: 420, Y: 240},
+		{X: 100, Y: 120},
+		{X: 300, Y: 400},
+		{X: 450, Y: 300},
 	}
 	b.ReportAllocs()
 	for b.Loop() {
