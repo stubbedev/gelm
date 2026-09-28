@@ -1,0 +1,12 @@
+goos: linux
+goarch: amd64
+pkg: github.com/stubbedev/gelm/app
+cpu: Intel(R) Core(TM) i5-10400F CPU @ 2.90GHz
+BenchmarkProgressOnlyFrames-12    	   13551	     88510 ns/op	         1.322 %-painted	      3976 px/frame	     367 B/op	       3 allocs/op
+BenchmarkProgressOnlyFrames-12    	   13612	     87237 ns/op	         1.112 %-painted	      3346 px/frame	     366 B/op	       3 allocs/op
+BenchmarkProgressOnlyFrames-12    	   13730	     87201 ns/op	         1.209 %-painted	      3636 px/frame	     365 B/op	       3 allocs/op
+BenchmarkProgressOnlyFrames-12    	   13536	     88504 ns/op	         1.242 %-painted	      3736 px/frame	     367 B/op	       3 allocs/op
+BenchmarkProgressOnlyFrames-12    	   13609	     87647 ns/op	         1.096 %-painted	      3296 px/frame	     366 B/op	       3 allocs/op
+BenchmarkProgressOnlyFrames-12    	   13802	     87596 ns/op	         1.063 %-painted	      3198 px/frame	     364 B/op	       3 allocs/op
+PASS
+ok  	github.com/stubbedev/gelm/app	12.556s
