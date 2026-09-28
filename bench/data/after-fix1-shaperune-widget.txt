@@ -1,0 +1,60 @@
+goos: linux
+goarch: amd64
+pkg: github.com/stubbedev/gelm/widget
+cpu: Intel(R) Core(TM) i5-10400F CPU @ 2.90GHz
+BenchmarkShowcaseMeasure-12            	  352964	      3320 ns/op	       3 B/op	       1 allocs/op
+BenchmarkShowcaseMeasure-12            	  345914	      3270 ns/op	       3 B/op	       1 allocs/op
+BenchmarkShowcaseMeasure-12            	  353103	      3402 ns/op	       3 B/op	       1 allocs/op
+BenchmarkShowcaseMeasure-12            	  342177	      3282 ns/op	       3 B/op	       1 allocs/op
+BenchmarkShowcaseMeasure-12            	  353227	      3504 ns/op	       3 B/op	       1 allocs/op
+BenchmarkShowcaseMeasure-12            	  322706	      3809 ns/op	       3 B/op	       1 allocs/op
+BenchmarkShowcaseArrange-12            	  695866	      1696 ns/op	      57 B/op	       5 allocs/op
+BenchmarkShowcaseArrange-12            	  713745	      1676 ns/op	      57 B/op	       5 allocs/op
+BenchmarkShowcaseArrange-12            	  713258	      1686 ns/op	      57 B/op	       5 allocs/op
+BenchmarkShowcaseArrange-12            	  722186	      1668 ns/op	      57 B/op	       5 allocs/op
+BenchmarkShowcaseArrange-12            	  688251	      1704 ns/op	      57 B/op	       5 allocs/op
+BenchmarkShowcaseArrange-12            	  704857	      1694 ns/op	      57 B/op	       5 allocs/op
+BenchmarkShowcasePaint-12              	     639	   1847972 ns/op	       119.2 %-painted	    358628 px/frame	    2237 B/op	      25 allocs/op
+BenchmarkShowcasePaint-12              	     657	   1831095 ns/op	       119.2 %-painted	    358628 px/frame	    2114 B/op	      24 allocs/op
+BenchmarkShowcasePaint-12              	     634	   1849181 ns/op	       119.2 %-painted	    358628 px/frame	    2172 B/op	      24 allocs/op
+BenchmarkShowcasePaint-12              	     658	   1818847 ns/op	       119.2 %-painted	    358628 px/frame	    2085 B/op	      24 allocs/op
+BenchmarkShowcasePaint-12              	     644	   1839708 ns/op	       119.2 %-painted	    358628 px/frame	    2098 B/op	      24 allocs/op
+BenchmarkShowcasePaint-12              	     650	   1845199 ns/op	       119.2 %-painted	    358628 px/frame	    2219 B/op	      24 allocs/op
+BenchmarkEntryPaint-12                 	    3391	    349657 ns/op	     167 B/op	       3 allocs/op
+BenchmarkEntryPaint-12                 	    3433	    351643 ns/op	     167 B/op	       3 allocs/op
+BenchmarkEntryPaint-12                 	    3436	    348650 ns/op	     167 B/op	       3 allocs/op
+BenchmarkEntryPaint-12                 	    3423	    351128 ns/op	     167 B/op	       3 allocs/op
+BenchmarkEntryPaint-12                 	    3447	    354019 ns/op	     166 B/op	       3 allocs/op
+BenchmarkEntryPaint-12                 	    3438	    352820 ns/op	     167 B/op	       3 allocs/op
+BenchmarkProgressOnlyFrame-12          	    9062	    135016 ns/op	         1.727 %-painted	      5196 px/frame	    1533 B/op	      22 allocs/op
+BenchmarkProgressOnlyFrame-12          	    8713	    134054 ns/op	         1.402 %-painted	      4216 px/frame	    1532 B/op	      22 allocs/op
+BenchmarkProgressOnlyFrame-12          	    8650	    135389 ns/op	         1.648 %-painted	      4956 px/frame	    1532 B/op	      22 allocs/op
+BenchmarkProgressOnlyFrame-12          	    7995	    135142 ns/op	         1.947 %-painted	      5856 px/frame	    1532 B/op	      21 allocs/op
+BenchmarkProgressOnlyFrame-12          	    8641	    135466 ns/op	         1.588 %-painted	      4776 px/frame	    1532 B/op	      22 allocs/op
+BenchmarkProgressOnlyFrame-12          	    8769	    133864 ns/op	         1.774 %-painted	      5336 px/frame	    1532 B/op	      22 allocs/op
+BenchmarkStaticTreeMeasure-12          	372993213	         3.198 ns/op	         0 Measure-calls/op	       0 B/op	       0 allocs/op
+BenchmarkStaticTreeMeasure-12          	379073935	         3.157 ns/op	         0 Measure-calls/op	       0 B/op	       0 allocs/op
+BenchmarkStaticTreeMeasure-12          	375401884	         3.170 ns/op	         0 Measure-calls/op	       0 B/op	       0 allocs/op
+BenchmarkStaticTreeMeasure-12          	379531844	         3.188 ns/op	         0 Measure-calls/op	       0 B/op	       0 allocs/op
+BenchmarkStaticTreeMeasure-12          	380355464	         3.153 ns/op	         0 Measure-calls/op	       0 B/op	       0 allocs/op
+BenchmarkStaticTreeMeasure-12          	376161134	         3.155 ns/op	         0 Measure-calls/op	       0 B/op	       0 allocs/op
+BenchmarkStyleGalleryFullRestyle-12    	  102540	     11502 ns/op	        73.00 widgets/op	    1280 B/op	       9 allocs/op
+BenchmarkStyleGalleryFullRestyle-12    	  106767	     11408 ns/op	        73.00 widgets/op	    1280 B/op	       9 allocs/op
+BenchmarkStyleGalleryFullRestyle-12    	  107659	     11200 ns/op	        73.00 widgets/op	    1280 B/op	       9 allocs/op
+BenchmarkStyleGalleryFullRestyle-12    	  106962	     11328 ns/op	        73.00 widgets/op	    1280 B/op	       9 allocs/op
+BenchmarkStyleGalleryFullRestyle-12    	  104997	     11500 ns/op	        73.00 widgets/op	    1280 B/op	       9 allocs/op
+BenchmarkStyleGalleryFullRestyle-12    	  101748	     11634 ns/op	        73.00 widgets/op	    1280 B/op	       9 allocs/op
+BenchmarkStyleGalleryClassToggle-12    	 7109041	       167.8 ns/op	       0 B/op	       0 allocs/op
+BenchmarkStyleGalleryClassToggle-12    	 7074463	       167.0 ns/op	       0 B/op	       0 allocs/op
+BenchmarkStyleGalleryClassToggle-12    	 7097817	       168.7 ns/op	       0 B/op	       0 allocs/op
+BenchmarkStyleGalleryClassToggle-12    	 6957634	       172.8 ns/op	       0 B/op	       0 allocs/op
+BenchmarkStyleGalleryClassToggle-12    	 6791845	       174.9 ns/op	       0 B/op	       0 allocs/op
+BenchmarkStyleGalleryClassToggle-12    	 7104912	       171.6 ns/op	       0 B/op	       0 allocs/op
+BenchmarkStyleGalleryPaint-12          	     650	   1817578 ns/op	    357828 px/frame	    2101 B/op	      24 allocs/op
+BenchmarkStyleGalleryPaint-12          	     657	   1810873 ns/op	    357828 px/frame	    2095 B/op	      24 allocs/op
+BenchmarkStyleGalleryPaint-12          	     662	   1808168 ns/op	    357828 px/frame	    2090 B/op	      24 allocs/op
+BenchmarkStyleGalleryPaint-12          	     638	   1840135 ns/op	    357828 px/frame	    2111 B/op	      25 allocs/op
+BenchmarkStyleGalleryPaint-12          	     649	   1816711 ns/op	    357828 px/frame	    2101 B/op	      24 allocs/op
+BenchmarkStyleGalleryPaint-12          	     666	   1818843 ns/op	    357828 px/frame	    2087 B/op	      24 allocs/op
+PASS
+ok  	github.com/stubbedev/gelm/widget	66.846s
