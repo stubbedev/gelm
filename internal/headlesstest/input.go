@@ -38,6 +38,7 @@ const (
 	KeyTab    = 15
 	KeyEnter  = 28
 	KeyA      = 30
+	KeyD      = 32
 	KeyC      = 46
 	KeyV      = 47
 	KeySpace  = 57

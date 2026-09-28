@@ -14,6 +14,7 @@ import (
 	"github.com/neurlang/wayland/xdg"
 
 	"github.com/stubbedev/gelm/internal/headlesstest"
+	"github.com/stubbedev/gelm/wlr"
 )
 
 // xdg_toplevel request opcodes the tests match on.
@@ -369,6 +370,106 @@ func TestProtocolCloseRoutesThroughVeto(t *testing.T) {
 		w.Toplevel.Dispatch(&wl.Event{Opcode: 1})
 		if !w.Closed() {
 			t.Error("protocol close did not close the window")
+		}
+	})
+}
+
+// TestDialogModalityRequests pins the xdg-dialog-v1 wire contract
+// (#61): a parented window's SetModal creates one xdg_dialog_v1 object
+// and sends set_modal, a later call reuses the object for unset_modal,
+// closing the window unsets and destroys it, and a missing manager
+// (the compositor without the global) stays silent - the
+// application-level block is the floor.
+func TestDialogModalityRequests(t *testing.T) {
+	frames := startWireServer(t)
+	disp, err := wl.Connect("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = disp.Context().Close() })
+	ctx := disp.Context()
+	// The fake compositor sends no registry burst; unregister every
+	// hand-made proxy so requests referencing them do not wait on the
+	// connection's ordering rule (see newWireWindow).
+	wmBase := xdg.NewWmBase(ctx)
+	wmBase.Unregister()
+	mgr := wlr.NewWmDialogV1(ctx)
+	mgr.Unregister()
+
+	newWin := func(title string) *Window {
+		surf := wl.NewSurface(ctx)
+		surf.Unregister()
+		w, err := New(wmBase, surf, Config{Title: title})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return w
+	}
+	parent := newWin("parent")
+	dialog := newWin("dialog")
+	dialog.SetParent(parent)
+
+	t.Run("set, unset, and close on the wire", func(t *testing.T) {
+		if err := dialog.SetModal(mgr, true); err != nil {
+			t.Fatal(err)
+		}
+		if !dialog.ModalHinted() {
+			t.Fatal("SetModal(true) left no live hint")
+		}
+		f := waitForFrame(t, frames, "get_xdg_dialog", func(f wireFrame) bool {
+			return f.obj == uint32(mgr.Id()) && f.opcode == 1
+		})
+		if len(f.body) != 8 {
+			t.Fatalf("get_xdg_dialog payload %v, want 2 words", f.body)
+		}
+		waitForFrame(t, frames, "set_modal", func(f wireFrame) bool {
+			return f.obj == uint32(dialog.dialog.Id()) && f.opcode == 1
+		})
+
+		if err := dialog.SetModal(mgr, false); err != nil {
+			t.Fatal(err)
+		}
+		if dialog.ModalHinted() {
+			t.Error("SetModal(false) left the hint live")
+		}
+		waitForFrame(t, frames, "unset_modal", func(f wireFrame) bool {
+			return f.obj == uint32(dialog.dialog.Id()) && f.opcode == 2
+		})
+
+		// Close drops the hint and the object: unset_modal, destroy.
+		dlgObj := dialog.dialog
+		dialog.Close()
+		waitFrame := func(name string, opcode uint32) {
+			t.Helper()
+			waitForFrame(t, frames, name, func(f wireFrame) bool {
+				return f.obj == uint32(dlgObj.Id()) && f.opcode == opcode
+			})
+		}
+		waitFrame("unset on close", 2)
+		waitFrame("destroy on close", 0)
+		if dialog.dialog != nil {
+			t.Error("close kept the xdg_dialog_v1 object alive")
+		}
+	})
+
+	t.Run("a missing manager is silent", func(t *testing.T) {
+		other := newWin("other")
+		// Drain the window-creation noise through set_app_id (always
+		// sent, even empty), so the silence below is about the modality
+		// request, not leftovers.
+		waitForFrame(t, frames, "setup", func(f wireFrame) bool {
+			return f.obj == uint32(other.Toplevel.Id()) && f.opcode == 3
+		})
+		if err := other.SetModal(nil, true); err != nil {
+			t.Fatal(err)
+		}
+		if other.ModalHinted() {
+			t.Error("a nil manager hinted modality")
+		}
+		select {
+		case f := <-frames:
+			t.Errorf("request reached the wire without a manager: %+v", f)
+		default:
 		}
 	})
 }

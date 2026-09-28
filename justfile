@@ -152,6 +152,7 @@ test-env dir=test_dir:
         'for_window [app_id="dev.stubbe.gelm.hello"] floating enable, move position 0 0, resize set 640 470' \
         'for_window [app_id="dev.stubbe.gelm.states"] floating enable, move position 40 40, resize set 420 280' \
         'for_window [app_id="dev.stubbe.gelm.multilist"] floating enable, move position 0 0, resize set 300 300' \
+        'for_window [title="modal dialog"] floating enable, move position 340 0' \
         > "$dir/sway.cfg"
     # The pid file must hold sway itself, not the nix develop wrapper:
     # newer nix runs the -c command through a shell without exec'ing,

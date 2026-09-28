@@ -658,7 +658,7 @@ func startMultilistClient(t *testing.T) (*Client, *LogWatcher, [][2]int) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	c, err := testEnv.StartClient(bin, "client-"+t.Name(), "input,frame,demo")
+	c, err := testEnv.StartClient(bin, "client-"+t.Name(), "input,frame,demo,shell")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -759,5 +759,102 @@ func TestHeadlessListMultiSelect(t *testing.T) {
 	}
 	if _, err := w.Wait("demo", "activated 6", traceTimeout); err != nil {
 		t.Errorf("the rapid pair never activated row 6: %v", err)
+	}
+}
+
+// dialogX is the recipe's floating pin for the multilist client's
+// modal dialog: beside the parent window at x=340.
+const dialogX = 340
+
+// TestHeadlessDialogModality drives the dialog-modality lifecycle
+// (#61) through the headless compositor: a parented modal dialog
+// blocks input to the parent window while it is open, and responding
+// releases the block. sway (1.12) does not implement xdg-dialog-v1, so
+// the gate exercises the fallback path — application-level modality,
+// the floor every compositor gets — and pins that the session degrades
+// silently without the global. The protocol's own wire contract
+// (get_xdg_dialog, set_modal, unset on close, silence without a
+// manager) is pinned by TestDialogModalityRequests in internal/window.
+// When sway grows the global, flip the negative wait below and assert
+// the live binding alongside the lifecycle.
+func TestHeadlessDialogModality(t *testing.T) {
+	requireEnv(t)
+	c, w, rows := startMultilistClient(t)
+	in := newInput(t)
+	exited := c.Exited()
+
+	// sway does not advertise xdg_wm_dialog_v1: the session must
+	// degrade silently — no binding trace, no error, modality falls
+	// back to the application-level block.
+	if _, err := w.Wait("shell", "xdg-dialog-v1 bound", time.Second); err == nil {
+		t.Log("sway now advertises xdg-dialog-v1; flip this test to assert the live binding")
+	} else {
+		for _, tr := range w.Tail(80) {
+			if strings.Contains(tr.Message, "compositor fatal") {
+				t.Fatalf("the session treated the missing dialog manager as fatal: %s", tr)
+			}
+		}
+	}
+
+	// Before any dialog, row clicks land.
+	if err := clickUntil(w, in, "demo", rows[1][0], rows[1][1], BTNLeft, "selection [1]"); err != nil {
+		t.Fatalf("click on row 1 never toggled it in: %v", err)
+	}
+
+	// d opens the modal dialog; it maps and takes focus.
+	if err := in.Tap(KeyD); err != nil {
+		t.Fatalf("tap d: %v", err)
+	}
+	if _, err := w.Wait("demo", "dialog open 1", traceTimeout); err != nil {
+		t.Fatalf("d never opened the dialog: %v", err)
+	}
+
+	// While the dialog is modal, the parent's input is blocked: a
+	// click on a row changes nothing, and the parent's own key (d)
+	// stays silent because focus sits on the dialog.
+	if err := in.ClickAt(rows[2][0], rows[2][1], BTNLeft); err != nil {
+		t.Fatalf("blocked click: %v", err)
+	}
+	if err := in.Tap(KeyD); err != nil {
+		t.Fatalf("blocked d: %v", err)
+	}
+	if _, err := w.Wait("demo", "selection", 700*time.Millisecond); err == nil {
+		t.Error("a selection change traced while the dialog was modal")
+	}
+	for _, tr := range w.Tail(30) {
+		if strings.Contains(tr.Message, "dialog open 2") {
+			t.Error("the parent saw keyboard input while the dialog was modal")
+		}
+	}
+	select {
+	case <-exited:
+		t.Fatal("client died with a modal dialog open")
+	default:
+	}
+
+	// Focus the dialog by clicking its chrome (sway does not move
+	// focus to a mapping dialog on its own), then Enter responds with
+	// the default and closes it. The dialog floats at the recipe's
+	// (340,0) pin beside the parent, so the parent stays clickable.
+	if err := in.ClickAt(dialogX+10, 8, BTNLeft); err != nil {
+		t.Fatalf("focus click on the dialog: %v", err)
+	}
+	if err := in.Tap(KeyEnter); err != nil {
+		t.Fatalf("enter: %v", err)
+	}
+	if _, err := w.Wait("demo", "dialog response ok", traceTimeout); err != nil {
+		t.Fatalf("Enter never responded to the dialog: %v", err)
+	}
+
+	// The block is gone: the same row click that died while modal now
+	// lands, and d opens a second dialog.
+	if err := clickUntil(w, in, "demo", rows[2][0], rows[2][1], BTNLeft, "selection [1,2]"); err != nil {
+		t.Errorf("input to the parent never recovered after the close: %v", err)
+	}
+	if err := in.Tap(KeyD); err != nil {
+		t.Fatalf("tap d again: %v", err)
+	}
+	if _, err := w.Wait("demo", "dialog open 2", traceTimeout); err != nil {
+		t.Errorf("d never reached the parent after the close: %v", err)
 	}
 }

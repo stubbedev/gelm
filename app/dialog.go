@@ -6,6 +6,7 @@ import (
 
 	"github.com/unxed/xkb-go"
 
+	"github.com/stubbedev/gelm/internal/debug"
 	"github.com/stubbedev/gelm/internal/surfx"
 	"github.com/stubbedev/gelm/internal/wlsession"
 	"github.com/stubbedev/gelm/render"
@@ -33,10 +34,12 @@ type DialogConfig struct {
 	OnResponse      func(response string)
 }
 
-// Dialog is a modal child window with a response callback. While it is
-// open every other window's input is blocked (xdg_shell has no modal
-// bit, so the block is application-level). Respond fires OnResponse
-// exactly once and closes the dialog.
+// Dialog is a modal child window with a response callback. While it
+// is open every other window's input is blocked at the application
+// level, and — when the compositor offers xdg-dialog-v1 and the dialog
+// has a parent — at the window level too: the compositor blocks input
+// to the parent itself. Respond fires OnResponse exactly once and
+// closes the dialog.
 type Dialog struct {
 	app       *Application
 	win       *Window
@@ -142,6 +145,14 @@ func (a *Application) NewDialog(parent *Window, cfg DialogConfig) (*Dialog, erro
 	a.blockAll(true)
 	if parent != nil && parent.win != nil {
 		w.win.SetParent(parent.win)
+		// Window-level modality where the compositor offers it: the hint
+		// rides the dialog's first commit, and the compositor blocks input
+		// to the parent itself. Without the protocol this is a silent
+		// no-op and the application-level block above stays the whole
+		// story — the floor every compositor gets.
+		if err := w.win.SetModal(a.sess.DialogManager(), true); err != nil {
+			debug.Log("shell", "dialog modality hint: %v", err)
+		}
 	}
 	return d, nil
 }

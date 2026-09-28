@@ -47,7 +47,7 @@ deliberate non-goals and the honest, deferred gaps — lives in
 | Menu | done | check/radio rows, separators, nested submenus; accelerators are display-only labels (no mnemonics) |
 | Dropdown, `DropdownOf[T]` | done | combobox: face plus an inline themed item list (a `Children` child only while open, not an `app.Popover`); Enter/Space/Down opens, arrows navigate, Esc cancels; no type-ahead |
 | Popover (`app.Popover`) | done | anchored to any widget, flips inside the host; works on layer surfaces too |
-| Dialog, MessageBox (`app`) | done | parented toplevels; **application-level** modality (xdg_shell has no modal bit); Esc/Enter responses |
+| Dialog, MessageBox (`app`) | done | parented toplevels; modality is window-level through xdg-dialog-v1 where the compositor offers it (input to the parent is compositor-blocked) with the application-level block as the floor; Esc/Enter responses |
 | Icon | done | raster, theme-name, file, and embedded-SVG constructors; symbolic sources follow the accent or a pinned tint |
 | Box, Stack, Overlay, Scroll | done | the containers; row/column layout with expanding children |
 | Tooltips | done | `SetTooltip` on any widget, 500ms dwell; toplevel hosts only |
