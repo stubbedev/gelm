@@ -262,7 +262,7 @@ func (c *Calendar) Paint(cv *render.Canvas) {
 		if selected {
 			col = th.OnAccent
 		}
-		c.face.DrawAligned(cv, itoa(d), cell, c.sizePx, col, render.AlignCenter)
+		c.face.DrawAligned(cv, dayNumber(d), cell, c.sizePx, col, render.AlignCenter)
 		if today && !selected {
 			cv.BorderRect(cell, 1, th.Accent)
 		}
@@ -292,6 +292,17 @@ func (c *Calendar) cellRect(d, offset int) render.Rect {
 		W: c.cellW, H: c.cellH,
 	}
 }
+
+// dayNumbers holds "1".."31": the day grid shapes the same strings
+// every frame, and a fresh conversion per cell per frame was 31
+// allocations on the calendar's paint path.
+var dayNumbers = [...]string{
+	"1", "2", "3", "4", "5", "6", "7", "8", "9", "10",
+	"11", "12", "13", "14", "15", "16", "17", "18", "19", "20",
+	"21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31",
+}
+
+func dayNumber(d int) string { return dayNumbers[d-1] }
 
 // itoa renders a small integer without fmt.
 func itoa(v int) string {
