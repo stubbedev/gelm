@@ -32,6 +32,7 @@ allocation/syscall reduction sweep (#77) is gated behind the epic.
 | Separator | `NewSeparator(orientation)` (#30) | widget/separator.go |
 | Box, Stack, Overlay, ScrolledWindow | `Box`/`Stack`/`Overlay`/`Scroll` | widget/containers.go, widget/scroll.go |
 | Paned | `Paned`: two panes, draggable themed divider clamped by MinSizer floors, keyboard nudges, GTK keep-child-one resize semantics (#71) | widget/paned.go |
+| Calendar | `widget.Calendar` + `app.CalendarDialog`: month grid, month/year navigation, today marker, single selection, pluggable locale names (#73) | widget/calendar.go, app/dialog.go |
 | Grid | `Grid`: cells, spans, per-axis spacing/homogeneous, child align (#34); deficit negotiation — under-sized rects squeeze tracks proportionally down to per-track MinSizer floors, overflowing only past them (#67) | widget/grid.go |
 | Notebook | `Notebook`: tabs, close hook, ctrl+PageUp/PageDown | widget/notebook.go |
 | ListView | virtualized `List`; single/browse/multiple selection modes with rubber-band drag and edge auto-scroll (#60) | widget/list.go |
@@ -80,8 +81,8 @@ every one that relm4 parity requires — each now filed under [#59](https://gith
 - **GtkCss analog** — rejected on cost; #32 scopes styling to the typed
   `Theme` struct instead. Revisited per the maintainer: conditional
   design doc #75, engine #76.
-- **Color picker, calendar, font chooser** — application-dialog
-  territory. Filed as #72, #73, #74.
+- **Color picker, font chooser** — application-dialog
+  territory. Filed as #72, #74.
 
 The standing non-goals (no per-window goroutines, no window manager, no
 actor model, no per-widget theme overrides, no live theme-change
