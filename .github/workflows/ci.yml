@@ -47,6 +47,8 @@ jobs:
         run: nix develop -c just check
       - name: Headless compositor input gate
         run: nix develop -c just headless
+      - name: AT-SPI bridge (build tag)
+        run: nix develop -c just atspi
       # Benchmarks are tracked, not gated: the numbers land as workflow
       # artifacts so regressions can be compared run over run. Fixed
       # sizes and no time-dependent content keep them comparable.
