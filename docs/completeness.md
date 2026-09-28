@@ -44,7 +44,7 @@ allocation/syscall reduction sweep (#77) is gated behind the epic.
 | Drag and drop | `DragSource`/`DragEnterer` per widget, mime negotiation, cross-window | app/dragdrop.go, internal/dragdrop |
 | Icon | raster/theme/file/embedded-SVG constructors, symbolic recoloring | widget/icon.go, [icons.md](icons.md) |
 | Image | raster `Image`: `ImageFit`/`ImageCover`/`ImageNone`, async file/URL decode, LRU pixel cache (#35) | widget/image.go, internal/imgcache |
-| Font selection | `sysfont.Sans`/`Monospace`/`Serif`/`Best(family, size)`, system-store fallback chains (#31) | internal/sysfont |
+| Font selection | `sysfont.Sans`/`Monospace`/`Serif`/`Best(family, size)`, system-store fallback chains (#31); `Families()` enumeration + `app.FontChooserDialog` (#74) | internal/sysfont, app/dialog.go |
 | Font fallback | `render.Chain`: per-rune coverage, bitmap/CBDT/sbix color-emoji strikes (#31) | render/text.go, internal/sysfont |
 | Theming | typed `Theme` palette value with copying `With*` constructors, dark/light presets, WCAG contrast guard reporting through the injectable logger (#32, #55) — no CSS engine (a non-goal, see below) | widget/theme.go, [architecture.md](architecture.md) "Theming" |
 | Library logging | injectable `*slog.Logger` (`wlsession.SetLogger`, `app.SetLogger`), silent by default (nil discards); Warn = degraded-but-running, Error = terminal, Debug = protocol chatter (#55) | internal/logutil, internal/wlsession/logger.go, [input-model.md](input-model.md) |
@@ -82,9 +82,6 @@ every one that relm4 parity requires — each now filed under [#59](https://gith
 - **GtkCss analog** — rejected on cost; #32 scopes styling to the typed
   `Theme` struct instead. Revisited per the maintainer: conditional
   design doc #75, engine #76.
-- **Font chooser** — application-dialog
-  territory. Filed as #74.
-
 The standing non-goals (no per-window goroutines, no window manager, no
 actor model, no per-widget theme overrides, no live theme-change
 signal) are in [architecture.md](architecture.md) "Non-goals".

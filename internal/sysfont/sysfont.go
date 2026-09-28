@@ -12,6 +12,7 @@ package sysfont
 import (
 	"fmt"
 	"os"
+	"slices"
 	"sync"
 
 	"github.com/go-text/typesetting/font"
@@ -251,4 +252,53 @@ func FallbackFamilies() []string {
 		out = append(out, tf.Family())
 	}
 	return out
+}
+
+// familiesOnce caches the enumerated family list: one index re-read
+// per process, whatever asks first.
+var (
+	familiesOnce sync.Once
+	familiesList []string
+	familiesErr  error
+)
+
+// Families enumerates the system store's installed font families,
+// sorted and deduped: the normalized names the matcher - and Best -
+// accept, the set a font chooser offers. The store's own scan shares
+// the disk index this reads.
+func Families() ([]string, error) {
+	familiesOnce.Do(func() {
+		if _, err := fontmap(); err != nil {
+			familiesErr = err
+			return
+		}
+		footprints, err := fontscan.SystemFonts(quietLogger{}, "")
+		if err != nil {
+			familiesErr = fmt.Errorf("sysfont: enumerate families: %w", err)
+			return
+		}
+		seen := make(map[string]bool, len(footprints))
+		familiesList = make([]string, 0, len(footprints))
+		for _, fp := range footprints {
+			if fp.Family == "" || seen[fp.Family] {
+				continue
+			}
+			seen[fp.Family] = true
+			familiesList = append(familiesList, fp.Family)
+		}
+		slices.Sort(familiesList)
+	})
+	return familiesList, familiesErr
+}
+
+// FamilyDisplay returns family's display-cased name, read from one of
+// its faces (cached with the face itself); family unchanged when no
+// face loads. Chooser rows and previews call this lazily, so a long
+// family list never parses more than the faces actually shown.
+func FamilyDisplay(family string) string {
+	tf, err := lookup(family, regAspect, 0, 'x')
+	if err != nil {
+		return family
+	}
+	return tf.Family()
 }

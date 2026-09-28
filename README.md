@@ -53,6 +53,7 @@ deliberate non-goals and the honest, deferred gaps — lives in
 | Paned | done | two panes with a draggable themed divider; MinSizer-floor clamps, keyboard nudges, GTK keep-child-one resize semantics |
 | Calendar, `app.CalendarDialog` | done | month grid with month/year navigation, today marker, single selection, keyboard motion across month boundaries, pluggable locale names |
 | Color picker, `app.ColorChooserDialog` | done | SV square (exact premultiplied gradient composition), hue/alpha strips, hex entry, theme presets and an in-memory session palette; keyboard-operable end to end |
+| Font chooser, `app.FontChooserDialog` | done | searchable virtualized family list (rows lazily rendered in their own face), size entry + synced slider, monospace filter, live preview through the production fallback chain |
 | Tooltips | done | `SetTooltip` on any widget, 500ms dwell; toplevel hosts only |
 | Drag source / drop target | done | `widget.DragSource` + `DragEnterer` per widget; mime negotiation, highlight, cross-window drops |
 

@@ -74,6 +74,31 @@ func (l *Label) Text() string {
 	return l.text
 }
 
+// SetFace swaps the shaping face (a fallback chain works here too);
+// the shaped caches drop and the bounds invalidate.
+func (l *Label) SetFace(face render.Font) {
+	if l.face == face {
+		return
+	}
+	l.face = requireFace("(*Label).SetFace", face)
+	l.retext()
+	l.InvalidateLayout()
+}
+
+// SizePx returns the shaping size in logical pixels.
+func (l *Label) SizePx() float64 { return l.sizePx }
+
+// SetSizePx changes the shaping size; the shaped caches drop and the
+// bounds invalidate.
+func (l *Label) SetSizePx(px float64) {
+	if l.sizePx == px {
+		return
+	}
+	l.sizePx = px
+	l.retext()
+	l.InvalidateLayout()
+}
+
 // SetAlignment selects horizontal placement when the arranged rect is
 // wider than the text; wrapped rows align individually.
 func (l *Label) SetAlignment(a render.Alignment) {
