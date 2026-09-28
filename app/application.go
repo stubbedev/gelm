@@ -476,125 +476,134 @@ func (a *Application) Run() error {
 		if a.quit || len(a.windows) == 0 {
 			return ErrClosed
 		}
-		now := time.Now()
-
-		// Off-loop work queued since the last pass: Invoke fns first,
-		// then the periodic timers (pollers) that came due. Everything
-		// here runs on this goroutine, the loop goroutine.
-		a.pump(now)
-
-		if code, mods, ok := a.rep.tick(); ok {
-			a.deliverKey(code, mods)
-			// Repeat keys are deliveries too: keep the state fresh.
-		}
-		// Push the focused widget's text-input state; this is what
-		// enables the input method on an editable focus, updates the
-		// surrounding text and caret as it types, and disables on
-		// focus moving elsewhere. The previous dispatch's changes are
-		// picked up here, one event later.
-		if w := a.focused(); w != nil {
-			a.ime.sync(w.router, true)
-		}
-		animating := anim.Active()
-		if animating {
-			// The animation clock ticks on loop wakes: frame callbacks
-			// pace it when the compositor answers, the timer Next()
-			// schedules pace it when they stop (occlusion). A tick that
-			// ran callbacks invalidated widgets, so only then is a
-			// frame owed.
-			if anim.Tick(now) {
-				for _, w := range a.windows {
-					w.dirty = true
-				}
-			}
-		}
-		a.updateTips(now)
-
-		kept := a.windows[:0]
-		for _, w := range a.windows {
-			// A tween-frame kick from another loop's tick (a popup's
-			// nested Run) marks the window for repaint.
-			if w.kick.Swap(false) {
-				w.dirty = true
-			}
-			if w.host.Closed() {
-				// Stop the window's toast timers before the surface
-				// they paint on disappears.
-				a.toasts.closeHost(w.host)
-				w.release()
-				if w.cfg.onClosed != nil {
-					w.cfg.onClosed()
-				}
-				continue
-			}
-			kept = append(kept, w)
-		}
-		a.windows = kept
-		a.reapWindowIcons()
-		if a.quit || len(a.windows) == 0 {
-			return ErrClosed
-		}
-
-		for _, w := range a.windows {
-			// Pick up a configure-driven size change even when nothing
-			// else is dirty: syncSize resizes the pool and schedules the
-			// repaint, so the frame below already runs at the new size.
-			resized := w.syncSize()
-			if w.frameReady {
-				w.frameReady = false
-				w.framePending = false
-			}
-			if w.host.EnsureUsable() != nil {
-				// Not configured yet; the configure event wakes the park.
-				continue
-			}
-			// Start the enter tween on the first usable pass, before the
-			// first draw, so the window's first frame sits at reveal 0.
-			w.enterIfDue()
-			// Draw when something changed: a configure-driven resize
-			// repaint always goes out (a pacing-gated one deadlocks,
-			// see shouldDraw), otherwise the frameOwed pacing decides:
-			// either the previous frame's callback returned, or an
-			// animation's timer deadline passed with the callback
-			// still unheard - an occluded surface stops receiving
-			// callbacks, and the animation clock keeps it moving at
-			// the frame period.
-			if shouldDraw(w, animating, now, resized) {
-				w.dirty = false
-				if !w.draw() {
-					// A wire failure mid-frame (attach/commit on a dead
-					// socket) classifies exactly like a dispatch one.
-					return a.loopError(w.drawErr)
-				}
-			}
-		}
-		if a.quit {
-			return ErrClosed
-		}
-
-		var tipNext, repNext, animFrame time.Time
-		for _, w := range a.windows {
-			if t, ok := w.tip.next(); ok && (tipNext.IsZero() || t.Before(tipNext)) {
-				tipNext = t
-			}
-		}
-		if t, ok := a.rep.nextDeadline(); ok {
-			repNext = t
-		}
-		if t, ok := anim.Next(); ok {
-			animFrame = t
-		}
-		wakeAt, ok := nextWake(repNext, animFrame, tipNext, a.queues.nextDeadline(), now)
-		if ok {
-			a.kicker.schedule(a.sess, wakeAt)
-		}
-		if err := step(); err != nil {
-			// A dead connection (compositor restart, protocol verdict)
-			// runs the disconnect policy here; other dispatch failures
-			// come back as they are.
-			return a.loopError(fmt.Errorf("app: dispatch: %w", err))
+		if err := a.tick(step, time.Now()); err != nil {
+			return err
 		}
 	}
+}
+
+// tick runs one loop pass: queued work, repeats, IME sync, animation
+// ticks, tooltip state, window draws (paced), wake computation, and
+// one dispatch. A non-nil error ends the loop; ErrClosed comes back
+// when the application quit or its last window closed mid-pass.
+func (a *Application) tick(step func() error, now time.Time) error {
+	// Off-loop work queued since the last pass: Invoke fns first,
+	// then the periodic timers (pollers) that came due. Everything
+	// here runs on this goroutine, the loop goroutine.
+	a.pump(now)
+
+	if code, mods, ok := a.rep.tick(); ok {
+		a.deliverKey(code, mods)
+		// Repeat keys are deliveries too: keep the state fresh.
+	}
+	// Push the focused widget's text-input state; this is what
+	// enables the input method on an editable focus, updates the
+	// surrounding text and caret as it types, and disables on
+	// focus moving elsewhere. The previous dispatch's changes are
+	// picked up here, one event later.
+	if w := a.focused(); w != nil {
+		a.ime.sync(w.router, true)
+	}
+	animating := anim.Active()
+	if animating {
+		// The animation clock ticks on loop wakes: frame callbacks
+		// pace it when the compositor answers, the timer Next()
+		// schedules pace it when they stop (occlusion). A tick that
+		// ran callbacks invalidated widgets, so only then is a
+		// frame owed.
+		if anim.Tick(now) {
+			for _, w := range a.windows {
+				w.dirty = true
+			}
+		}
+	}
+	a.updateTips(now)
+
+	kept := a.windows[:0]
+	for _, w := range a.windows {
+		// A tween-frame kick from another loop's tick (a popup's
+		// nested Run) marks the window for repaint.
+		if w.kick.Swap(false) {
+			w.dirty = true
+		}
+		if w.host.Closed() {
+			// Stop the window's toast timers before the surface
+			// they paint on disappears.
+			a.toasts.closeHost(w.host)
+			w.release()
+			if w.cfg.onClosed != nil {
+				w.cfg.onClosed()
+			}
+			continue
+		}
+		kept = append(kept, w)
+	}
+	a.windows = kept
+	a.reapWindowIcons()
+	if a.quit || len(a.windows) == 0 {
+		return ErrClosed
+	}
+
+	for _, w := range a.windows {
+		// Pick up a configure-driven size change even when nothing
+		// else is dirty: syncSize resizes the pool and schedules the
+		// repaint, so the frame below already runs at the new size.
+		resized := w.syncSize()
+		if w.frameReady {
+			w.frameReady = false
+			w.framePending = false
+		}
+		if w.host.EnsureUsable() != nil {
+			// Not configured yet; the configure event wakes the park.
+			continue
+		}
+		// Start the enter tween on the first usable pass, before the
+		// first draw, so the window's first frame sits at reveal 0.
+		w.enterIfDue()
+		// Draw when something changed: a configure-driven resize
+		// repaint always goes out (a pacing-gated one deadlocks,
+		// see shouldDraw), otherwise the frameOwed pacing decides:
+		// either the previous frame's callback returned, or an
+		// animation's timer deadline passed with the callback
+		// still unheard - an occluded surface stops receiving
+		// callbacks, and the animation clock keeps it moving at
+		// the frame period.
+		if shouldDraw(w, animating, now, resized) {
+			w.dirty = false
+			if !w.draw() {
+				// A wire failure mid-frame (attach/commit on a dead
+				// socket) classifies exactly like a dispatch one.
+				return a.loopError(w.drawErr)
+			}
+		}
+	}
+	if a.quit {
+		return ErrClosed
+	}
+
+	var tipNext, repNext, animFrame time.Time
+	for _, w := range a.windows {
+		if t, ok := w.tip.next(); ok && (tipNext.IsZero() || t.Before(tipNext)) {
+			tipNext = t
+		}
+	}
+	if t, ok := a.rep.nextDeadline(); ok {
+		repNext = t
+	}
+	if t, ok := anim.Next(); ok {
+		animFrame = t
+	}
+	wakeAt, ok := nextWake(repNext, animFrame, tipNext, a.queues.nextDeadline(), now)
+	if ok {
+		a.kicker.schedule(a.wake, wakeAt)
+	}
+	if err := step(); err != nil {
+		// A dead connection (compositor restart, protocol verdict)
+		// runs the disconnect policy here; other dispatch failures
+		// come back as they are.
+		return a.loopError(fmt.Errorf("app: dispatch: %w", err))
+	}
+	return nil
 }
 
 // updateTips advances every window's tooltip state machine.
