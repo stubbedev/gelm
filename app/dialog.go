@@ -3,6 +3,7 @@ package app
 import (
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/unxed/xkb-go"
 
@@ -199,6 +200,38 @@ func (a *Application) blockAll(blocked bool) {
 		}
 		w.blocked = blocked
 	}
+}
+
+// CalendarDialog opens a modal calendar picker: a widget.Calendar
+// starting at initial, responding "select" with the chosen date
+// through OnResponse when a day is picked (the dialog closes) and
+// "cancel" on Esc. onSelect is the Calendar's own hook for apps that
+// want every applied selection, not just the closing one.
+func (a *Application) CalendarDialog(parent *Window, initial time.Time, onSelect func(time.Time)) (*Dialog, error) {
+	face := a.resolveFace(nil)
+	if face == nil {
+		return nil, errors.New("app: calendar dialog text face unavailable: no configured tooltip face and the system has no sans font")
+	}
+	cal := widget.NewCalendar(face, 13, initial)
+	var d *Dialog
+	cal.OnSelect = func(t time.Time) {
+		if onSelect != nil {
+			onSelect(t)
+		}
+		if d != nil {
+			d.Respond("select")
+		}
+	}
+	var err error
+	d, err = a.NewDialog(parent, DialogConfig{
+		Title:          "Select date",
+		Width:          260,
+		Height:         240,
+		Content:        cal,
+		Buttons:        []DialogButton{{Label: "Cancel", Response: "cancel"}},
+		CancelResponse: "cancel",
+	})
+	return d, err
 }
 
 // MessageBox opens the standard preset: a colored icon slot by kind, a

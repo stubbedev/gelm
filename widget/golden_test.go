@@ -21,6 +21,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stubbedev/gelm/internal/anim"
 	"github.com/stubbedev/gelm/internal/golden"
@@ -374,6 +375,17 @@ func hoverMenuRow(m *Menu, itemH, i int) {
 // TestGoldenPaned pins both orientations of the splitter (#71): the
 // themed handle bar at the arranged position and the panes laid around
 // it.
+// TestGoldenCalendar pins the month grid (#73): title and weekday
+// header, the theme-ruled grid, the accent selection, and the today
+// marker's border.
+func TestGoldenCalendar(t *testing.T) {
+	face := goldenFace(t)
+	th := DarkTheme()
+	cal := NewCalendar(face, 13, time.Date(2026, time.September, 14, 0, 0, 0, 0, time.UTC))
+	cal.today = time.Date(2026, time.September, 3, 0, 0, 0, 0, time.UTC)
+	NewGolden(t, cal, "calendar", goldenTheme(th))
+}
+
 func TestGoldenPaned(t *testing.T) {
 	face := goldenFace(t)
 	th := DarkTheme()
