@@ -145,6 +145,8 @@ func openTooltip(sess *wlsession.Session, host Host, cfg *Config, frac120 uint32
 	lbl := widget.NewLabel(cfg.TooltipFace, 12, text, widget.Current().Text)
 	box := widget.NewBox(widget.Row, 0, 8)
 	box.Append(lbl, false)
+	// The card styles as the `tooltip` element (css.md).
+	nameSurfaceElement(box, elemTooltip)
 	size := box.Measure(widget.Constraints{Max: widget.Size{W: 400, H: 200}})
 	// The shadow gutter rides on the surface (see OpenPopover): the
 	// tooltip's plate is inset by it and the pointer offset stays on

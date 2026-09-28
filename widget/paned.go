@@ -313,7 +313,7 @@ func (p *Paned) SetHovered(on bool) {
 		return
 	}
 	p.hovered = on
-	p.Invalidate()
+	p.invalidateStyle()
 }
 
 // SetPressed tracks the drag's pressed shade and reports the press the
@@ -323,7 +323,7 @@ func (p *Paned) SetPressed(on bool) {
 		return
 	}
 	p.pressed = on
-	p.Invalidate()
+	p.invalidateStyle()
 }
 
 // DragMove drags the divider to the pointer: the position is where the

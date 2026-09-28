@@ -286,7 +286,7 @@ func (m *Menu) HitTest(p Point) Widget { return m.HitLeaf(m, p) }
 func (m *Menu) SetHovered(on bool) {
 	if !on && m.hovered != -1 {
 		m.hovered = -1
-		m.Invalidate()
+		m.invalidateStyle()
 	}
 }
 

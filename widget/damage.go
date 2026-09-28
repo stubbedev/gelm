@@ -46,6 +46,12 @@ func CollectDamage(root Widget) (rects []render.Rect, any bool) {
 // collectInto walks w, appending drained rects and returning the
 // bounding box of everything it appended (empty when nothing).
 func collectInto(w Widget, rects *[]render.Rect) render.Rect {
+	// A style-marked widget recomputes before it drains: pre-order, so
+	// a parent's inherited change marks and damages its subtree within
+	// this same walk, and a class toggle lands in one frame.
+	if n := nodeOf(w); n != nil && n.styleDirty {
+		n.restyle(w)
+	}
 	bbox := render.Rect{}
 	if dn, ok := w.(damageNoder); ok {
 		bounds, extras, dirty := dn.takeDamage()

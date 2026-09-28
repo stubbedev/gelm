@@ -333,7 +333,7 @@ func parseSel(spec string) selector {
 func splitKeep(spec string) []string {
 	var out []string
 	start := 0
-	for i := 0; i < len(spec); i++ {
+	for i := range len(spec) {
 		if spec[i] == ' ' || spec[i] == '>' {
 			if i > start {
 				out = append(out, spec[start:i])

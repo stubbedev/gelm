@@ -374,11 +374,6 @@ func (t *Theme) or(a Color, b Color) Color {
 	return a
 }
 
-// resolve maps a widget color onto the theme.
-func (t *Theme) resolve(a Color, role Color) Color {
-	return t.or(a, role)
-}
-
 // mix interpolates two premultiplied colors at p in [0, 1] — the same
 // arithmetic the renderer uses for gradients: premultiplied channels
 // interpolate correctly.

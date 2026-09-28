@@ -3,6 +3,7 @@ package widget
 import (
 	"math"
 
+	"github.com/stubbedev/gelm/internal/style"
 	"github.com/stubbedev/gelm/internal/text"
 	"github.com/stubbedev/gelm/render"
 )
@@ -99,9 +100,23 @@ func (e *Entry) SetDirection(d Direction) {
 func (e *Entry) Direction() Direction { return e.dir }
 
 // shape shapes display text under the entry's base direction - the
-// one text path the field's caret, selection, and paint share.
+// one text path the field's caret, selection, and paint share. The
+// size is the stylesheet's font-size when matched, else the
+// constructor's.
 func (e *Entry) shape(s string) *render.ShapedText {
-	return e.face.ShapeDir(s, e.sizePx, e.dir)
+	return e.face.ShapeDir(s, e.fontPx(), e.dir)
+}
+
+// fontPx is the effective shaping size: the stylesheet's font-size
+// when matched, else the constructor's.
+func (e *Entry) fontPx() float64 {
+	return fontPx(e.style(e), e.sizePx)
+}
+
+// pad is the effective horizontal text inset: the stylesheet's
+// padding when set, else the built-in 8.
+func (e *Entry) pad() int {
+	return picki(e.style(e), style.PropPadding, 8)
 }
 
 // SetPlaceholder sets the text shown when the entry is empty.
@@ -560,7 +575,8 @@ func (e *Entry) MoveEnd() {
 // innerRect is the padded text viewport: the rect painting clips to
 // and the pan moves text across.
 func (e *Entry) innerRect() render.Rect {
-	return render.Rect{X: e.bounds.X + 8, Y: e.bounds.Y, W: max(e.bounds.W-16, 0), H: e.bounds.H}
+	pad := e.pad()
+	return render.Rect{X: e.bounds.X + pad, Y: e.bounds.Y, W: max(e.bounds.W-2*pad, 0), H: e.bounds.H}
 }
 
 // panCaret is the display-space caret the pan follows: the composing
@@ -580,7 +596,7 @@ func (e *Entry) panCaret() int {
 // slides the window toward the reading end, mirroring LTR exactly with
 // the caret's distance from the right edge in the caret's role.
 func (e *Entry) lineX(sh *render.ShapedText) int {
-	left := e.bounds.X + 8
+	left := e.bounds.X + e.pad()
 	if !text.RTL(e.displayText(), e.dir) {
 		return left - e.scrollX
 	}
@@ -652,15 +668,32 @@ func (e *Entry) Measure(con Constraints) Size {
 	if text == "" {
 		text = e.placeholder
 	}
-	w := 16
+	px := e.fontPx()
+	pad := e.pad()
+	w := 2 * pad
 	if text != "" {
-		w += int(e.face.Shape(text, e.sizePx).Advance() + 0.5)
+		w += int(e.face.Shape(text, px).Advance() + 0.5)
 	}
-	h := int(e.face.Shape("lg", e.sizePx).Ascent()+e.face.Shape("lg", e.sizePx).Descent()+0.5) + 12
+	h := int(e.face.Shape("lg", px).Ascent()+e.face.Shape("lg", px).Descent()+0.5) + 12
 	if e.MaxWidth > 0 {
 		w = min(w, max(e.MaxWidth, 16))
 	}
+	// The stylesheet's min-* floors hold before the constraints clamp:
+	// the field claims at least the styled floor, overflowing if needed.
+	v := e.style(e)
+	w = max(w, picki(v, style.PropMinWidth, 0))
+	h = max(h, picki(v, style.PropMinHeight, 0))
 	return e.measureStore(con, clampSize(Size{W: w, H: h}, con))
+}
+
+// MinSize implements MinSizer: the stylesheet's min-* floors when set,
+// no floor otherwise (the zero Size).
+func (e *Entry) MinSize() Size {
+	v := e.style(e)
+	return Size{
+		W: picki(v, style.PropMinWidth, 0),
+		H: picki(v, style.PropMinHeight, 0),
+	}
 }
 
 // Paint draws the field: placeholder when empty, text otherwise, the
@@ -674,24 +707,35 @@ func (e *Entry) Measure(con Constraints) Size {
 // surface and paints text at the shared disabled fade; a read-only
 // field keeps the normal text and fades only the caret, so the two
 // states read differently at a glance (muted text vs muted caret).
+// The stylesheet layers between the programmatic color and the theme,
+// and border-width rounds the fill down inside a border-color stroke.
 func (e *Entry) Paint(cv *render.Canvas) {
 	t := Current()
+	v := e.style(e)
 	enabled := IsEnabled(e)
 	bg := t.Surface
 	if !enabled {
 		bg = t.DisabledSurface()
 	}
-	cv.RoundedRect(e.bounds, t.Radius, bg)
-	textCol, caretCol := e.color, e.color
+	bg = pickc(0, v, style.PropBackgroundColor, bg)
+	radius := picki(v, style.PropBorderRadius, t.Radius)
+	textCol := pickc(e.color, v, style.PropColor, e.color)
+	caretCol := textCol
 	if !enabled {
 		textCol = scaleAlpha(textCol, disabledFade)
 		caretCol = textCol
 	} else if e.readOnly {
 		caretCol = scaleAlpha(caretCol, disabledFade)
 	}
+	if bw := picki(v, style.PropBorderWidth, 0); bw > 0 {
+		cv.RoundedRect(e.bounds, radius, pickc(0, v, style.PropBorderColor, t.Border))
+		cv.RoundedRect(shrinkRect(e.bounds, bw), max(0, radius-bw), bg)
+	} else {
+		cv.RoundedRect(e.bounds, radius, bg)
+	}
 	disp := e.displayText()
 	if len(e.runes) == 0 && !e.composing() && e.placeholder != "" {
-		e.face.DrawAlignedDir(cv, e.placeholder, e.bounds, e.sizePx, t.Border, render.AlignStart, e.dir)
+		e.face.DrawAlignedDir(cv, e.placeholder, e.bounds, e.fontPx(), t.Border, render.AlignStart, e.dir)
 		return
 	}
 	// The highlight and the caret map through the display shape: in

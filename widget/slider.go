@@ -113,7 +113,13 @@ func (s *Slider) HitTest(p Point) Widget {
 }
 
 // SetPressed implements PressSetter; the trough brightens while dragging.
-func (s *Slider) SetPressed(on bool) { s.Pressed = on }
+func (s *Slider) SetPressed(on bool) {
+	if s.Pressed == on {
+		return
+	}
+	s.Pressed = on
+	s.invalidateStyle()
+}
 
 // DragMove sets the value from the pointer position while pressed.
 // Disabled sliders ignore the drag.

@@ -305,7 +305,7 @@ func (e *Expander) SetHovered(on bool) {
 		return
 	}
 	e.hovered = on
-	e.Invalidate()
+	e.invalidateStyle()
 }
 
 // KeyAction implements KeyActionHandler: Enter toggles when focused,

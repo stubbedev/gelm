@@ -36,6 +36,7 @@ import (
 	"slices"
 	"sync/atomic"
 
+	"github.com/stubbedev/gelm/internal/style"
 	"github.com/stubbedev/gelm/render"
 )
 
@@ -110,6 +111,9 @@ type node struct {
 
 	// measure cache: measuredIn/out memoize the last Measure call once
 	// measureSeen; measureDirty forces a recompute after InvalidateLayout.
+	// The style marks join the key: a stale cascade (or one marked by a
+	// class or state change) drops the entry, since padding, font-size,
+	// and min-* change what the widget wants.
 	measureSeen  bool
 	measureDirty bool
 	measureIn    Constraints
@@ -121,6 +125,35 @@ type node struct {
 	// themeSeen stamps the theme generation this widget last joined a
 	// frame with; SetTheme bumps themeGen so every widget repaints once.
 	themeSeen uint64
+
+	// computed style (docs/css.md): the cascade result plus generation
+	// stamps. csGen is the cascade's own freshness: style() recomputes
+	// until restyle runs under the current generation. styleSeen is the
+	// measure cache's: a stale value drops the cached measure (a load
+	// relayouts the tree by stamp), and measureStore re-stamps it even
+	// for widgets whose measure never reads the cascade. styleDmg gates
+	// the damage collector, which drains it — the three together let a
+	// stylesheet load relayout and repaint everything without walking
+	// the tree. styleDirty is the fine-grained half: set by class, id,
+	// state, and inherited-value changes, it forces the next read to
+	// recompute and diff-invalidates the smallest correct region.
+	cs         style.Values
+	csGen      uint64
+	styleSeen  uint64
+	styleDmg   uint64
+	styleDirty bool
+
+	// style identity: the element name (a constructor-set override and
+	// the type-derived default, resolved once), the `#id`, and the
+	// classes `.name` selectors match.
+	element  string
+	elemName string
+	id       string
+	classes  []string
+	// focused is the router's focus bit for :focus matching; hover and
+	// press stay in each widget's own fields, which the router already
+	// drives.
+	focused bool
 
 	// disabled is the widget's own half of the enable state: false (the
 	// zero value) means enabled, so plain widgets accept input without
@@ -155,13 +188,15 @@ func (n *node) TooltipText() string { return n.tooltip }
 // The flip invalidates self and — for containers that expose Children,
 // which override this with invalidateTree — every descendant, so the
 // muted paint lands on the next frame without a relayout: enabled
-// state changes what Paint draws, never what Measure wants.
+// state changes what Paint draws, never what Measure wants. The style
+// marks go stale with the flags: :disabled rules may match now.
 func (n *node) SetEnabled(enabled bool) {
 	checkLoop("SetEnabled")
 	if n.disabled == !enabled {
 		return
 	}
 	n.disabled = !enabled
+	n.styleDirty = true
 	n.Invalidate()
 }
 
@@ -173,11 +208,16 @@ func (n *node) Enabled() bool { return !n.disabled }
 
 // invalidateTree marks self and every descendant for repaint.
 // Containers call it after a state flip (enable/disable) that the
-// query walks project onto the whole subtree at once.
+// query walks project onto the whole subtree at once. Each node's
+// computed style goes stale with it — the effective disabled state
+// changed subtree-wide, so :disabled rules may match now.
 func invalidateTree(self Widget) {
 	walkTree(self, 0, func(w Widget, _ int) {
 		if v, ok := w.(interface{ Invalidate() }); ok {
 			v.Invalidate()
+		}
+		if n := nodeOf(w); n != nil {
+			n.styleDirty = true
 		}
 	})
 }
@@ -272,10 +312,11 @@ func (n *node) markMeasureDirty() bool {
 
 // measureHit returns the cached natural size when it is still valid
 // for con. Widget Measures open with it to skip recomputation on the
-// static-tree fast path.
+// static-tree fast path. A stale or marked cascade misses too: a
+// stylesheet load relayouts the tree by stamp, with no walk.
 func (n *node) measureHit(con Constraints) (Size, bool) {
 	n.measureCount++
-	if n.measureSeen && !n.measureDirty && n.measureIn == con {
+	if n.measureSeen && !n.measureDirty && !n.styleDirty && n.styleSeen == styleGen && n.measureIn == con {
 		return n.measureOut, true
 	}
 	return Size{}, false
@@ -286,12 +327,14 @@ func (n *node) measureHit(con Constraints) (Size, bool) {
 func (n *node) measureCalls() int { return n.measureCount }
 
 // measureStore records the computed size as the cache entry for con
-// and returns it, closing the measureHit pair.
+// and returns it, closing the measureHit pair. The entry is stamped
+// with the style generation it measured under.
 func (n *node) measureStore(con Constraints, s Size) Size {
 	n.measureSeen = true
 	n.measureDirty = false
 	n.measureIn = con
 	n.measureOut = s
+	n.styleSeen = styleGen
 	return s
 }
 
@@ -302,7 +345,8 @@ func (n *node) measureStore(con Constraints, s Size) Size {
 // strips beside a viewport, say - do not drag the whole bounds in. The
 // damage collector calls it walking down the tree.
 func (n *node) takeDamage() (bounds render.Rect, extra []render.Rect, dirty bool) {
-	boundsDirty := n.invalid || n.subInvalid || n.themeSeen != themeGen
+	boundsDirty := n.invalid || n.subInvalid || n.themeSeen != themeGen || n.styleDmg != styleGen
+	n.styleDmg = styleGen
 	n.invalid = false
 	n.subInvalid = false
 	n.themeSeen = themeGen
@@ -341,8 +385,16 @@ func (n *node) Parent() Widget {
 }
 
 // setParent records the arranging container; containers call it on their
-// children during Arrange.
+// children during Arrange. The first link drops the style stamps: the
+// cascade walks the ancestor chain, which only exists once a container
+// has arranged this widget, so the next read recomputes — and repaints,
+// since an inherited value may now resolve differently.
 func (n *node) setParent(p Widget) {
+	if n.parent == nil && p != nil {
+		n.csGen = 0
+		n.styleSeen = 0
+		n.styleDmg = 0
+	}
 	n.parent = p
 }
 

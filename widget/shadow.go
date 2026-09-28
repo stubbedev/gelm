@@ -16,21 +16,25 @@
 //     the card, never the falloff.
 package widget
 
-import "github.com/stubbedev/gelm/render"
+import (
+	"github.com/stubbedev/gelm/internal/style"
+	"github.com/stubbedev/gelm/render"
+)
 
 // defaultShadowColor is the derived shadow paint for themes that set a
 // blur but no color: neutral black at 110 alpha.
 var defaultShadowColor = render.RGBA(0, 0, 0, 110)
 
-// shadowPaint resolves the shadow's paint at strength p in [0, 1]:
+// shadowPaint resolves the shadow's paint at full strength:
 // premultiplied color and blur radius in logical pixels. blur 0 means
 // disabled — the theme's ShadowBlur is the on/off switch; an unset
-// color derives the default.
-func (t *Theme) shadowPaint(p float64) (render.Color, int) {
+// color derives the default. Weaker strengths (the toast's fade)
+// scaleAlpha the result.
+func (t *Theme) shadowPaint() (render.Color, int) {
 	if t.ShadowBlur <= 0 {
 		return 0, 0
 	}
-	return scaleAlpha(t.or(t.ShadowColor, defaultShadowColor), p), t.ShadowBlur
+	return t.or(t.ShadowColor, defaultShadowColor), t.ShadowBlur
 }
 
 // DrawShadow paints the theme's box shadow around r — a widget's
@@ -38,7 +42,7 @@ func (t *Theme) shadowPaint(p float64) (render.Color, int) {
 // elevation helper every floating surface paints through; disabled or
 // fully transparent shadows paint nothing.
 func (t *Theme) DrawShadow(cv *render.Canvas, r render.Rect, radius int) {
-	col, blur := t.shadowPaint(1)
+	col, blur := t.shadowPaint()
 	if blur == 0 {
 		return
 	}
@@ -50,8 +54,14 @@ func (t *Theme) DrawShadow(cv *render.Canvas, r render.Rect, radius int) {
 // anti-aliasing rim, matching the raster's box). Empty when the shadow
 // is disabled, which callers treat as "no extra pixels owed".
 func (t *Theme) ShadowRing(r render.Rect) render.Rect {
-	_, blur := t.shadowPaint(1)
-	if blur == 0 {
+	_, blur := t.shadowPaint()
+	return ringFor(r, blur)
+}
+
+// ringFor is the damage ring for an explicit blur — the
+// stylesheet-overridden blur a floating surface paints with.
+func ringFor(r render.Rect, blur int) render.Rect {
+	if blur <= 0 {
 		return render.Rect{}
 	}
 	return expandRect(r, blur+1)
@@ -63,7 +73,7 @@ func (t *Theme) ShadowRing(r render.Rect) render.Rect {
 // inset their card by it; content size, placement, and hit-testing
 // stay on the un-guttered logical rect.
 func (t *Theme) ShadowGutter() int {
-	_, blur := t.shadowPaint(1)
+	_, blur := t.shadowPaint()
 	return blur
 }
 
@@ -81,14 +91,14 @@ type shadowTracker struct {
 	gen  uint64
 }
 
-// sync re-invalidates the ring when the bounds moved or resized (the
-// old pixels must be erased and the new painted) or the theme's shadow
-// restyled (SetTheme bumps the generation; the bounds-only repaint a
-// theme change triggers never covers the ring outside them). Steady
-// state — same bounds, same theme — is a no-op, so hovering a menu
-// never re-invalidates the falloff.
-func (s *shadowTracker) sync(n *node) {
-	ring := Current().ShadowRing(n.bounds)
+// syncRing is the tracker's entry: re-invalidates the ring when the
+// bounds moved or resized (the old pixels must be erased and the new
+// painted), the theme's shadow restyled (SetTheme bumps the
+// generation), or the stylesheet overrode the blur — callers pass the
+// ring the surface effectively paints with. Steady state — same
+// bounds, same generation — is a no-op, so hovering a menu never
+// re-invalidates the falloff.
+func (s *shadowTracker) syncRing(n *node, ring render.Rect) {
 	if ring == s.last && s.gen == themeGen {
 		return
 	}
@@ -138,20 +148,29 @@ func (e *Elevation) Child() Widget { return e.child }
 func (e *Elevation) Measure(con Constraints) Size { return e.child.Measure(con) }
 
 // Arrange records the rect, passes it to the child, and keeps the
-// shadow ring's damage in step.
+// shadow ring's damage in step with the effective (stylesheet-aware)
+// blur.
 func (e *Elevation) Arrange(r render.Rect) {
 	e.node.Arrange(r)
 	e.child.Arrange(r)
 	setParents(e, e.child)
-	e.ring.sync(&e.node)
+	_, blur := effShadow(e, Current())
+	e.ring.syncRing(&e.node, ringFor(e.bounds, blur))
 }
 
-// Paint draws shadow, optional plate, then the child.
+// Paint draws shadow, optional plate, then the child. The stylesheet's
+// box-shadow, background-color (the plate a bare content tree floats
+// on), and border-radius override the constructor and theme values —
+// the dialog and popover cards style through this.
 func (e *Elevation) Paint(cv *render.Canvas) {
 	t := Current()
-	t.DrawShadow(cv, e.bounds, e.radius)
-	if e.plate != 0 {
-		cv.RoundedRect(e.bounds, e.radius, e.plate)
+	radius := picki(e.style(e), style.PropBorderRadius, e.radius)
+	if col, blur := effShadow(e, t); blur > 0 {
+		cv.Shadow(e.bounds, radius, blur, col)
+	}
+	plate := pickc(e.plate, e.style(e), style.PropBackgroundColor, e.plate)
+	if plate != 0 {
+		cv.RoundedRect(e.bounds, radius, plate)
 	}
 	e.child.Paint(cv)
 }

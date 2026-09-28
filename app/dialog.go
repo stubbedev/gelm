@@ -89,26 +89,10 @@ func (a *Application) NewDialog(parent *Window, cfg DialogConfig) (*Dialog, erro
 		buttons.Append(btn, false)
 	}
 
-	root := widget.NewBox(widget.Column, 12, 12)
-	root.Append(cfg.Content, true)
-	root.Append(buttons, false)
-
-	// Elevation: with client shadows on, the dialog is a floating card
-	// — theme shadow around a rounded plate, on transparent window
-	// margins so the falloff blends over whatever is behind. Shadows
-	// off (compositors that blur under translucent surfaces), the
-	// window stays exactly as before: opaque background, content edge
-	// to edge. Hit-testing stays on the card — the gutter is never a
-	// hit.
-	background := widget.Current().Bg
-	if gutter := widget.Current().ShadowGutter(); gutter > 0 {
-		card := widget.NewElevation(root).
-			WithRadius(widget.Current().Radius).
-			WithPlate(background)
-		margin := widget.NewBox(widget.Column, 0, gutter)
-		margin.Append(card, true)
-		root, background = margin, 0
-	}
+	content := widget.NewBox(widget.Column, 12, 12)
+	content.Append(cfg.Content, true)
+	content.Append(buttons, false)
+	root, background := dialogCard(content)
 
 	winCfg := WindowConfig{
 		Title: cfg.Title, Width: cfg.Width, Height: cfg.Height,
