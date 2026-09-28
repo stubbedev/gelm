@@ -109,6 +109,14 @@ func (n *Notebook) Children() []Widget {
 	return nil
 }
 
+// appendChildren appends the selected tab, matching Children.
+func (n *Notebook) appendChildren(buf []Widget) []Widget {
+	if n.selected < len(n.tabs) {
+		return append(buf, n.tabs[n.selected].w)
+	}
+	return buf
+}
+
 // SetEnabled turns the notebook's subtree on or off through the
 // per-query enable walk, like Box. Like Stack, hidden pages stay
 // untouched: they are not painted, so they need no repaint.

@@ -221,6 +221,11 @@ func (c *Calendar) Children() []Widget {
 	return []Widget{c.nav[0], c.nav[1], c.nav[2], c.nav[3]}
 }
 
+// appendChildren appends the navigation buttons, matching Children.
+func (c *Calendar) appendChildren(buf []Widget) []Widget {
+	return append(buf, c.nav[0], c.nav[1], c.nav[2], c.nav[3])
+}
+
 // Paint draws the title, the weekday header, the day grid with its
 // rules, today's marker, and the selected cell - every color from the
 // theme.

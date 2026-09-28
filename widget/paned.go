@@ -307,6 +307,17 @@ func (p *Paned) Children() []Widget {
 	return out
 }
 
+// appendChildren appends the panes, matching Children.
+func (p *Paned) appendChildren(buf []Widget) []Widget {
+	if p.start != nil {
+		buf = append(buf, p.start)
+	}
+	if p.end != nil {
+		buf = append(buf, p.end)
+	}
+	return buf
+}
+
 // SetHovered tracks the handle's hover shade.
 func (p *Paned) SetHovered(on bool) {
 	if p.hovered == on {

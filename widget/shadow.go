@@ -183,6 +183,10 @@ func (e *Elevation) HitTest(p Point) Widget { return e.child.HitTest(p) }
 // traversal, and the accessibility walk.
 func (e *Elevation) Children() []Widget { return []Widget{e.child} }
 
+// appendChildren appends the child, matching Children (a nil child is
+// appended and skipped by the walk, as the slice form always was).
+func (e *Elevation) appendChildren(buf []Widget) []Widget { return append(buf, e.child) }
+
 // SetEnabled turns the elevation's child on or off through the
 // per-query enable walk, like Box.
 func (e *Elevation) SetEnabled(enabled bool) {

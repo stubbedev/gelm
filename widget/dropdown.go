@@ -388,6 +388,14 @@ func (d *Dropdown) Children() []Widget {
 	return nil
 }
 
+// appendChildren appends the open item list, matching Children.
+func (d *Dropdown) appendChildren(buf []Widget) []Widget {
+	if d.open {
+		return append(buf, d.menu)
+	}
+	return buf
+}
+
 // ClickAt toggles the list; the Router invokes it when a press and
 // release land on the face. Presses on the list go to the list. A face
 // click mid-close-tween reverses the close: the reveal rises from its

@@ -49,11 +49,17 @@ type Box struct {
 // Children exposes the box's children in append order for focus
 // traversal.
 func (b *Box) Children() []Widget {
-	out := make([]Widget, len(b.child))
-	for i, c := range b.child {
-		out[i] = c.w
+	return b.appendChildren(make([]Widget, 0, len(b.child)))
+}
+
+// appendChildren appends the box's children in append order, matching
+// Children — the snapshot the per-frame damage walk buffers instead of
+// a fresh slice per container per frame.
+func (b *Box) appendChildren(buf []Widget) []Widget {
+	for _, c := range b.child {
+		buf = append(buf, c.w)
 	}
-	return out
+	return buf
 }
 
 // SetDirection selects the base direction the box's main axis flows

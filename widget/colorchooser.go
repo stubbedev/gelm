@@ -252,6 +252,16 @@ func (c *ColorChooser) Children() []Widget {
 	return []Widget{c.hex}
 }
 
+// appendChildren appends the entry and optional + button, matching
+// Children.
+func (c *ColorChooser) appendChildren(buf []Widget) []Widget {
+	buf = append(buf, c.hex)
+	if c.custom != nil {
+		buf = append(buf, c.addTo)
+	}
+	return buf
+}
+
 // Paint draws the SV square as two stacked gradients, both strips, the
 // cursors, and the palette rows - the square's arithmetic is the
 // canvas's own premultiplied source-over.

@@ -687,7 +687,8 @@ func focusWalker(w Widget, fn func(Widget)) {
 // walkTree visits w and every descendant in paint order (pre-order),
 // passing each widget's nesting depth; the root is depth 0. The same
 // Children walk focus traversal, the damage collector, and the a11y
-// snapshot use.
+// snapshot use. The walk iterates a Children snapshot per container, so
+// mutating the tree from the callback sees the pre-mutation set.
 func walkTree(w Widget, depth int, fn func(Widget, int)) {
 	if w == nil {
 		return
