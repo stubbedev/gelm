@@ -63,7 +63,7 @@ allocation/syscall reduction sweep (#77) is gated behind the epic.
 | Dialog modality | xdg-dialog-v1: parented dialogs hint `set_modal`, compositor blocks the parent's input; silent degrade without the global (#61) | internal/wlsession/dialog.go, internal/window |
 | Wire bindings | generated pure-Go proxies for all of the above | wlr/ |
 | Accessibility | semantic roles + `DescribeTree`, keyboard-first guarantee; **no in-process AT-SPI** (a non-goal, see below) | widget/a11y.go, [a11y.md](a11y.md) |
-| Icon themes | freedesktop icon-theme spec in pure Go; theme switches are explicit | internal/icons, [icons.md](icons.md) |
+| Icon themes | freedesktop icon-theme spec in pure Go; live icon-theme setting followed through the portal monitor (#64) | internal/icons, [icons.md](icons.md) |
 
 ## Deliberate non-goals
 
@@ -93,12 +93,6 @@ signal) are in [architecture.md](architecture.md) "Non-goals".
 Honest deferrals, each with its pointer — none of these block the
 declared use cases:
 
-- **Icon themes do not follow live setting changes** — the lookup is
-  explicit ([icons.md](icons.md), widget/theme.go); the system
-  dark/light preference itself is observable since #53
-  ([appearance.md](appearance.md)) but wiring it to a palette swap is
-  the app's call, never the toolkit's. Lookup refresh on the live
-  icon-theme setting is filed as #64.
 - **No in-process AT-SPI** — the integration path is recorded, not
   built ([a11y.md](a11y.md)); filed as #65.
 - **Compositor-in-the-loop tests run on headless sway only** — the

@@ -57,6 +57,9 @@ type Cache struct {
 	paths []string
 	gen   uint64
 
+	// themeListeners hear every followed icon-theme switch (follow.go).
+	themeListeners []func(string)
+
 	entries map[cacheKey]*cacheEntry
 	order   []cacheKey
 }

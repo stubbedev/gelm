@@ -38,19 +38,27 @@ A symbolic `widget.Icon` follows `widget.Current().Accent` automatically;
 `SetTint` pins a different color (zero un-pins). Non-symbolic sources
 keep their colors unless a tint is pinned.
 
-## Theme changes are explicit (deferred scope)
+## Icon-theme changes are followed live (#64)
 
-There is **no live theme-change signal**. Following the desktop setting
-would pull xsettings (or a settings-daemon protocol) in as a new
-dependency, so #20 defers it deliberately. Instead:
+The portal's `org.gnome.desktop.interface icon-theme` setting is
+watched by the same monitor that carries the color-scheme preference
+(internal/appearance, #53). The application wires the two together:
+`Monitor.OnIconThemeChange` feeds `icons.Default().ApplyIconTheme`, and
+an `Application` does that wiring for you — a desktop theme switch
+swaps the resolution theme, drops every cached raster, and bumps
+`Generation`:
 
-- `icons.Cache.SetTheme` / `InvalidateTheme` drop every cached raster
-  and bump `Generation`.
 - `widget.Icon` compares its resolved generation against the cache in
-  its damage drain, so the next frame after an explicit switch repaints
-  the new theme's icons.
+  its damage drain, so the next frame after a switch repaints the new
+  theme's icons; the application requests that repaint through the
+  loop queue.
+- An emptied setting keeps the previous theme (Warn, the
+  degraded-but-running convention) — a broken portal never blanks the
+  UI.
+- `icons.Cache.OnIconThemeChanged` hears about every applied switch
+  (on the monitor's goroutine; bridge with `Application.Invoke`).
 
-An app that wants to follow the desktop theme calls
-`icons.Default().InvalidateTheme()` whenever it learns about a switch
-(how it learns stays the app's business). If a live signal lands later,
-it plugs in at exactly that call site.
+This is a lookup refresh, never a palette swap: the "toolkit never
+flips its own theme" rule stands, and the color-scheme preference
+stays the app's to wire (docs/appearance.md). `SetTheme` and
+`InvalidateTheme` remain the explicit paths.

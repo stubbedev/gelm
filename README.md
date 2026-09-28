@@ -80,7 +80,7 @@ deliberate non-goals and the honest, deferred gaps — lives in
 | Rendering | done | premultiplied-alpha ARGB8888, signed-distance AA (coverage scales all channels), shaped text, SVG/PNG icons |
 | Translucent surfaces | done | `Background` alpha < 255 composites for compositor blur (Hyprland blurs translucent layer surfaces; panels keep alpha ≈ 200–235); a fully opaque background sets `wl_surface.set_opaque_region` automatically — see [docs/architecture.md](docs/architecture.md), rule 13 |
 | Accessibility | decision | semantic roles + `DescribeTree`, keyboard-first guarantee pinned by tests; **no in-process AT-SPI** — see [docs/a11y.md](docs/a11y.md) |
-| Icon themes | done | freedesktop icon-theme spec lookup in pure Go; explicit theme switches (no live xsettings signal) — see [docs/icons.md](docs/icons.md) |
+| Icon themes | done | freedesktop icon-theme spec lookup in pure Go; follows the portal's live icon-theme setting (empty keeps the previous theme) — see [docs/icons.md](docs/icons.md) |
 | System dark/light preference | done | `internal/appearance` watches xdg-desktop-portal `color-scheme` via godbus (pure Go); reports `Dark`/`Light`/`Unknown` + `OnChange` — the app wires it to `widget.SetTheme`, gelm never switches on its own — see [docs/appearance.md](docs/appearance.md) |
 
 The rules that keep all of this correct — the parked loop, the

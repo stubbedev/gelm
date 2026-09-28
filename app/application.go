@@ -16,8 +16,10 @@ import (
 	"github.com/neurlang/wayland/wl"
 
 	"github.com/stubbedev/gelm/internal/anim"
+	"github.com/stubbedev/gelm/internal/appearance"
 	"github.com/stubbedev/gelm/internal/clipboard"
 	"github.com/stubbedev/gelm/internal/dragdrop"
+	"github.com/stubbedev/gelm/internal/icons"
 	"github.com/stubbedev/gelm/internal/inspect"
 	"github.com/stubbedev/gelm/internal/layersurface"
 	"github.com/stubbedev/gelm/internal/popup"
@@ -64,9 +66,16 @@ type Application struct {
 	popovers popoverRegistry
 	// toasts tracks each window's toast stack (see toast.go).
 	toasts toastRegistry
-	quit   bool
-	rep    *keyRepeater
-	kicker *loopKicker
+	// appearance follows the portal's live icon-theme setting (#64) so
+	// themed icons re-resolve without an app restart; stopIconFollow
+	// unwires at Run's exit. The monitor is icon-lookup plumbing, not a
+	// palette swap: the color-scheme preference stays the app's to wire
+	// (docs/appearance.md).
+	appearance     *appearance.Monitor
+	stopIconFollow func()
+	quit           bool
+	rep            *keyRepeater
+	kicker         *loopKicker
 	// queues is the Invoke/Every plumbing and wake the loop-kick call;
 	// wake is a field so tests can drive Invoke without a session.
 	queues loopQueues
@@ -101,6 +110,20 @@ func NewApplication(sess *wlsession.Session) *Application {
 		for _, win := range a.windows {
 			win.router.Forget(w)
 		}
+	})
+	// Icon lookups follow the portal's live icon-theme setting: a
+	// switch swaps the resolution theme (an empty name keeps the
+	// previous one, Warn) and the cache generation moves, so live
+	// themed icons re-resolve; the bridge into the loop requests the
+	// repaint that walks the damage and picks the change up.
+	a.appearance = appearance.New()
+	a.stopIconFollow = a.appearance.OnIconThemeChange(icons.Default().ApplyIconTheme)
+	icons.Default().OnIconThemeChanged(func(string) {
+		a.Invoke(func() {
+			for _, w := range a.windows {
+				w.dirty = true
+			}
+		})
 	})
 	if inspect.Enabled() {
 		a.setInspect(true)
@@ -412,6 +435,14 @@ func (a *Application) Run() error {
 		// on the disconnect path too — timers and invokes die with the
 		// loop, whatever killed it.
 		a.queues.shutdown()
+		// Unwind the NewApplication icon-follow wiring: stop the cache's
+		// subscription, then the monitor's goroutines and connection.
+		if a.stopIconFollow != nil {
+			a.stopIconFollow()
+		}
+		if a.appearance != nil {
+			a.appearance.Close()
+		}
 	}()
 	a.sess.OnKey = a.routeKey
 	a.sess.OnKeyUp = a.rep.release
