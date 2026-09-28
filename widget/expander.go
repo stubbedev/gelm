@@ -100,6 +100,14 @@ func (e *Expander) Children() []Widget {
 	return nil
 }
 
+// appendChildren appends the open expander's child, matching Children.
+func (e *Expander) appendChildren(buf []Widget) []Widget {
+	if e.open && e.child != nil {
+		return append(buf, e.child)
+	}
+	return buf
+}
+
 // SetEnabled turns the expander and its content on or off through the
 // per-query enable walk, like Box.
 func (e *Expander) SetEnabled(enabled bool) {

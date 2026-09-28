@@ -23,6 +23,24 @@ type childser interface {
 	Children() []Widget
 }
 
+// childBuf is the damage walk's child source: the same snapshot
+// Children() returns, appended into a buffer the walk reuses across
+// the whole traversal instead of a fresh slice per container per
+// frame. Implementations must match Children() in order and membership;
+// TestChildWalkMatchesChildren pins that over every container.
+type childBuf interface {
+	appendChildren(buf []Widget) []Widget
+}
+
+// walkStack is the per-depth snapshot buffers the damage collector
+// reuses across frames. Tree walks are loop-goroutine work (the same
+// discipline as every widget mutation), so one stack serves the
+// process; slots hold their capacity for the next frame, and a walk
+// never re-enters a depth it is still iterating, so a level's snapshot
+// lives until its subtree is done. The stack reaches the deepest tree
+// the process has walked and stays there.
+var walkStack [][]Widget
+
 // CollectDamage drains every pending invalidation in the tree and
 // returns the repaint rects in root coordinates plus whether anything
 // is owed. Rects may overlap; the caller can clip painting to their
@@ -33,7 +51,7 @@ func CollectDamage(root Widget) (rects []render.Rect, any bool) {
 	if root == nil {
 		return nil, false
 	}
-	bbox := collectInto(root, &rects)
+	bbox := collectInto(root, &rects, 0)
 	if len(rects) > maxDamageRects {
 		rects = rects[:0]
 		if !bbox.Empty() {
@@ -44,8 +62,11 @@ func CollectDamage(root Widget) (rects []render.Rect, any bool) {
 }
 
 // collectInto walks w, appending drained rects and returning the
-// bounding box of everything it appended (empty when nothing).
-func collectInto(w Widget, rects *[]render.Rect) render.Rect {
+// bounding box of everything it appended (empty when nothing). The
+// children iterate from the walk's own snapshot buffer for depth, so a
+// container that mutates mid-drain changes the next frame, not this
+// walk.
+func collectInto(w Widget, rects *[]render.Rect, depth int) render.Rect {
 	// A style-marked widget recomputes before it drains: pre-order, so
 	// a parent's inherited change marks and damages its subtree within
 	// this same walk, and a class toggle lands in one frame.
@@ -69,15 +90,34 @@ func collectInto(w Widget, rects *[]render.Rect) render.Rect {
 			}
 		}
 	}
-	if cs, ok := w.(childser); ok {
-		for _, k := range cs.Children() {
-			if k == nil {
-				continue
-			}
-			bbox = bbox.Union(collectInto(k, rects))
+	kids := snapshotKids(w, depth)
+	for _, k := range kids {
+		if k == nil {
+			continue
 		}
+		bbox = bbox.Union(collectInto(k, rects, depth+1))
 	}
 	return bbox
+}
+
+// snapshotKids returns w's children in walkStack's slot for depth: a
+// Children-shaped snapshot, buffered per depth and reused across
+// frames. Widgets without childBuf fall back to the Children copy.
+func snapshotKids(w Widget, depth int) []Widget {
+	var buf []Widget
+	if cb, ok := w.(childBuf); ok {
+		for len(walkStack) <= depth {
+			walkStack = append(walkStack, nil)
+		}
+		walkStack[depth] = walkStack[depth][:0]
+		buf = cb.appendChildren(walkStack[depth])
+		walkStack[depth] = buf
+		return buf
+	}
+	if cs, ok := w.(childser); ok {
+		return cs.Children()
+	}
+	return nil
 }
 
 // DamageArea returns the total pixel area the rects cover, counting

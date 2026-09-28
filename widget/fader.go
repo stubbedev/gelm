@@ -72,6 +72,14 @@ func (f *Fader) Children() []Widget {
 	return []Widget{f.child}
 }
 
+// appendChildren appends the wrapped child, matching Children.
+func (f *Fader) appendChildren(buf []Widget) []Widget {
+	if f.child != nil {
+		return append(buf, f.child)
+	}
+	return buf
+}
+
 // SetEnabled turns the fader's child on or off through the per-query
 // enable walk, like Box.
 func (f *Fader) SetEnabled(enabled bool) {

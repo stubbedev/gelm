@@ -77,6 +77,14 @@ func (s *Stack) Children() []Widget {
 	return nil
 }
 
+// appendChildren appends the visible child, matching Children.
+func (s *Stack) appendChildren(buf []Widget) []Widget {
+	if k, ok := s.kids[s.visible]; ok {
+		return append(buf, k)
+	}
+	return buf
+}
+
 // SetEnabled turns the visible child on or off through the per-query
 // enable walk, like Box (hidden children stay untouched; they paint
 // nothing, so they need no repaint either).
@@ -89,6 +97,12 @@ func (s *Stack) SetEnabled(enabled bool) {
 // for focus traversal. A copy, like Box.Children: tree walks must be
 // able to survive a callback that mutates the container.
 func (o *Overlay) Children() []Widget { return slices.Clone(o.kids) }
+
+// appendChildren appends the overlay's children in add order, matching
+// Children.
+func (o *Overlay) appendChildren(buf []Widget) []Widget {
+	return append(buf, o.kids...)
+}
 
 // SetEnabled turns the overlay's whole stack on or off through the
 // per-query enable walk, like Box.
@@ -280,6 +294,14 @@ func (s *Scroll) Children() []Widget {
 		return nil
 	}
 	return []Widget{s.child}
+}
+
+// appendChildren appends the wrapped child, matching Children.
+func (s *Scroll) appendChildren(buf []Widget) []Widget {
+	if s.child != nil {
+		return append(buf, s.child)
+	}
+	return buf
 }
 
 // SetEnabled turns the viewport and everything inside it on or off

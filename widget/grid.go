@@ -220,6 +220,12 @@ func (g *Grid) Remove(w Widget) bool {
 // rows, a spanning child visited at its origin cell - regardless of the
 // order attachments arrived in.
 func (g *Grid) Children() []Widget {
+	return g.appendChildren(make([]Widget, 0, len(g.child)))
+}
+
+// appendChildren appends the children in the same row-major order
+// Children builds.
+func (g *Grid) appendChildren(buf []Widget) []Widget {
 	sorted := slices.Clone(g.child)
 	slices.SortStableFunc(sorted, func(a, b *gridChild) int {
 		if a.row != b.row {
@@ -227,11 +233,10 @@ func (g *Grid) Children() []Widget {
 		}
 		return a.col - b.col
 	})
-	out := make([]Widget, len(sorted))
-	for i, c := range sorted {
-		out[i] = c.w
+	for _, c := range sorted {
+		buf = append(buf, c.w)
 	}
-	return out
+	return buf
 }
 
 // extents reports the track counts: one past the farthest occupied
