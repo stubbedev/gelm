@@ -23,6 +23,15 @@ const BTNRight uint32 = 0x111
 // the X11 paste button.
 const BTNMiddle uint32 = 0x112
 
+// ImagePaster receives a pasted image payload: encoded bytes plus
+// the mime they arrived as. widget.Image implements it — the widget
+// decodes off the loop goroutine and then fires its OnPasteImage —
+// and holding this interface is what makes a widget the image paste
+// target of ctrl+v.
+type ImagePaster interface {
+	PasteImage(data []byte, mime string)
+}
+
 // HoverSetter receives hover tracking from the Router.
 type HoverSetter interface {
 	SetHovered(on bool)

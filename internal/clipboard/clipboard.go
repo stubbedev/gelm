@@ -8,8 +8,11 @@
 package clipboard
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
+	"image"
+	"image/png"
 	"io"
 	"os"
 
@@ -32,9 +35,31 @@ var mimePriority = []string{
 	"STRING",
 }
 
-// ErrUnavailable reports that there is no selection or none in a text
+// imageMimePriority lists the image mime types we accept on paste,
+// best first: PNG round-trips our own writes exactly, JPEG is
+// read-only (decoded on paste, never offered).
+var imageMimePriority = []string{
+	"image/png",
+	"image/jpeg",
+}
+
+// offeredImageMimes are the mimes a written image claims.
+var offeredImageMimes = []string{"image/png"}
+
+// ErrUnavailable reports that there is no selection or none in a
 // format we can read.
-var ErrUnavailable = errors.New("clipboard: no text selection available")
+var ErrUnavailable = errors.New("clipboard: no selection available")
+
+// pickImageMime returns the best image mime type among those present,
+// or "" when none qualify.
+func pickImageMime(present func(string) bool) string {
+	for _, m := range imageMimePriority {
+		if present(m) {
+			return m
+		}
+	}
+	return ""
+}
 
 // transferTimeout bounds one offer read or source write against a
 // peer that stalls (a var so tests can shorten it): a silent peer is
@@ -85,8 +110,17 @@ type Clipboard struct {
 	primaryOffers map[*wlr.ZwpPrimarySelectionOfferV1]*offerMimes
 	primary       *wlr.ZwpPrimarySelectionOfferV1
 	primaryMimes  map[string]bool
+	// primarySource is the primary claim, primaryOut its text payload;
+	// images never ride the primary selection (copy-on-select keeps its
+	// text semantics).
 	primarySource *wlr.ZwpPrimarySelectionSourceV1
 	primaryOut    string
+
+	// imgOut is the encoded PNG payload of an image claim; imgSource is
+	// its data source. A claim is text or image - the last write wins,
+	// exactly one source lives at a time.
+	imgOut    []byte
+	imgSource *wl.DataSource
 }
 
 // offerMimes collects the mime types one advertised offer carries.
@@ -263,6 +297,7 @@ func (c *Clipboard) WriteText(s string) error {
 			return fmt.Errorf("clipboard: offer: %w", err)
 		}
 	}
+	c.dropClaim()
 	c.out = s
 	c.source = source
 	source.AddSendHandler(c)
@@ -305,7 +340,102 @@ func (c *Clipboard) WritePrimary(s string, serial uint32) error {
 	return nil
 }
 
-// sendPayload writes a claimed selection's payload to the consumer's
+// ReadImageBytes returns the current selection's image payload -
+// PNG or JPEG, whichever the offer carries best - as encoded bytes
+// with its mime type, blocking until the compositor delivers it.
+// Errors with ErrUnavailable when the selection holds no image; the
+// same xfer bounds as text apply (the 16 MiB cap is the image-sized
+// one: text never approaches it). Decoding is the caller's - the
+// widget pipeline decodes off the loop goroutine.
+func (c *Clipboard) ReadImageBytes() ([]byte, string, error) {
+	if c.selection == nil {
+		return nil, "", ErrUnavailable
+	}
+	return c.readOfferImage(c.selection.Receive, c.sess.Roundtrip, c.selectionMimes)
+}
+
+// readOfferImage is ReadImageBytes against an injectable receive/flush
+// pair, mirroring readOfferText for tests.
+func (c *Clipboard) readOfferImage(receive func(string, uintptr) error, flush func() error, mimes map[string]bool) ([]byte, string, error) {
+	if len(mimes) == 0 {
+		return nil, "", ErrUnavailable
+	}
+	mime := pickImageMime(func(m string) bool { return mimes[m] })
+	if mime == "" {
+		return nil, "", ErrUnavailable
+	}
+	r, w, err := os.Pipe()
+	if err != nil {
+		return nil, "", fmt.Errorf("clipboard: pipe: %w", err)
+	}
+	defer r.Close()
+	if err := receive(mime, w.Fd()); err != nil {
+		return nil, "", fmt.Errorf("clipboard: receive: %w", err)
+	}
+	if err := flush(); err != nil {
+		return nil, "", fmt.Errorf("clipboard: flush: %w", err)
+	}
+	_ = w.Close()
+	data, err := xfer.Read(r, xfer.MaxPayload, transferTimeout)
+	if err != nil {
+		return nil, "", fmt.Errorf("clipboard: transfer: %w", err)
+	}
+	return data, mime, nil
+}
+
+// WriteImage claims the regular selection with img's PNG encoding:
+// encoding happens here, on the caller's goroutine, so the send path
+// writes finished bytes and never encodes under a peer's deadline.
+// The primary selection is untouched - copy-on-select keeps its text
+// semantics; images ride the regular clipboard only.
+func (c *Clipboard) WriteImage(img image.Image) error {
+	if b := img.Bounds(); b.Dx() <= 0 || b.Dy() <= 0 {
+		return errors.New("clipboard: image claim needs a non-empty image")
+	}
+	if c.sess == nil {
+		return ErrUnavailable
+	}
+	mgr := c.sess.DataDeviceManager()
+	dev := c.sess.DataDevice()
+	if mgr == nil || dev == nil {
+		return ErrUnavailable
+	}
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
+		return fmt.Errorf("clipboard: encode png: %w", err)
+	}
+	source, err := mgr.CreateDataSource()
+	if err != nil {
+		return fmt.Errorf("clipboard: create source: %w", err)
+	}
+	for _, m := range offeredImageMimes {
+		if err := source.Offer(m); err != nil {
+			return fmt.Errorf("clipboard: offer: %w", err)
+		}
+	}
+	c.dropClaim()
+	c.imgOut, c.imgSource = buf.Bytes(), source
+	source.AddSendHandler(c)
+	source.AddCancelledHandler(c)
+	if err := dev.SetSelection(source, c.sess.KeyboardSerial()); err != nil {
+		return fmt.Errorf("clipboard: set selection: %w", err)
+	}
+	return nil
+}
+
+// dropClaim tears down whichever claim (text or image) holds the
+// regular selection, if any.
+func (c *Clipboard) dropClaim() {
+	if c.source != nil {
+		_ = c.source.Destroy()
+	}
+	c.source, c.out = nil, ""
+	if c.imgSource != nil {
+		_ = c.imgSource.Destroy()
+	}
+	c.imgSource, c.imgOut = nil, nil
+}
+
 // fd and closes it, so the reader sees EOF. The write is bounded by
 // the deadline — a consumer that never reads would otherwise stall
 // the dispatch loop on a full pipe — and EPIPE from one that closed
@@ -331,7 +461,25 @@ func (c *Clipboard) HandleDataSourceSend(ev wl.DataSourceSendEvent) {
 	if ev.FdError != nil {
 		return
 	}
+	// One source serves its claim's payload by the requested mime: the
+	// image bytes for image/png, the text for the text mimes.
+	if ev.MimeType == "image/png" && c.imgSource != nil {
+		c.sendPayload(string(c.imgOut), ev.Fd)
+		return
+	}
 	c.sendPayload(c.out, ev.Fd)
+}
+
+// HandleDataSourceCancelled implements wl.DataSourceCancelledHandler.
+func (c *Clipboard) HandleDataSourceCancelled(wl.DataSourceCancelledEvent) {
+	if c.source != nil {
+		_ = c.source.Destroy()
+		c.source = nil
+	}
+	if c.imgSource != nil {
+		_ = c.imgSource.Destroy()
+		c.imgSource = nil
+	}
 }
 
 // HandleZwpPrimarySelectionSourceV1Send implements
@@ -342,14 +490,6 @@ func (c *Clipboard) HandleZwpPrimarySelectionSourceV1Send(ev wlr.ZwpPrimarySelec
 		return
 	}
 	c.sendPayload(c.primaryOut, ev.Fd)
-}
-
-// HandleDataSourceCancelled implements wl.DataSourceCancelledHandler.
-func (c *Clipboard) HandleDataSourceCancelled(wl.DataSourceCancelledEvent) {
-	if c.source != nil {
-		_ = c.source.Destroy()
-		c.source = nil
-	}
 }
 
 // HandleZwpPrimarySelectionSourceV1Cancelled implements

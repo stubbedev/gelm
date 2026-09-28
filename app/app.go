@@ -644,15 +644,25 @@ func focusedSelection(router *widget.Router) (string, bool) {
 	return sel.SelectedText()
 }
 
-// pasteSelection inserts the clipboard text at the focused widget's
-// cursor.
+// pasteSelection puts the clipboard payload where the focused widget
+// wants it: an ImagePaster takes the selection's image bytes (the
+// widget decodes them off the loop goroutine); everything else takes
+// text — Entry and TextArea are text-only by design.
 //
 // Every error rejects the paste: besides an empty selection this
 // covers a hostile peer — a payload past xfer.MaxPayload, or one that
 // stalls past the transfer deadline — which today simply means
-// nothing is inserted. There is no toast infra to surface it to the
-// user yet; the error stops here.
+// nothing lands. There is no toast infra to surface it to the user
+// yet; the error stops here.
 func pasteSelection(router *widget.Router, clip *clipboard.Clipboard) {
+	if paster, ok := router.Focused().(widget.ImagePaster); ok {
+		data, mime, err := clip.ReadImageBytes()
+		if err != nil {
+			return
+		}
+		paster.PasteImage(data, mime)
+		return
+	}
 	text, err := clip.ReadText()
 	if err != nil {
 		return
