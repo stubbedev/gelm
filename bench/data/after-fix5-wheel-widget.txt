@@ -1,0 +1,24 @@
+goos: linux
+goarch: amd64
+pkg: github.com/stubbedev/gelm/widget
+cpu: Intel(R) Core(TM) i5-10400F CPU @ 2.90GHz
+BenchmarkPointerMove-12        	13871336	        86.10 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPointerMove-12        	13693129	        87.02 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPointerMove-12        	14094081	        85.90 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPointerMove-12        	13666226	        86.91 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPointerMove-12        	13956704	        86.71 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPointerMove-12        	13584091	        87.38 ns/op	       0 B/op	       0 allocs/op
+BenchmarkWheelOverScroll-12    	13550899	        89.51 ns/op	       0 B/op	       0 allocs/op
+BenchmarkWheelOverScroll-12    	13419220	        89.05 ns/op	       0 B/op	       0 allocs/op
+BenchmarkWheelOverScroll-12    	13508565	        89.17 ns/op	       0 B/op	       0 allocs/op
+BenchmarkWheelOverScroll-12    	13281372	        90.31 ns/op	       0 B/op	       0 allocs/op
+BenchmarkWheelOverScroll-12    	13514176	        89.32 ns/op	       0 B/op	       0 allocs/op
+BenchmarkWheelOverScroll-12    	13563474	        89.12 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDragHover-12          	11992927	       100.2 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDragHover-12          	12080293	       101.1 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDragHover-12          	11711444	        99.32 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDragHover-12          	12013162	       100.6 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDragHover-12          	12006729	        99.38 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDragHover-12          	11914988	       101.5 ns/op	       0 B/op	       0 allocs/op
+PASS
+ok  	github.com/stubbedev/gelm/widget	21.638s
