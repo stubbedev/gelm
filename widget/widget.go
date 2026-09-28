@@ -55,6 +55,15 @@ type Constraints struct {
 	Min, Max Size
 }
 
+// MinSizer is the squeezed-layout floor: the smallest size below which
+// the widget cannot do its job and must overflow instead of shrinking
+// further. Containers that negotiate space (Grid squeezing its tracks)
+// stop at these; Box overflows by design and never asks. The zero Size
+// — what a widget without the interface reports — means no floor.
+type MinSizer interface {
+	MinSize() Size
+}
+
 // Widget is one node in the retained widget tree. The passes run in order:
 // Measure computes how much space a widget wants, Arrange assigns its final
 // rect, Paint draws it.

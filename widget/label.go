@@ -184,6 +184,24 @@ func (l *Label) wrapped(width float64) []string {
 	return lines
 }
 
+// MinSize implements MinSizer: a wrapping label's floor is its widest
+// unbreakable token — wrapping narrower than that clips tokens, the
+// one thing wrapping promised not to do — and one line height, the
+// height below which nothing paints. Without wrap there is no width
+// floor: clipping and ellipsizing own the narrow rects by design.
+func (l *Label) MinSize() Size {
+	floor := Size{H: l.shaped.LineHeight()}
+	if !l.wrap || l.text == "" {
+		return floor
+	}
+	w := 0.0
+	for _, tok := range render.WrapText(l.face, l.text, 1, l.sizePx) {
+		w = math.Max(w, l.face.Shape(tok, l.sizePx).Advance())
+	}
+	floor.W = int(w + 0.5)
+	return floor
+}
+
 // Paint draws the text inside the arranged rect: the wrapped rows when
 // wrapping is on, the single line ellipsized as configured otherwise.
 // Nothing is painted when the rect cannot hold one line.

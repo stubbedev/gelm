@@ -371,6 +371,22 @@ func hoverMenuRow(m *Menu, itemH, i int) {
 	m.HoverMove(Point{X: bs.X + 12, Y: bs.Y + 4 + i*itemH + itemH/2})
 }
 
+// TestGoldenGridSqueeze pins the deficit negotiation (#67): tracks
+// shrink proportionally into an under-sized rect, wrapping labels
+// rest at their token floors while floorless tracks collapse, and a
+// spanning child rides the shrunken run.
+func TestGoldenGridSqueeze(t *testing.T) {
+	face := goldenFace(t)
+	th := DarkTheme()
+	wrap := NewLabel(face, 12, "wide column words wrap here", th.Text)
+	wrap.SetWrap(true)
+	grid := NewGrid(8, 8)
+	grid.Attach(wrap, 0, 0, 1, 1)
+	grid.Attach(NewLabel(face, 12, "shrinks freely", th.Text), 1, 0, 1, 1)
+	grid.Attach(NewLabel(face, 12, "spans the squeezed run", th.Text), 0, 1, 2, 1)
+	NewGolden(t, grid, "grid-squeeze", goldenTheme(th), goldenFrame(150, 70))
+}
+
 func TestGoldenProgressBar(t *testing.T) {
 	NewGolden(t, NewProgressBar(0.62), "progressbar")
 }

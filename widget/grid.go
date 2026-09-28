@@ -46,10 +46,25 @@ type gridChild struct {
 //
 // When the arranged rect is larger than the natural size, the surplus is
 // split equally among the tracks (earlier tracks take the remainder), so
-// a spanning child grows by the share of the tracks it spans. Tracks
-// never shrink below their maxima: an under-sized rect lets content
-// overflow the grid, and the painter's clip decides visibility, matching
-// Box.
+// a spanning child grows by the share of the tracks it spans. When it is
+// smaller, the deficit is negotiated — the reason a grid exists where a
+// Box only overflows: tracks shrink in proportion to their extents down
+// to per-track floors, and only when every floor is reached does the
+// content overflow and the painter's clip decide visibility. A floor is
+// the largest MinSize among the track's single-cell children (spanning
+// children are not floor sources — their need spreads, it does not pin);
+// widgets without a MinSize have none, and the grid itself reports the
+// sum of its floors so nested grids squeeze coherently.
+//
+// Children carry no expand flags: surplus and deficit both spread
+// uniformly over the tracks (earlier tracks take the remainder), the one
+// deterministic rule — a child that must claim the extra belongs in a
+// Box, whose expand flag is that negotiation.
+//
+// A child smaller than its shrunken span keeps its natural size under
+// AlignStart/Center/End (overflowing the span, exactly like a squeezed
+// Box child keeps its natural size); AlignFill takes the shrunken span
+// as given, so the two containers agree visually.
 //
 // Children paint in attach order, so a later attach overlapping an
 // earlier span paints on top.
@@ -61,10 +76,12 @@ type Grid struct {
 	rowHomog   bool
 	child      []*gridChild
 
-	// colW/rowH are the per-track extents Measure computed; Arrange
-	// expands them into the final rect. Box keeps the same
-	// measure-then-arrange contract through childEntry.nat.
-	colW, rowH []int
+	// colW/rowH are the per-track extents Measure computed; colMin/
+	// rowMin the per-track floors (see the type comment); Arrange
+	// expands or squeezes the extents into the final rect. Box keeps
+	// the same measure-then-arrange contract through childEntry.nat.
+	colW, rowH     []int
+	colMin, rowMin []int
 }
 
 // NewGrid returns an empty grid with the given spacing between columns
@@ -236,12 +253,12 @@ func (g *Grid) SetEnabled(enabled bool) {
 }
 
 // Measure measures every child and derives the tracks: single-cell
-// children set their track's maximum, then spanning children grow a run
-// of tracks by whatever their natural size exceeds the run's current
-// maxima plus internal spacing - the deficit spreads equally over the
-// run, earlier tracks taking the remainder. The result is cached until
-// an InvalidateLayout anywhere in the subtree or a different constraint
-// arrives.
+// children set their track's maximum (and, for MinSizer children, its
+// floor), then spanning children grow a run of tracks by whatever their
+// natural size exceeds the run's current maxima plus internal spacing -
+// the deficit spreads equally over the run, earlier tracks taking the
+// remainder. The result is cached until an InvalidateLayout anywhere in
+// the subtree or a different constraint arrives.
 func (g *Grid) Measure(con Constraints) Size {
 	if sz, ok := g.measureHit(con); ok {
 		return sz
@@ -249,32 +266,67 @@ func (g *Grid) Measure(con Constraints) Size {
 	cols, rows := g.extents()
 	g.colW = make([]int, cols)
 	g.rowH = make([]int, rows)
+	g.colMin = make([]int, cols)
+	g.rowMin = make([]int, rows)
 	for _, c := range g.child {
 		c.nat = c.w.Measure(Constraints{Max: con.Max})
 	}
 	for _, c := range g.child {
 		if c.colSpan == 1 {
 			g.colW[c.col] = max(g.colW[c.col], c.nat.W)
+			g.colMin[c.col] = max(g.colMin[c.col], minSizeOf(c.w).W)
 		}
 		if c.rowSpan == 1 {
 			g.rowH[c.row] = max(g.rowH[c.row], c.nat.H)
+			g.rowMin[c.row] = max(g.rowMin[c.row], minSizeOf(c.w).H)
 		}
 	}
 	for _, c := range g.child {
 		growTracks(g.colW, g.colSpacing, c.col, c.colSpan, c.nat.W)
 		growTracks(g.rowH, g.rowSpacing, c.row, c.rowSpan, c.nat.H)
 	}
+	// A floor is a minimum: a constraint-clamped measurement (a
+	// wrapping label measured under a tiny width clips its rows below
+	// its own token floor) must not pull a track under it, or the
+	// squeeze pass would have nothing to defend.
+	for i := range g.colW {
+		g.colW[i] = max(g.colW[i], g.colMin[i])
+	}
+	for i := range g.rowH {
+		g.rowH[i] = max(g.rowH[i], g.rowMin[i])
+	}
 	if g.colHomog {
 		evenTracks(g.colW)
+		evenTracks(g.colMin)
 	}
 	if g.rowHomog {
 		evenTracks(g.rowH)
+		evenTracks(g.rowMin)
 	}
 	nat := Size{
 		W: trackSum(g.colW) + g.colSpacing*(cols-1),
 		H: trackSum(g.rowH) + g.rowSpacing*(rows-1),
 	}
 	return g.measureStore(con, clampSize(nat, con))
+}
+
+// MinSize implements MinSizer: the sum of the track floors plus
+// spacing, so a nested grid squeezes coherently instead of reporting
+// no floor and collapsing under its parent's negotiation.
+func (g *Grid) MinSize() Size {
+	cols, rows := g.extents()
+	return Size{
+		W: trackSum(g.colMin) + g.colSpacing*max(0, cols-1),
+		H: trackSum(g.rowMin) + g.rowSpacing*max(0, rows-1),
+	}
+}
+
+// minSizeOf reports w's floor, zero for widgets without one.
+func minSizeOf(w Widget) Size {
+	if m, ok := w.(MinSizer); ok {
+		return m.MinSize()
+	}
+	return Size{}
 }
 
 // growTracks widens the run of n tracks starting at i so want fits: the
@@ -322,10 +374,12 @@ func trackSum(tracks []int) int {
 	return total
 }
 
-// Arrange assigns every child its spanned run, sized by the expanded
+// Arrange assigns every child its spanned run, sized by the fitted
 // tracks, aligned inside it per its Align. The surplus beyond the
 // natural size splits equally among the tracks (earlier tracks take the
-// remainder); a smaller rect leaves the tracks at their maxima.
+// remainder); a smaller rect squeezes the tracks in proportion to their
+// extents down to their floors, overflowing only once every floor is
+// reached.
 func (g *Grid) Arrange(r render.Rect) {
 	g.ArrangeRoot(r)
 	cols, rows := g.extents()
@@ -342,8 +396,8 @@ func (g *Grid) Arrange(r render.Rect) {
 		}
 		return
 	}
-	expandTracks(g.colW, g.colSpacing, r.W)
-	expandTracks(g.rowH, g.rowSpacing, r.H)
+	fitTracks(g.colW, g.colMin, g.colSpacing, r.W)
+	fitTracks(g.rowH, g.rowMin, g.rowSpacing, r.H)
 	for _, c := range g.child {
 		x, cw := trackExtent(g.colW, g.colSpacing, c.col, c.colSpan)
 		y, ch := trackExtent(g.rowH, g.rowSpacing, c.row, c.rowSpan)
@@ -358,21 +412,86 @@ func (g *Grid) ArrangeRoot(r render.Rect) {
 	g.node.Arrange(r)
 }
 
-// expandTracks splits the surplus beyond the tracks' natural maxima
-// equally over every track, earlier tracks taking the remainder. An
-// avail below natural leaves the tracks alone, so content overflows.
-func expandTracks(tracks []int, spacing, avail int) {
+// fitTracks fits the tracks into avail: a surplus splits equally over
+// every track (earlier tracks taking the remainder); a deficit
+// squeezes the tracks in proportion to their extents down to their
+// floors — shrinkTracks owns that negotiation, and overflow past the
+// floors is its verdict, not this one.
+func fitTracks(tracks, floors []int, spacing, avail int) {
 	if len(tracks) == 0 {
 		return
 	}
 	natural := trackSum(tracks) + spacing*(len(tracks)-1)
-	extra := max(0, avail-natural)
-	per, rem := extra/len(tracks), extra%len(tracks)
-	for i := range tracks {
-		tracks[i] += per
-		if i < rem {
-			tracks[i]++
+	if avail > natural {
+		extra := avail - natural
+		per, rem := extra/len(tracks), extra%len(tracks)
+		for i := range tracks {
+			tracks[i] += per
+			if i < rem {
+				tracks[i]++
+			}
 		}
+		return
+	}
+	content := max(0, avail-spacing*(len(tracks)-1))
+	shrinkTracks(tracks, floors, trackSum(tracks)-content)
+}
+
+// shrinkTracks distributes a deficit across the tracks in proportion
+// to their extents, never taking a track below its floor. Each pass
+// makes one exact largest-remainder split over the tracks that still
+// have room (integer share plus ranked rounding pixels, ties to the
+// earlier track), each share capped by its room; a capped share spills
+// into the next pass over the survivors. A deficit that survives every
+// pass overflows — the tracks rest at their floors. Deterministic by
+// construction: integer math only, and every pass applies at least one
+// pixel while anything has room.
+func shrinkTracks(tracks, floors []int, deficit int) {
+	if deficit <= 0 {
+		return
+	}
+	room := func(i int) int { return max(0, tracks[i]-floors[i]) }
+	for deficit > 0 {
+		var live []int
+		total := 0
+		for i := range tracks {
+			if room(i) > 0 {
+				live = append(live, i)
+				total += tracks[i]
+			}
+		}
+		if len(live) == 0 {
+			return // every floor reached: overflow
+		}
+		type claim struct{ i, frac int }
+		claims := make([]claim, 0, len(live))
+		applied := 0
+		for pos, i := range live {
+			weight := tracks[i]
+			take := min(deficit*weight/total, room(i))
+			tracks[i] -= take
+			applied += take
+			// The fractional claim ranks this track's right to a
+			// rounding pixel; the earlier track breaks ties.
+			claims = append(claims, claim{i: i, frac: (deficit*weight%total)*len(live) - pos})
+		}
+		if remainder := deficit - applied; remainder > 0 {
+			slices.SortFunc(claims, func(a, b claim) int { return b.frac - a.frac })
+			for _, c := range claims {
+				if remainder == 0 {
+					break
+				}
+				if room(c.i) > 0 {
+					tracks[c.i]--
+					remainder--
+					applied++
+				}
+			}
+		}
+		if applied == 0 {
+			return
+		}
+		deficit -= applied
 	}
 }
 

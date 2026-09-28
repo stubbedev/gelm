@@ -31,7 +31,7 @@ allocation/syscall reduction sweep (#77) is gated behind the epic.
 | Spinner | `Spinner`: anim-driven rotating arc (#30) | widget/spinner.go |
 | Separator | `NewSeparator(orientation)` (#30) | widget/separator.go |
 | Box, Stack, Overlay, ScrolledWindow | `Box`/`Stack`/`Overlay`/`Scroll` | widget/containers.go, widget/scroll.go |
-| Grid | `Grid`: cells, spans, per-axis spacing/homogeneous, child align (#34) | widget/grid.go |
+| Grid | `Grid`: cells, spans, per-axis spacing/homogeneous, child align (#34); deficit negotiation — under-sized rects squeeze tracks proportionally down to per-track MinSizer floors, overflowing only past them (#67) | widget/grid.go |
 | Notebook | `Notebook`: tabs, close hook, ctrl+PageUp/PageDown | widget/notebook.go |
 | ListView | virtualized `List`; single/browse/multiple selection modes with rubber-band drag and edge auto-scroll (#60) | widget/list.go |
 | Menu | check/radio rows, submenus, keyboard nav; Alt-letter mnemonics with underlines, accelerators firing from an open menu through the app's table (#63) | widget/menu.go |
@@ -99,6 +99,3 @@ declared use cases:
   automated gate (`just headless`, internal/headlesstest) boots wlroots'
   headless backend; Hyprland is verified manually (README "Status"),
   not in CI. Filed as #66.
-- **Grid tracks never shrink below their maxima** — under-sized rects
-  overflow and let the painter's clip decide visibility, matching Box
-  (widget/grid.go). Filed as #67.
