@@ -388,14 +388,15 @@ type loopKicker struct {
 // schedule arms a wakeup for at unless one is already pending that
 // covers it. While a tween runs the loop passes here once per frame:
 // re-arming a covered deadline would queue another sync per pass and
-// the parked loop would stop parking at all.
-func (k *loopKicker) schedule(sess *wlsession.Session, at time.Time) {
+// the parked loop would stop parking at all. wake is the loop's wake
+// seam (Application.wake), so tests drive ticks without a session.
+func (k *loopKicker) schedule(wake func(time.Duration), at time.Time) {
 	now := time.Now()
 	if k.covers(at, now) {
 		return
 	}
 	k.until = at
-	sess.WakeAfter(at.Sub(now))
+	wake(at.Sub(now))
 }
 
 // covers reports whether the pending kick still satisfies at: it has
