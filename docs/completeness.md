@@ -9,11 +9,13 @@ matrix, docs/*.md, and `git log`. The first-pass ladder lives in
 [stubbedev/wayle#19](https://github.com/stubbedev/wayle/issues/19).
 
 Third pass, with the maintainer's goal restated — a **feature-complete
-replacement for relm4** — files the gaps below and the non-goals that
+replacement for relm4** — filed the gaps below and the non-goals that
 parity overturns as #60–#74 under the epic
-[stubbedev/gelm#59](https://github.com/stubbedev/gelm/issues/59);
-CSS support is conditionally filed (#75 design, #76 engine), and the
-allocation/syscall reduction sweep (#77) is gated behind the epic.
+[stubbedev/gelm#59](https://github.com/stubbedev/gelm/issues/59), with
+CSS support scoped first (#75 design, #76 engine) and the
+allocation/syscall reduction sweep (#77) sequenced after feature
+completeness. The third pass is complete: every ticket it filed is
+closed and the map below reflects the tree as of that close.
 
 ## Widgets
 
@@ -47,7 +49,7 @@ allocation/syscall reduction sweep (#77) is gated behind the epic.
 | Font selection | `sysfont.Sans`/`Monospace`/`Serif`/`Best(family, size)`, system-store fallback chains (#31); `Families()` enumeration + `app.FontChooserDialog` (#74) | internal/sysfont, app/dialog.go |
 | Font fallback | `render.Chain`: per-rune coverage, bitmap/CBDT/sbix color-emoji strikes (#31) | render/text.go, internal/sysfont |
 | RTL/bidirectional text | UAX #9 resolution shared by every text path (internal/text, cached by text + direction), visual-order shaping in `render`, a `Direction` (LTR/RTL/auto) on Label, RichLabel, Entry, TextArea, Menu, Dropdown, and Box; start/end alignment and Box row flow mirror, arrows and word motion move visually while cursor and selection stay logical (#68) | internal/text/bidi.go, render/text.go, widget/direction.go |
-| Theming | typed `Theme` palette value with copying `With*` constructors, dark/light presets, WCAG contrast guard reporting through the injectable logger (#32, #55) — no CSS engine (a non-goal, see below) | widget/theme.go, [architecture.md](architecture.md) "Theming" |
+| Theming | typed `Theme` palette value with copying `With*` constructors, dark/light presets, WCAG contrast guard reporting through the injectable logger (#32, #55); a GTK-flavored CSS override layer above the palette — element/class/id/state selectors, cached computed styles, hot reload (#75 design, #76) | widget/theme.go, internal/style, widget/style.go, [css.md](css.md), [architecture.md](architecture.md) "Theming" |
 | Library logging | injectable `*slog.Logger` (`wlsession.SetLogger`, `app.SetLogger`), silent by default (nil discards); Warn = degraded-but-running, Error = terminal, Debug = protocol chatter (#55) | internal/logutil, internal/wlsession/logger.go, [input-model.md](input-model.md) |
 | State/threading (Components, Workers, Commands) | callbacks on one loop goroutine + `Application.Invoke`/`Every`; off-loop mutation trips the guard; relm4 concept mapping (#27) | app/invoke.go, widget/thread.go, [threading.md](threading.md) |
 
@@ -72,16 +74,16 @@ allocation/syscall reduction sweep (#77) is gated behind the epic.
 
 ## Deliberate non-goals
 
-Audited in #36; the reasons stay recorded in
-[architecture.md](architecture.md) "Non-goals". The third pass promoted
-every one that relm4 parity requires — each now filed under [#59](https://github.com/stubbedev/gelm/issues/59):
-
-- **GtkCss analog** — rejected on cost; #32 scopes styling to the typed
-  `Theme` struct instead. Revisited per the maintainer: conditional
-  design doc #75, engine #76.
-The standing non-goals (no per-window goroutines, no window manager, no
-actor model, no per-widget theme overrides, no live theme-change
-signal) are in [architecture.md](architecture.md) "Non-goals".
+Audited in #36 and revisited by the third pass: every non-goal that
+relm4 parity required is now a shipped capability (RTL/bidi #68,
+clipboard images #69, window icons #70, Paned #71, color chooser #72,
+calendar #73, font chooser #74, the CSS override layer #75/#76, list
+multi-select #60, dialog modality #61, type-ahead #62, menu
+mnemonics #63, live icon themes #64, the AT-SPI bridge #65, Hyprland
+in the gate #66, grid shrink #67). The standing non-goals — no
+per-window goroutines, no window manager, no actor model, no
+automatic theme switching, no live theme-change signal — and their
+reasons live in [architecture.md](architecture.md) "Non-goals".
 
 ## Known gaps
 
