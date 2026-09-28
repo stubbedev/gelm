@@ -33,7 +33,7 @@ allocation/syscall reduction sweep (#77) is gated behind the epic.
 | Box, Stack, Overlay, ScrolledWindow | `Box`/`Stack`/`Overlay`/`Scroll` | widget/containers.go, widget/scroll.go |
 | Grid | `Grid`: cells, spans, per-axis spacing/homogeneous, child align (#34) | widget/grid.go |
 | Notebook | `Notebook`: tabs, close hook, ctrl+PageUp/PageDown | widget/notebook.go |
-| ListView | virtualized `List`; **single-select only** (a documented limit, see Known gaps) | widget/list.go |
+| ListView | virtualized `List`; single/browse/multiple selection modes with rubber-band drag and edge auto-scroll (#60) | widget/list.go |
 | Menu | check/radio rows, submenus, keyboard nav; accelerators display-only | widget/menu.go |
 | Popover | `app.Popover`, widget-anchored, works on layer surfaces | app/popover.go |
 | Dialog, MessageBox | `app.Dialog`, `app.MessageBox`; application-level modality (xdg_shell has no modal bit) | app/dialog.go |
@@ -92,8 +92,6 @@ signal) are in [architecture.md](architecture.md) "Non-goals".
 Honest deferrals, each with its pointer — none of these block the
 declared use cases:
 
-- **List is single-select**; no multi-select model yet — filed as #60
-  (README matrix).
 - **Dialog modality is application-level only** — xdg_shell has no
   modal bit (README matrix, app/dialog.go); xdg-dialog-v1 changes that,
   filed as #61.

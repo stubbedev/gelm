@@ -163,6 +163,8 @@ func TestSwayRecipePinsTheShowcase(t *testing.T) {
 		fmt.Sprintf("resize set %d %d", showcaseW, showcaseH),
 		`for_window [app_id="` + StatesAppID + `"] floating enable`,
 		fmt.Sprintf("resize set %d %d", statesW, statesH),
+		`for_window [app_id="` + MultilistAppID + `"] floating enable`,
+		fmt.Sprintf("resize set %d %d", multilistW, multilistH),
 	} {
 		if !strings.Contains(cfg, want) {
 			t.Errorf("test-env sway config lacks %q; keep it in sync with internal/headlesstest:\n%s", want, cfg)

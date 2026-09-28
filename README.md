@@ -42,7 +42,7 @@ deliberate non-goals and the honest, deferred gaps — lives in
 | Entry | done | single-line; selection (shift motion, drag, double-click word, select-all); clipboard; IME preedit display |
 | TextArea | done | multi-line; soft wrap on by default (logical-line editing model); plain Tab indents, ctrl/shift+Tab traverse |
 | Scroll | done | both axes; draggable bars, gutter paging, auto-hide fade, fill/center stretch |
-| List | done | virtualized model rows (a viewport's worth of widgets); **single-select only** |
+| List | done | virtualized model rows (a viewport's worth of widgets); single/browse/multiple selection modes with rubber-band drag, edge auto-scroll, and the shift/ctrl keyboard model |
 | Notebook | done | tabs with close hook; ctrl+PageUp/PageDown cycles; hidden pages skipped by focus |
 | Menu | done | check/radio rows, separators, nested submenus; accelerators are display-only labels (no mnemonics) |
 | Dropdown, `DropdownOf[T]` | done | combobox: face plus an inline themed item list (a `Children` child only while open, not an `app.Popover`); Enter/Space/Down opens, arrows navigate, Esc cancels; no type-ahead |

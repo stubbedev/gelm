@@ -44,6 +44,16 @@ type DragMover interface {
 	DragMove(p Point)
 }
 
+// PressEnder receives the end of a press gesture: the release (after
+// any click), a cancelled press (the gesture became a data-device
+// drag), or pointer loss (the device went away mid-gesture). Widgets
+// that accumulate gesture state across DragMove calls — a list's
+// rubber-band selection, say — settle and flush it here, so a gesture
+// that ends off-widget still concludes exactly once.
+type PressEnder interface {
+	PressEnd()
+}
+
 // CursorNamer lets a widget request a pointer shape while hovered,
 // using xcursor names ("xterm" for text, "left_ptr" arrow default).
 type CursorNamer interface {
@@ -67,7 +77,7 @@ type TooltipTexter interface {
 func IsInteractive(w Widget) bool {
 	for w != nil {
 		switch w.(type) {
-		case *Button, *Slider, *Switch, *CheckButton, *Entry, *TextArea, *Scroll, *Dropdown:
+		case *Button, *Slider, *Switch, *CheckButton, *Entry, *TextArea, *Scroll, *Dropdown, *List:
 			return true
 		}
 		p, ok := w.(interface{ Parent() Widget })
@@ -216,6 +226,7 @@ const (
 	KeyPriorPage
 	KeyNextPage
 	KeyDismiss
+	KeySpace
 )
 
 // KeyActionForSym maps a keysym to an editing or activation action.
@@ -247,6 +258,8 @@ func KeyActionForSym(sym xkb.Keysym) (KeyAction, bool) {
 		return KeyNextPage, true
 	case xkb.KeyEscape:
 		return KeyDismiss, true
+	case xkb.KeySpace, xkb.KeyKPSpace:
+		return KeySpace, true
 	}
 	return 0, false
 }
@@ -361,6 +374,9 @@ func (r *Router) Release(button uint32, p Point) {
 		r.lastClick = time.Now()
 		r.lastClickWidget = hit
 	}
+	if pe, ok := r.pressed.(PressEnder); ok {
+		pe.PressEnd()
+	}
 	r.pressed = nil
 	r.dragging = false
 }
@@ -381,6 +397,9 @@ func (r *Router) Pressed() Widget { return r.pressed }
 func (r *Router) CancelPress() {
 	if pr, ok := r.pressed.(PressSetter); ok {
 		pr.SetPressed(false)
+	}
+	if pe, ok := r.pressed.(PressEnder); ok {
+		pe.PressEnd()
 	}
 	r.pressed = nil
 	r.dragging = false
