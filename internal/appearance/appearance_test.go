@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -15,6 +17,8 @@ import (
 	"time"
 
 	"github.com/godbus/dbus/v5"
+
+	"github.com/stubbedev/gelm/internal/icons"
 )
 
 // The mock: a real dbus daemon on a private unix socket (never the
@@ -86,6 +90,10 @@ type mockPortal struct {
 	mu    sync.Mutex
 	conn  *dbus.Conn
 	value uint32
+	// iconTheme answers the org.gnome.desktop.interface icon-theme
+	// read; iconRaw overrides it for unreadable-value cases.
+	iconTheme string
+	iconRaw   any
 	// raw, when set, overrides value entirely — for variants the spec
 	// does not define (a string where the uint32 belongs).
 	raw any
@@ -105,6 +113,12 @@ func (p *mockPortal) setRaw(raw any) {
 	p.mu.Unlock()
 }
 
+func (p *mockPortal) setIconTheme(name string) {
+	p.mu.Lock()
+	p.iconTheme = name
+	p.mu.Unlock()
+}
+
 func (p *mockPortal) fail() {
 	p.mu.Lock()
 	p.fails = true
@@ -115,6 +129,12 @@ func (p *mockPortal) fail() {
 func (p *mockPortal) ReadOne(namespace, key string) (dbus.Variant, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	if namespace == interfaceNamespace && key == iconThemeKey {
+		if p.iconRaw != nil {
+			return dbus.MakeVariant(p.iconRaw), nil
+		}
+		return dbus.MakeVariant(p.iconTheme), nil
+	}
 	if namespace != schemeNamespace || key != schemeKey {
 		return dbus.Variant{}, fmt.Errorf("no such key %s.%s", namespace, key)
 	}
@@ -157,7 +177,20 @@ func publishMock(t *testing.T, address string) *mockPortal {
 // broadcast through match rules).
 func (p *mockPortal) emit(t *testing.T, value any) {
 	t.Helper()
-	body := []any{schemeNamespace, schemeKey, dbus.MakeVariant(value)}
+	emitSetting(t, p.conn, schemeNamespace, schemeKey, value)
+}
+
+// emitIconTheme sends the icon-theme SettingChanged: the signal the
+// live-following icon cache rides (#64).
+func (p *mockPortal) emitIconTheme(t *testing.T, name any) {
+	t.Helper()
+	emitSetting(t, p.conn, interfaceNamespace, iconThemeKey, name)
+}
+
+// emitSetting sends one SettingChanged for the given namespace and key.
+func emitSetting(t *testing.T, conn *dbus.Conn, namespace, key string, value any) {
+	t.Helper()
+	body := []any{namespace, key, dbus.MakeVariant(value)}
 	msg := &dbus.Message{
 		Type: dbus.TypeSignal,
 		Headers: map[dbus.HeaderField]dbus.Variant{
@@ -168,7 +201,7 @@ func (p *mockPortal) emit(t *testing.T, value any) {
 		},
 		Body: body,
 	}
-	if call := p.conn.Send(msg, nil); call.Err != nil {
+	if call := conn.Send(msg, nil); call.Err != nil {
 		t.Fatalf("mock portal: emit: %v", call.Err)
 	}
 }
@@ -550,5 +583,197 @@ func TestAppearanceString(t *testing.T) {
 		if got := tc.a.String(); got != tc.want {
 			t.Fatalf("%d.String() = %q, want %q", tc.a, got, tc.want)
 		}
+	}
+}
+
+// collectIconThemes is collect() for the icon-theme stream.
+func collectIconThemes() (sink func(string), snapshot func() []string) {
+	var mu sync.Mutex
+	var got []string
+	return func(name string) {
+			mu.Lock()
+			got = append(got, name)
+			mu.Unlock()
+		}, func() []string {
+			mu.Lock()
+			defer mu.Unlock()
+			return append([]string(nil), got...)
+		}
+}
+
+// wantIconThemes waits for snapshot to equal want exactly.
+func wantIconThemes(t *testing.T, snapshot func() []string, want ...string) {
+	t.Helper()
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		got := snapshot()
+		if len(got) == len(want) && slices.Equal(got, want) {
+			return
+		}
+		time.Sleep(2 * time.Millisecond)
+	}
+	t.Fatalf("timed out waiting for icon themes: got %v, want %v", snapshot(), want)
+}
+
+// iconTree writes a two-theme fixture both themes of which hold a
+// symbolic icon: the follow test resolves under one and re-resolves
+// under the other.
+func iconTree(t *testing.T) string {
+	t.Helper()
+	root := t.TempDir()
+	write := func(rel string) {
+		t.Helper()
+		path := filepath.Join(root, rel)
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		svg := `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">` +
+			`<rect width="16" height="16" fill="currentColor"/></svg>`
+		if err := os.WriteFile(path, []byte(svg), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	index := func(theme string) {
+		t.Helper()
+		dir := filepath.Join(root, theme)
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		body := "[Icon Theme]\nName=" + theme + "\nDirectories=symbolic/apps\n\n[symbolic/apps]\nSize=16\n"
+		if err := os.WriteFile(filepath.Join(dir, "index.theme"), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, theme := range []string{"first", "second"} {
+		index(theme)
+		write(theme + "/symbolic/apps/face-symbolic.svg")
+	}
+	return root
+}
+
+// TestIconThemeStream pins the live icon-theme half of the monitor
+// (#64): the startup read is a baseline, SettingChanged delivers, the
+// foreign-namespace noise the filter must drop includes color-scheme
+// itself, duplicate announcements dedup, and unregistering stops
+// delivery.
+func TestIconThemeStream(t *testing.T) {
+	address, _ := startBus(t)
+	mock := publishMock(t, address)
+	mock.setIconTheme("Papirus")
+	m := newTestMonitor(t, address)
+
+	if got := m.IconTheme(); got != "Papirus" {
+		t.Fatalf("IconTheme() = %q, want the startup read Papirus", got)
+	}
+
+	sink, snapshot := collectIconThemes()
+	off := m.OnIconThemeChange(sink)
+	mock.emitIconTheme(t, "Adwaita")
+	wantIconThemes(t, snapshot, "Adwaita")
+	if got := m.IconTheme(); got != "Adwaita" {
+		t.Errorf("IconTheme() = %q after the change, want Adwaita", got)
+	}
+
+	// Noise: other settings in the same interface, and our own other
+	// key (color-scheme), never reach the icon listeners.
+	mock.emitOther(t)
+	schemes, schemeSnapshot := collect()
+	m.OnChange(schemes)
+	mock.emit(t, uint32(1))
+	wantEvents(t, schemeSnapshot, Dark)
+	if got := snapshot(); len(got) != 1 {
+		t.Errorf("icon listeners saw %v across foreign noise", got)
+	}
+
+	// A re-announcement of the same theme dedups.
+	mock.emitIconTheme(t, "Adwaita")
+	time.Sleep(100 * time.Millisecond)
+	if got := snapshot(); len(got) != 1 {
+		t.Errorf("duplicate icon-theme event: %v", got)
+	}
+
+	// Unregistering stops delivery.
+	off()
+	mock.emitIconTheme(t, "Breeze")
+	time.Sleep(100 * time.Millisecond)
+	if got := snapshot(); len(got) != 1 {
+		t.Errorf("unregistered listener kept receiving: %v", got)
+	}
+}
+
+// TestIconThemeStreamUnreadableValues pins the value mapping: a
+// non-string variant reads empty, and an explicitly emptied setting
+// delivers "" — the consumer owns the fallback policy.
+func TestIconThemeStreamUnreadableValues(t *testing.T) {
+	address, _ := startBus(t)
+	mock := publishMock(t, address)
+	mock.setIconTheme("Adwaita")
+	m := newTestMonitor(t, address)
+
+	sink, snapshot := collectIconThemes()
+	m.OnIconThemeChange(sink)
+	mock.emitIconTheme(t, 42)
+	wantIconThemes(t, snapshot, "")
+	if got := m.IconTheme(); got != "" {
+		t.Errorf("IconTheme() = %q after a numeric change, want empty", got)
+	}
+}
+
+// TestIconThemeFollowsThroughCache is the end-to-end pin of #64: a
+// portal SettingChanged flips the followed icons.Cache's theme, drops
+// its rasters (the generation moves), and re-resolves a themed icon
+// against the new theme — while an emptied setting keeps the previous
+// theme. The re-resolution is what live widget.Icons do on their next
+// damage pass: they watch the same generation.
+func TestIconThemeFollowsThroughCache(t *testing.T) {
+	address, _ := startBus(t)
+	mock := publishMock(t, address)
+	mock.setIconTheme("first")
+	m := newTestMonitor(t, address)
+
+	// The application's wiring, verbatim (app/application.go): the
+	// monitor's icon-theme stream feeds the cache's applier.
+	cache := icons.New("first")
+	cache.SetSearchPaths([]string{iconTree(t)})
+	off := m.OnIconThemeChange(cache.ApplyIconTheme)
+	t.Cleanup(off)
+
+	// Resolve a symbolic icon under the first theme.
+	if _, err := cache.SymbolicIcon("face-symbolic", 16, 120, 0xFF0000FF); err != nil {
+		t.Fatalf("symbolic resolve under the first theme: %v", err)
+	}
+	gen := cache.Generation()
+
+	// The desktop switches themes: the cache follows, rasters drop, and
+	// the same icon re-resolves from the new theme's files.
+	notified := make(chan string, 1)
+	cache.OnIconThemeChanged(func(name string) { notified <- name })
+	mock.emitIconTheme(t, "second")
+	select {
+	case name := <-notified:
+		if name != "second" {
+			t.Fatalf("notified %q, want second", name)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("the followed switch never notified")
+	}
+	if got := cache.Theme(); got != "second" {
+		t.Fatalf("cache theme = %q after the switch, want second", got)
+	}
+	if cache.Generation() == gen {
+		t.Error("the followed switch never dropped the cached rasters")
+	}
+	if _, err := cache.SymbolicIcon("face-symbolic", 16, 120, 0xFF0000FF); err != nil {
+		t.Errorf("symbolic resolve after the switch: %v", err)
+	}
+
+	// An emptied setting keeps the previous theme.
+	mock.emitIconTheme(t, "")
+	time.Sleep(200 * time.Millisecond)
+	if got := cache.Theme(); got != "second" {
+		t.Errorf("empty setting flipped the theme to %q; the previous one stays", got)
+	}
+	if cache.Generation() == gen {
+		t.Error("the empty setting disturbed the cache")
 	}
 }

@@ -113,6 +113,9 @@ const (
 	schemeNamespace = "org.freedesktop.appearance"
 	schemeKey       = "color-scheme"
 
+	interfaceNamespace = "org.gnome.desktop.interface"
+	iconThemeKey       = "icon-theme"
+
 	schemeDark  uint32 = 1
 	schemeLight uint32 = 2
 
@@ -161,10 +164,12 @@ type Monitor struct {
 
 	done chan struct{}
 
-	mu        sync.Mutex
-	closed    bool
-	current   Appearance
-	listeners []func(Appearance)
+	mu            sync.Mutex
+	closed        bool
+	current       Appearance
+	listeners     []func(Appearance)
+	iconTheme     string
+	iconListeners []func(string)
 }
 
 // New starts a monitor on the session bus. It performs the startup read
@@ -223,6 +228,7 @@ func startOn(m *Monitor, conn *dbus.Conn) *Monitor {
 	}
 	baseline := readScheme(conn)
 	m.set(baseline, false)
+	m.setIconTheme(readIconTheme(conn), false)
 	go m.run(conn, ch, owned)
 	return m
 }
@@ -295,6 +301,7 @@ func (m *Monitor) run(conn *dbus.Conn, ch chan *dbus.Signal, owned bool) {
 		// refresh is an event (unlike the startup read), but only when
 		// the value actually moved (set dedups).
 		m.set(readScheme(conn), true)
+		m.setIconTheme(readIconTheme(conn), true)
 	}
 }
 
@@ -341,6 +348,9 @@ func (m *Monitor) listen(conn *dbus.Conn, ch chan *dbus.Signal, owned bool) (sto
 			if a, matches := schemeChanged(sig); matches {
 				m.set(a, true)
 			}
+			if name, matches := iconThemeChanged(sig); matches {
+				m.setIconTheme(name, true)
+			}
 		case <-m.done:
 			return true
 		}
@@ -385,6 +395,64 @@ func (m *Monitor) set(a Appearance, deliver bool) {
 	m.mu.Unlock()
 	for _, fn := range fns {
 		fn(a)
+	}
+}
+
+// IconTheme returns the current icon-theme name (the portal's
+// org.gnome.desktop.interface icon-theme setting): empty means no
+// portal, no setting, or a value that is not a string. Safe from any
+// goroutine.
+func (m *Monitor) IconTheme() string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.iconTheme
+}
+
+// OnIconThemeChange registers fn to run with the new icon-theme name
+// whenever the desktop setting changes (#64); the returned function
+// unregisters it. The same threading contract as OnChange: callbacks
+// run serialized on the monitor's goroutine, never on a Wayland loop
+// goroutine — bridge with Application.Invoke. The startup read is a
+// baseline and never fires; an explicitly emptied setting is reported
+// as "" (the consumer owns the fallback policy).
+func (m *Monitor) OnIconThemeChange(fn func(string)) (off func()) {
+	if fn == nil {
+		return func() {}
+	}
+	m.mu.Lock()
+	m.iconListeners = append(m.iconListeners, fn)
+	i := len(m.iconListeners) - 1
+	m.mu.Unlock()
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			m.mu.Lock()
+			defer m.mu.Unlock()
+			// Function values are not comparable, so the slot is the
+			// identity: unregistering tombstones it and delivery skips
+			// the hole.
+			if i < len(m.iconListeners) {
+				m.iconListeners[i] = nil
+			}
+		})
+	}
+}
+
+// setIconTheme is set() for the icon-theme name, with the same
+// deliver-on-change-only contract.
+func (m *Monitor) setIconTheme(name string, deliver bool) {
+	m.mu.Lock()
+	changed := name != m.iconTheme
+	m.iconTheme = name
+	var fns []func(string)
+	if deliver && changed {
+		fns = slices.Clone(m.iconListeners)
+	}
+	m.mu.Unlock()
+	for _, fn := range fns {
+		if fn != nil {
+			fn(name)
+		}
 	}
 }
 
@@ -456,6 +524,57 @@ func schemeValue(v any) Appearance {
 		}
 	}
 	return Unknown
+}
+
+// readIconTheme reads the desktop's icon-theme name once (the
+// org.gnome.desktop.interface setting every portal publishes): the
+// same bounded ownership probe as readScheme, then a bounded ReadOne.
+// Any failure — no portal, no key, a non-string value — reads empty.
+func readIconTheme(conn *dbus.Conn) string {
+	body, err := call(conn.BusObject(), probeTimeout,
+		"org.freedesktop.DBus.NameHasOwner", portalName)
+	if err != nil || len(body) != 1 {
+		return ""
+	}
+	owned, _ := body[0].(bool)
+	if !owned {
+		return ""
+	}
+	body, err = call(conn.Object(portalName, portalPath), readTimeout,
+		readOne, interfaceNamespace, iconThemeKey)
+	if err != nil || len(body) != 1 {
+		return ""
+	}
+	return stringValue(body[0])
+}
+
+// iconThemeChanged inspects one signal and reports whether it is the
+// icon-theme SettingChanged, with the new name (empty for unreadable
+// values). Same filtering discipline as schemeChanged: every other
+// setting — color-scheme included — is not ours.
+func iconThemeChanged(sig *dbus.Signal) (string, bool) {
+	if sig == nil || sig.Name != changedSig || sig.Path != portalPath {
+		return "", false
+	}
+	if len(sig.Body) != 3 {
+		return "", false
+	}
+	namespace, _ := sig.Body[0].(string)
+	key, _ := sig.Body[1].(string)
+	if namespace != interfaceNamespace || key != iconThemeKey {
+		return "", false
+	}
+	return stringValue(sig.Body[2]), true
+}
+
+// stringValue maps a portal value to its string — a variant around
+// string, or anything else mapped to empty rather than guessing.
+func stringValue(v any) string {
+	if variant, ok := v.(dbus.Variant); ok {
+		v = variant.Value()
+	}
+	s, _ := v.(string)
+	return s
 }
 
 // call issues one method call with a client-side deadline: godbus's
