@@ -89,7 +89,10 @@ signal) are in [architecture.md](architecture.md) "Non-goals".
 Honest deferrals, each with its pointer — none of these block the
 declared use cases:
 
-- **Compositor-in-the-loop tests run on headless sway only** — the
-  automated gate (`just headless`, internal/headlesstest) boots wlroots'
-  headless backend; Hyprland is verified manually (README "Status"),
-  not in CI. Filed as #66.
+- **The Hyprland gate starts allow-failure** — the
+  compositor-in-the-loop suite runs unchanged on Hyprland in the VM
+  gate (`just hyprland-vm`, tests/hyprland-vm.nix, #66: Hyprland gets
+  its own DRM node inside a private NixOS VM, since aquamarine cannot
+  boot without one and the developer's card belongs to their live
+  session); it is non-blocking in CI until it has been green for a
+  sustained window. Sway stays the primary gate.

@@ -41,17 +41,20 @@
               inherit description;
             } // lib.optionalAttrs (mainProgram != null) { inherit mainProgram; };
           };
-      in {
-        packages = rec {
-          # The module itself: one build of every package in the repo -
-          # all demo binaries plus the wlpointer test driver. Downstream
-          # nix Go builds can also reach gelm.goModules for the vendored
-          # dependency tree; plain Go consumers pin this repo by semver
-          # tag in go.mod (see README, Packaging).
+      in
+        # The module itself: one build of every package in the repo -
+        # all demo binaries plus the wlpointer test driver. Downstream
+        # nix Go builds can also reach gelm.goModules for the vendored
+        # dependency tree; plain Go consumers pin this repo by semver
+        # tag in go.mod (see README, Packaging).
+        let
           gelm = mkGelm {
             pname = "gelm";
             description = "pure-Go Wayland widget toolkit (module and demos)";
           };
+        in {
+        packages = rec {
+          inherit gelm;
 
           gelm-bar = mkGelm {
             pname = "gelm-bar";
@@ -102,6 +105,17 @@
             # gelm is pure Go by design; keep accidental cgo out.
             export CGO_ENABLED=0
           '';
+        };
+
+        checks = {
+          # The Hyprland side of the compositor-in-the-loop gate (#66):
+          # a private NixOS VM (own kernel, own virtio-gpu DRM node,
+          # own seatd) that boots Hyprland and runs the same suite the
+          # sway gate runs. Needs KVM; see tests/hyprland-vm.nix.
+          gelm-hyprland-vm = pkgs.callPackage ./tests/hyprland-vm.nix {
+            src = self;
+            goModules = gelm.goModules;
+          };
         };
       });
 }

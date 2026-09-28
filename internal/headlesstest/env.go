@@ -14,15 +14,19 @@ import (
 // never starts the compositor itself - booting it is the recipe's job
 // (the proven path: sway on wlroots' headless backend with the pixman
 // renderer inside a private XDG_RUNTIME_DIR, socket polled until it
-// appears) - so the test binary carries no sway knowledge and the env
-// outlives it, shared by every test in the run.
+// appears) - so the test binary carries no boot knowledge and the env
+// outlives it, shared by every test in the run. Which compositor is
+// attached is the driver's business: GELM_TEST_COMPOSITOR names it
+// ("sway" default, "hyprland" for the VM gate).
 type Env struct {
-	// Dir is the session's private XDG_RUNTIME_DIR (mode 0700). Sway
-	// logs to sway.log inside it; client logs and the built showcase
-	// binary land here too.
+	// Dir is the session's private XDG_RUNTIME_DIR (mode 0700). The
+	// recipe logs the compositor to its driver's LogName inside it;
+	// client logs and the built showcase binary land here too.
 	Dir string
 	// Display is the WAYLAND_DISPLAY socket name (e.g. "wayland-1").
 	Display string
+
+	compositor Compositor
 }
 
 // Attach connects the harness to the compositor the caller booted:
@@ -39,7 +43,41 @@ func Attach() (*Env, error) {
 	if _, err := os.Stat(filepath.Join(dir, display)); err != nil { //nolint:gosec // the dir is the recipe's private runtime dir, the display its socket name
 		return nil, fmt.Errorf("headlesstest: compositor socket %s/%s: %w", dir, display, err)
 	}
-	return &Env{Dir: dir, Display: display}, nil
+	compositor, err := driverFor(os.Getenv("GELM_TEST_COMPOSITOR"))
+	if err != nil {
+		return nil, err
+	}
+	return &Env{Dir: dir, Display: display, compositor: compositor}, nil
+}
+
+// Compositor is the driver for the attached session; tests reach the
+// compositor-specific names and actions through it.
+func (e *Env) Compositor() Compositor {
+	return e.compositor
+}
+
+// LogPath is the file the boot recipe redirects the compositor's own
+// output to - the first place a failed assertion points at.
+func (e *Env) LogPath() string {
+	return filepath.Join(e.Dir, e.compositor.LogName())
+}
+
+// PIDPath is the file the boot recipe records the compositor pid in.
+func (e *Env) PIDPath() string {
+	return filepath.Join(e.Dir, e.compositor.PIDName())
+}
+
+// CloseWindow asks the compositor to close the client window with the
+// given app_id (the real xdg_toplevel.close delivery).
+func (e *Env) CloseWindow(appID string) error {
+	return e.compositor.CloseWindow(e.Dir, appID)
+}
+
+// KillCompositor SIGKILLs the compositor serving this session, by the
+// config path recorded in its cmdline - the only trace a daemonizing
+// compositor leaves behind.
+func (e *Env) KillCompositor() {
+	killByConfigPattern(filepath.Join(e.Dir, e.compositor.ConfigName()))
 }
 
 // strippedEnv lists the session variables that must never leak from

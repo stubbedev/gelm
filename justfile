@@ -14,6 +14,16 @@ headless_test_dir := "/tmp/gelm-test-env-24"
 # Run every release gate in order: vet, lint, test, build.
 check: vet lint test build
 
+# The Hyprland side of the compositor-in-the-loop gate (#66): boots
+# Hyprland inside a private NixOS VM (own kernel, own virtio-gpu DRM
+# node, own seatd - aquamarine cannot boot without a real DRM node and
+# the developer's card belongs to their live session) and runs the
+# same suite just headless runs, driven by GELM_TEST_COMPOSITOR=
+# hyprland. Needs KVM; the nix check is allow-failure in CI while
+# stability settles - sway stays the primary gate.
+hyprland-vm:
+    nix build -L .#checks.{{ arch() }}-{{ os() }}.gelm-hyprland-vm
+
 # The tagged AT-SPI bridge (#65): build everything with the tag set
 # (default builds carry none of it) and run the bridge's bus-level
 # tests - a private dbus-daemon plays the accessibility bus, a second

@@ -1,15 +1,18 @@
 // Package headlesstest is gelm's compositor-in-the-loop test harness:
-// it attaches to a private headless sway session (wlroots headless
-// backend, pixman renderer - booted by the justfile's test-env
-// recipe), launches a gelm client under test inside it, drives a
+// it attaches to a private headless compositor session (booted by the
+// justfile's test-env recipe: sway on the wlroots headless backend
+// with the pixman renderer, or Hyprland on its own DRM node inside
+// the tests/hyprland-vm.nix VM - GELM_TEST_COMPOSITOR picks the
+// driver), launches a gelm client under test inside it, drives a
 // synthetic seat through zwlr_virtual_pointer_v1 and
 // zwp_virtual_keyboard_v1, and asserts on the client's observable
 // behavior through its GOELM_DEBUG trace log.
 //
 // The package has two kinds of users. The unit-testable pieces (trace
-// parsing, keymap table) are plain exported functions and run
-// everywhere. The compositor-in-the-loop tests live in this package's
-// _test files and are gated by the GELM_HEADLESS environment variable:
+// parsing, keymap table, compositor drivers) are plain exported
+// functions and run everywhere. The compositor-in-the-loop tests live
+// in this package's _test files and are gated by the GELM_HEADLESS
+// environment variable:
 //
 //   - GELM_HEADLESS unset or empty: the integration tests skip, so a
 //     plain `go test ./...` on a machine with no compositor passes.
@@ -18,9 +21,9 @@
 //     WAYLAND_DISPLAY/XDG_RUNTIME_DIR; if the env is not there, the
 //     run fails - a skip under GELM_HEADLESS would be a silent hole.
 //
-// The session is isolated from the developer's desktop: sway runs
-// against its own runtime dir, and the recipe's test-env-stop removes
-// it after the run.
+// The session is isolated from the developer's desktop: the
+// compositor runs against its own runtime dir, and the recipe's
+// teardown removes it after the run.
 package headlesstest
 
 // AppID is the Wayland app_id of the showcase client under test. The

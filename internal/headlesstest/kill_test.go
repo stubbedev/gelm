@@ -1,15 +1,15 @@
 // The compositor-restart kill test (#42): the headless suite's honest
-// disconnect. The showcase client runs against the live sway session;
-// this test SIGKILLs the compositor mid-run and asserts the client's
-// defined story — the disconnect policy fires exactly once (one wire
-// trace), the loop unwinds, and the process exits by itself with the
-// distinct DisconnectExitCode a supervisor respawns on. No panic, no
-// zombie.
+// disconnect. The showcase client runs against the live private
+// session; this test SIGKILLs the compositor mid-run and asserts the
+// client's defined story — the disconnect policy fires exactly once
+// (one wire trace), the loop unwinds, and the process exits by itself
+// with the distinct DisconnectExitCode a supervisor respawns on. No
+// panic, no zombie.
 //
-// This file sorts after integration_test.go on purpose: killing sway
-// ends the shared session, so the kill must be the suite's last act.
-// The env recipe's trap-based teardown still runs afterwards and is
-// happy to tear down an already-dead compositor.
+// This file sorts after integration_test.go on purpose: killing the
+// compositor ends the shared session, so the kill must be the suite's
+// last act. The env recipe's trap-based teardown still runs afterwards
+// and is happy to tear down an already-dead compositor.
 package headlesstest
 
 import (
@@ -32,76 +32,40 @@ import (
 // detection itself.
 const killTimeout = 30 * time.Second
 
-// killCompositor SIGKILLs every process serving this test env's sway
-// config, plus the recorded pid: on some environments the recorded pid
+// killCompositor SIGKILLs every process serving this test env's
+// compositor config: on some environments the recorded pid
 // daemonizes - a parent that forks the real compositor and exits - so
 // by kill time the pid file is stale and the socket holder's only
 // reliable trace is the config path in its cmdline. A tree walk from a
 // dead parent finds nothing; a cmdline scan finds whatever shape the
 // fork took.
 func killCompositor() {
-	pattern := testEnv.Dir + "/sway.cfg"
-	entries, err := os.ReadDir("/proc")
-	if err != nil {
-		return
-	}
-	for _, e := range entries {
-		if !e.IsDir() || !isDigits(e.Name()) {
-			continue
-		}
-		cmd, err := os.ReadFile("/proc/" + e.Name() + "/cmdline")
-		if err != nil || !strings.Contains(string(cmd), pattern) {
-			continue
-		}
-		p, err := strconv.Atoi(e.Name())
-		if err == nil {
-			_ = syscall.Kill(p, syscall.SIGKILL)
-		}
-	}
+	testEnv.KillCompositor()
 }
 
 // liveCompositorProcs lists the surviving compositor-tree processes
-// (sway, swaybg, any leftover holding the display), read from procfs
-// cmdlines and parent pids so the failure names its suspects and how
-// they relate.
+// (the compositor, its helpers, any leftover holding the display),
+// read from procfs cmdlines and parent pids so the failure names its
+// suspects and how they relate.
 func liveCompositorProcs() string {
-	entries, err := os.ReadDir("/proc")
-	if err != nil {
-		return fmt.Sprintf("procfs: %v", err)
-	}
+	name := testEnv.Compositor().Name()
 	var names []string
-	for _, e := range entries {
-		if !e.IsDir() || !isDigits(e.Name()) {
-			continue
-		}
-		cmd, err := os.ReadFile("/proc/" + e.Name() + "/cmdline")
-		if err != nil {
-			continue
-		}
-		line := strings.ReplaceAll(string(cmd), "\x00", " ")
-		if strings.Contains(line, "sway") {
-			stat, _ := os.ReadFile("/proc/" + e.Name() + "/stat")
+	forEachProcPID(func(pid int, cmdline string) {
+		line := strings.ReplaceAll(cmdline, "\x00", " ")
+		if strings.Contains(line, name) {
+			stat, _ := os.ReadFile(fmt.Sprintf("/proc/%d/stat", pid))
 			fields := strings.Fields(string(stat))
 			parent := "?"
 			if len(fields) > 3 {
 				parent = fields[3]
 			}
-			names = append(names, e.Name()+"(ppid "+parent+")="+strings.TrimSpace(line))
+			names = append(names, fmt.Sprintf("%d(ppid %s)=%s", pid, parent, strings.TrimSpace(line)))
 		}
-	}
+	})
 	if len(names) == 0 {
 		return "none"
 	}
 	return strings.Join(names, "; ")
-}
-
-func isDigits(s string) bool {
-	for _, r := range s {
-		if r < '0' || r > '9' {
-			return false
-		}
-	}
-	return s != ""
 }
 
 // clientSocketPeers reports, for every unix socket the client holds
@@ -188,7 +152,7 @@ func TestHeadlessCompositorKillExitsCleanly(t *testing.T) {
 	case <-time.After(250 * time.Millisecond):
 	}
 
-	pidFile := testEnv.Dir + "/sway.pid"
+	pidFile := testEnv.PIDPath()
 	data, err := os.ReadFile(pidFile)
 	if err != nil {
 		t.Fatalf("compositor pid file %s: %v", pidFile, err)
@@ -219,9 +183,9 @@ func TestHeadlessCompositorKillExitsCleanly(t *testing.T) {
 		peers := clientSocketPeers(c.cmd.Process.Pid)
 		_ = c.cmd.Process.Signal(syscall.SIGQUIT)
 		time.Sleep(2 * time.Second)
-		t.Fatalf("showcase outlived the compositor: no disconnect policy ran; sway pid %d still alive: %v; procs: %s; client fd peers: %s; sway.log tail:\n\t%s; goroutine 1:\n\t%s",
+		t.Fatalf("showcase outlived the compositor: no disconnect policy ran; compositor pid %d still alive: %v; procs: %s; client fd peers: %s; compositor log tail:\n\t%s; goroutine 1:\n\t%s",
 			pid, swayAlive, liveCompositorProcs(), peers,
-			strings.ReplaceAll(tailFile(testEnv.Dir+"/sway.log", 40), "\n", "\n\t"),
+			strings.ReplaceAll(tailFile(testEnv.LogPath(), 40), "\n", "\n\t"),
 			strings.ReplaceAll(mainGoroutineStack(c.LogPath), "\n", "\n\t"))
 	}
 	waitErr := c.Wait()

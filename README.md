@@ -24,6 +24,17 @@ signal, not an automatic switch: `internal/appearance` watches
 xdg-desktop-portal's `color-scheme` (pure Go, no cgo) and the app
 wires it to `SetTheme` — see [docs/appearance.md](docs/appearance.md).
 
+The compositor-in-the-loop gate runs the same input suite on both
+compositors: sway is the primary required gate (`just headless`), and
+Hyprland runs the identical suite inside a private NixOS VM with its
+own DRM node (`just hyprland-vm`, tests/hyprland-vm.nix) — currently
+allow-failure while stability settles, promoted to blocking once it
+has been green for a sustained window. Verified per compositor: the
+full synthetic-seat suite (clicks, keys, drag, tooltip dwell, list
+multi-select, dialog modality, window states, clipboard roundtrip,
+compositor-kill disconnect) runs unchanged on both; only the pinning
+recipe differs (sway `for_window` rules vs Hyprland windowrules).
+
 ## Feature matrix
 
 A capability-by-capability audit against relm4/GTK — including the
