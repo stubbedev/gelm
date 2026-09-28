@@ -345,6 +345,24 @@ func TestGoldenMenuHover(t *testing.T) {
 		goldenAfterArrange(func() { hoverMenuRow(m, itemH, 1) }))
 }
 
+// TestGoldenMenuMnemonics pins the mnemonic underlines (#63): explicit
+// letters underline where they were resolved to, auto-resolved rows
+// underline their first free letter, and a conflicting explicit letter
+// leaves its row without one.
+func TestGoldenMenuMnemonics(t *testing.T) {
+	face := goldenFace(t)
+	th := DarkTheme()
+	m := NewMenu(face, 14,
+		MenuItem{Label: "New file", Accel: "Ctrl+N"},                     // auto: n
+		MenuItem{Label: "Save copy…", Mnemonic: 'c', OnClick: func() {}}, // explicit c
+		MenuItem{Label: "Save as", OnClick: func() {}},                   // auto: skips taken letters to a
+		MenuItem{Label: "Sort by", Mnemonic: 's', OnClick: func() {}},    // explicit s
+		MenuItem{Label: "Second", Mnemonic: 's'},                         // conflict: no underline
+	)
+	NewGolden(t, m, "menu-mnemonics", goldenTheme(th),
+		goldenAfterArrange(func() { hoverMenuRow(m, face.Shape("lg", 14).LineHeight()+12, 1) }))
+}
+
 // hoverMenuRow moves the menu's hover to row i, the pointer resting on
 // a row mid-popup. itemH is the row height NewMenu derives from the
 // face: Shape("lg", sizePx).LineHeight() + 12.

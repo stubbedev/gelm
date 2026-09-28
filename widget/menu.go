@@ -1,6 +1,12 @@
 package widget
 
 import (
+	"strings"
+	"unicode"
+
+	"github.com/unxed/xkb-go"
+
+	"github.com/stubbedev/gelm/internal/logutil"
 	"github.com/stubbedev/gelm/render"
 )
 
@@ -21,18 +27,26 @@ const (
 // toggles on activate), a radio row (Checked is exclusive within
 // items sharing the same Group), or a separator (a real rule; skipped
 // by keyboard motion - use MenuSeparator). Accel paints a
-// right-aligned accelerator label. Items nests a submenu; activating
-// such a row fires OnSubmenu so the host opens a child popup beside
-// it. Mnemonics are deliberately not implemented: accelerators are
-// display-only labels.
+// right-aligned accelerator label, and — while the menu is open — a
+// matching application accelerator fires the row's action through the
+// popup key path (see RawKeyHandler). Items nests a submenu;
+// activating such a row fires OnSubmenu so the host opens a child
+// popup beside it.
+//
+// Mnemonic is the row's Alt-letter shortcut while the menu is open:
+// an explicit letter (case-insensitive), or zero to auto-resolve the
+// first letter of the label no earlier row took. A letter claimed by
+// an earlier row wins and the later one is dropped with a Debug log;
+// the underline under the resolved letter is painted for free.
 type MenuItem struct {
-	Label   string
-	OnClick func()
-	Kind    ItemKind
-	Checked bool
-	Group   string
-	Accel   string
-	Items   []MenuItem
+	Label    string
+	OnClick  func()
+	Kind     ItemKind
+	Checked  bool
+	Group    string
+	Accel    string
+	Mnemonic rune
+	Items    []MenuItem
 }
 
 // MenuSeparator returns a separator item.
@@ -41,7 +55,8 @@ func MenuSeparator() MenuItem { return MenuItem{Kind: ItemSeparator} }
 // Menu is a vertical action list for popups and context menus: hovered
 // row highlight, pointer or keyboard activation (arrows move, Enter
 // activates, Esc dismisses, Right opens a submenu), check and radio
-// rows, accelerator labels, and nested submenus through OnSubmenu.
+// rows, accelerator labels, per-row Alt-letter mnemonics, and nested
+// submenus through OnSubmenu.
 type Menu struct {
 	node
 	face      render.Font
@@ -53,6 +68,12 @@ type Menu struct {
 	// OnSubmenu fires when a row with nested Items is activated; the
 	// host opens a child popup for it beside the parent row.
 	OnSubmenu func(index int, items []MenuItem)
+
+	// mnemonics maps each row's lowercased Alt-letter to its row index;
+	// mnemRunes holds the letter's rune index in the row's label (-1
+	// when the row has no mnemonic). Resolved once at construction.
+	mnemonics map[rune]int
+	mnemRunes []int
 }
 
 // NewMenu returns a menu showing items, painted with face at sizePx.
@@ -60,13 +81,63 @@ type Menu struct {
 // panics here (see requireFace) instead of failing later, in shaping.
 func NewMenu(face render.Font, sizePx float64, items ...MenuItem) *Menu {
 	face = requireFace("widget.NewMenu", face)
+	rows, runes := resolveMnemonics(items)
 	return &Menu{
-		face:    face,
-		sizePx:  sizePx,
-		items:   items,
-		hovered: -1,
-		itemH:   face.Shape("lg", sizePx).LineHeight() + 12,
+		face:      face,
+		sizePx:    sizePx,
+		items:     items,
+		hovered:   -1,
+		itemH:     face.Shape("lg", sizePx).LineHeight() + 12,
+		mnemonics: rows,
+		mnemRunes: runes,
 	}
+}
+
+// menuDebug is the mnemonic-conflict sink: conflicts route to the
+// injected library logger at Debug level (the rows still render; only
+// the duplicate shortcut is dropped). Tests swap it to capture.
+var menuDebug = func(msg string) { logutil.L().Debug(msg) }
+
+// resolveMnemonics assigns each row its Alt-letter: explicit Mnemonic
+// letters first (first declaration wins; duplicates drop with a Debug
+// log and the losing row keeps no mnemonic at all), then the first
+// label letter no earlier row claimed. Separators never take one.
+func resolveMnemonics(items []MenuItem) (rows map[rune]int, runes []int) {
+	rows = make(map[rune]int)
+	runes = make([]int, len(items))
+	explicit := make([]bool, len(items))
+	for i := range items {
+		runes[i] = -1
+	}
+	claim := func(letter rune, i int) {
+		rows[letter] = i
+		runes[i] = strings.IndexRune(strings.ToLower(items[i].Label), letter)
+	}
+	for i, it := range items {
+		if it.Mnemonic == 0 || it.Kind == ItemSeparator {
+			continue
+		}
+		explicit[i] = true
+		letter := unicode.ToLower(it.Mnemonic)
+		if _, taken := rows[letter]; taken {
+			menuDebug("menu mnemonic drop: '" + string(letter) + "' on \"" + it.Label + "\" duplicates an earlier row")
+			continue
+		}
+		claim(letter, i)
+	}
+	for i, it := range items {
+		if runes[i] >= 0 || explicit[i] || it.Kind == ItemSeparator || it.Label == "" {
+			continue
+		}
+		for _, r := range strings.ToLower(it.Label) {
+			if _, taken := rows[r]; taken || !unicode.IsLetter(r) {
+				continue
+			}
+			claim(r, i)
+			break
+		}
+	}
+	return rows, runes
 }
 
 // Measure wants the widest row (label plus indicator, accelerator, and
@@ -153,7 +224,16 @@ func (m *Menu) Paint(cv *render.Canvas) {
 			col = t.DisabledText()
 		}
 		baseline := row.Y + (row.H-lineH)/2 + int(m.face.Shape("lg", m.sizePx).Ascent()+0.5)
-		m.face.Draw(cv, m.face.Shape(it.Label, m.sizePx), x, baseline, col)
+		sh := m.face.Shape(it.Label, m.sizePx)
+		m.face.Draw(cv, sh, x, baseline, col)
+		if ri := m.mnemRunes[i]; ri >= 0 {
+			// The mnemonic underline: a strip under the claimed letter,
+			// the same 2px underline idiom the composing and link ranges
+			// use.
+			x0 := x + int(sh.CaretX(ri)+0.5)
+			x1 := x + int(sh.CaretX(ri+1)+0.5)
+			cv.FillRect(render.Rect{X: x0, Y: baseline + 2, W: max(x1-x0, 1), H: 2}, col)
+		}
 		if it.Accel != "" {
 			aw := int(m.face.Shape(it.Accel, m.sizePx).Advance() + 0.5)
 			m.face.Draw(cv, m.face.Shape(it.Accel, m.sizePx), row.X+row.W-12-aw, baseline, t.TextMuted)
@@ -312,6 +392,34 @@ func (m *Menu) dismiss() {
 	if m.OnDismiss != nil {
 		m.OnDismiss()
 	}
+}
+
+// ActivateMnemonic activates the row whose mnemonic letter matches sym
+// (case-insensitive) — the Alt+letter route while the menu is open —
+// and reports whether one fired. A submenu row opens its submenu;
+// arrow navigation and Esc are untouched (they arrive as KeyActions,
+// never through here).
+func (m *Menu) ActivateMnemonic(sym xkb.Keysym) bool {
+	if !IsEnabled(m) {
+		return false
+	}
+	i, ok := m.mnemonics[unicode.ToLower(rune(sym))]
+	if !ok {
+		return false
+	}
+	m.hovered = i
+	m.Invalidate()
+	m.activate(i)
+	return true
+}
+
+// RawKey implements RawKeyHandler: Alt+letter (no ctrl) activates the
+// matching row mnemonic; every other raw key is not the menu's.
+func (m *Menu) RawKey(code uint32, mods Mods, sym xkb.Keysym) bool {
+	if mods&ModAlt != 0 && mods&ModCtrl == 0 {
+		return m.ActivateMnemonic(sym)
+	}
+	return false
 }
 
 // DragMove keeps hover tracking during presses. Disabled menus
