@@ -270,6 +270,46 @@ type KeyActionHandler interface {
 	KeyAction(a KeyAction, mods Mods)
 }
 
+// RawKeyHandler sees the key presses the action translation does not
+// cover — letters and other keysyms that carry no KeyAction — while
+// its tree holds the keyboard (a popup menu under a grab, say).
+// Returning true consumes the press; a false return hands nothing on
+// (the host decides what, if anything, happens next). Mnemonics and
+// accelerators ride this path.
+type RawKeyHandler interface {
+	// RawKey reports whether the press was consumed. code is the
+	// evdev keycode, sym its keysym, mods the held modifiers.
+	RawKey(code uint32, mods Mods, sym xkb.Keysym) bool
+}
+
+// MnemonicActivator is implemented by widgets whose rows carry
+// Alt-letter mnemonics (Menu): ActivateMnemonic fires the row bound
+// to sym, case-insensitively, and reports whether one fired.
+type MnemonicActivator interface {
+	ActivateMnemonic(sym xkb.Keysym) bool
+}
+
+// ActivateMnemonic fires the first mnemonic bound to sym at or below
+// w, in paint order, and reports whether one fired. Hosts that hold
+// raw keys for a tree (a popover's key root) route Alt-letter presses
+// through here.
+func ActivateMnemonic(w Widget, sym xkb.Keysym) bool {
+	if w == nil {
+		return false
+	}
+	if ma, ok := w.(MnemonicActivator); ok && ma.ActivateMnemonic(sym) {
+		return true
+	}
+	if c, ok := w.(childser); ok {
+		for _, k := range c.Children() {
+			if ActivateMnemonic(k, sym) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // RuneHandler receives typed characters.
 type RuneHandler interface {
 	InsertRune(r rune)

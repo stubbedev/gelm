@@ -44,7 +44,7 @@ deliberate non-goals and the honest, deferred gaps — lives in
 | Scroll | done | both axes; draggable bars, gutter paging, auto-hide fade, fill/center stretch |
 | List | done | virtualized model rows (a viewport's worth of widgets); single/browse/multiple selection modes with rubber-band drag, edge auto-scroll, and the shift/ctrl keyboard model |
 | Notebook | done | tabs with close hook; ctrl+PageUp/PageDown cycles; hidden pages skipped by focus |
-| Menu | done | check/radio rows, separators, nested submenus; accelerators are display-only labels (no mnemonics) |
+| Menu | done | check/radio rows, separators, nested submenus; Alt-letter mnemonics (explicit or auto-resolved, underlined) fire while the menu is open, and application accelerators fire from an open menu through the same table the main key path uses |
 | Dropdown, `DropdownOf[T]` | done | combobox: face plus an inline themed item list (a `Children` child only while open, not an `app.Popover`); Enter/Space/Down opens, arrows navigate, Esc cancels; type-ahead jumps the open list by prefix (case-insensitive, repeated keys cycle, idle-timeout reset) and first-letter-cycles the closed face |
 | Popover (`app.Popover`) | done | anchored to any widget, flips inside the host; works on layer surfaces too |
 | Dialog, MessageBox (`app`) | done | parented toplevels; modality is window-level through xdg-dialog-v1 where the compositor offers it (input to the parent is compositor-blocked) with the application-level block as the floor; Esc/Enter responses |

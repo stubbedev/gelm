@@ -34,7 +34,7 @@ allocation/syscall reduction sweep (#77) is gated behind the epic.
 | Grid | `Grid`: cells, spans, per-axis spacing/homogeneous, child align (#34) | widget/grid.go |
 | Notebook | `Notebook`: tabs, close hook, ctrl+PageUp/PageDown | widget/notebook.go |
 | ListView | virtualized `List`; single/browse/multiple selection modes with rubber-band drag and edge auto-scroll (#60) | widget/list.go |
-| Menu | check/radio rows, submenus, keyboard nav; accelerators display-only | widget/menu.go |
+| Menu | check/radio rows, submenus, keyboard nav; Alt-letter mnemonics with underlines, accelerators firing from an open menu through the app's table (#63) | widget/menu.go |
 | Popover | `app.Popover`, widget-anchored, works on layer surfaces | app/popover.go |
 | Dialog, MessageBox | `app.Dialog`, `app.MessageBox`; window-level modality through xdg-dialog-v1 with the application-level block as the floor (#61) | app/dialog.go, internal/wlsession/dialog.go |
 | Tooltip | `SetTooltip` on any widget, 500ms dwell | widget/widget.go, app/tooltip.go |
@@ -93,8 +93,6 @@ signal) are in [architecture.md](architecture.md) "Non-goals".
 Honest deferrals, each with its pointer — none of these block the
 declared use cases:
 
-- **Menu accelerators are display-only**; no mnemonics (README matrix)
-  — filed as #63.
 - **Icon themes do not follow live setting changes** — the lookup is
   explicit ([icons.md](icons.md), widget/theme.go); the system
   dark/light preference itself is observable since #53

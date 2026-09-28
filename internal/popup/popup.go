@@ -419,8 +419,18 @@ func Run(sess *wlsession.Session, p *Popup, frac120 uint32, root widget.Widget, 
 	if keys != nil {
 		prevKey := sess.OnKey
 		sess.OnKey = func(code uint32, mods wlsession.Mods) {
-			if a, ok := widget.KeyActionForSym(sess.KeySym(code)); ok {
+			sym := sess.KeySym(code)
+			if a, ok := widget.KeyActionForSym(sym); ok {
 				keys.KeyAction(a, widget.Mods(mods))
+				return
+			}
+			// Keys the action translation does not cover (letters, and
+			// anything riding modifiers) reach the root raw: mnemonics and
+			// accelerators live there. A decline swallows the press, as
+			// before — text never leaks through an open popup into the
+			// window behind it.
+			if rk, ok := keys.(widget.RawKeyHandler); ok {
+				_ = rk.RawKey(code, widget.Mods(mods), sym)
 			}
 		}
 		defer func() { sess.OnKey = prevKey }()

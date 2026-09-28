@@ -5,9 +5,11 @@ import (
 	"sync"
 
 	"github.com/neurlang/wayland/wl"
+	"github.com/unxed/xkb-go"
 
 	"github.com/stubbedev/gelm/internal/popup"
 	"github.com/stubbedev/gelm/internal/scale"
+	"github.com/stubbedev/gelm/internal/wlsession"
 	"github.com/stubbedev/gelm/render"
 	"github.com/stubbedev/gelm/widget"
 	"github.com/stubbedev/gelm/wlr"
@@ -126,10 +128,18 @@ func anchorOrigin(host, anchor render.Rect, size widget.Size, g popup.Gravity) (
 	return x, y
 }
 
-// popoverKeyRoot wraps popover content with Esc dismissal.
+// popoverKeyRoot wraps popover content with Esc dismissal and the
+// raw-key routes a popup owes: Alt-letter presses activate the
+// content's mnemonics first (an open menu owns its Alt-letters), then
+// application-wide accelerators fire from the very table the main
+// routeKey path uses — so a combo fires exactly once whichever path
+// sees it, and the two can never disagree.
 type popoverKeyRoot struct {
 	onDismiss func()
 	content   widget.Widget
+	// fireAccel fires the application's accelerators for one raw key,
+	// reporting whether one fired.
+	fireAccel func(sym xkb.Keysym, mods wlsession.Mods) bool
 	bounds    render.Rect
 }
 
@@ -159,6 +169,17 @@ func (r *popoverKeyRoot) KeyAction(a widget.KeyAction, mods widget.Mods) {
 	if h, ok := r.content.(widget.KeyActionHandler); ok {
 		h.KeyAction(a, mods)
 	}
+}
+
+// RawKey implements widget.RawKeyHandler: the popover's mnemonics and
+// accelerators, in that order.
+func (r *popoverKeyRoot) RawKey(code uint32, mods widget.Mods, sym xkb.Keysym) bool {
+	if mods&widget.ModAlt != 0 && mods&widget.ModCtrl == 0 {
+		if widget.ActivateMnemonic(r.content, sym) {
+			return true
+		}
+	}
+	return r.fireAccel != nil && r.fireAccel(sym, wlsession.Mods(mods))
 }
 
 // LayerSurfacer is implemented by layer-shell hosts so popovers can
@@ -193,7 +214,17 @@ func (a *Application) OpenPopover(host Host, cfg PopoverConfig) (*Popover, error
 	gutter := widget.Current().ShadowGutter()
 
 	p := &Popover{}
-	keyRoot := &popoverKeyRoot{onDismiss: p.Dismiss, content: cfg.Content}
+	keyRoot := &popoverKeyRoot{
+		onDismiss: p.Dismiss,
+		content:   cfg.Content,
+		fireAccel: func(sym xkb.Keysym, mods wlsession.Mods) bool {
+			// App-wide bindings only: the popup holds the keyboard, so
+			// there is no focused widget whose bindings could own the
+			// combo — exactly the GTK rule that an open menu fires the
+			// accelerator group and nothing else.
+			return a.accels.fire(nil, sym, mods)
+		},
+	}
 
 	pcfg := popup.Config{
 		X: x - gutter, Y: y - gutter,
