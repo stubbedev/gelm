@@ -25,7 +25,7 @@ allocation/syscall reduction sweep (#77) is gated behind the epic.
 | Entry | `Entry`: selection, clipboard, IME preedit; masked echo `EchoPassword`/`EchoNone` with app-driven reveal (#29) | widget/entry.go, widget/echo.go |
 | Undo/redo | bounded coalescing stack behind `widget.Undoer`, shared by `Entry` and `TextArea`; ctrl+z / ctrl+shift+z / ctrl+y in `routeKey` (#29) | widget/undo.go, app/app.go |
 | TextView | `TextArea`: soft wrap, logical-line editing, Tab trap | widget/textarea.go |
-| ComboBox | `Dropdown` / `DropdownOf[T]` — face plus inline themed item list; type-ahead decided against and documented on the type (#28) | widget/dropdown.go |
+| ComboBox | `Dropdown` / `DropdownOf[T]` — face plus inline themed item list; prefix type-ahead on the open list, first-letter cycling on the closed face (#62) | widget/dropdown.go |
 | Toast | `widget.Toast` + `Application.ShowToast`: stacking, action, hover-pause (#30) | widget/toast.go, app/toast.go |
 | Expander | `Expander`: animated reveal, child visible only while open (#30) | widget/expander.go |
 | Spinner | `Spinner`: anim-driven rotating arc (#30) | widget/spinner.go |
@@ -93,10 +93,6 @@ signal) are in [architecture.md](architecture.md) "Non-goals".
 Honest deferrals, each with its pointer — none of these block the
 declared use cases:
 
-- **No Dropdown type-ahead** — decided against in #28: menus have no
-  mnemonics either, and a typed character collides with Space-opens in
-  the text router (documented on the type, widget/dropdown.go).
-  Reopened for parity, filed as #62.
 - **Menu accelerators are display-only**; no mnemonics (README matrix)
   — filed as #63.
 - **Icon themes do not follow live setting changes** — the lookup is

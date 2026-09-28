@@ -1,6 +1,9 @@
 package widget
 
 import (
+	"strings"
+	"time"
+
 	"github.com/stubbedev/gelm/internal/anim"
 	"github.com/stubbedev/gelm/internal/surfx"
 	"github.com/stubbedev/gelm/render"
@@ -13,6 +16,9 @@ const (
 	// dropdownSlide is how far the list rises into place over the open
 	// tween (and falls back on close), masked to the list's own bounds.
 	dropdownSlide = 10
+	// dropdownTypeTimeout is how long a typed prefix survives after the
+	// last key before the type-ahead chain resets.
+	dropdownTypeTimeout = time.Second
 )
 
 // Dropdown is a combobox: a closed face showing the current selection
@@ -31,9 +37,17 @@ const (
 //
 // Keyboard: Enter, Space, or Down opens while focused, arrows move the
 // highlighted row (Home/End jump), Enter picks, Esc cancels without
-// changing the selection. Type-ahead is deliberately not implemented —
-// menus have no mnemonics either, and the first character of type-ahead
-// would collide with Space-to-open in the text router.
+// changing the selection.
+//
+// Type-ahead (GTK combobox parity): while the list is open, printable
+// keys jump the highlight to the first row whose label starts with the
+// typed prefix (case-insensitive); while closed, they cycle the
+// selection through the rows sharing the pressed first letter. Space
+// never joins a prefix — it keeps its open/activate role while open
+// and opens while closed. Repeated keys cycle among the equal-prefix
+// rows; the chain resets after a short idle timeout. Keys that match
+// nothing are ignored outright — Enter, Space, arrows, Esc, and Tab
+// routing never fight the type-ahead.
 //
 // The constructor takes the face like every other text widget: face,
 // then sizePx, then the items. Face may be a render.Chain for
@@ -58,6 +72,11 @@ type Dropdown struct {
 	closing      bool
 	listRect     render.Rect
 	cancelReveal anim.Cancel
+
+	// type-ahead state: the accumulated case-folded prefix, and the
+	// idle timer that clears it.
+	typed      string
+	typeCancel anim.Cancel
 
 	// OnSelect fires exactly once per selection change, whatever
 	// produced it: a click, Enter, or SetSelected. Re-picking the
@@ -392,11 +411,90 @@ func (d *Dropdown) KeyAction(a KeyAction, _ Mods) {
 
 // InsertRune implements RuneHandler: Space opens, the other half of
 // the activation pair (Enter is the first). Open, Space behaves like
-// Enter and activates the highlighted row.
+// Enter and activates the highlighted row. Every other printable rune
+// feeds the type-ahead chain.
 func (d *Dropdown) InsertRune(r rune) {
+	if !d.Enabled() {
+		return
+	}
 	if r == ' ' {
 		d.KeyAction(KeyEnter, 0)
+		return
 	}
+	d.typeAhead(r)
+}
+
+// typeAhead applies one printable key to the type-ahead chain:
+// extending the prefix jumps to its first match, a repeated key cycles
+// among the equal-prefix rows, and a key that matches nothing leaves
+// every bit of state alone. Open, the jump moves the highlight; closed,
+// it moves the selection (first-letter cycling). Each accepted key
+// restarts the idle timer that clears the chain.
+func (d *Dropdown) typeAhead(r rune) {
+	key := strings.ToLower(string(r))
+	prefix := d.typed + key
+	rows := d.prefixRows(prefix)
+	cycling := false
+	if len(rows) == 0 {
+		// The extension matched nothing: a fresh single-letter chain
+		// (the repeated-key case, or a stale multi-letter buffer) is the
+		// retry; a letter with no rows at all is a pass-through.
+		prefix = key
+		rows = d.prefixRows(key)
+		cycling = d.typed != ""
+		if len(rows) == 0 {
+			return
+		}
+	}
+	current := d.selected
+	if d.open && d.menu != nil {
+		current = d.menu.hovered
+	}
+	target := rows[0]
+	if cycling {
+		for _, i := range rows {
+			if i > current {
+				target = i
+				break
+			}
+		}
+	}
+	d.typed = prefix
+	d.armTypeTimeout()
+	if d.open {
+		d.menu.hovered = target
+		d.menu.Invalidate()
+		return
+	}
+	d.selectIndex(target)
+}
+
+// prefixRows returns the indices of items whose label starts with the
+// case-folded prefix, ascending.
+func (d *Dropdown) prefixRows(prefix string) []int {
+	var rows []int
+	for i, label := range d.items {
+		if strings.HasPrefix(strings.ToLower(label), prefix) {
+			rows = append(rows, i)
+		}
+	}
+	return rows
+}
+
+// armTypeTimeout (re)starts the idle timer that clears the typed
+// chain; the delay keeps its duration under reduced motion, like every
+// timing skeleton.
+func (d *Dropdown) armTypeTimeout() {
+	if d.typeCancel != nil {
+		d.typeCancel()
+	}
+	d.typeCancel = anim.Play(anim.Sequence(
+		anim.Delay(dropdownTypeTimeout),
+		anim.Animate(0, func(float64) {
+			d.typed = ""
+			d.typeCancel = nil
+		}),
+	))
 }
 
 // DropdownItem pairs a display label with the typed value picking it
