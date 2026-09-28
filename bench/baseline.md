@@ -109,5 +109,111 @@ Readings that bound the sweep:
 | one canvas primitive mix repaint | 0 allocs | **0 allocs** | `render.TestAllocBudgetCanvasPaint` |
 | one idle loop tick (app) | 0 allocs | **0 allocs** | `app.TestAllocBudgetIdleLoopTick` |
 
-The after table, the fixes' benchstat deltas, and the bounded-debt list
-land at the bottom of this file as the sweep closes.
+## After the sweep
+
+Six fixes landed, each behind a benchmark, none changing behavior
+(`git diff -- '*testdata/golden*'` empty; `just check`, `-race`, `just
+fmt-check`, `just lint`, `just headless` green; raw data:
+`bench/data/after-*.txt`). Per-fix deltas with n=6 benchstat runs are
+in each commit message; this is the cumulative table:
+
+| benchmark | before allocs/op | after allocs/op | before B/op | after B/op | sec/op |
+|---|---|---|---|---|---|
+| ShowcaseMeasure (cold measure) | 44 | **0** | 176 | **0** | -26% |
+| ShowcaseArrange | 5 | **1** | 57 | 24 | -10% |
+| ShowcasePaint (full frame) | 24 | **9** | 2119 | **792** | ~ (pixel-bound) |
+| EntryPaint | 3 | **0** | 167 | 23 | ~ |
+| ProgressOnlyFrame (app frame) | 22 | **6.5** | 1532 | **192** | -1.2% |
+| StyleGalleryFullRestyle | 9 | 9 | 1250 | 1250 | -2.4% |
+| StyleGalleryPaint | 24 | **9** | 2102 | **756** | ~ |
+| PointerMove (per event, new) | - | **0** | - | **0** | 88ns |
+| WheelOverScroll (per event, new) | - | **0** | - | **0** | 95ns |
+| DragHover (per event, new) | - | **0** | - | **0** | 80ns |
+| render Shape200 warm | 0 | 0 | 0 | 0 | ~ |
+| render DrawAligned warm | 0 | 0 | 0 | 0 | ~ |
+| render CanvasPaint | 0 | 0 | 0 | 0 | ~ |
+| app idle loop tick | 0 | 0 | 0 | 0 | ~ |
+
+App draw path (real hostWindow.draw, fake wire): 3 allocs/frame —
+down from 8 at the baseline.
+
+### The fixes
+
+1. **Rune-keyed shaping cache** (`Font.ShapeRune`, render): the text
+   area's wrap walk probed one rune at a time and built a one-rune
+   string per probe just to key the string cache — 58% of the measure
+   profile. ShowcaseMeasure 44→0 allocs, -20% time.
+2. **One conversion per line** (text area): panToCaret, caretX, and
+   Paint's row loop converted the same line twice (shape key + RTL
+   read); Paint now converts per line entered, not per row.
+3. **Cached entry display string** (`Entry.setRunes`): the display
+   text was re-converted from runes on each of 4+ reads per frame.
+   EntryPaint 3→0 allocs.
+4. **Per-depth damage-walk buffers** (`appendChildren` + walkStack):
+   the frame's damage walk took a fresh `Children()` copy per
+   container per frame. ShowcasePaint 18→9 allocs after the earlier
+   fixes, ProgressOnlyFrame 1472→192 B.
+5. **Bar fade covers repeated wheel ticks** (`Scroll.fadeTo`): the
+   scroll event path restarted its tween every tick (7 allocs per
+   event); a running fade to the same target now keeps running.
+   WheelOverScroll 7→0 allocs, 370→91ns.
+6. **Calendar day-number table**: 31 string conversions per calendar
+   frame became a lookup.
+
+## Budgets after the sweep
+
+| budget line | baseline | budget | after | gate |
+|---|---|---|---|---|
+| gallery frame measure+paint | 24 | 29 | **9** | `widget.TestAllocBudgetGalleryFrame` |
+| Shape of a stable line | 0 | 0 | 0 | `render.TestAllocBudgetShape` |
+| DrawAligned over a fixed box | 0 | 0 | 0 | `render.TestAllocBudgetDrawAligned` |
+| canvas primitive mix | 0 | 0 | 0 | `render.TestAllocBudgetCanvasPaint` |
+| idle loop tick | 0 | 0 | 0 | `app.TestAllocBudgetIdleLoopTick` |
+
+The budgets stay at their baseline-derived values: they are regression
+ceilings, not assertions of today's numbers.
+
+## Bounded debt
+
+Allocation and syscall sites the profiles show that stay, each named
+with its cost and why:
+
+- **`[]rune`→`string` conversions that key the shaping cache**
+  (`TextArea.shapeLine`, `caretX`, `panToCaret`, `richlabel`): ~5-6
+  allocs per text-widget frame (each ~32-64B). The cache is
+  string-keyed; removing the conversions means rune-slice keys (Go
+  slices are not comparable, so a map key is out) or hashing runes
+  (a hash per probe per frame to save one small alloc). Not worth the
+  complexity.
+- **`CollectDamage`'s rect list and `hostWindow.draw`'s device rect
+  mapping** (`widget.CollectDamage` growth + `app/window.go` `rects :=
+  make(...)`): ~3 allocs per frame. Both slices are RETAINED by
+  callers (`hostWindow.lastDamage`, the harness) — reusing a buffer
+  would alias previously returned results, an observable behavior
+  change.
+- **`render.NewScaled` per frame** (`app/window.go` draw): one Canvas
+  struct (~150B) per painted frame. Pooling means either a sync.Pool
+  in render or a window-owned canvas with a reset method — API churn
+  for one small allocation.
+- **One `sendmsg` per Wayland request, one `recvmsg`+`read` per
+  message** (neurlang/wayland binding, `Context.SendRequest` →
+  `writeRequest`): the wire cannot batch below its per-request
+  syscall without buffering inside the binding. gelm already sends
+  near the minimum (attach + damage-per-rect + commit + frame
+  callback, damage usually one or two rects); ~6 `sendmsg` + ~20
+  read-side syscalls per animated frame.
+- **Go runtime background monitor** (`nanosleep` loop during
+  activity): ~28 syscalls per animated frame during tweens, zero at
+  idle. Not gelm code.
+- **Damage-walk snapshot buffers** (`widget.walkStack`): retained at
+  the deepest tree the process has walked (a few hundred bytes to a
+  few KB for a 48-row list). Freed never; the bound is tree depth.
+- **IME composing display** (`Entry.displayText` composing branch,
+  `TextArea.displayLine`): converts per read while composing —
+  keystroke-time, not frame-time; the steady state never hits it.
+
+Syscalls after the sweep: unchanged by design — the fixes were
+allocation-shaped, and the syscall profile's only gelm-side lever
+(requests per frame) was already near minimal. Idle remains 0
+syscalls/sec; the wheel tick's syscall burst shrinks with the tween
+work it no longer restarts.
