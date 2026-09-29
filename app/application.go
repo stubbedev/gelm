@@ -91,6 +91,23 @@ type Application struct {
 	wake   func(time.Duration)
 }
 
+// IdleInhibitAvailable reports whether the compositor supports the
+// idle-inhibit protocol; false on compositors without it.
+func (a *Application) IdleInhibitAvailable() bool { return a.sess.IdleInhibitAvailable() }
+
+// InhibitIdle holds the compositor's idle and suspend for as long as
+// the returned release function goes uncalled: while a media player
+// runs or a download is in flight, the screen stays on. The inhibitor
+// binds to the host's surface. Fails when the protocol is
+// unavailable.
+func (a *Application) InhibitIdle(host Host) (func(), error) {
+	inhibitor, err := a.sess.InhibitIdle(host.HostSurface())
+	if err != nil {
+		return nil, err
+	}
+	return inhibitor.Destroy, nil
+}
+
 // NewApplication binds an application to a connected session.
 func NewApplication(sess *wlsession.Session) *Application {
 	a := &Application{
