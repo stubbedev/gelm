@@ -22,7 +22,7 @@ func NewBase() Base { return Base{} }
 // ArrangeSelf records the widget's own rect. A container defined
 // outside the kit shadows the promoted node.Arrange with its child
 // recursion; call this first so the shadowed bookkeeping still runs.
-func (b *Base) ArrangeSelf(r render.Rect) { b.node.Arrange(r) }
+func (b *Base) ArrangeSelf(r render.Rect) { b.Arrange(r) }
 
 // SetParents records parent as the arranging container of every child,
 // so containers defined outside the kit wire the cascade the same way
