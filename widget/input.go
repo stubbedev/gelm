@@ -131,6 +131,22 @@ type ScrollHandler interface {
 	ScrollBy(dx, dy int)
 }
 
+// PointerButtonHandler receives non-primary button presses (middle,
+// right, and anything beyond) on the hovered widget. The primary button
+// stays reserved for the Clicker protocol; everything else is free for
+// widgets that mean something by it.
+type PointerButtonHandler interface {
+	PointerButton(button uint32)
+}
+
+// ScrollInputHandler receives vertical scroll steps before the
+// ScrollHandler walk, and stops the walk when it consumes the step
+// (true). Modules put tool-wheel actions on it; containers keep
+// ScrollHandler and never implement this one.
+type ScrollInputHandler interface {
+	ScrollInput(dy int) bool
+}
+
 // DragContent is the payload a drag carries: mime types best first
 // and a provider that writes the bytes for one mime on demand. OnDone
 // is optional; it fires once the drag concluded — dropped and handed
@@ -181,11 +197,18 @@ type DragOverSetter interface {
 }
 
 // Axis routes vertical and horizontal scrolling to the hovered widget
-// or the nearest ancestor that handles scrolling. A disabled handler
-// stops the walk: the wheel never scrolls through an inert viewport to
-// an outer one.
+// or the nearest ancestor that handles scrolling. ScrollInputHandler
+// takes precedence and consumes the step only when it says so; a
+// disabled ScrollHandler stops the walk: the wheel never scrolls
+// through an inert viewport to an outer one.
 func (r *Router) Axis(dx, dy float64) {
 	for target := r.hover; target != nil; target = parentOf(target) {
+		if si, ok := target.(ScrollInputHandler); ok {
+			if IsEnabled(target) && si.ScrollInput(int(dy)) {
+				return
+			}
+			continue
+		}
 		if sc, ok := target.(ScrollHandler); ok {
 			if IsEnabled(target) {
 				sc.ScrollBy(int(dx), int(dy))
@@ -379,6 +402,13 @@ func (r *Router) Move(p Point) {
 // press on empty space outside any control leaves a text field alone.
 func (r *Router) Press(button uint32, p Point) {
 	if button != BTNLeft {
+		hit := r.Root.HitTest(p)
+		if hit == nil || !IsEnabled(hit) {
+			return
+		}
+		if h, ok := hit.(PointerButtonHandler); ok {
+			h.PointerButton(button)
+		}
 		return
 	}
 	hit := r.Root.HitTest(p)
