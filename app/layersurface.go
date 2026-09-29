@@ -1,6 +1,9 @@
 package app
 
-import "github.com/stubbedev/gelm/internal/layersurface"
+import (
+	"github.com/stubbedev/gelm/internal/layersurface"
+	"github.com/stubbedev/gelm/internal/wlsession"
+)
 
 // Public aliases for the layer-surface enums. The internal package is
 // importable only inside gelm, so external consumers of LayerConfig
@@ -42,3 +45,8 @@ const (
 	KeyboardExclusive = layersurface.KeyboardExclusive
 	KeyboardOnDemand  = layersurface.KeyboardOnDemand
 )
+
+// Output is a connected display (xdg-output identity plus the wayland
+// global). LayerConfig pins surfaces to one; Session.Outputs lists
+// them.
+type Output = wlsession.Output
