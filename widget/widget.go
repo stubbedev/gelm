@@ -161,6 +161,12 @@ type node struct {
 	// ancestors, so a disabled container disables its subtree by query
 	// — see SetEnabled.
 	disabled bool
+
+	// hidden is the widget's own half of the visibility state: false
+	// (the zero value) means visible. Containers skip hidden children
+	// in Measure, Arrange, Paint, and HitTest, so the space reflows to
+	// the siblings; widget.IsVisible folds the ancestors in.
+	hidden bool
 }
 
 // SetTooltip sets hover text shown after a dwell; empty clears it.
@@ -205,6 +211,39 @@ func (n *node) SetEnabled(enabled bool) {
 // paths and Paint must consult widget.IsEnabled, which folds the
 // ancestors in.
 func (n *node) Enabled() bool { return !n.disabled }
+
+// SetVisible hides or shows the widget in its container's layout. An
+// invisible widget measures and arranges to zero, paints nothing, and
+// drops out of hit testing - the container's other children reclaim
+// the space. State changes what the container does with the widget,
+// so the parent relayouts.
+func (n *node) SetVisible(visible bool) {
+	checkLoop("SetVisible")
+	if n.hidden == !visible {
+		return
+	}
+	n.hidden = !visible
+	n.InvalidateLayout()
+}
+
+// Visible reports the widget's own visibility flag, not the effective
+// state: a widget inside an invisible container still reads true.
+// Layout, Paint, and HitTest paths consult widget.IsVisible, which
+// folds the ancestors in.
+func (n *node) Visible() bool { return !n.hidden }
+
+// IsVisible folds the visibility of every ancestor: false when the
+// widget or any container above it is hidden.
+func IsVisible(w Widget) bool {
+	for node := w; node != nil; node = parentOf(node) {
+		if n, ok := node.(interface {
+			Visible() bool
+		}); ok && !n.Visible() {
+			return false
+		}
+	}
+	return true
+}
 
 // invalidateTree marks self and every descendant for repaint.
 // Containers call it after a state flip (enable/disable) that the
