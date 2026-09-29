@@ -106,6 +106,19 @@ func (i *Icon) SetTint(tint Color) {
 // follows the theme Accent.
 func (i *Icon) Tint() Color { return i.tint }
 
+// SetThemeName swaps a theme-resolved icon's name - the state-icon
+// pattern (battery, volume, network): one widget, the glyph follows
+// the state. A non-theme icon ignores the call; the next paint
+// rasterizes the new glyph.
+func (i *Icon) SetThemeName(name string) {
+	if i.kind != iconTheme || i.name == name {
+		return
+	}
+	i.name = name
+	i.err = nil
+	i.expire()
+}
+
 // Err returns the resolution failure of a dynamic icon: an unknown
 // theme name, a missing file, or undecodable data. Nil until a paint
 // tried and failed.
