@@ -106,6 +106,9 @@ func (i *Icon) SetTint(tint Color) {
 // follows the theme Accent.
 func (i *Icon) Tint() Color { return i.tint }
 
+// Name returns the theme icon's name; empty for the other kinds.
+func (i *Icon) Name() string { return i.name }
+
 // SetThemeName swaps a theme-resolved icon's name - the state-icon
 // pattern (battery, volume, network): one widget, the glyph follows
 // the state. A non-theme icon ignores the call; the next paint
