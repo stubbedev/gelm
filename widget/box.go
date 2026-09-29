@@ -211,17 +211,34 @@ func (b *Box) Measure(con Constraints) Size {
 	}
 	pad := b.pad()
 	innerCross := max(0, b.crossMax(con)-2*pad)
-	availMain := max(0, b.main(con.Max)-2*pad-b.spacing*(len(b.child)-1))
+	availMain := max(0, b.main(con.Max)-2*pad)
+	count := 0
+	for _, c := range b.child {
+		if !IsVisible(c.w) {
+			continue
+		}
+		count++
+	}
+	if count > 0 {
+		availMain -= b.spacing * (count - 1)
+	}
+	availMain = max(0, availMain)
 
 	total := 2 * pad
 	cross := 0
+	shown := 0
 	for i, c := range b.child {
+		if !IsVisible(c.w) {
+			b.child[i].nat = Size{}
+			continue
+		}
 		nat := c.w.Measure(Constraints{Max: b.withMain(Size{W: innerCross, H: innerCross}, availMain)})
 		b.child[i].nat = nat
 		total += b.main(nat) + b.spacing
 		cross = max(cross, b.crossOf(nat))
+		shown++
 	}
-	if len(b.child) > 0 {
+	if shown > 0 {
 		total -= b.spacing
 	}
 	cross += 2 * pad
@@ -254,17 +271,22 @@ func (b *Box) Arrange(r render.Rect) {
 	}
 
 	sum := 0
+	shown := 0
 	for _, c := range b.child {
+		if !IsVisible(c.w) {
+			continue
+		}
 		sum += b.main(c.nat)
+		shown++
 	}
 	avail := inner.W
 	if b.axis == Column {
 		avail = inner.H
 	}
-	free := avail - b.spacing*(len(b.child)-1) - sum
+	free := avail - b.spacing*(shown-1) - sum
 	expanders := 0
 	for _, c := range b.child {
-		if c.expand {
+		if c.expand && IsVisible(c.w) {
 			expanders++
 		}
 	}
@@ -273,6 +295,11 @@ func (b *Box) Arrange(r render.Rect) {
 	pos := 0
 	rtl := b.axis == Row && b.dir == DirectionRTL
 	for _, c := range b.child {
+		if !IsVisible(c.w) {
+			c.w.Arrange(render.Rect{})
+			setParents(b, c.w)
+			continue
+		}
 		size := b.main(c.nat)
 		if c.expand {
 			size += extra
@@ -307,6 +334,9 @@ func (b *Box) Paint(cv *render.Canvas) {
 		cv.RoundedRect(b.bounds, picki(v, style.PropBorderRadius, 0), bg)
 	}
 	for _, c := range b.child {
+		if !IsVisible(c.w) {
+			continue
+		}
 		c.w.Paint(cv)
 	}
 }
@@ -315,6 +345,9 @@ func (b *Box) Paint(cv *render.Canvas) {
 // inside its bounds but over no child (padding, spacing, leftover space).
 func (b *Box) HitTest(p Point) Widget {
 	for _, c := range b.child {
+		if !IsVisible(c.w) {
+			continue
+		}
 		if hit := c.w.HitTest(p); hit != nil {
 			return hit
 		}
