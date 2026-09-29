@@ -1,5 +1,7 @@
 package widget
 
+import "github.com/stubbedev/gelm/render"
+
 // Base is the embeddable shared state for widgets defined outside the
 // kit: it carries the arranged bounds, parent link, invalidation flags,
 // and measure cache the frame loop leans on, exactly what internal
@@ -16,6 +18,11 @@ type Base struct {
 //	    ...
 //	}
 func NewBase() Base { return Base{} }
+
+// ArrangeSelf records the widget's own rect. A container defined
+// outside the kit shadows the promoted node.Arrange with its child
+// recursion; call this first so the shadowed bookkeeping still runs.
+func (b *Base) ArrangeSelf(r render.Rect) { b.node.Arrange(r) }
 
 // SetParents records parent as the arranging container of every child,
 // so containers defined outside the kit wire the cascade the same way
