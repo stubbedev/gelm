@@ -46,13 +46,17 @@ const (
 	StylePriorityUser = style.PriorityUser
 )
 
-// Stylesheet is one installed stylesheet: a parsed sheet at a priority,
-// reloadable in place. Create one with AddStylesheet; the zero value is
-// not usable.
+// Stylesheet is one parsed stylesheet at a priority, reloadable in
+// place. Installed with AddStylesheet it applies to every widget;
+// created with NewStylesheet and attached to widgets
+// (AttachStylesheet) it applies to those subtrees only — one surface's
+// styling that must not reach another's. The zero value is not usable.
 type Stylesheet struct {
 	sheet    *style.Sheet
 	priority int
 	live     bool
+	// attached counts the widgets the sheet is attached to.
+	attached int
 }
 
 // sheets is every installed stylesheet in install order; layersNow is
@@ -78,6 +82,12 @@ type sensitivity struct {
 // themeGen pattern).
 var styleGen uint64 = 1
 
+// NewStylesheet parses css into a stylesheet at priority without
+// installing it: attach it to the widgets whose subtrees it styles.
+func NewStylesheet(css string, priority int) *Stylesheet {
+	return &Stylesheet{sheet: style.Parse(css), priority: priority}
+}
+
 // AddStylesheet parses css and installs it at priority, above or below
 // the other stylesheets by priority and, at equal priority, after every
 // earlier one. The next frame repaints with it; call it from the
@@ -91,10 +101,11 @@ func AddStylesheet(css string, priority int) *Stylesheet {
 }
 
 // Load replaces the stylesheet's rules with css, keeping its priority
-// and position. Loading into a removed stylesheet reinstalls it.
+// and position. Loading into a removed (never attached) stylesheet
+// reinstalls it; an attached one keeps styling its subtrees.
 func (s *Stylesheet) Load(css string) {
 	s.sheet = style.Parse(css)
-	if !s.live {
+	if !s.live && s.attached == 0 {
 		s.live = true
 		sheets = append(sheets, s)
 	}
@@ -121,6 +132,8 @@ func relayer() {
 	sensNow = sensitivity{}
 	for _, s := range sheets {
 		layersNow = append(layersNow, style.Layer{Sheet: s.sheet, Priority: s.priority})
+	}
+	for _, s := range append(slices.Clone(sheets), scopedSheets...) {
 		sn := s.sheet.Sensitivity()
 		sensNow.states |= sn.AncestorStates
 		sensNow.siblings = sensNow.siblings || sn.Siblings
@@ -132,6 +145,61 @@ func relayer() {
 		}
 	}
 	styleGen++
+}
+
+// scopedSheets are the stylesheets attached to at least one widget.
+var scopedSheets []*Stylesheet
+
+// AttachStylesheet applies s to this widget and its descendants, on top
+// of the installed stylesheets (a tie at equal priority and specificity
+// goes to the attached one). Attaching the same stylesheet twice is a
+// no-op; one stylesheet can style many subtrees, and a Load restyles
+// them all.
+func (n *node) AttachStylesheet(s *Stylesheet) {
+	checkLoop("AttachStylesheet")
+	if slices.Contains(n.sheets, s) {
+		return
+	}
+	n.sheets = append(n.sheets, s)
+	if s.attached++; s.attached == 1 {
+		scopedSheets = append(scopedSheets, s)
+	}
+	relayer()
+}
+
+// DetachStylesheet stops s from styling this subtree; detaching one
+// that is not attached is a no-op.
+func (n *node) DetachStylesheet(s *Stylesheet) {
+	checkLoop("DetachStylesheet")
+	i := slices.Index(n.sheets, s)
+	if i < 0 {
+		return
+	}
+	n.sheets = slices.Delete(n.sheets, i, i+1)
+	if s.attached--; s.attached == 0 {
+		scopedSheets = slices.DeleteFunc(scopedSheets, func(o *Stylesheet) bool { return o == s })
+	}
+	relayer()
+}
+
+// layerBuf is layersFor's reusable buffer (loop-goroutine only).
+var layerBuf []style.Layer
+
+// layersFor returns the cascade layers for n: the installed sheets,
+// then the sheets attached to n and its ancestors, outermost first.
+func layersFor(n *node) []style.Layer {
+	if len(scopedSheets) == 0 {
+		return layersNow
+	}
+	layerBuf = append(layerBuf[:0], layersNow...)
+	mark := len(layerBuf)
+	for p := n; p != nil; p = parentNodeOf(p) {
+		for _, s := range slices.Backward(p.sheets) {
+			layerBuf = append(layerBuf, style.Layer{Sheet: s.sheet, Priority: s.priority})
+		}
+	}
+	slices.Reverse(layerBuf[mark:])
+	return layerBuf
 }
 
 // appSheet is the stylesheet LoadStylesheet manages.
@@ -744,20 +812,22 @@ func (n *node) style(w Widget) *style.Values {
 func (n *node) restyle(w Widget) *style.Values {
 	old := n.cs
 	var v style.Values
-	if len(layersNow) > 0 || n.inline != nil {
+	var parent *style.Values
+	if pw := n.parent; pw != nil {
+		if pn := nodeOf(pw); pn != nil {
+			// The chain above must be fresh before it inherits: a stale
+			// ancestor recomputes first, recursively. It runs before the
+			// layers are gathered, which share a buffer with its compute.
+			parent = pn.style(pw)
+		}
+	}
+	inherits := parent != nil && (parent.Set != 0 || parent.Vars != nil)
+	if layers := layersFor(n); len(layers) > 0 || n.inline != nil || inherits {
 		if n.element == "" && n.elemName == "" {
 			n.elemName = typeElementName(w)
 		}
-		var parent *style.Values
-		if pw := n.parent; pw != nil {
-			if pn := nodeOf(pw); pn != nil {
-				// The chain above must be fresh before it inherits: a
-				// stale ancestor recomputes first, recursively.
-				parent = pn.style(pw)
-			}
-		}
 		styleSelf.n, styleSelf.w = n, w
-		style.Compute(layersNow, &styleSelf, parent, &old, styleEnv, &styleScratch, &v)
+		style.Compute(layers, &styleSelf, parent, &old, styleEnv, &styleScratch, &v)
 	}
 	n.cs = v
 	n.csGen = styleGen

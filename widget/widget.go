@@ -167,6 +167,8 @@ type node struct {
 	inline     *style.Block
 	inlineSrc  string
 	inlinePrio int
+	// sheets are the stylesheets attached to this subtree.
+	sheets []*Stylesheet
 	// ink is how far the computed style paints outside the border box
 	// (outer shadows, the outline): damage grows by it.
 	ink render.Insets
