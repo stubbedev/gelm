@@ -33,6 +33,11 @@ const (
 	// ImageNone draws the image at its natural size, one source pixel
 	// per device pixel, centered and clipped.
 	ImageNone = render.ImageNone
+	// ImageStretch fills the box exactly, ignoring the aspect ratio.
+	ImageStretch = render.ImageStretch
+	// ImageScaleDown draws the natural size when it fits and shrinks to
+	// fit (aspect kept) when it does not; it never enlarges.
+	ImageScaleDown = render.ImageScaleDown
 )
 
 // imageKind says where an image's pixels come from, and with it
@@ -304,8 +309,9 @@ func (im *Image) Paint(cv *render.Canvas) {
 	}
 	dx := box.X + (box.W-dw)/2
 	dy := box.Y + (box.H-dh)/2
-	if im.scale == render.ImageNone {
-		// Natural pixels land one-to-one; no resample, no cache entry.
+	if srcRect.Dx() == dw && srcRect.Dy() == dh {
+		// Natural pixels land one-to-one (ImageNone, a fitting
+		// ImageScaleDown, any 1:1 fit); no resample, no cache entry.
 		if sub, ok := im.img.(interface {
 			SubImage(r image.Rectangle) image.Image
 		}); ok {
