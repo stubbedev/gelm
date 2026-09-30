@@ -108,6 +108,20 @@ func (a *Application) InhibitIdle(host Host) (func(), error) {
 	return inhibitor.Destroy, nil
 }
 
+// LastPressSerial returns the wl pointer serial of the most recent
+// button press on the host, for xdg_popup.grab. Zero when the host is
+// unknown or nothing was pressed yet — callers opening popovers from
+// a click always run after a press, so the zero case is headless only.
+func (a *Application) LastPressSerial(host Host) uint32 {
+	for _, win := range a.windows {
+		if win.host != host || win.input == nil {
+			continue
+		}
+		return win.input.pressSerial
+	}
+	return 0
+}
+
 // NewApplication binds an application to a connected session.
 func NewApplication(sess *wlsession.Session) *Application {
 	a := &Application{
