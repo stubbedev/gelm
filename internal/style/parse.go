@@ -1,24 +1,26 @@
-// Package style is gelm's CSS engine: a hand-rolled parser for the
-// selector and property subset docs/css.md scopes, the rule index,
-// and the matcher/cascader that computes one widget's style. It knows
-// nothing about widgets; the widget package fills the Target, walks
-// the ancestor chain, and layers the cascade result over the typed
-// Theme.
+// Package style is gelm's CSS engine: a tokenizer and parser for the
+// GTK-flavored subset docs/css.md scopes, the rule index, and the
+// matcher/cascader that computes one widget's style — custom properties
+// with var() substitution, calc(), color-mix(), and per-longhand
+// cascade across prioritized stylesheets and per-widget inline
+// declarations. It knows nothing about widgets; the widget package
+// fills the Target, walks the tree, and layers the result over the
+// typed Theme.
 //
-// The error policy is warn-and-skip-rule: a malformed declaration
-// skips that declaration, a malformed selector skips that rule, and
-// everything around either still applies. Warnings go to the injected
-// library logger at Warn, silent by default — the same contract as
-// SetTheme's contrast warnings.
+// The error policy is CSS's: a malformed declaration drops that
+// declaration, a malformed selector drops that rule, an unknown
+// at-rule drops its block, and everything around them still applies.
+// A declaration whose var() references make it invalid is invalid at
+// computed-value time and behaves as `unset`. Warnings go to the
+// injected library logger at Warn, silent by default — the same
+// contract as SetTheme's contrast warnings.
 package style
 
 import (
 	"fmt"
-	"strconv"
 	"strings"
 
 	"github.com/stubbedev/gelm/internal/logutil"
-	"github.com/stubbedev/gelm/render"
 )
 
 // parseWarn is the parse-warning sink: warnings route to the injected
@@ -41,18 +43,107 @@ func warnf(format string, args ...any) {
 	parseWarn("css: " + fmt.Sprintf(format, args...))
 }
 
+// cssWide is a CSS-wide keyword a declaration's whole value can be.
+type cssWide uint8
+
+const (
+	wideNone cssWide = iota
+	wideInherit
+	wideInitial
+	wideUnset
+)
+
+// decl is one parsed declaration: which longhands it covers, its value
+// tokens, and whether they reference var() (then the value is parsed
+// per node at compute time, after substitution).
+type decl struct {
+	name   string // the property name, or the custom property's --name
+	custom bool
+	covers PropSet
+	parse  func([]token, *ctx, *Values) bool
+	val    []token
+	hasVar bool
+	wide   cssWide
+	// order is the declaration's source position within its sheet:
+	// later wins among equal priority and specificity.
+	order int
+	// pre is the parsed value of a var-free declaration that read no
+	// node-dependent input (em, currentColor, the inherited weight): it
+	// is the same for every node, so compute copies it instead of
+	// re-parsing.
+	pre *Values
+	// preRem is the rem base pre was computed with, zero when it read
+	// none: a compute under another base re-parses.
+	preRem float64
+}
+
+// Block is a parsed declaration list: one rule's body, or a widget's
+// inline style.
+type Block struct {
+	decls []decl
+}
+
+// Len returns the number of valid declarations.
+func (b *Block) Len() int {
+	if b == nil {
+		return 0
+	}
+	return len(b.decls)
+}
+
+// ParseDeclarations parses a bare declaration list — `color: red;
+// --x: 1px` — the body a widget's inline style carries. Malformed
+// declarations are warned about and dropped.
+func ParseDeclarations(css string) *Block {
+	p := parser{src: css}
+	ts := tokenize(css)
+	return &Block{decls: p.declarations(ts)}
+}
+
 // Sheet is a parsed stylesheet: the rules in source order plus the
 // match index. It is immutable after Parse and safe for concurrent
 // readers.
 type Sheet struct {
 	rules []rule
-	// buckets key rules by their rightmost simple selector — the only
-	// buckets a widget can plausibly match. A rule is filed under every
-	// class or element its rightmost compound names.
+	// buckets key rules by their rightmost compound — the only buckets
+	// a widget can plausibly match. A rule is filed under the id when
+	// the rightmost compound names one, else its first class, else its
+	// element, else the universal bucket.
 	byElement map[string][]int32
 	byClass   map[string][]int32
 	byID      map[string][]int32
 	universal []int32
+
+	sens Sensitivity
+}
+
+// Sensitivity summarizes what a sheet's selectors read beyond a node's
+// own facts, so a state or class flip restyles no more than it must: a
+// state bit or class named left of a combinator makes descendants (or
+// following siblings) depend on it.
+type Sensitivity struct {
+	// AncestorStates are the state bits some selector tests on a
+	// non-rightmost compound.
+	AncestorStates State
+	// AncestorClasses are the classes some selector tests on a
+	// non-rightmost compound.
+	AncestorClasses map[string]bool
+	// Siblings reports sibling combinators or structural pseudo-classes
+	// anywhere: a sibling's add, removal, visibility, class, or state
+	// can then restyle its neighbors.
+	Siblings bool
+}
+
+// Sensitivity returns the sheet's selector summary.
+func (s *Sheet) Sensitivity() *Sensitivity { return &s.sens }
+
+// rule is one selector of one stylesheet rule with its specificity and
+// declarations. A comma group compiles to one rule per selector, all
+// sharing the block.
+type rule struct {
+	sel   selector
+	spec  spec
+	block *Block
 }
 
 // Parse compiles css into a Sheet. Malformed declarations and rules are
@@ -60,142 +151,265 @@ type Sheet struct {
 // empty (or all-invalid) input yields an empty Sheet — never nil.
 func Parse(css string) *Sheet {
 	p := parser{src: css}
-	p.stylesheet()
+	p.stylesheet(tokenize(css))
 	return &p.sheet
 }
 
-// rule is one selector of one stylesheet rule with its cached
-// specificity rank (source order breaks ties) and parsed declarations.
-// A comma group compiles to one rule per selector, all sharing the
-// declarations.
-type rule struct {
-	sel   selector
-	rank  uint64
-	decls []decl
-}
-
-// selector is a compound sequence with combinators, left to right.
-type selector struct {
-	parts []simple
-	// combs holds len(parts)-1 entries: ' ' descendant, '>' child.
-	combs []byte
-}
-
-// simple is one compound-selector term.
-type simple struct {
-	element string
-	id      string
-	classes []string
-	state   State
-	univ    bool
-}
-
-// decl is one property declaration with its parsed value.
-type decl struct {
-	prop  Prop
-	color render.Color
-	num   int
-	flt   float64
-	str   string
-}
-
-// apply writes the declaration into v when rank still wins prop —
-// the whole cascade is this one comparison: higher specificity wins,
-// source order breaks ties, and within one rule a later declaration
-// of the same property wins over an earlier (equal-rank) one.
-func (d *decl) apply(v *Values, rank uint64, best *[numProps]uint64) {
-	if rank < best[d.prop] {
-		return
-	}
-	best[d.prop] = rank
-	v.Set |= 1 << d.prop
-	switch d.prop {
-	case PropColor:
-		v.Color = d.color
-	case PropBackgroundColor:
-		v.Background = d.color
-	case PropPadding:
-		v.Padding = d.num
-	case PropFontFamily:
-		v.FontFamily = d.str
-	case PropFontSize:
-		v.FontSize = d.flt
-	case PropFontWeight:
-		v.FontWeight = d.num
-	case PropBorderRadius:
-		v.Radius = d.num
-	case PropBorderWidth:
-		v.BorderWidth = d.num
-	case PropBorderColor:
-		v.BorderColor = d.color
-	case PropBoxShadow:
-		v.ShadowColor = d.color
-		v.ShadowBlur = d.num
-	case PropMinWidth:
-		v.MinWidth = d.num
-	case PropMinHeight:
-		v.MinHeight = d.num
-	}
-}
-
-// parser walks the input once, byte-oriented like the markup parser.
+// parser walks the token stream once.
 type parser struct {
 	src   string
-	pos   int
 	sheet Sheet
+	order int
 }
 
 // stylesheet consumes rule after rule to the end of the input.
-func (p *parser) stylesheet() {
-	for {
-		p.skipInsignificant()
-		if p.pos >= len(p.src) {
-			return
+func (p *parser) stylesheet(ts []token) {
+	for i := 0; i < len(ts); {
+		t := ts[i]
+		switch t.kind {
+		case tkWS, tkSemi:
+			i++
+		case tkRBrace:
+			i++ // a stray closer: drop it, keep parsing
+		case tkAt:
+			i = p.atRule(ts, i)
+		default:
+			i = p.qualifiedRule(ts, i)
 		}
-		if p.src[p.pos] == '}' {
-			// A stray closer: drop it, keep parsing.
-			p.pos++
+	}
+}
+
+// atRule skips one at-rule: through its block, or to its semicolon.
+// None of them participates in the subset; @keyframes and @media are
+// common in GTK stylesheets and skip silently, the rest warn.
+func (p *parser) atRule(ts []token, i int) int {
+	name := ts[i].s
+	j := i + 1
+	for ; j < len(ts); j++ {
+		switch ts[j].kind {
+		case tkSemi:
+			j++
+			p.warnAt(name)
+			return j
+		case tkLBrace:
+			end := blockEnd(ts, j)
+			p.warnAt(name)
+			return end
+		case tkFunc, tkLParen, tkLBrack:
+			j = blockEnd(ts, j) - 1
+		}
+	}
+	p.warnAt(name)
+	return j
+}
+
+func (p *parser) warnAt(name string) {
+	switch name {
+	case "keyframes", "media", "-gtk-keyframes":
+		return
+	}
+	warnf("at-rule @%s ignored", name)
+}
+
+// qualifiedRule parses a selector list and its block starting at ts[i]
+// and returns the index past it.
+func (p *parser) qualifiedRule(ts []token, i int) int {
+	start := i
+	for i < len(ts) && ts[i].kind != tkLBrace {
+		if ts[i].kind == tkSemi || ts[i].kind == tkRBrace {
+			warnf("rule skipped: want '{' at %q", badText(rawText(p.src, ts[start:i+1])))
+			return i + 1
+		}
+		if closer(ts[i].kind) != 0 {
+			i = blockEnd(ts, i)
 			continue
 		}
-		p.rule()
+		i++
 	}
-}
-
-// rule parses one rule: a selector group and its declaration block.
-// Any selector-level failure (including out-of-subset syntax and
-// `!important`) warns and skips to past the block, leaving the rest of
-// the stylesheet intact.
-func (p *parser) rule() {
-	start := p.pos
-	sels, ok := p.selectorGroup()
+	if i >= len(ts) {
+		warnf("rule skipped: want '{' at %q", badText(rawText(p.src, ts[start:])))
+		return i
+	}
+	prelude := trimWS(ts[start:i])
+	end := blockEnd(ts, i)
+	if end > len(ts) || ts[end-1].kind != tkRBrace {
+		warnf("rule skipped: unterminated block at %q", badText(rawText(p.src, prelude)))
+		return len(ts)
+	}
+	body := ts[i+1 : end-1]
+	sels, ok := parseSelectorList(p.src, prelude)
 	if !ok {
-		p.warnSkip("rule skipped: bad selector", start)
-		return
+		warnf("rule skipped: bad selector %q", badText(rawText(p.src, prelude)))
+		return end
 	}
-	p.skipInsignificant()
-	if !p.eat('{') {
-		p.warnSkip("rule skipped: want '{'", start)
-		return
+	for _, t := range body {
+		if t.kind == tkLBrace {
+			// Nested rules are SCSS, not CSS: the whole rule goes.
+			warnf("rule skipped: nested block in %q", badText(rawText(p.src, prelude)))
+			return end
+		}
 	}
-	decls, ok := p.declarations()
-	if !ok {
-		p.warnSkip("rule skipped", start)
-		return
+	if hasImportant(body) {
+		warnf("rule skipped: !important in %q", badText(rawText(p.src, prelude)))
+		return end
 	}
+	block := &Block{decls: p.declarations(body)}
 	for _, sel := range sels {
-		p.sheet.add(sel, decls)
+		p.sheet.add(sel, block)
 	}
+	return end
 }
 
-// add files one compiled rule into the index. Unknown element names
-// are fine — they simply never match.
-func (s *Sheet) add(sel selector, decls []decl) {
+// hasImportant reports a `!important` anywhere in a block: gelm has no
+// important layer, so the rule is a parse error (docs/css.md).
+func hasImportant(ts []token) bool {
+	for i := 0; i+1 < len(ts); i++ {
+		if ts[i].is('!') {
+			j := i + 1
+			for j < len(ts) && ts[j].kind == tkWS {
+				j++
+			}
+			if j < len(ts) && ts[j].ident("important") {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// declarations parses a declaration list, dropping malformed entries
+// with a warning.
+func (p *parser) declarations(ts []token) []decl {
+	var out []decl
+	for _, raw := range splitTop(ts, tkSemi) {
+		raw = trimWS(raw)
+		if len(raw) == 0 {
+			continue
+		}
+		d, ok := p.declaration(raw)
+		if ok {
+			out = append(out, d)
+		}
+	}
+	return out
+}
+
+// declaration parses `name: value`.
+func (p *parser) declaration(ts []token) (decl, bool) {
+	if ts[0].kind != tkIdent {
+		warnf("declaration skipped: %s", badText(rawText(p.src, ts)))
+		return decl{}, false
+	}
+	j := 1
+	for j < len(ts) && ts[j].kind == tkWS {
+		j++
+	}
+	if j >= len(ts) || ts[j].kind != tkColon {
+		warnf("declaration skipped: %s", badText(rawText(p.src, ts)))
+		return decl{}, false
+	}
+	name := ts[0].s
+	val := trimWS(ts[j+1:])
+	p.order++
+	d := decl{name: name, val: val, hasVar: containsVar(val), wide: wideOf(val), order: p.order}
+	if strings.HasPrefix(name, "--") {
+		d.custom = true
+		return d, true
+	}
+	lname := strings.ToLower(name)
+	d.name = lname
+	if lname == "all" {
+		if d.wide == wideNone {
+			warnf("declaration skipped: all: %s", badText(rawText(p.src, val)))
+			return decl{}, false
+		}
+		d.covers = allProps
+		return d, true
+	}
+	def, ok := propTable[lname]
+	if !ok {
+		if !ignoredProps[lname] {
+			warnf("declaration skipped: unknown property %q", name)
+		}
+		return decl{}, false
+	}
+	d.covers, d.parse = def.covers, def.parse
+	if len(val) == 0 {
+		warnf("declaration skipped: %s has no value", name)
+		return decl{}, false
+	}
+	if d.wide != wideNone || d.hasVar {
+		return d, true
+	}
+	// A var-free value is validated now: CSS drops an invalid
+	// declaration at parse time, so it never wins the cascade.
+	scratch := initialValues()
+	cx := ctx{rem: parseRem, em: parseRem, weight: 400}
+	if !d.parse(val, &cx, &scratch) {
+		warnf("declaration skipped: %s: %s", name, badText(rawText(p.src, val)))
+		return decl{}, false
+	}
+	if !cx.dep {
+		d.pre = &scratch
+		if cx.usedRem {
+			d.preRem = parseRem
+		}
+	}
+	return d, true
+}
+
+// parseRem is the rem base declarations are validated (and, when
+// node-independent, pre-computed) under: CSS's 16px default.
+const parseRem = 16
+
+// wideOf reports a CSS-wide keyword value.
+func wideOf(val []token) cssWide {
+	if len(val) != 1 || val[0].kind != tkIdent {
+		return wideNone
+	}
+	switch strings.ToLower(val[0].s) {
+	case "inherit":
+		return wideInherit
+	case "initial":
+		return wideInitial
+	case "unset", "revert", "revert-layer":
+		return wideUnset
+	}
+	return wideNone
+}
+
+// containsVar reports a var() call anywhere in the value.
+func containsVar(ts []token) bool {
+	for _, t := range ts {
+		if t.kind == tkFunc && t.s == "var" {
+			return true
+		}
+	}
+	return false
+}
+
+// add files one compiled rule into the index and folds its selector
+// into the sensitivity summary.
+func (s *Sheet) add(sel selector, block *Block) {
 	idx := int32(len(s.rules))
-	s.rules = append(s.rules, rule{sel: sel, rank: rank(sel, int(idx)), decls: decls})
+	s.rules = append(s.rules, rule{sel: sel, spec: sel.spec(), block: block})
+	for i := range sel.parts {
+		part := &sel.parts[i]
+		if part.structs != 0 || len(part.nths) > 0 {
+			s.sens.Siblings = true
+		}
+		if i == len(sel.parts)-1 {
+			continue
+		}
+		s.noteAncestor(part)
+	}
+	for _, c := range sel.combs {
+		if c == '+' || c == '~' {
+			s.sens.Siblings = true
+		}
+	}
 	right := &sel.parts[len(sel.parts)-1]
 	switch {
-	case right.univ && right.element == "" && right.id == "" && len(right.classes) == 0:
-		s.universal = append(s.universal, idx)
 	case right.id != "":
 		if s.byID == nil {
 			s.byID = map[string][]int32{}
@@ -205,601 +419,36 @@ func (s *Sheet) add(sel selector, decls []decl) {
 		if s.byClass == nil {
 			s.byClass = map[string][]int32{}
 		}
-		for _, c := range right.classes {
-			s.byClass[c] = append(s.byClass[c], idx)
-		}
-	default:
+		s.byClass[right.classes[0]] = append(s.byClass[right.classes[0]], idx)
+	case right.element != "":
 		if s.byElement == nil {
 			s.byElement = map[string][]int32{}
 		}
 		s.byElement[right.element] = append(s.byElement[right.element], idx)
-	}
-}
-
-// rank packs (ids, classes+state, elements, source order) into one
-// comparable value: lexicographic on the first three, source order
-// breaking ties. A universal `*` counts nothing, per CSS.
-func rank(sel selector, order int) uint64 {
-	var ids, cls, els int
-	for i := range sel.parts {
-		pt := &sel.parts[i]
-		if pt.id != "" {
-			ids++
-		}
-		cls += len(pt.classes) + bits(pt.state)
-		if pt.element != "" {
-			els++
-		}
-	}
-	return uint64(ids)<<48 | uint64(cls)<<32 | uint64(els)<<16 | uint64(order)&0xffff
-}
-
-// bits counts the set state bits — each state pseudo-class adds one
-// class-level specificity step.
-func bits(s State) int {
-	n := 0
-	for ; s != 0; s &= s - 1 {
-		n++
-	}
-	return n
-}
-
-// selectorGroup parses comma-separated selectors.
-func (p *parser) selectorGroup() ([]selector, bool) {
-	var out []selector
-	for {
-		sel, ok := p.selector()
-		if !ok {
-			return nil, false
-		}
-		out = append(out, sel)
-		p.skipInsignificant()
-		if !p.eat(',') {
-			return out, true
-		}
-	}
-}
-
-// selector parses compound terms joined by descendant (whitespace) or
-// child (`>`) combinators.
-func (p *parser) selector() (selector, bool) {
-	var sel selector
-	for {
-		p.skipInsignificant()
-		if p.pos < len(p.src) && p.src[p.pos] == '>' {
-			if len(sel.parts) == 0 {
-				return selector{}, false
-			}
-			sel.combs = append(sel.combs, '>')
-			p.pos++
-			p.skipInsignificant()
-		} else if len(sel.parts) > 0 {
-			sel.combs = append(sel.combs, ' ')
-		}
-		part, ok := p.compound()
-		if !ok {
-			return selector{}, false
-		}
-		sel.parts = append(sel.parts, part)
-		// A term may run straight into ',' or '{'; peek past
-		// whitespace handled by the caller loops.
-		p.skipInsignificant()
-		if p.pos >= len(p.src) {
-			return selector{}, false
-		}
-		switch p.src[p.pos] {
-		case ',', '{':
-			return sel, true
-		case '>':
-			// loop: combinator handled at the top
-		default:
-			// more compound terms follow (descendant combinator)
-		}
-	}
-}
-
-// compound parses one term: an optional element name or `*`, then any
-// number of `.class`, `#id`, and `:state` pieces. At least one piece
-// is required.
-func (p *parser) compound() (simple, bool) {
-	var sm simple
-	seen := false
-	for p.pos < len(p.src) {
-		switch c := p.src[p.pos]; {
-		case c == '*':
-			if seen {
-				return simple{}, false
-			}
-			sm.univ = true
-			seen = true
-			p.pos++
-		case isIdentStart(c):
-			if seen {
-				return simple{}, false
-			}
-			name, ok := p.ident()
-			if !ok || name == "" {
-				return simple{}, false
-			}
-			sm.element = strings.ToLower(name)
-			seen = true
-		case c == '.':
-			p.pos++
-			name, ok := p.ident()
-			if !ok || name == "" {
-				return simple{}, false
-			}
-			sm.classes = append(sm.classes, name)
-			seen = true
-		case c == '#':
-			p.pos++
-			name, ok := p.ident()
-			if !ok || name == "" {
-				return simple{}, false
-			}
-			if sm.id != "" {
-				return simple{}, false
-			}
-			sm.id = name
-			seen = true
-		case c == ':':
-			p.pos++
-			if p.pos < len(p.src) && p.src[p.pos] == ':' {
-				return simple{}, false // pseudo-elements are out of the subset
-			}
-			name, ok := p.ident()
-			if !ok {
-				return simple{}, false
-			}
-			st, ok := stateByName(strings.ToLower(name))
-			if !ok {
-				return simple{}, false
-			}
-			sm.state |= st
-			seen = true
-		default:
-			if !seen {
-				return simple{}, false
-			}
-			return sm, true
-		}
-	}
-	if !seen {
-		return simple{}, false
-	}
-	return sm, true
-}
-
-// declarations parses the block's declarations until '}' or EOF. A
-// malformed declaration warns and skips to the next ';' — the rule
-// survives. `!important` and an unterminated block are rule-level
-// errors.
-func (p *parser) declarations() ([]decl, bool) {
-	var out []decl
-	for {
-		p.skipInsignificant()
-		if p.pos >= len(p.src) {
-			return nil, false // unterminated block
-		}
-		if p.src[p.pos] == '}' {
-			p.pos++
-			return out, true
-		}
-		start := p.pos
-		d, ok := p.declaration()
-		if !ok {
-			// A malformed declaration takes only itself down; an
-			// `!important` in the skipped span takes the whole rule.
-			if !p.skipDeclaration(start) {
-				return nil, false
-			}
-			continue
-		}
-		out = append(out, d)
-	}
-}
-
-// skipDeclaration skips the remainder of a malformed declaration, to
-// the next ';' or the block's closing brace (left for the caller), and
-// reports whether the rule may continue: a `!important` anywhere in
-// the declaration is a rule-level parse error.
-func (p *parser) skipDeclaration(start int) bool {
-	bang := strings.IndexByte(p.src[start:p.pos], '!')
-	for p.pos < len(p.src) {
-		switch c := p.src[p.pos]; c {
-		case ';':
-			p.pos++
-			if bang < 0 {
-				warnf("declaration skipped: %s", badText(p.src[start:p.pos]))
-				return true
-			}
-			return false
-		case '}':
-			if bang < 0 {
-				warnf("declaration skipped: %s", badText(p.src[start:p.pos]))
-			}
-			return false // '}' (or the !important) ends the rule
-		case '!':
-			bang = 0
-		}
-		p.pos++
-	}
-	return false // unterminated block
-}
-
-// declaration parses `prop: value` up to and including its ';' (or up
-// to the closing brace, consumed by the caller).
-func (p *parser) declaration() (decl, bool) {
-	prop, ok := p.ident()
-	if !ok {
-		return decl{}, false
-	}
-	p.skipInsignificant()
-	if !p.eat(':') {
-		return decl{}, false
-	}
-	d, ok := p.value(strings.ToLower(prop))
-	if !ok {
-		return decl{}, false
-	}
-	p.skipInsignificant()
-	if p.pos < len(p.src) && p.src[p.pos] == ';' {
-		p.pos++
-	}
-	return d, true
-}
-
-// value parses the right-hand side of one declaration according to the
-// property. Unknown properties are a declaration error — warned, and
-// the declaration is skipped.
-func (p *parser) value(prop string) (decl, bool) {
-	switch prop {
-	case "color":
-		return p.colorDecl(PropColor)
-	case "background-color":
-		return p.colorDecl(PropBackgroundColor)
-	case "border-color":
-		return p.colorDecl(PropBorderColor)
-	case "padding":
-		return p.lengthDecl(PropPadding, 1<<16)
-	case "border-radius":
-		return p.lengthDecl(PropBorderRadius, 1<<16)
-	case "border-width":
-		return p.lengthDecl(PropBorderWidth, 1<<8)
-	case "min-width":
-		return p.lengthDecl(PropMinWidth, 1<<16)
-	case "min-height":
-		return p.lengthDecl(PropMinHeight, 1<<16)
-	case "font-size":
-		return p.floatDecl(PropFontSize, 1, 1<<10)
-	case "font-weight":
-		return p.weightDecl()
-	case "font-family":
-		return p.familyDecl()
-	case "box-shadow":
-		return p.shadowDecl()
 	default:
-		return decl{}, false
+		s.universal = append(s.universal, idx)
 	}
 }
 
-func (p *parser) colorDecl(prop Prop) (decl, bool) {
-	p.skipInsignificant()
-	col, ok := p.hexColor()
-	if !ok {
-		return decl{}, false
-	}
-	return decl{prop: prop, color: col}, true
-}
-
-func (p *parser) lengthDecl(prop Prop, max int) (decl, bool) {
-	p.skipInsignificant()
-	n, ok := p.length()
-	if !ok || n < 0 || n > max {
-		return decl{}, false
-	}
-	return decl{prop: prop, num: n}, true
-}
-
-// floatDecl parses a fractional length, for the one property (font-size)
-// that takes sub-pixel sizes.
-func (p *parser) floatDecl(prop Prop, min, max float64) (decl, bool) {
-	p.skipInsignificant()
-	start := p.pos
-	n, ok := p.length()
-	if !ok {
-		return decl{}, false
-	}
-	v, err := strconv.ParseFloat(strings.TrimSuffix(p.src[start:p.pos], "px"), 64)
-	if err != nil {
-		return decl{}, false
-	}
-	if v < min || v > max {
-		return decl{}, false
-	}
-	return decl{prop: prop, flt: v, num: n}, true
-}
-
-// weightDecl parses `normal`, `bold`, or a numeric weight.
-func (p *parser) weightDecl() (decl, bool) {
-	p.skipInsignificant()
-	if name, ok := p.tryIdent(); ok {
-		switch strings.ToLower(name) {
-		case "normal":
-			return decl{prop: PropFontWeight, num: 400}, true
-		case "bold":
-			return decl{prop: PropFontWeight, num: 700}, true
-		default:
-			return decl{}, false
+// noteAncestor records the facts a non-rightmost compound tests.
+func (s *Sheet) noteAncestor(c *compound) {
+	s.sens.AncestorStates |= c.state
+	for _, cl := range c.classes {
+		if s.sens.AncestorClasses == nil {
+			s.sens.AncestorClasses = map[string]bool{}
 		}
+		s.sens.AncestorClasses[cl] = true
 	}
-	n, ok := p.intTokens()
-	if !ok || n < 1 || n > 1000 {
-		return decl{}, false
-	}
-	return decl{prop: PropFontWeight, num: n}, true
-}
-
-// familyDecl parses a comma-separated family list and keeps the head —
-// the font chain head the consumer shapes with.
-func (p *parser) familyDecl() (decl, bool) {
-	p.skipInsignificant()
-	family, ok := p.familyName()
-	if !ok {
-		return decl{}, false
-	}
-	// Skip the remaining fallback list: the subset keeps the head only.
-	for {
-		p.skipInsignificant()
-		if !p.eat(',') {
-			break
-		}
-		p.skipInsignificant()
-		if _, ok := p.familyName(); !ok {
-			return decl{}, false
-		}
-	}
-	return decl{prop: PropFontFamily, str: family}, true
-}
-
-// familyName parses one family: a quoted string or an identifier run
-// (spaces allowed inside an unquoted name, per CSS's font-family
-// grammar).
-func (p *parser) familyName() (string, bool) {
-	if p.pos < len(p.src) && (p.src[p.pos] == '"' || p.src[p.pos] == '\'') {
-		return p.quoted()
-	}
-	start := p.pos
-	for p.pos < len(p.src) {
-		c := p.src[p.pos]
-		if isIdentStart(c) || c >= '0' && c <= '9' || c == '-' || c == '_' || c == ' ' {
-			p.pos++
-			continue
-		}
-		break
-	}
-	name := strings.TrimRight(p.src[start:p.pos], " ")
-	if name == "" {
-		return "", false
-	}
-	return name, true
-}
-
-// shadowDecl parses `none` or `COLOR BLUR` — the one-shadow subset.
-func (p *parser) shadowDecl() (decl, bool) {
-	p.skipInsignificant()
-	if name, ok := p.tryIdent(); ok {
-		if strings.ToLower(name) == "none" {
-			return decl{prop: PropBoxShadow}, true
-		}
-		return decl{}, false
-	}
-	col, ok := p.hexColor()
-	if !ok {
-		return decl{}, false
-	}
-	p.skipInsignificant()
-	blur, ok := p.length()
-	if !ok || blur > 1<<8 {
-		return decl{}, false
-	}
-	return decl{prop: PropBoxShadow, color: col, num: blur}, true
-}
-
-// length parses `[+-]?digits[.digits]?[px]`, rounding to the nearest
-// integer pixel. A unit other than px fails.
-func (p *parser) length() (int, bool) {
-	start := p.pos
-	neg := p.eat('-')
-	digits := 0
-	for p.pos < len(p.src) && p.src[p.pos] >= '0' && p.src[p.pos] <= '9' {
-		p.pos++
-		digits++
-	}
-	frac := 0
-	if p.pos < len(p.src) && p.src[p.pos] == '.' {
-		p.pos++
-		for p.pos < len(p.src) && p.src[p.pos] >= '0' && p.src[p.pos] <= '9' {
-			p.pos++
-			frac++
-		}
-	}
-	if digits == 0 && frac == 0 {
-		return 0, false
-	}
-	numEnd := p.pos
-	if p.pos+1 < len(p.src) && p.src[p.pos] == 'p' && p.src[p.pos+1] == 'x' {
-		p.pos += 2
-	} else if p.pos < len(p.src) && (isIdentStart(p.src[p.pos]) || p.src[p.pos] == '%') {
-		return 0, false // a unit the subset does not take
-	}
-	v, err := strconv.ParseFloat(p.src[start:numEnd], 64)
-	if err != nil {
-		return 0, false
-	}
-	if neg {
-		v = -v
-	}
-	return int(v + 0.5), true
-}
-
-// intTokens parses a bare decimal integer.
-func (p *parser) intTokens() (int, bool) {
-	start := p.pos
-	for p.pos < len(p.src) && p.src[p.pos] >= '0' && p.src[p.pos] <= '9' {
-		p.pos++
-	}
-	if p.pos == start {
-		return 0, false
-	}
-	n, err := strconv.Atoi(p.src[start:p.pos])
-	if err != nil {
-		return 0, false
-	}
-	return n, true
-}
-
-// hexColor parses #rgb, #rrggbb, or #rrggbbaa — the forms the markup
-// parser accepts — into a premultiplied color.
-func (p *parser) hexColor() (render.Color, bool) {
-	if p.pos >= len(p.src) || p.src[p.pos] != '#' {
-		return 0, false
-	}
-	start := p.pos
-	p.pos++
-	n := 0
-	for p.pos < len(p.src) && isHex(p.src[p.pos]) {
-		p.pos++
-		n++
-	}
-	if n != 3 && n != 6 && n != 8 {
-		p.pos = start
-		return 0, false
-	}
-	hex := p.src[start+1 : p.pos]
-	nib := func(c byte) uint8 {
-		switch {
-		case c >= '0' && c <= '9':
-			return c - '0'
-		case c >= 'a' && c <= 'f':
-			return c - 'a' + 10
-		default:
-			return c - 'A' + 10
-		}
-	}
-	if n == 3 {
-		r, g, b := nib(hex[0]), nib(hex[1]), nib(hex[2])
-		return render.RGBA(r*0x11, g*0x11, b*0x11, 0xff), true
-	}
-	var c [4]uint8
-	c[3] = 0xff
-	for j := range n / 2 {
-		c[j] = nib(hex[j*2])<<4 | nib(hex[j*2+1])
-	}
-	return render.RGBA(c[0], c[1], c[2], c[3]), true
-}
-
-// quoted parses a single- or double-quoted string.
-func (p *parser) quoted() (string, bool) {
-	q := p.src[p.pos]
-	p.pos++
-	start := p.pos
-	for p.pos < len(p.src) && p.src[p.pos] != q {
-		p.pos++
-	}
-	if p.pos >= len(p.src) {
-		return "", false
-	}
-	s := p.src[start:p.pos]
-	p.pos++
-	return s, true
-}
-
-// ident parses an identifier: letters, digits, '-', '_'.
-func (p *parser) ident() (string, bool) {
-	start := p.pos
-	for p.pos < len(p.src) && isIdentByte(p.src[p.pos]) {
-		p.pos++
-	}
-	if p.pos == start {
-		return "", false
-	}
-	return p.src[start:p.pos], true
-}
-
-// tryIdent parses an identifier only if one starts here.
-func (p *parser) tryIdent() (string, bool) {
-	if p.pos >= len(p.src) || !isIdentStart(p.src[p.pos]) {
-		return "", false
-	}
-	return p.ident()
-}
-
-// eat consumes c if it is next.
-func (p *parser) eat(c byte) bool {
-	if p.pos < len(p.src) && p.src[p.pos] == c {
-		p.pos++
-		return true
-	}
-	return false
-}
-
-// skipInsignificant advances past whitespace and /* comments */.
-func (p *parser) skipInsignificant() {
-	for p.pos < len(p.src) {
-		switch c := p.src[p.pos]; {
-		case c == ' ' || c == '\t' || c == '\n' || c == '\r':
-			p.pos++
-		case c == '/' && p.pos+1 < len(p.src) && p.src[p.pos+1] == '*':
-			end := strings.Index(p.src[p.pos+2:], "*/")
-			if end < 0 {
-				p.pos = len(p.src)
-				return
-			}
-			p.pos += 2 + end + 2
-		default:
-			return
-		}
-	}
-}
-
-// warnSkip reports a rule-level failure and skips past the offending
-// block (the next '}' at depth zero) or to EOF, so parsing resumes
-// with the following rule.
-func (p *parser) warnSkip(msg string, start int) {
-	warnf("%s at %q", msg, badText(p.src[start:]))
-	depth := 0
-	for p.pos < len(p.src) {
-		switch p.src[p.pos] {
-		case '{':
-			depth++
-		case '}':
-			if depth--; depth <= 0 {
-				p.pos++
-				return
-			}
-		}
-		p.pos++
+	for i := range c.not {
+		s.noteAncestor(&c.not[i])
 	}
 }
 
 // badText truncates a source excerpt for a warning message.
 func badText(s string) string {
-	s = strings.TrimSpace(s)
-	if len(s) > 32 {
-		s = s[:32]
+	s = strings.Join(strings.Fields(s), " ")
+	if len(s) > 48 {
+		s = s[:48]
 	}
 	return s
-}
-
-func isIdentStart(c byte) bool {
-	return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c == '-' || c == '_'
-}
-
-func isIdentByte(c byte) bool {
-	return isIdentStart(c) || c >= '0' && c <= '9'
-}
-
-func isHex(c byte) bool {
-	return c >= '0' && c <= '9' || c >= 'a' && c <= 'f' || c >= 'A' && c <= 'F'
 }
