@@ -1,6 +1,8 @@
 package style
 
 import (
+	"slices"
+
 	"github.com/stubbedev/gelm/render"
 )
 
@@ -262,12 +264,7 @@ func (v *Values) Has(p Prop) bool { return v.Set.Has(p) }
 
 // HasAny reports whether any of the properties was set.
 func (v *Values) HasAny(ps ...Prop) bool {
-	for _, p := range ps {
-		if v.Set.Has(p) {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(ps, v.Set.Has)
 }
 
 // EffBorder returns the used border widths: a side whose style draws no

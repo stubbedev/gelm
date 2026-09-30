@@ -5,6 +5,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/stubbedev/gelm/internal/style"
 	"github.com/stubbedev/gelm/internal/text"
 	"github.com/stubbedev/gelm/render"
 )
@@ -396,7 +397,7 @@ func (l *RichLabel) HoverMove(p Point) {
 func (l *RichLabel) SetHovered(on bool) {
 	if !on && l.hoverValid {
 		l.hoverValid = false
-		l.invalidateStyle()
+		l.invalidateState(style.Hover)
 	}
 }
 

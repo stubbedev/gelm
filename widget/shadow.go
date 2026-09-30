@@ -164,7 +164,7 @@ func (e *Elevation) Arrange(r render.Rect) {
 // the dialog and popover cards style through this.
 func (e *Elevation) Paint(cv *render.Canvas) {
 	t := Current()
-	radius := picki(e.style(e), style.PropBorderRadius, e.radius)
+	radius := radiusOr(e.style(e), e.radius).TopLeft
 	if col, blur := effShadow(e, t); blur > 0 {
 		cv.Shadow(e.bounds, radius, blur, col)
 	}

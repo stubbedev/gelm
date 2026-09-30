@@ -110,23 +110,23 @@ func TestCSSElementNames(t *testing.T) {
 
 func TestStylesheetElementAndClassMatch(t *testing.T) {
 	face := goldenFace(t)
-	loadCSS(t, `button { border-radius: 13; } button.destructive { border-width: 3; } #save { border-color: #123456; }`)
+	loadCSS(t, `button { border-radius: 13; } button.destructive { border-width: 3; border-style: solid; } #save { border-color: #123456; }`)
 	b := NewButton(NewLabel(face, 14, "Save", 0), 8, 4)
 	arrangeTree(t, b, 200, 50)
-	if got := b.style(b).Radius; got != 13 {
+	if got := b.style(b).Radius.TopLeft; got != 13 {
 		t.Fatalf("radius = %d, want the stylesheet's 13", got)
 	}
-	if b.style(b).Has(style.PropBorderWidth) {
+	if b.style(b).Has(style.PropBorderTopWidth) {
 		t.Fatal("border-width matched without the class")
 	}
 	b.AddClass("destructive")
 	b.SetID("save")
 	CollectDamage(b) // the marks drain through the damage walk
 	v := b.style(b)
-	if !v.Has(style.PropBorderWidth) || v.BorderWidth != 3 {
+	if !v.Has(style.PropBorderTopWidth) || v.EffBorder().Top != 3 {
 		t.Errorf("border-width = %+v, want 3 via .destructive", v)
 	}
-	if !v.Has(style.PropBorderColor) || v.BorderColor != render.RGB(0x12, 0x34, 0x56) {
+	if !v.Has(style.PropBorderTopColor) || v.BorderColor[0] != render.RGB(0x12, 0x34, 0x56) {
 		t.Errorf("border-color = %+v, want #123456 via #save", v)
 	}
 }
@@ -310,12 +310,12 @@ func TestLoadStylesheetFileRoundTrip(t *testing.T) {
 	face := goldenFace(t)
 	b := NewButton(NewLabel(face, 14, "x", 0), 4, 4)
 	arrangeTree(t, b, 100, 40)
-	if got := b.style(b).Radius; got != 9 {
+	if got := b.style(b).Radius.TopLeft; got != 9 {
 		t.Fatalf("radius = %d, want the file's 9", got)
 	}
 
 	// Reload replaces, not merges; empty removes.
-	if err := os.WriteFile(path, []byte(`button { border-width: 2; }`), 0o600); err != nil {
+	if err := os.WriteFile(path, []byte(`button { border-width: 2; border-style: solid; }`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if err := LoadStylesheetFile(path); err != nil {
@@ -323,8 +323,8 @@ func TestLoadStylesheetFileRoundTrip(t *testing.T) {
 	}
 	CollectDamage(b)
 	v := b.style(b)
-	if v.Radius != 0 || v.BorderWidth != 2 {
-		t.Errorf("reload did not replace: radius %d border %d", v.Radius, v.BorderWidth)
+	if v.Radius.TopLeft != 0 || v.EffBorder().Top != 2 {
+		t.Errorf("reload did not replace: radius %d border %d", v.Radius.TopLeft, v.EffBorder().Top)
 	}
 	LoadStylesheet("")
 	CollectDamage(b)
@@ -396,20 +396,20 @@ func TestStylesheetHotReloadPoll(t *testing.T) {
 	face := goldenFace(t)
 	b := NewButton(NewLabel(face, 14, "x", 0), 4, 4)
 	arrangeTree(t, b, 100, 40)
-	if got := b.style(b).Radius; got != 9 {
+	if got := b.style(b).Radius.TopLeft; got != 9 {
 		t.Fatalf("radius = %d, want 9", got)
 	}
 
 	// The tick stats the file; an unchanged stat is free, a changed
 	// one reloads and the next read sees it.
 	scheduled[0]()
-	if got := b.style(b).Radius; got != 9 {
+	if got := b.style(b).Radius.TopLeft; got != 9 {
 		t.Fatalf("unchanged stat restyled: radius %d", got)
 	}
 	write(`button { border-radius: 11; }`)
 	scheduled[0]()
 	CollectDamage(b)
-	if got := b.style(b).Radius; got != 11 {
+	if got := b.style(b).Radius.TopLeft; got != 11 {
 		t.Fatalf("changed file did not reload: radius %d", got)
 	}
 
@@ -419,14 +419,14 @@ func TestStylesheetHotReloadPoll(t *testing.T) {
 	}
 	scheduled[0]()
 	CollectDamage(b)
-	if got := b.style(b).Radius; got != 11 {
+	if got := b.style(b).Radius.TopLeft; got != 11 {
 		t.Fatalf("deleted file changed the sheet: radius %d", got)
 	}
 }
 
 func TestFocusBitFollowsTheRouter(t *testing.T) {
 	face := goldenFace(t)
-	loadCSS(t, `entry:focus { border-width: 2; border-color: #55aaff; }`)
+	loadCSS(t, `entry:focus { border-width: 2; border-style: solid; border-color: #55aaff; }`)
 	r := &Router{}
 	entry := NewEntry(face, 14, 0)
 	other := NewButton(NewLabel(face, 14, "x", 0), 4, 4)
@@ -440,14 +440,14 @@ func TestFocusBitFollowsTheRouter(t *testing.T) {
 	if !entry.focused {
 		t.Fatal("press did not focus the entry")
 	}
-	if got := entry.style(entry).BorderWidth; got != 2 {
+	if got := entry.style(entry).EffBorder().Top; got != 2 {
 		t.Errorf("entry:focus border = %d, want 2", got)
 	}
 	r.FocusNext()
 	if entry.focused {
 		t.Error("focus moved but the entry kept the bit")
 	}
-	if other.focused && other.style(other).Has(style.PropBorderWidth) {
+	if other.focused && other.style(other).Has(style.PropBorderTopWidth) {
 		t.Error("button matched entry:focus")
 	}
 }

@@ -1,0 +1,416 @@
+package widget
+
+import (
+	"slices"
+	"testing"
+
+	"github.com/stubbedev/gelm/internal/style"
+	"github.com/stubbedev/gelm/render"
+)
+
+// addCSS installs css at priority for one test.
+func addCSS(t *testing.T, css string, priority int) *Stylesheet {
+	t.Helper()
+	s := AddStylesheet(css, priority)
+	t.Cleanup(s.Remove)
+	return s
+}
+
+// paintTree paints root onto a fresh w x h canvas and returns the
+// pixels.
+func paintTree(root Widget, w, h int) []byte {
+	data := make([]byte, render.Stride(w)*h)
+	root.Paint(render.New(data, render.Stride(w), w, h))
+	return data
+}
+
+func TestBoxModelMarginBorderPadding(t *testing.T) {
+	loadCSS(t, `.b { margin: 1px 2px 3px 4px; padding: 5px 6px 7px 8px; border: 1px solid #ffffff; }`)
+	child := NewSpacer(10, 10)
+	box := NewBox(Row, 0, 0)
+	box.Append(child, false)
+	box.AddClass("b")
+	sz := box.Measure(Constraints{Max: Size{W: 200, H: 200}})
+	if want := (Size{W: 10 + 2 + 4 + 2 + 6 + 8, H: 10 + 1 + 3 + 2 + 5 + 7}); sz != want {
+		t.Fatalf("measure = %+v, want %+v (content + margin + border + padding)", sz, want)
+	}
+	box.Arrange(render.Rect{W: sz.W, H: sz.H})
+	if got, want := box.Bounds(), (render.Rect{X: 4, Y: 1, W: sz.W - 6, H: sz.H - 4}); got != want {
+		t.Errorf("border box = %+v, want %+v (the margin stays outside)", got, want)
+	}
+	if got, want := child.Bounds(), (render.Rect{X: 4 + 1 + 8, Y: 1 + 1 + 5, W: 10, H: 10}); got != want {
+		t.Errorf("content box = %+v, want %+v", got, want)
+	}
+	// A hit on the margin misses the box: margins are not the widget.
+	if box.HitTest(Point{X: 1, Y: 1}) != nil {
+		t.Error("the margin hit the box")
+	}
+
+	// Without a stylesheet the programmatic per-side padding applies;
+	// the stylesheet overrides only the sides it sets.
+	LoadStylesheet("")
+	plain := NewBox(Row, 0, 0)
+	plain.Append(NewSpacer(10, 10), false)
+	plain.SetPadding(render.Insets{Top: 1, Right: 2, Bottom: 3, Left: 4})
+	if got := plain.Measure(Constraints{Max: Size{W: 100, H: 100}}); got != (Size{W: 16, H: 14}) {
+		t.Errorf("programmatic per-side padding: %+v", got)
+	}
+	loadCSS(t, `box { padding-left: 20px; }`)
+	if got := plain.Measure(Constraints{Max: Size{W: 100, H: 100}}); got != (Size{W: 32, H: 14}) {
+		t.Errorf("stylesheet padding-left over programmatic: %+v", got)
+	}
+}
+
+func TestMinSizeFloorsTheContentBox(t *testing.T) {
+	loadCSS(t, `box { min-width: 40px; min-height: 20px; padding: 2px; }`)
+	box := NewBox(Row, 0, 0)
+	box.Append(NewSpacer(10, 10), false)
+	if got := box.Measure(Constraints{Max: Size{W: 100, H: 100}}); got != (Size{W: 44, H: 24}) {
+		t.Errorf("min size floors the content box, padding outside: %+v", got)
+	}
+	// The floor never beats the constraints.
+	if got := box.Measure(Constraints{Max: Size{W: 30, H: 100}}); got.W != 30 {
+		t.Errorf("min-width overflowed the constraint: %+v", got)
+	}
+}
+
+func TestBorderSpacing(t *testing.T) {
+	loadCSS(t, `box { border-spacing: 7px 3px; }`)
+	row := NewBox(Row, 1, 0)
+	row.Append(NewSpacer(10, 10), false)
+	row.Append(NewSpacer(10, 10), false)
+	if got := row.Measure(Constraints{Max: Size{W: 100, H: 100}}).W; got != 27 {
+		t.Errorf("row gap = %d total, want the horizontal spacing 7", got)
+	}
+	col := NewBox(Column, 1, 0)
+	col.Append(NewSpacer(10, 10), false)
+	col.Append(NewSpacer(10, 10), false)
+	if got := col.Measure(Constraints{Max: Size{W: 100, H: 100}}).H; got != 23 {
+		t.Errorf("column gap = %d total, want the vertical spacing 3", got)
+	}
+	LoadStylesheet("")
+	if got := row.Measure(Constraints{Max: Size{W: 100, H: 100}}).W; got != 21 {
+		t.Errorf("without a sheet the constructor spacing applies: %d", got)
+	}
+}
+
+func TestInlineStyleCustomPropertiesAndPriority(t *testing.T) {
+	face := goldenFace(t)
+	loadCSS(t, `label { color: var(--tint, #010101); } box { color: #020202; }`)
+	box := NewBox(Column, 0, 0)
+	lbl := NewLabel(face, 14, "x", 0)
+	box.Append(lbl, false)
+	arrangeTree(t, box, 100, 40)
+	if got := lbl.style(lbl).Color; got != render.RGB(1, 1, 1) {
+		t.Fatalf("fallback before any inline var: %08x", uint32(got))
+	}
+	box.SetInlineStyle("--tint: #0a0b0c")
+	CollectDamage(box)
+	if got := lbl.style(lbl).Color; got != render.RGB(0x0a, 0x0b, 0x0c) {
+		t.Errorf("inline custom property did not reach the child: %08x", uint32(got))
+	}
+	// Changing the variable restyles the subtree.
+	box.SetInlineStyle("--tint: #0d0e0f")
+	rects, _ := CollectDamage(box)
+	if got := lbl.style(lbl).Color; got != render.RGB(0x0d, 0x0e, 0x0f) {
+		t.Errorf("var change did not restyle the child: %08x", uint32(got))
+	}
+	if !slices.Contains(rects, lbl.Bounds()) {
+		t.Errorf("the child did not repaint: %v", rects)
+	}
+	if box.InlineStyle() != "--tint: #0d0e0f" {
+		t.Errorf("InlineStyle = %q", box.InlineStyle())
+	}
+
+	// Inline (user priority) beats the application sheet, loses to a
+	// higher-priority sheet — GTK's provider order.
+	lbl.SetInlineStyle("color: #111111")
+	CollectDamage(box)
+	if got := lbl.style(lbl).Color; got != render.RGB(0x11, 0x11, 0x11) {
+		t.Errorf("inline lost to the application sheet: %08x", uint32(got))
+	}
+	top := addCSS(t, `label { color: #222222; }`, StylePriorityUser+100)
+	CollectDamage(box)
+	if got := lbl.style(lbl).Color; got != render.RGB(0x22, 0x22, 0x22) {
+		t.Errorf("higher-priority sheet lost to inline: %08x", uint32(got))
+	}
+	top.Remove()
+	top.Remove() // idempotent
+	CollectDamage(box)
+	if got := lbl.style(lbl).Color; got != render.RGB(0x11, 0x11, 0x11) {
+		t.Errorf("removal did not restore: %08x", uint32(got))
+	}
+	top.Load(`label { color: #333333; }`)
+	CollectDamage(box)
+	if got := lbl.style(lbl).Color; got != render.RGB(0x33, 0x33, 0x33) || top.Priority() != StylePriorityUser+100 {
+		t.Errorf("Load after Remove did not reinstall: %08x", uint32(got))
+	}
+	lbl.SetInlineStyle("")
+	top.Remove()
+	CollectDamage(box)
+	if got := lbl.style(lbl).Color; got != render.RGB(0x0d, 0x0e, 0x0f) {
+		t.Errorf("clearing the inline style: %08x", uint32(got))
+	}
+}
+
+func TestHoverChainMatchesAncestors(t *testing.T) {
+	face := goldenFace(t)
+	loadCSS(t, `.outer:hover label { color: #00ff00; } label { color: #ff0000; }`)
+	lbl := NewLabel(face, 14, "hi", 0)
+	btn := NewButton(lbl, 4, 0)
+	outer := NewBox(Row, 0, 0)
+	outer.AddClass("outer")
+	outer.Append(btn, false)
+	other := NewSpacer(40, 20)
+	root := NewBox(Row, 0, 0)
+	root.Append(outer, false)
+	root.Append(other, false)
+	arrangeTree(t, root, 200, 40)
+	r := &Router{Root: root}
+	if got := lbl.style(lbl).Color; got != render.RGB(0xff, 0, 0) {
+		t.Fatalf("resting color: %08x", uint32(got))
+	}
+	r.Move(Point{X: btn.Bounds().X + 2, Y: 5})
+	CollectDamage(root)
+	if !outer.hoverChain || !root.hoverChain {
+		t.Fatal("the hovered button's ancestors are not in the hover chain")
+	}
+	if got := lbl.style(lbl).Color; got != render.RGB(0, 0xff, 0) {
+		t.Errorf("ancestor :hover did not match: %08x", uint32(got))
+	}
+	r.Leave()
+	CollectDamage(root)
+	if outer.hoverChain || root.hoverChain {
+		t.Error("leave kept the hover chain")
+	}
+	if got := lbl.style(lbl).Color; got != render.RGB(0xff, 0, 0) {
+		t.Errorf("hover chain cleared but the rule still matched: %08x", uint32(got))
+	}
+}
+
+func TestFocusVisibleAndWithin(t *testing.T) {
+	face := goldenFace(t)
+	loadCSS(t, `entry:focus-visible { min-width: 300px; } .form:focus-within { background-color: #123456; }`)
+	entry := NewEntry(face, 14, 0)
+	form := NewBox(Column, 0, 0)
+	form.AddClass("form")
+	form.Append(entry, false)
+	root := NewBox(Column, 0, 0)
+	root.Append(form, false)
+	arrangeTree(t, root, 400, 100)
+	r := &Router{Root: root}
+
+	r.Press(BTNLeft, Point{X: 5, Y: 5})
+	CollectDamage(root)
+	if !entry.focused || entry.focusVisible {
+		t.Fatal("a pointer focus must not be focus-visible")
+	}
+	if entry.style(entry).Has(style.PropMinWidth) {
+		t.Error(":focus-visible matched a pointer focus")
+	}
+	if got := form.style(form).Background; got != render.RGB(0x12, 0x34, 0x56) {
+		t.Errorf(":focus-within on the container: %08x", uint32(got))
+	}
+	if root.focusWithin != 1 {
+		t.Errorf("focus-within count on the root = %d", root.focusWithin)
+	}
+	r.FocusNext()
+	CollectDamage(root)
+	if !entry.focusVisible || entry.style(entry).MinWidth != 300 {
+		t.Error("keyboard traversal did not make the focus visible")
+	}
+	// Focus leaves the form: nothing within it is focused any more.
+	r.Forget(entry)
+	CollectDamage(root)
+	if form.style(form).Has(style.PropBackgroundColor) || form.focusWithin != 0 {
+		t.Error(":focus-within outlived the focus")
+	}
+}
+
+func TestSetStateChecked(t *testing.T) {
+	face := goldenFace(t)
+	loadCSS(t, `button:checked { background-color: #0000ff; } switch:checked { min-width: 99px; }`)
+	b := NewButton(NewLabel(face, 14, "x", 0), 2, 0)
+	arrangeTree(t, b, 100, 30)
+	if b.style(b).Has(style.PropBackgroundColor) || b.HasState(StateChecked) {
+		t.Fatal("checked before SetState")
+	}
+	b.SetState(StateChecked, true)
+	CollectDamage(b)
+	if !b.HasState(StateChecked) || b.style(b).Background != render.RGB(0, 0, 0xff) {
+		t.Error("SetState(checked) did not match :checked")
+	}
+	b.SetState(StateChecked, false)
+	CollectDamage(b)
+	if b.style(b).Has(style.PropBackgroundColor) {
+		t.Error(":checked outlived the flag")
+	}
+	sw := NewSwitch(true)
+	arrangeTree(t, sw, 100, 30)
+	if sw.style(sw).MinWidth != 99 {
+		t.Error("an on switch is :checked intrinsically")
+	}
+}
+
+func TestSiblingSelectorsFollowStructure(t *testing.T) {
+	loadCSS(t, `spacer:first-child { min-height: 5px; } spacer + spacer { min-width: 7px; }`)
+	a, b := NewSpacer(1, 1), NewSpacer(1, 1)
+	a.SetElement("spacer")
+	b.SetElement("spacer")
+	row := NewBox(Row, 0, 0)
+	row.Append(a, false)
+	row.Append(b, false)
+	arrangeTree(t, row, 100, 30)
+	if a.style(a).MinHeight != 5 || b.style(b).Has(style.PropMinHeight) {
+		t.Fatal(":first-child")
+	}
+	if b.style(b).MinWidth != 7 || a.style(a).Has(style.PropMinWidth) {
+		t.Fatal("adjacent sibling")
+	}
+	// A new first child takes :first-child from the old one.
+	c := NewSpacer(1, 1)
+	c.SetElement("spacer")
+	row.InsertAt(0, c, false)
+	arrangeTree(t, row, 100, 30)
+	if a.style(a).Has(style.PropMinHeight) || c.style(c).MinHeight != 5 {
+		t.Error("InsertAt did not move :first-child")
+	}
+	// Hiding the first child makes the next one first.
+	c.SetVisible(false)
+	arrangeTree(t, row, 100, 30)
+	if a.style(a).MinHeight != 5 {
+		t.Error("a hidden first child still counted")
+	}
+}
+
+func TestOpacityAndBrightnessPaint(t *testing.T) {
+	loadCSS(t, `.o { background-color: #ff0000; opacity: 0.5; } .f { background-color: #402010; filter: brightness(2); }`)
+	o := NewBox(Row, 0, 0)
+	o.Append(NewSpacer(4, 4), false)
+	o.AddClass("o")
+	arrangeTree(t, o, 4, 4)
+	if got := pxColorAt(paintTree(o, 4, 4), render.Stride(4), 1, 1); got.A() < 125 || got.A() > 130 {
+		t.Errorf("opacity 0.5 painted alpha %d", got.A())
+	}
+	f := NewBox(Row, 0, 0)
+	f.Append(NewSpacer(4, 4), false)
+	f.AddClass("f")
+	arrangeTree(t, f, 4, 4)
+	if got := pxColorAt(paintTree(f, 4, 4), render.Stride(4), 1, 1); got != render.RGB(0x80, 0x40, 0x20) {
+		t.Errorf("brightness(2) = %08x, want doubled channels", uint32(got))
+	}
+}
+
+func TestIconSizeAndTintFromStylesheet(t *testing.T) {
+	loadCSS(t, `box { -gtk-icon-size: 24px; color: #00ff00; }`)
+	ic := NewSVGIcon([]byte(testSymbolicSVG), 16)
+	box := NewBox(Row, 0, 0)
+	box.Append(ic, false)
+	arrangeTree(t, box, 50, 50)
+	if got := ic.Measure(Constraints{Max: Size{W: 50, H: 50}}); got != (Size{W: 24, H: 24}) {
+		t.Errorf("inherited -gtk-icon-size: %+v", got)
+	}
+	if got := pxColorAt(paintTree(box, 50, 50), render.Stride(50), 12, 12); got != render.RGB(0, 0xff, 0) {
+		t.Errorf("symbolic tint from the stylesheet color: %08x", uint32(got))
+	}
+	// A pinned tint outranks the stylesheet.
+	ic.SetTint(render.RGB(0xff, 0, 0))
+	if got := pxColorAt(paintTree(box, 50, 50), render.Stride(50), 12, 12); got != render.RGB(0xff, 0, 0) {
+		t.Errorf("programmatic tint lost to the stylesheet: %08x", uint32(got))
+	}
+}
+
+func TestLabelTextTransform(t *testing.T) {
+	face := goldenFace(t)
+	loadCSS(t, `.up { text-transform: uppercase; }`)
+	lbl := NewLabel(face, 14, "hello world", render.RGB(1, 1, 1))
+	upper := NewLabel(face, 14, "HELLO WORLD", render.RGB(1, 1, 1))
+	arrangeTree(t, lbl, 300, 30)
+	arrangeTree(t, upper, 300, 30)
+	plainW := lbl.Measure(Constraints{Max: Size{W: 300, H: 30}}).W
+	lbl.AddClass("up")
+	CollectDamage(lbl)
+	if got, want := lbl.Measure(Constraints{Max: Size{W: 300, H: 30}}).W, upper.Measure(Constraints{Max: Size{W: 300, H: 30}}).W; got != want || got == plainW {
+		t.Errorf("uppercase width %d, want %d (plain %d)", got, want, plainW)
+	}
+	if lbl.Text() != "hello world" {
+		t.Error("text-transform rewrote the label's text")
+	}
+	for in, want := range map[string]string{"hello big world": "Hello Big World", "": ""} {
+		if got := transformText(in, style.TransformCapitalize); got != want {
+			t.Errorf("capitalize(%q) = %q", in, got)
+		}
+	}
+}
+
+func TestOutlineAndShadowGrowDamage(t *testing.T) {
+	face := goldenFace(t)
+	loadCSS(t, `button { outline: 2px solid #ff0000; outline-offset: 1px; box-shadow: 0 4px 0 #000000; }`)
+	b := NewButton(NewLabel(face, 14, "x", 0), 2, 0)
+	root := NewBox(Row, 20, 20)
+	root.Append(b, false)
+	arrangeTree(t, root, 200, 100)
+	b.Invalidate()
+	rects, _ := CollectDamage(root)
+	bb := b.Bounds()
+	want := render.Rect{X: bb.X - 3, Y: bb.Y - 3, W: bb.W + 6, H: bb.H + 3 + 4}
+	if !slices.Contains(rects, want) {
+		t.Errorf("damage %v, want the ink rect %+v (outline 3 around, shadow 4 below)", rects, want)
+	}
+}
+
+func TestButtonTransparentFillStrokesARoundedRing(t *testing.T) {
+	loadCSS(t, `button { border: 2px solid #ffffff; border-radius: 8px; }`)
+	b := NewButton(NewSpacer(20, 20), 0, 0)
+	b.BgExplicit = true
+	arrangeTree(t, b, 24, 24)
+	data := paintTree(b, 24, 24)
+	if got := pxColorAt(data, render.Stride(24), 0, 0); got != 0 {
+		t.Errorf("corner pixel = %08x, want the rounded ring to leave it empty", uint32(got))
+	}
+	if got := pxColorAt(data, render.Stride(24), 12, 0); got != render.RGB(0xff, 0xff, 0xff) {
+		t.Errorf("edge pixel = %08x, want the ring", uint32(got))
+	}
+	if got := pxColorAt(data, render.Stride(24), 12, 12); got != 0 {
+		t.Errorf("center = %08x, want the transparent fill", uint32(got))
+	}
+}
+
+func TestSetClassesAndClasses(t *testing.T) {
+	loadCSS(t, `.a { min-width: 1px; } .b { min-height: 2px; }`)
+	s := NewSpacer(0, 0)
+	s.AddClass("a")
+	s.SetClasses("b", "b", "")
+	if s.HasClass("a") || !s.HasClass("b") || len(s.Classes()) != 1 {
+		t.Fatalf("SetClasses: %v", s.Classes())
+	}
+	v := s.style(s)
+	if v.Has(style.PropMinWidth) || v.MinHeight != 2 {
+		t.Error("the class swap did not restyle")
+	}
+	cl := s.Classes()
+	cl[0] = "mutated"
+	if !s.HasClass("b") {
+		t.Error("Classes returned the live slice")
+	}
+}
+
+func TestSetRootFontSize(t *testing.T) {
+	loadCSS(t, `box { padding: 1rem; }`)
+	t.Cleanup(func() { SetRootFontSize(16) })
+	box := NewBox(Row, 0, 0)
+	if got := box.Measure(Constraints{Max: Size{W: 100, H: 100}}); got != (Size{W: 32, H: 32}) {
+		t.Fatalf("1rem at 16px: %+v", got)
+	}
+	SetRootFontSize(10)
+	if RootFontSize() != 10 {
+		t.Fatal("RootFontSize")
+	}
+	if got := box.Measure(Constraints{Max: Size{W: 100, H: 100}}); got != (Size{W: 20, H: 20}) {
+		t.Errorf("1rem at 10px: %+v", got)
+	}
+	SetRootFontSize(-1) // ignored
+	if RootFontSize() != 10 {
+		t.Error("a non-positive size was accepted")
+	}
+}

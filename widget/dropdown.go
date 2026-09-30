@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/stubbedev/gelm/internal/anim"
+	"github.com/stubbedev/gelm/internal/style"
 	"github.com/stubbedev/gelm/internal/surfx"
 	"github.com/stubbedev/gelm/internal/text"
 	"github.com/stubbedev/gelm/render"
@@ -422,7 +423,7 @@ func (d *Dropdown) SetHovered(on bool) {
 		return
 	}
 	d.hovered = on
-	d.invalidateStyle()
+	d.invalidateState(style.Hover)
 }
 
 // KeyAction implements KeyActionHandler: closed, Enter or Down opens;

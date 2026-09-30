@@ -6,6 +6,56 @@ reviewed spec (#75) that #76 builds exactly, nothing more. The
 numbers in "Performance envelope" come from the prototype in
 `bench/css-proto` and are the bar the implementation had to meet.
 
+**v2 (GTK stylesheet parity).** The engine now loads real GTK
+application stylesheets (wayle's compiled SCSS, ~1800 rules, parses in
+~6 ms with no warnings). It supersedes the "out" lists below where they
+disagree:
+
+- **Syntax**: a CSS Syntax 3 tokenizer; `@keyframes`/`@media` blocks
+  skip silently, other at-rules skip with a warning; nested (SCSS)
+  blocks and `!important` still reject their rule.
+- **Selectors**: combinators ` `, `>`, `+`, `~` (with backtracking);
+  `:hover` (on the hovered widget *and its ancestors*, GTK's rule),
+  `:active`, `:focus`, `:focus-visible` (keyboard focus),
+  `:focus-within`, `:disabled`, `:checked`, `:selected`,
+  `:indeterminate`, `:backdrop` (the app-driven ones through
+  `SetState`), `:first-child`, `:last-child`, `:only-child`,
+  `:nth-child()`/`:nth-last-child()` (visible siblings), `:root`,
+  `:not()` (compound lists, Level 4 specificity).
+- **Values**: custom properties (`--x`, inherited, computed where
+  declared, cycles invalid) and `var()` with fallbacks; a declaration
+  whose `var()` cannot resolve is invalid at computed-value time and
+  acts as `unset`. `calc()`/`min()`/`max()`/`clamp()`; units px, rem
+  (`SetRootFontSize`, default 16), em, pt, pc, in, cm, mm, %, deg,
+  s/ms. Colors: hex (3/4/6/8), named, `transparent`, `currentColor`,
+  `rgb[a]()`, `hsl[a]()`, `color-mix(in srgb, …)` (premultiplied,
+  sub-100% sums scale alpha), GTK's `alpha()`, `shade()`, `mix()`.
+  CSS-wide `inherit`/`initial`/`unset` and `all`.
+- **Properties** (longhands, with their shorthands): `color`,
+  `background[-color|-image]` (`linear-gradient` with angles, `to`
+  sides and positioned stops), `opacity`, `filter: brightness()`,
+  `padding-*`, `margin-*`, `border[-side][-width|-style|-color]`
+  (a width draws only with a visible style, the CSS rule),
+  `border-*-radius`, `box-shadow` (lists, offsets, spread, blur,
+  `inset`), `outline[-width|-style|-color|-offset]`, `min-width`,
+  `min-height`, `border-spacing` (Box gap), `font[-family|-size|-weight|-style]`,
+  `letter-spacing` (computed, not yet painted), `text-transform`,
+  `-gtk-icon-size`, `transition[-*]` (computed; not yet animated).
+  Animation, icon-transform, text-decoration and similar GTK properties
+  parse and drop silently.
+- **Cascade**: prioritized stylesheets (`AddStylesheet`, GTK's provider
+  priorities; `LoadStylesheet` is the application slot) and per-widget
+  inline declarations (`SetInlineStyle`, a widget-scoped provider at
+  `StylePriorityUser`) — priority, then specificity, then order.
+- **Box model** (Box, Button, Label, Icon): self-applied margins,
+  per-side border and padding, min sizes on the content box, painted in
+  GTK's order (outer shadows, background, image, inset shadows, border,
+  content, outline), with opacity and filter over the subtree; ink
+  outside the border box joins the damage rect.
+- **Invalidation**: a state/class/id flip restyles the subtree only
+  when a loaded selector tests that fact on an ancestor, and siblings
+  only when sibling selectors are loaded.
+
 The maintainer's goal restated: GTK-flavored CSS as an **override
 layer on top of the typed `Theme`** — the palette stays the source of
 truth and keeps working with no stylesheet loaded; a stylesheet

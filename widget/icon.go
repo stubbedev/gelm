@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 
 	"github.com/stubbedev/gelm/internal/icons"
+	"github.com/stubbedev/gelm/internal/style"
 	"github.com/stubbedev/gelm/render"
 )
 
@@ -55,6 +56,7 @@ type Icon struct {
 	// costs one lookup, not one per frame.
 	resolvedTint Color
 	resolvedFrac uint32
+	resolvedSize int
 	resolvedGen  uint64
 	err          error
 }
@@ -143,29 +145,63 @@ func (i *Icon) SetThemeName(name string) {
 // tried and failed.
 func (i *Icon) Err() error { return i.err }
 
-// Measure returns the icon's pixel size, clamped to con.
+// effSize is the icon box: the stylesheet's -gtk-icon-size when set
+// (it inherits, GTK's rule), else the constructor size.
+func (i *Icon) effSize() int {
+	return picki(i.style(i), style.PropIconSize, i.size)
+}
+
+// natural is the icon's content size.
+func (i *Icon) natural() Size {
+	if i.kind == iconStatic && i.ic != nil {
+		w, h := i.ic.Size()
+		return Size{W: w, H: h}
+	}
+	s := i.effSize()
+	return Size{W: s, H: s}
+}
+
+// Measure returns the icon's pixel size inside the CSS box, clamped to
+// con.
 func (i *Icon) Measure(con Constraints) Size {
 	if sz, ok := i.measureHit(con); ok {
 		return sz
 	}
-	w, h := i.size, i.size
-	if i.kind == iconStatic && i.ic != nil {
-		w, h = i.ic.Size()
-	}
-	return i.measureStore(con, clampSize(Size{W: w, H: h}, con))
+	v := i.style(i)
+	return i.measureStore(con, measureBox(v, boxOf(v, render.Insets{}), con, func(inner Constraints) Size {
+		return clampSize(i.natural(), inner)
+	}))
 }
 
-// Paint draws the icon at the top-left of the arranged rect. Dynamic
-// icons resolve first, re-rasterizing when the canvas device scale, the
-// tint, or the icon theme cache moved on since the last frame.
+// Arrange records the border box inside r, the margin box.
+func (i *Icon) Arrange(r render.Rect) {
+	border, _ := boxRects(boxOf(i.style(i), render.Insets{}), r)
+	i.node.Arrange(border)
+}
+
+// Paint draws the icon at the top-left of the content box (the CSS box
+// layers first, when the stylesheet gives the icon any). Dynamic icons
+// resolve first, re-rasterizing when the canvas device scale, the tint,
+// the stylesheet's size, or the icon theme cache moved on since the
+// last frame.
 func (i *Icon) Paint(cv *render.Canvas) {
+	v := i.style(i)
+	fx := pushEffects(cv, v)
+	defer fx.pop(cv)
+	b := boxOf(v, render.Insets{})
+	radii := radiusOr(v, 0)
+	if bg := pickc(0, v, style.PropBackgroundColor, 0); bg != 0 || hasBoxLayers(v) {
+		paintBoxBehind(cv, v, i.bounds, radii, b.border, bg)
+	}
+	defer paintOutline(cv, v, i.bounds, radii)
 	if i.kind != iconStatic {
 		i.resolveFor(cv)
 		if i.ic == nil {
 			return
 		}
 	}
-	i.ic.Draw(cv, i.bounds.X, i.bounds.Y)
+	content := b.padding.Shrink(b.border.Shrink(i.bounds))
+	i.ic.Draw(cv, content.X, content.Y)
 }
 
 // HitTest returns the icon when p is inside its bounds.
@@ -204,7 +240,9 @@ func (i *Icon) resolveFor(cv *render.Canvas) {
 	frac := fracOf(num, denom)
 	tint := i.tint
 	if tint == 0 {
-		tint = Current().Accent
+		// The stylesheet's color recolors symbolic glyphs, GTK's rule;
+		// without one they follow the theme accent.
+		tint = pickc(0, i.style(i), style.PropColor, Current().Accent)
 	}
 	if !i.stale(frac, tint) {
 		return
@@ -224,15 +262,16 @@ func (i *Icon) stale(frac uint32, tint Color) bool {
 	if i.ic == nil {
 		return true
 	}
-	return i.resolvedFrac != frac || i.resolvedTint != tint
+	return i.resolvedFrac != frac || i.resolvedTint != tint || i.resolvedSize != i.effSize()
 }
 
 // resolve rasterizes the source into a device box of
 // icons.DeviceBox(size, frac) pixels and records what it was made for.
 func (i *Icon) resolve(frac uint32, tint Color) {
-	dev := icons.DeviceBox(i.size, frac)
-	ic, err := i.rasterize(frac, tint, dev)
-	i.resolvedFrac, i.resolvedTint = frac, tint
+	size := i.effSize()
+	dev := icons.DeviceBox(size, frac)
+	ic, err := i.rasterize(frac, tint, dev, size)
+	i.resolvedFrac, i.resolvedTint, i.resolvedSize = frac, tint, size
 	if i.kind == iconTheme {
 		i.resolvedGen = icons.Default().Generation()
 	}
@@ -245,14 +284,14 @@ func (i *Icon) resolve(frac uint32, tint Color) {
 
 // rasterize decodes the source at dev pixels, mask-recoloring it to
 // tint when it is symbolic or a tint is pinned.
-func (i *Icon) rasterize(frac uint32, tint Color, dev int) (*render.Icon, error) {
+func (i *Icon) rasterize(frac uint32, tint Color, dev, size int) (*render.Icon, error) {
 	switch i.kind {
 	case iconTheme:
 		cache := icons.Default()
 		if i.tint != 0 {
-			return cache.Tinted(i.name, i.size, frac, tint)
+			return cache.Tinted(i.name, size, frac, tint)
 		}
-		return cache.SymbolicIcon(i.name, i.size, frac, tint)
+		return cache.SymbolicIcon(i.name, size, frac, tint)
 	case iconFile:
 		data, err := os.ReadFile(i.path)
 		if err != nil {
