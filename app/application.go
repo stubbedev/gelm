@@ -184,6 +184,11 @@ func NewApplication(sess *wlsession.Session) *Application {
 	return a
 }
 
+// Clipboard returns the clipboard SetClipboard installed, nil before.
+// Its methods touch the Wayland connection: call them on the loop
+// goroutine (inside Invoke from elsewhere).
+func (a *Application) Clipboard() *Clipboard { return a.clip }
+
 // SetClipboard enables ctrl+c/x/v on every window's focused widget,
 // plus the primary-selection behavior (middle-click paste, and
 // copy-on-select once SetCopyOnSelect turns it on).
