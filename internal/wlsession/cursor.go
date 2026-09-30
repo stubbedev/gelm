@@ -15,6 +15,11 @@ import (
 // shape: the classic arrow.
 const defaultCursor = wlcursor.LeftPtr
 
+// CursorHidden is the shape name that hides the pointer over a surface
+// (GTK's "none"): set_cursor with no surface, no theme lookup. A
+// frozen-screen color picker draws its own loupe in its place.
+const CursorHidden = "none"
+
 // cursorThemeSize is the nominal cursor size in pixels; XCURSOR_SIZE
 // overrides it through wlcursor.
 const cursorThemeSize = 24
@@ -146,9 +151,10 @@ func resolveCursorName(has func(string) bool, desired string) string {
 // ("ns-resize", "e-resize", ...) - which resolve to the shapes the
 // loaded theme actually carries and degrade to the arrow when it has
 // none. Animated shapes (watch, left_ptr_watch) advance their frames
-// on a timer for as long as they show. The choice sticks across
-// pointer enters; "" or an unknown name falls back to the arrow. It
-// is a no-op before the pointer or the compositor surfaces exist.
+// on a timer for as long as they show. CursorHidden ("none") hides
+// the pointer. The choice sticks across pointer enters; "" or an
+// unknown name falls back to the arrow. It is a no-op before the
+// pointer or the compositor surfaces exist.
 func (s *Session) SetCursor(name string) error {
 	s.crs.mu.Lock()
 	s.crs.desired = effectiveCursor(name)
@@ -182,6 +188,10 @@ func (s *Session) applyCursor() error {
 		debug.Log("input", "cursor surface %d created", surf.Id())
 	}
 	c.gen++
+	if c.desired == CursorHidden {
+		c.shown, c.cur = CursorHidden, nil
+		return s.pushCursorLocked(nil)
+	}
 	cur, name, err := s.themeCursor(c.desired)
 	if err != nil {
 		return err
@@ -238,6 +248,15 @@ func (s *Session) themeCursor(desired string) (*wlcursor.Cursor, string, error) 
 func (s *Session) pushCursorLocked(img *wlcursor.ImageBuffer) error {
 	if s.crs.push != nil {
 		return s.crs.push(img)
+	}
+	if img == nil {
+		// Hidden: set_cursor with a null surface. The zero Surface has
+		// id 0, which is how the wire spells null; a nil *wl.Surface
+		// would crash the binding's new-id bookkeeping instead.
+		if err := s.pointer.SetCursor(s.pointerEnterSerial, &wl.Surface{}, 0, 0); err != nil {
+			return fmt.Errorf("hide cursor: %w", err)
+		}
+		return nil
 	}
 	if err := s.crs.surface.Attach(img.GetBuffer(), 0, 0); err != nil {
 		return fmt.Errorf("cursor attach: %w", err)

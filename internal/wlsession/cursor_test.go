@@ -316,6 +316,33 @@ func TestCursorFrameAdvancement(t *testing.T) {
 	})
 }
 
+// "none" hides the pointer without consulting the theme (no theme
+// carries a shape by that name, so a lookup would show the arrow), and
+// any later shape brings a visible cursor back.
+func TestCursorHidden(t *testing.T) {
+	h := newCursorHarness(t, map[string]*wlcursor.Cursor{
+		defaultCursor: fakeCursor(defaultCursor, 1),
+	})
+	if err := h.s.SetCursor(CursorHidden); err != nil {
+		t.Fatalf("SetCursor(none): %v", err)
+	}
+	if len(h.frames) != 1 || h.frames[0] != nil {
+		t.Fatalf("hiding pushed %v, want one null frame", h.frames)
+	}
+	if h.s.crs.shown != CursorHidden || h.armed() {
+		t.Fatalf("shown %q armed %v after hiding", h.s.crs.shown, h.armed())
+	}
+	if err := h.s.SetCursor(""); err != nil {
+		t.Fatalf("SetCursor(default): %v", err)
+	}
+	if len(h.frames) != 2 || h.frames[1] == nil {
+		t.Fatal("the default shape did not come back after hiding")
+	}
+	if h.s.crs.shown != defaultCursor {
+		t.Errorf("shown %q, want the arrow", h.s.crs.shown)
+	}
+}
+
 // A surface that set a special shape must fall back to the arrow on
 // pointer leave - xcursor shapes stick across surfaces of one client,
 // so the next surface would otherwise inherit the old shape.
