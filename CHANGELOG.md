@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### Button: explicit transparent backgrounds
+
+- `widget.Button.BgExplicit`: with it set, `Bg`, `BgHover`, and
+  `BgPressed` are literal, so a zero color is transparent instead of
+  "unset, use the stylesheet or the theme surface". A button can rest
+  on whatever is behind it and fill only on hover or press. Without the
+  flag nothing changes.
+- A transparent fill under a stylesheet border now strokes the
+  outline (`Canvas.BorderRect`) instead of painting the whole button
+  in the border color.
+
 ### API consistency wave (breaks; #52)
 
 One deliberate consistency pass before wayle and the 1.0 freeze. No

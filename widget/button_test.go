@@ -110,3 +110,54 @@ func TestButtonClick(t *testing.T) {
 		b.ClickAt(Point{X: 0, Y: 0})
 	})
 }
+
+func TestButtonBgExplicit(t *testing.T) {
+	cvSize := 40
+	stride := render.Stride(cvSize)
+	data := make([]byte, stride*cvSize)
+	backdrop := render.RGB(200, 0, 0)
+	paint := func(setup func(b *Button)) render.Color {
+		cv := render.New(data, stride, cvSize, cvSize)
+		cv.FillRect(render.Rect{W: cvSize, H: cvSize}, backdrop)
+		b := NewButton(newStub(0, 0), 0, 0)
+		setup(b)
+		b.Measure(Constraints{Max: Size{W: 100, H: 100}})
+		b.Arrange(render.Rect{X: 0, Y: 0, W: 40, H: 40})
+		b.Paint(cv)
+		return render.ColorFromBytes(data[20*stride+20*4 : 20*stride+20*4+4])
+	}
+
+	t.Run("zero Bg is transparent", func(t *testing.T) {
+		if got := paint(func(b *Button) { b.BgExplicit = true }); got != backdrop {
+			t.Errorf("resting pixel = %v, want the backdrop through a transparent button", got)
+		}
+	})
+
+	t.Run("hover still fills", func(t *testing.T) {
+		got := paint(func(b *Button) {
+			b.BgExplicit = true
+			b.BgHover = render.RGB(0, 0, 90)
+			b.Hovered = true
+		})
+		if got != render.RGB(0, 0, 90) {
+			t.Errorf("hover pixel = %v, want BgHover", got)
+		}
+	})
+
+	t.Run("the stylesheet does not refill it", func(t *testing.T) {
+		LoadStylesheet("button { background-color: #00ff00; }")
+		defer LoadStylesheet("")
+		if got := paint(func(b *Button) { b.BgExplicit = true }); got != backdrop {
+			t.Errorf("styled explicit pixel = %v, want transparent", got)
+		}
+		if got := paint(func(*Button) {}); got != render.RGB(0, 255, 0) {
+			t.Errorf("styled default pixel = %v, want the stylesheet background", got)
+		}
+	})
+
+	t.Run("without it zero means the theme surface", func(t *testing.T) {
+		if got := paint(func(*Button) {}); got != Current().Surface {
+			t.Errorf("default pixel = %v, want the theme surface", got)
+		}
+	})
+}
