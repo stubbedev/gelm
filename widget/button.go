@@ -15,10 +15,20 @@ type Button struct {
 	padding int
 	radius  int
 
-	// Background colors, one per visual state.
+	// Background colors, one per visual state. A zero color means
+	// "unset": the stylesheet's background-color, else the theme
+	// surface for that state.
 	Bg        render.Color
 	BgHover   render.Color
 	BgPressed render.Color
+
+	// BgExplicit makes Bg, BgHover, and BgPressed literal: a zero color
+	// is transparent instead of unset, so a button can rest on
+	// whatever sits behind it and fill only on hover. Like any
+	// programmatic color it outranks the stylesheet. A transparent
+	// fill under a stylesheet border strokes the border square
+	// (render.Canvas.BorderRect).
+	BgExplicit bool
 
 	// Hovered and Pressed select the painted state; Pressed wins.
 	Hovered, Pressed bool
@@ -95,11 +105,17 @@ func (b *Button) Paint(cv *render.Canvas) {
 		bg, prog = t.Surface, b.Bg
 	}
 	fill := pickc(prog, v, style.PropBackgroundColor, bg)
+	if b.BgExplicit {
+		fill = prog
+	}
 	radius := picki(v, style.PropBorderRadius, b.radius)
-	if bw := picki(v, style.PropBorderWidth, 0); bw > 0 {
+	switch bw := picki(v, style.PropBorderWidth, 0); {
+	case bw > 0 && fill == 0:
+		cv.BorderRect(b.bounds, bw, pickc(0, v, style.PropBorderColor, t.Border))
+	case bw > 0:
 		cv.RoundedRect(b.bounds, radius, pickc(0, v, style.PropBorderColor, t.Border))
 		cv.RoundedRect(shrinkRect(b.bounds, bw), max(0, radius-bw), fill)
-	} else {
+	case fill != 0:
 		cv.RoundedRect(b.bounds, radius, fill)
 	}
 	if IsEnabled(b) {
