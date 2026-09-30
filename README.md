@@ -78,6 +78,7 @@ deliberate non-goals and the honest, deferred gaps — lives in
 | xdg-shell | done | toplevels: title/app-id, min/max, close-request veto, ping/pong, interactive resize edges (6 logical px), xdg_popup menus and popovers |
 | Window icons | done | `Application.SetIcon`/`SetWindowIcon` through xdg-toplevel-icon-v1: square shm buffers rasterized at the compositor’s preferred sizes (fixed ladder without a preference); silent Debug no-op where the protocol is absent (icon goes to the compositor/taskbar, not a WM_HINTS analog) |
 | wlr-layer-shell | done | layer, anchors, margins, exclusive zone, keyboard interactivity; popups via `get_popup` |
+| Screen capture (`capture`) | done | private capture connection: wlr-screencopy (outputs, regions, cursor overlay, damage, a reused shm slot), ext-image-copy-capture (windows via ext-foreign-toplevel-list sources, one-shot outputs, the damage-driven continuous `Stream`), Hyprland toplevel-export, and linux-dmabuf import as a zero-copy screencopy target; frames convert to `image.RGBA` from the 8/10-bit packed and 24-bit formats; covered in the headless gate |
 | xdg-decoration | optional | server-side decorations when the compositor decorates; silently skipped otherwise (decorated windows opt out of client resize edges) |
 | wl_data_device | done | clipboard (ctrl+c/x/v) and drag and drop, including cross-window; `set_actions`/`finish` gated on data-device v3 |
 | xkb keyboard | done | the compositor's keymap (alt layouts, AltGr, dead keys); synthesized key repeat at the compositor's rate/delay |
