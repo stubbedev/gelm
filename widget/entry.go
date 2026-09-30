@@ -22,6 +22,10 @@ type Entry struct {
 	// OnChanged fires after the contents change, whatever the
 	// source: typing, editing keys, clipboard, or SetText.
 	OnChanged func(string)
+	// OnActivate fires with the contents when the user presses Enter
+	// in the entry (GTK's activate): submit a password, run a search,
+	// move to the next field. A disabled entry never activates.
+	OnActivate func(string)
 
 	runes []rune
 	// disp is the string form of runes, refreshed by setRunes: the
@@ -955,5 +959,8 @@ func (e *Entry) KeyAction(a KeyAction, mods Mods) {
 			e.MoveEnd()
 		}
 	case KeyEnter:
+		if e.OnActivate != nil {
+			e.OnActivate(e.Text())
+		}
 	}
 }

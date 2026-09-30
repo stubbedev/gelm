@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"github.com/stubbedev/gelm/internal/wlsession"
+	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/gelm/widget"
 )
 
 // TestLockSessionPreconditions pins the refusals that never reach the
@@ -53,6 +55,24 @@ func TestHeldLockKeepsLoopAlive(t *testing.T) {
 	a.quit = true
 	if !a.done() {
 		t.Error("Quit must end the loop even while a lock is held")
+	}
+}
+
+// TestSessionLockSetFocus: focus lands in the lock surface whose tree
+// holds the widget and nowhere else.
+func TestSessionLockSetFocus(t *testing.T) {
+	face, err := Font("sans", 14)
+	if err != nil {
+		t.Skipf("no system font: %v", err)
+	}
+	entryA := widget.NewEntry(face, 14, render.RGB(255, 255, 255))
+	entryB := widget.NewEntry(face, 14, render.RGB(255, 255, 255))
+	a := &hostWindow{router: &widget.Router{Root: entryA}}
+	b := &hostWindow{router: &widget.Router{Root: entryB}}
+	l := &SessionLock{surfaces: map[*Output]*hostWindow{{}: a, {}: b}}
+	l.SetFocus(entryB)
+	if a.router.Focused() != nil || b.router.Focused() != entryB {
+		t.Errorf("focus: a=%v b=%v, want only b's entry", a.router.Focused(), b.router.Focused())
 	}
 }
 

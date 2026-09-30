@@ -115,6 +115,11 @@
   `ErrSessionLockUnavailable` a compositor without the global.
 - Lock surfaces make no initial commit and stay undrawable until their
   first configure is acked, and are sized exactly as configured.
+- `LockSurface.Focus` focuses a widget as the surface is created;
+  `SessionLock.SetFocus` moves focus later (a re-enabled password
+  entry).
+- `widget.Entry.OnActivate` fires with the contents on Enter, GTK's
+  `activate`: the submit hook a password field needs.
 - While a lock is held, `Run` keeps going with no window mapped.
 - `Session.WatchOutputs` subscribes to output hotplug next to the
   single-slot `OnOutputAdded`/`OnOutputRemoved` hooks.
