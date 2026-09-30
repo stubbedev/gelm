@@ -163,6 +163,22 @@ func TestNewSVGIconRenders(t *testing.T) {
 	}
 }
 
+func TestThemeIconExists(t *testing.T) {
+	iconTree(t)
+	if !ThemeIconExists("flag") {
+		t.Error("flag is in the fixture theme")
+	}
+	if !ThemeIconExists("face-symbolic") {
+		t.Error("the scalable symbolic icon counts too")
+	}
+	if ThemeIconExists("no-such-icon") {
+		t.Error("an unknown name must not exist")
+	}
+	if ThemeIconExists("") {
+		t.Error("the empty name must not exist")
+	}
+}
+
 func TestNewThemeIconMissing(t *testing.T) {
 	iconTree(t)
 	w := NewThemeIcon("no-such-icon", 16)

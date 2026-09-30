@@ -72,6 +72,22 @@ func NewThemeIcon(name string, size int) *Icon {
 	return &Icon{kind: iconTheme, name: name, size: size}
 }
 
+// ThemeIconExists reports whether name resolves in the current icon
+// theme chain (hicolor included) or the unthemed fallback
+// directories, at any size - GTK's IconTheme.has_icon. Apps use it to
+// pick between candidate names (a distro logo, then a generic one)
+// before building a NewThemeIcon, since a missing theme icon paints
+// nothing.
+func ThemeIconExists(name string) bool {
+	if name == "" {
+		return false
+	}
+	// The spec's nearest pass accepts any size, so one lookup at the
+	// common 16px request at 1x (frac 120) answers for every size.
+	_, err := icons.Lookup(name, 16, 120)
+	return err == nil
+}
+
 // NewFileIcon returns an icon widget that loads an image file (png,
 // svg, svgz) and draws it at size logical pixels.
 func NewFileIcon(path string, size int) *Icon {
