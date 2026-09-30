@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+### Launcher-shaped surfaces: key capture, focus, resizing, clipboard
+
+- `WindowConfig.KeyCapture` / `LayerConfig.KeyCapture`: a capture-phase
+  hook that sees every press (repeats included) before built-in widget
+  handling, accelerators, text routing, and `OnKey`, and consumes it by
+  returning true. It receives an `Accel` normalized like accelerators
+  (letters folded, caps lock masked), so it compares equal to
+  `ParseAccel` of a binding. A launcher binds Return/Tab/Up to its list
+  while every other key still types into the focused entry.
+- `widget.Router.SetFocus`, `Window.SetFocus`, `LayerWindow.SetFocus`:
+  programmatic keyboard focus. Widgets that take no keys, are disabled,
+  or sit outside the tree are ignored; nil clears.
+- `LayerWindow.SetSize`: resize a layer surface after creation, with
+  the same auto-axis rule as the initial size enforced before the wire.
+- `app.Clipboard`, `app.NewClipboard`, `app.ErrClipboardUnavailable`:
+  external consumers can now construct the clipboard they hand to
+  `SetClipboard`, and write to it from application code.
+
 ### Button: explicit transparent backgrounds
 
 - `widget.Button.BgExplicit`: with it set, `Bg`, `BgHover`, and

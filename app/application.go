@@ -245,6 +245,16 @@ type WindowConfig struct {
 	// OnKey receives every key press routed to this window, after
 	// widget routing, for app-level keybindings.
 	OnKey func(r *widget.Router, keycode uint32, mods wlsession.Mods)
+	// KeyCapture sees every key press routed to this window (repeats
+	// included) before anything else does: built-in widget handling,
+	// accelerators, text routing, and OnKey. Returning true consumes
+	// the press. It is GTK's capture phase - a launcher's bound keys
+	// (Return, Tab, Up) act on its list while every other key still
+	// types into the focused entry. The Accel carries the keysym
+	// normalized as accelerators are and the held modifiers with caps
+	// lock masked out, so it compares equal to ParseAccel of a
+	// binding's name.
+	KeyCapture func(Accel) bool
 	// OnClosed runs when the window closed (compositor request accepted,
 	// client Close, or output gone).
 	OnClosed func()
@@ -289,10 +299,11 @@ type LayerConfig struct {
 	// Opaque forces the opaque region even though Background is
 	// translucent; see app.Config.Opaque.
 	Opaque bool
-	// OnPress, OnPointerMove, OnKey mirror WindowConfig.
+	// OnPress, OnPointerMove, OnKey, KeyCapture mirror WindowConfig.
 	OnPress       func(button uint32, serial uint32, over widget.Widget)
 	OnPointerMove func(x, y float64)
 	OnKey         func(r *widget.Router, keycode uint32, mods wlsession.Mods)
+	KeyCapture    func(Accel) bool
 	// OnClosed runs when the surface closed or its output went away.
 	OnClosed func()
 }
@@ -335,6 +346,7 @@ func (a *Application) newWindowWindow(cfg WindowConfig, animKind surfx.Kind) (*W
 		onPress:    cfg.OnPress,
 		onMove:     cfg.OnPointerMove,
 		onKey:      cfg.OnKey,
+		keyCapture: cfg.KeyCapture,
 	}, cfg.OnClosed, animKind)
 	hw.win = w
 	if err := surf.Commit(); err != nil {
@@ -381,6 +393,7 @@ func (a *Application) NewLayer(cfg LayerConfig) (*LayerWindow, error) {
 		onPress:    cfg.OnPress,
 		onMove:     cfg.OnPointerMove,
 		onKey:      cfg.OnKey,
+		keyCapture: cfg.KeyCapture,
 	}, cfg.OnClosed, surfx.KindOverlay)
 	// A rotated output's transform must be published before the first
 	// commit so the compositor maps the buffers correctly.
@@ -705,7 +718,22 @@ func (a *Application) deliverKey(keycode uint32, mods wlsession.Mods) {
 			return
 		}
 	}
+	if captureKey(a.sess, target.cfg.keyCapture, keycode, mods) {
+		return
+	}
 	routeKey(a.sess, target.router, keycode, mods, a.clip, a.accels, extra)
+}
+
+// captureKey offers one press to a window's KeyCapture hook and
+// reports whether the hook consumed it. The hook sees the keysym
+// normalized the way accelerators are (letters folded to lowercase)
+// and the modifiers without caps lock, which is a latched state rather
+// than part of a chord.
+func captureKey(sess keyTranslator, capture func(Accel) bool, keycode uint32, mods wlsession.Mods) bool {
+	if capture == nil {
+		return false
+	}
+	return capture(Accel{Sym: normalizeSym(sess.KeySym(keycode)), Mods: mods &^ wlsession.ModCapsLock})
 }
 
 // imeEvent applies one input-method batch into the focused window's
@@ -873,6 +901,15 @@ func (w *Window) State() window.State {
 	return w.win.State()
 }
 
+// SetFocus moves the window's keyboard focus to target, a widget of its
+// tree; see widget.Router.SetFocus for what is ignored.
+func (w *Window) SetFocus(target widget.Widget) {
+	if hw := w.app.hostOf(w); hw != nil {
+		hw.router.SetFocus(target)
+		hw.dirty = true
+	}
+}
+
 // LayerWindow is the application's handle on one layer surface.
 type LayerWindow struct {
 	app *Application
@@ -887,6 +924,32 @@ func (l *LayerWindow) Close() {
 		return
 	}
 	l.ls.Close()
+}
+
+// SetFocus moves the surface's keyboard focus to w, a widget of its
+// tree; see widget.Router.SetFocus for what is ignored. The compositor
+// still decides whether the surface itself holds the keyboard.
+func (l *LayerWindow) SetFocus(w widget.Widget) {
+	if hw := l.app.hostOfLayer(l); hw != nil {
+		hw.router.SetFocus(w)
+		hw.dirty = true
+	}
+}
+
+// SetSize requests a new surface size in logical pixels, for a surface
+// whose content grows or shrinks (a launcher list that fits its rows).
+// Like the initial size, an auto (zero) axis needs both of its edges
+// anchored; a request that breaks the rule is refused with an error
+// before it reaches the wire. The size applies with the next commit,
+// and the compositor's configure answer resizes the buffers.
+func (l *LayerWindow) SetSize(width, height uint32) error {
+	if err := l.ls.SetSize(width, height); err != nil {
+		return err
+	}
+	if hw := l.app.hostOfLayer(l); hw != nil {
+		hw.dirty = true
+	}
+	return nil
 }
 
 // Closed reports whether the compositor or client closed the surface.

@@ -145,6 +145,25 @@ func (c Config) validate() error {
 	return nil
 }
 
+// SetSize requests a new size after creation. The same invalid_size
+// rule as the initial size applies and is enforced locally; the size
+// is double-buffered on the wire, so it lands with the next commit.
+func (s *Surface) SetSize(width, height uint32) error {
+	next := s.cfg
+	next.Width, next.Height = width, height
+	if err := next.validate(); err != nil {
+		return err
+	}
+	if s.closed {
+		return ErrClosed
+	}
+	if err := s.Layer.SetSize(width, height); err != nil {
+		return fmt.Errorf("layersurface: set_size: %w", err)
+	}
+	s.cfg = next
+	return nil
+}
+
 // HandleZwlrLayerSurfaceV1Configure implements the configure handler: it
 // records the new size and acknowledges the serial. A zero width or height
 // keeps the current choice for that axis, per the protocol.

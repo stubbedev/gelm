@@ -731,6 +731,35 @@ func walkTree(w Widget, depth int, fn func(Widget, int)) {
 	}
 }
 
+// SetFocus moves keyboard focus to w, the programmatic counterpart of
+// clicking it: a search entry that should take typing the moment its
+// surface maps is focused this way. A w that cannot take keys (no
+// KeyActionHandler), is disabled, or is not in this router's tree is
+// ignored and focus stays where it was; nil clears focus.
+func (r *Router) SetFocus(w Widget) {
+	if w == nil {
+		setFocusStyle(r.focus, nil)
+		r.focus = nil
+		return
+	}
+	if _, ok := w.(KeyActionHandler); !ok || !IsEnabled(w) || !inTree(r.Root, w) {
+		return
+	}
+	setFocusStyle(r.focus, w)
+	r.focus = w
+}
+
+// inTree reports whether w is root or sits below it in paint order.
+func inTree(root, w Widget) bool {
+	found := false
+	focusWalker(root, func(x Widget) {
+		if x == w {
+			found = true
+		}
+	})
+	return found
+}
+
 // FocusNext moves focus to the next focusable widget in paint order,
 // wrapping around; with no focus it takes the first.
 func (r *Router) FocusNext() { r.focusStep(1) }
