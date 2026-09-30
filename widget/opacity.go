@@ -46,8 +46,8 @@ func (o *Opacity) SetOpacity(a float64) {
 	}
 }
 
-// Alpha returns the subtree opacity in [0, 1]; the zero value is fully
-// opaque.
+// Alpha returns the subtree opacity in [0, 1]. The zero value is fully
+// transparent, so embedding constructors start it at 1.
 func (o *Opacity) Alpha() float64 { return o.alpha }
 
 // paintChild paints the wrapped subtree under this opacity. At zero it
