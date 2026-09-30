@@ -59,6 +59,7 @@ closed and the map below reflects the tree as of that close.
 | --- | --- | --- |
 | Windows | xdg-shell toplevels and zwlr-layer-shell surfaces, close veto, interactive resize, min/max | internal/window, internal/layersurface |
 | Clipboard | wl_data_device + primary selection (copy-on-select, middle-click); image payloads - png claims and reads, jpeg reads, the widget.Image paste surface with off-loop decode (#69) | internal/clipboard, internal/wlsession/primary.go |
+| Clipboard manager | ext-data-control-v1, falling back to wlr-data-control-unstable-v1: `Application.DataControl`, both selections watched with mime-ordered offers, bounded off-loop reads, claims from a `SelectionSource`, own-offer detection | internal/datacontrol, internal/wlsession/datacontrol.go |
 | IME | zwp_text_input_v3 into Entry and TextArea | internal/wlsession/textinput.go |
 | Fractional scale | wp_viewporter + wp_fractional_scale_v1, live rescale; integer fallback | internal/scale |
 | Taskbar/window list | wlr-foreign-toplevel-management: `Toplevels()`, per-handle Activate/minimize/maximize/Close, `OnToplevel*` hooks (#33) | internal/wlsession/toplevel.go |

@@ -18,6 +18,7 @@ import (
 	"github.com/stubbedev/gelm/internal/anim"
 	"github.com/stubbedev/gelm/internal/appearance"
 	"github.com/stubbedev/gelm/internal/clipboard"
+	"github.com/stubbedev/gelm/internal/datacontrol"
 	"github.com/stubbedev/gelm/internal/dragdrop"
 	"github.com/stubbedev/gelm/internal/icons"
 	"github.com/stubbedev/gelm/internal/inspect"
@@ -54,6 +55,9 @@ type Application struct {
 	// dnd drives drag-and-drop for every window on this application;
 	// inert when the compositor lacks a data device.
 	dnd *dragdrop.Controller
+	// dataControl is the lazily bound data-control device
+	// (datacontrol.go); nil until DataControl first succeeds.
+	dataControl *datacontrol.Device
 
 	// inspector state: armed enables the chords (ctrl+shift+i/d), on
 	// paints the widget-tree overlay. Armed by GELM_INSPECT=1 or an
