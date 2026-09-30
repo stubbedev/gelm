@@ -22,6 +22,7 @@ type Fader struct {
 // NewFader wraps child in a fully opaque fader.
 func NewFader(child Widget) *Fader {
 	f := &Fader{child: child}
+	f.alpha = 1
 	f.bindOpacity(f)
 	return f
 }

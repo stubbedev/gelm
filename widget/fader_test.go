@@ -209,3 +209,20 @@ func TestFaderTweenDrivesOpacity(t *testing.T) {
 		t.Errorf("tween painted %d times, want 0 (paint happens in Paint)", probe.paints)
 	}
 }
+
+func TestNewFaderStartsOpaque(t *testing.T) {
+	cv, data := faderCanvas()
+	probe := newPaintProbe(render.RGB(255, 0, 0))
+	f := NewFader(probe)
+	if f.Alpha() != 1 {
+		t.Fatalf("fresh fader alpha = %v, want 1", f.Alpha())
+	}
+	arrangeWidget(f, render.Rect{X: 0, Y: 0, W: 10, H: 10})
+	f.Paint(cv)
+	if probe.paints != 1 {
+		t.Fatalf("fresh fader painted its child %d times, want 1", probe.paints)
+	}
+	if got := pxColorAt(data, 10, 4, 4); got != render.RGB(255, 0, 0) {
+		t.Errorf("fresh fader pixel = %#08x, want the child's unmodulated color", got)
+	}
+}
