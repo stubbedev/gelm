@@ -124,6 +124,11 @@ type Session struct {
 	tiPending           tiPending
 	primarySelectionMgr *wlr.ZwpPrimarySelectionDeviceManagerV1
 	primarySelectionDev *wlr.ZwpPrimarySelectionDeviceV1
+	// Data-control managers (datacontrol.go); internal/datacontrol
+	// creates the device. nil without the protocol.
+	extDataControlMgr     *wlr.DataControlManagerV1
+	wlrDataControlMgr     *wlr.ZwlrDataControlManagerV1
+	wlrDataControlVersion uint32
 	// comp is the seat's dead-key compose state (compose.go); nil
 	// without a compose file, which disables compose entirely.
 	comp *compose.State
@@ -417,6 +422,10 @@ func (s *Session) HandleRegistryGlobal(ev wl.RegistryGlobalEvent) {
 		s.bindDialogManager(ev)
 	case "xdg_toplevel_icon_manager_v1":
 		s.bindToplevelIconManager(ev)
+	case "ext_data_control_manager_v1":
+		s.bindExtDataControlManager(ev)
+	case "zwlr_data_control_manager_v1":
+		s.bindWlrDataControlManager(ev)
 	}
 }
 

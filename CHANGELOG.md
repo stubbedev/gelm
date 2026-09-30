@@ -2,6 +2,26 @@
 
 ## Unreleased
 
+### Data control: the clipboard-manager protocols
+
+- `Application.DataControl` binds the seat's data-control device over
+  ext-data-control-v1, or wlr-data-control-unstable-v1 where the
+  compositor predates it. No surface or keyboard focus is needed.
+- `DataControl.OnSelection` reports every change of the regular and
+  the primary selection as a `SelectionOffer` carrying the owner's
+  mime types in advertised order; `Own` marks our own claim coming
+  back.
+- `SelectionOffer.Read(mime, limit, done)` drains the pipe off the
+  loop, bounded in size (`ErrTransferTooLarge`, refused whole) and
+  time (`ErrTransferTimeout`), and delivers on the loop;
+  `Receive` hands out the raw pipe.
+- `DataControl.SetSelection(sel, SelectionSource)` claims either
+  selection with validated mimes (none, empty, or duplicate are
+  errors), answered by a `Data` payload written off the loop under a
+  deadline or by `Send`, which hands the receiver's pipe over for
+  deferred answers; `SelectionClaim` reports `Live`, `OnCancelled`, and
+  `Release`. `ClearSelection` empties a selection.
+
 ### Launcher-shaped surfaces: key capture, focus, resizing, clipboard
 
 - `WindowConfig.KeyCapture` / `LayerConfig.KeyCapture`: a capture-phase
