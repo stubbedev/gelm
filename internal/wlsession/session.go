@@ -10,6 +10,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"sync/atomic"
 	"time"
 
 	text "github.com/neurlang/wayland/unstable/text-input-v3"
@@ -181,6 +182,10 @@ type Session struct {
 	// horizontal) between pointer frames; the frame flushes them as
 	// whole-notch scroll deltas.
 	wheel120 [2]int32
+
+	// closed is set by Close, before the connection goes; WakeAfter
+	// timers still pending then stand down instead of writing to it.
+	closed atomic.Bool
 
 	// protoErr carries the compositor's fatal wl_display.error, if one
 	// arrived, so dispatch failures name the compositor's verdict
@@ -1201,6 +1206,12 @@ func (s *Session) WakeAfter(d time.Duration) {
 		d = 0
 	}
 	time.AfterFunc(d, func() {
+		// A timer outliving the session must not touch the closed
+		// connection: its proxy map is gone and registering the
+		// sync callback would panic.
+		if s.closed.Load() {
+			return
+		}
 		cb, err := s.Display.Sync()
 		if err != nil {
 			return
@@ -1220,6 +1231,7 @@ func (s *Session) Run() error {
 // Close disconnects from the display and releases the session's shared
 // buffer arena: the pool proxy, mapping, and the session's one fd.
 func (s *Session) Close() {
+	s.closed.Store(true)
 	s.stopCursorAnim()
 	buffer.CloseArenas(s.shm)
 	if s.Display != nil {
