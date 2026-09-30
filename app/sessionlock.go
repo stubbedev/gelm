@@ -70,6 +70,9 @@ type LockSurface struct {
 	// OnClosed runs when this surface went away: the lock ended, or
 	// its output was unplugged.
 	OnClosed func()
+	// Focus, when set, takes keyboard focus as the surface is created
+	// (the password entry), so typing lands without a click.
+	Focus widget.Widget
 }
 
 // SessionLockConfig declares a session lock.
@@ -177,6 +180,17 @@ func (l *SessionLock) Cancel() error {
 	return nil
 }
 
+// SetFocus moves keyboard focus to w in the lock surface whose tree
+// holds it (a password entry, after a failed attempt re-enabled it);
+// see widget.Router.SetFocus for what is ignored. The compositor still
+// decides which lock surface holds the keyboard.
+func (l *SessionLock) SetFocus(w widget.Widget) {
+	for _, hw := range l.surfaces {
+		hw.router.SetFocus(w)
+		hw.dirty = true
+	}
+}
+
 // Outputs returns the outputs currently covered by a lock surface.
 func (l *SessionLock) Outputs() []*Output {
 	outs := make([]*Output, 0, len(l.surfaces))
@@ -279,6 +293,9 @@ func (a *Application) newLockWindow(lock *sessionlock.Lock, out *Output, content
 	}, content.OnClosed, surfx.KindMenu)
 	if out.Transform != 0 && hw.sc != nil {
 		_ = hw.sc.SetTransform(out.Transform)
+	}
+	if content.Focus != nil {
+		hw.router.SetFocus(content.Focus)
 	}
 	return hw, nil
 }
