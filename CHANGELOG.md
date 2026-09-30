@@ -41,6 +41,18 @@
 - `widget.ThemeIconExists`: whether a theme icon name resolves, for
   picking between candidate names before building a `NewThemeIcon`.
 
+### Image: stretch and scale-down policies
+
+- `ImageStretch` resamples the whole image to exactly the box,
+  ignoring the aspect ratio.
+- `ImageScaleDown` draws the natural size (one source pixel per device
+  pixel, like `ImageNone`) when the image fits and shrinks it to fit
+  like `ImageFit` when it does not; it never enlarges (GTK's
+  `ContentFit.SCALE_DOWN`).
+- An `Image` whose resolved size equals its source rect now blits the
+  pixels directly instead of resampling through the cache - a 1:1 fit
+  as well as `ImageNone`.
+
 ### Launcher-shaped surfaces: key capture, focus, resizing, clipboard
 
 - `WindowConfig.KeyCapture` / `LayerConfig.KeyCapture`: a capture-phase
