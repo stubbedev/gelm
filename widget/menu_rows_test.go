@@ -1,0 +1,136 @@
+package widget
+
+import (
+	"testing"
+
+	"github.com/unxed/xkb-go"
+
+	"github.com/stubbedev/gelm/render"
+)
+
+// solidIcon is a static w x w icon of one opaque color.
+func solidIcon(t *testing.T, w int, c render.Color) *Icon {
+	t.Helper()
+	svg := `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 4 4"><rect width="4" height="4" fill="` + hexOf(c) + `"/></svg>`
+	ic, err := render.LoadSVG([]byte(svg), w, w)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return NewIcon(ic)
+}
+
+func hexOf(c render.Color) string {
+	const digits = "0123456789abcdef"
+	out := []byte{'#'}
+	for _, v := range []uint8{c.R(), c.G(), c.B()} {
+		out = append(out, digits[v>>4], digits[v&0xf])
+	}
+	return string(out)
+}
+
+func TestMenuDisabledRows(t *testing.T) {
+	face := entryFace(t)
+	fired := ""
+	menu := NewMenu(face, 14,
+		MenuItem{Label: "Open", OnClick: func() { fired = "open" }},
+		MenuItem{Label: "Save", OnClick: func() { fired = "save" }, Disabled: true},
+		MenuItem{Label: "Share", Items: []MenuItem{{Label: "Mail", OnClick: func() {}}}, Disabled: true},
+		MenuItem{Label: "Quit", OnClick: func() { fired = "quit" }},
+	)
+	menu.Measure(Constraints{Max: Size{W: 300, H: 300}})
+	menu.Arrange(render.Rect{X: 0, Y: 0, W: 160, H: 4*menu.itemH + 8})
+	rowY := func(i int) int { return 4 + i*menu.itemH + 3 }
+
+	t.Run("a click on a disabled row neither fires nor dismisses", func(t *testing.T) {
+		dismissed := false
+		menu.OnDismiss = func() { dismissed = true }
+		menu.ClickAt(Point{X: 40, Y: rowY(1)})
+		if fired != "" || dismissed {
+			t.Errorf("disabled row fired %q, dismissed %v", fired, dismissed)
+		}
+	})
+
+	t.Run("a disabled submenu does not open", func(t *testing.T) {
+		opened := false
+		menu.OnSubmenu = func(int, []MenuItem) { opened = true }
+		menu.ClickAt(Point{X: 40, Y: rowY(2)})
+		menu.hovered = 2
+		menu.KeyAction(KeyRight, 0)
+		if opened {
+			t.Error("a disabled submenu row opened its submenu")
+		}
+	})
+
+	t.Run("keyboard motion skips disabled rows", func(t *testing.T) {
+		menu.hovered = 0
+		menu.KeyAction(KeyDown, 0)
+		if menu.hovered != 3 {
+			t.Errorf("down from row 0 landed on %d, want 3 (rows 1 and 2 disabled)", menu.hovered)
+		}
+	})
+
+	t.Run("disabled rows take no mnemonic", func(t *testing.T) {
+		if menu.ActivateMnemonic(xkb.Keysym('s')) {
+			t.Error("Alt+S reached a disabled row")
+		}
+		if !menu.ActivateMnemonic(xkb.Keysym('q')) || fired != "quit" {
+			t.Errorf("Alt+Q on an enabled row: fired = %q", fired)
+		}
+	})
+
+	t.Run("an enabled row still fires", func(t *testing.T) {
+		fired = ""
+		menu.OnDismiss = func() {}
+		menu.ClickAt(Point{X: 40, Y: rowY(0)})
+		if fired != "open" {
+			t.Errorf("fired = %q, want open", fired)
+		}
+	})
+
+	t.Run("a disabled check row keeps its state", func(t *testing.T) {
+		check := NewMenu(face, 14, MenuItem{Label: "Wrap", Kind: ItemCheck, Checked: true, OnClick: func() {}, Disabled: true})
+		check.Measure(Constraints{Max: Size{W: 300, H: 300}})
+		check.Arrange(render.Rect{W: 160, H: check.itemH + 8})
+		check.ClickAt(Point{X: 40, Y: rowY(0)})
+		if !check.items[0].Checked {
+			t.Error("a click toggled a disabled check row")
+		}
+	})
+}
+
+func TestMenuRowIcons(t *testing.T) {
+	face := entryFace(t)
+	red := render.RGB(0xff, 0, 0)
+	plain := NewMenu(face, 14, MenuItem{Label: "Open", OnClick: func() {}}, MenuItem{Label: "Close", OnClick: func() {}})
+	iconic := NewMenu(face, 14,
+		MenuItem{Label: "Open", OnClick: func() {}, Icon: solidIcon(t, 12, red)},
+		MenuItem{Label: "Close", OnClick: func() {}},
+	)
+	con := Constraints{Max: Size{W: 400, H: 400}}
+
+	t.Run("an icon row widens the menu by the slot", func(t *testing.T) {
+		pw := plain.Measure(con).W
+		iw := iconic.Measure(con).W
+		if iw != pw+12+8 {
+			t.Errorf("width with icon = %d, want %d (plain %d + 12px icon + 8px gap)", iw, pw+20, pw)
+		}
+	})
+
+	t.Run("the icon paints at the row's leading edge", func(t *testing.T) {
+		sz := iconic.Measure(con)
+		data := make([]byte, render.Stride(sz.W)*sz.H)
+		cv := render.New(data, render.Stride(sz.W), sz.W, sz.H)
+		iconic.Arrange(render.Rect{W: sz.W, H: sz.H})
+		iconic.Paint(cv)
+		// Row 0 spans y 4..4+itemH-2; the slot starts at x 4+8.
+		y := 4 + (iconic.itemH-2)/2
+		if got := render.ColorFromBytes(data[y*render.Stride(sz.W)+(4+8+6)*4:]); got != red {
+			t.Errorf("icon slot pixel = %v, want the red icon", got)
+		}
+		// Row 1 has no icon: its slot stays the menu surface.
+		y1 := 4 + iconic.itemH + (iconic.itemH-2)/2
+		if got := render.ColorFromBytes(data[y1*render.Stride(sz.W)+(4+8+6)*4:]); got == red {
+			t.Error("the icon-less row painted an icon")
+		}
+	})
+}

@@ -39,6 +39,15 @@ const (
 // first letter of the label no earlier row took. A letter claimed by
 // an earlier row wins and the later one is dropped with a Debug log;
 // the underline under the resolved letter is painted for free.
+//
+// Icon paints at the row's leading edge, after any check or radio
+// indicator, at the icon's natural size; once one row carries an icon
+// every label shifts by the same slot so the column stays aligned.
+// Disabled greys a row out whatever its action: it takes no hover,
+// no keyboard motion, no mnemonic, and a click on it neither fires
+// nor dismisses - the state an application toggles on a live row
+// (a check item that cannot change right now) without dropping its
+// OnClick.
 type MenuItem struct {
 	Label    string
 	OnClick  func()
@@ -48,6 +57,14 @@ type MenuItem struct {
 	Accel    string
 	Mnemonic rune
 	Items    []MenuItem
+	Icon     *Icon
+	Disabled bool
+}
+
+// inert reports whether the row paints in the disabled ink: explicitly
+// disabled, or with neither an action nor a submenu.
+func (it MenuItem) inert() bool {
+	return it.Disabled || (it.OnClick == nil && len(it.Items) == 0)
 }
 
 // MenuSeparator returns a separator item.
@@ -132,7 +149,7 @@ func resolveMnemonics(items []MenuItem) (rows map[rune]int, runes []int) {
 		runes[i] = strings.IndexRune(strings.ToLower(items[i].Label), letter)
 	}
 	for i, it := range items {
-		if it.Mnemonic == 0 || it.Kind == ItemSeparator {
+		if it.Mnemonic == 0 || it.Kind == ItemSeparator || it.Disabled {
 			continue
 		}
 		explicit[i] = true
@@ -144,7 +161,7 @@ func resolveMnemonics(items []MenuItem) (rows map[rune]int, runes []int) {
 		claim(letter, i)
 	}
 	for i, it := range items {
-		if runes[i] >= 0 || explicit[i] || it.Kind == ItemSeparator || it.Label == "" {
+		if runes[i] >= 0 || explicit[i] || it.Kind == ItemSeparator || it.Disabled || it.Label == "" {
 			continue
 		}
 		for _, r := range strings.ToLower(it.Label) {
@@ -165,8 +182,9 @@ func (m *Menu) Measure(con Constraints) Size {
 		return sz
 	}
 	w := 0
+	slot := m.iconSlot()
 	for _, it := range m.items {
-		row := m.face.Shape(it.Label, m.sizePx).Advance() + 24
+		row := m.face.Shape(it.Label, m.sizePx).Advance() + 24 + float64(slot)
 		if it.Kind == ItemCheck || it.Kind == ItemRadio {
 			row += 18
 		}
@@ -183,9 +201,24 @@ func (m *Menu) Measure(con Constraints) Size {
 	return m.measureStore(con, clampSize(Size{W: w + 16, H: len(m.items)*m.itemH + 8}, con))
 }
 
+// iconSlot is the width every row reserves for icons: the widest
+// row icon's natural width plus a gap, or zero when no row has one.
+func (m *Menu) iconSlot() int {
+	w := 0
+	for _, it := range m.items {
+		if it.Icon != nil {
+			w = max(w, it.Icon.Measure(Constraints{Max: Size{W: m.itemH * 4, H: m.itemH}}).W)
+		}
+	}
+	if w == 0 {
+		return 0
+	}
+	return w + 8
+}
+
 // selectable reports whether keyboard motion may land on row i.
 func (m *Menu) selectable(i int) bool {
-	return i >= 0 && i < len(m.items) && m.items[i].Kind != ItemSeparator
+	return i >= 0 && i < len(m.items) && m.items[i].Kind != ItemSeparator && !m.items[i].Disabled
 }
 
 // nextSelectable returns the nearest selectable row at or after i in
@@ -210,6 +243,7 @@ func (m *Menu) Paint(cv *render.Canvas) {
 	t := Current()
 	cv.RoundedRect(m.bounds, t.Radius, t.Surface)
 	lineH := m.face.Shape("lg", m.sizePx).LineHeight()
+	slot := m.iconSlot()
 	for i, it := range m.items {
 		row := render.Rect{
 			X: m.bounds.X + 4,
@@ -222,7 +256,7 @@ func (m *Menu) Paint(cv *render.Canvas) {
 			cv.Line(row.X+8, y, row.X+row.W-8, y, 1, t.Border)
 			continue
 		}
-		if i == m.hovered {
+		if i == m.hovered && m.selectable(i) {
 			cv.RoundedRect(row, t.Radius, t.HoverAccent())
 		}
 		x := row.X + 8
@@ -240,8 +274,17 @@ func (m *Menu) Paint(cv *render.Canvas) {
 			}
 			x += 18
 		}
+		if it.Icon != nil {
+			// The icon hangs off the menu for invalidation (a theme
+			// switch re-resolves it) and paints centered in its slot.
+			setParents(m, it.Icon)
+			sz := it.Icon.Measure(Constraints{Max: Size{W: slot, H: row.H}})
+			it.Icon.Arrange(render.Rect{X: x, Y: row.Y + (row.H-sz.H)/2, W: sz.W, H: sz.H})
+			it.Icon.Paint(cv)
+		}
+		x += slot
 		col := t.Text
-		if (it.OnClick == nil && len(it.Items) == 0) || !IsEnabled(m) {
+		if it.inert() || !IsEnabled(m) {
 			col = t.DisabledText()
 		}
 		baseline := row.Y + (row.H-lineH)/2 + int(m.face.Shape("lg", m.sizePx).Ascent()+0.5)
@@ -335,7 +378,7 @@ func (m *Menu) ClickAt(p Point) {
 func (m *Menu) activate(i int) {
 	item := m.items[i]
 	switch {
-	case item.Kind == ItemSeparator:
+	case item.Kind == ItemSeparator, item.Disabled:
 		return
 	case len(item.Items) > 0:
 		if m.OnSubmenu != nil {
@@ -413,7 +456,7 @@ func (m *Menu) KeyAction(a KeyAction, mods Mods) {
 	case KeyDismiss, KeyLeft:
 		m.dismiss()
 	case KeyRight:
-		if m.hovered >= 0 && len(m.items[m.hovered].Items) > 0 && m.OnSubmenu != nil {
+		if m.selectable(m.hovered) && len(m.items[m.hovered].Items) > 0 && m.OnSubmenu != nil {
 			m.OnSubmenu(m.hovered, m.items[m.hovered].Items)
 		}
 	}

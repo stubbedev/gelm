@@ -22,6 +22,25 @@
   deferred answers; `SelectionClaim` reports `Live`, `OnCancelled`, and
   `Release`. `ClearSelection` empties a selection.
 
+### Menus from live models: row icons, disabled rows, sliding submenus
+
+- `widget.MenuItem.Icon`: an `*Icon` (theme, file, SVG, or static)
+  painted at the row's leading edge; once one row has an icon every
+  label shifts by the same slot.
+- `widget.MenuItem.Disabled`: greys a row out without dropping its
+  action - no hover, keyboard motion, mnemonic, or activation, and its
+  submenu does not open.
+- `widget.MenuStack`: a Menu tree with sliding submenus (GTK's default
+  PopoverMenu presentation). A submenu replaces the visible level,
+  headed by a back row; Left goes back. It measures to the largest
+  level, so one popover holds every level. `SetItems` swaps the tree
+  for a live model update.
+- `render.IconFromImage` and `render.IconFromARGB32`: icons from pixels
+  that did not come from a file - any decoded image, or a network-order
+  ARGB32 raster (the StatusNotifierItem IconPixmap format).
+- `widget.ThemeIconExists`: whether a theme icon name resolves, for
+  picking between candidate names before building a `NewThemeIcon`.
+
 ### Launcher-shaped surfaces: key capture, focus, resizing, clipboard
 
 - `WindowConfig.KeyCapture` / `LayerConfig.KeyCapture`: a capture-phase
