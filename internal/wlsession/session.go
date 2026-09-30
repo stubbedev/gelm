@@ -152,6 +152,11 @@ type Session struct {
 	toplevelIconMgr *wlr.ToplevelIconManagerV1
 	iconSizes       []int
 	iconSizesDone   bool
+	// sessionLockMgr (sessionlock.go) is the optional lock-screen
+	// protocol; outputWatchers fan output hotplug out to subscribers
+	// beyond the OnOutputAdded/OnOutputRemoved hooks.
+	sessionLockMgr *wlr.SessionLockManagerV1
+	outputWatchers []*outputWatcher
 
 	pointerEnterSerial uint32
 
@@ -425,6 +430,8 @@ func (s *Session) HandleRegistryGlobal(ev wl.RegistryGlobalEvent) {
 		s.bindXdgOutputManager(ev)
 	case "xdg_wm_dialog_v1":
 		s.bindDialogManager(ev)
+	case "ext_session_lock_manager_v1":
+		s.bindSessionLockManager(ev)
 	case "xdg_toplevel_icon_manager_v1":
 		s.bindToplevelIconManager(ev)
 	case "ext_data_control_manager_v1":
@@ -471,9 +478,7 @@ func (s *Session) HandleRegistryGlobalRemove(ev wl.RegistryGlobalRemoveEvent) {
 			}
 			s.outputs = append(s.outputs[:i], s.outputs[i+1:]...)
 			delete(s.ifaceNames, ev.Name)
-			if s.OnOutputRemoved != nil {
-				s.OnOutputRemoved(out)
-			}
+			s.notifyOutputRemoved(out)
 			return
 		}
 	}
@@ -487,9 +492,7 @@ func (s *Session) HandleRegistryGlobalRemove(ev wl.RegistryGlobalRemoveEvent) {
 // bookkeeping is testable without a live connection.
 func (s *Session) trackOutput(out *Output) {
 	s.outputs = append(s.outputs, out)
-	if s.OnOutputAdded != nil {
-		s.OnOutputAdded(out)
-	}
+	s.notifyOutputAdded(out)
 }
 
 // HandleShmFormat implements wl.ShmFormatHandler.

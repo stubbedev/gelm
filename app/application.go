@@ -87,8 +87,11 @@ type Application struct {
 	// //go:build atspi); the untagged core only sees the stop hook.
 	stopA11y func()
 	quit     bool
-	rep      *keyRepeater
-	kicker   *loopKicker
+	// sessionLock is the lock this application holds (sessionlock.go);
+	// while it exists the loop runs on with no window mapped.
+	sessionLock *SessionLock
+	rep         *keyRepeater
+	kicker      *loopKicker
 	// queues is the Invoke/Every plumbing and wake the loop-kick call;
 	// wake is a field so tests can drive Invoke without a session.
 	queues loopQueues
@@ -215,6 +218,14 @@ func (a *Application) OnKey(fn func(r *widget.Router, keycode uint32, mods wlses
 
 // Quit ends Run at the next loop check, regardless of open windows.
 func (a *Application) Quit() { a.quit = true }
+
+// done reports whether Run should return: Quit was called, or every
+// window closed and no session lock is held. A held lock keeps the
+// loop alive with nothing mapped — its last output may be unplugged,
+// and only this process can unlock the session.
+func (a *Application) done() bool {
+	return a.quit || (len(a.windows) == 0 && a.sessionLock == nil)
+}
 
 // WindowConfig declares a toplevel window.
 type WindowConfig struct {
@@ -472,6 +483,8 @@ func hostCloser(host Host) func() {
 		return h.ls.Close
 	case *window.Window:
 		return h.Close
+	case *lockHost:
+		return h.s.Close
 	}
 	return nil
 }
@@ -486,7 +499,8 @@ func outputWire(o *wlsession.Output) *wl.Output {
 }
 
 // Run drives every window until the application quits (Quit) or every
-// window has closed. It returns ErrClosed in both cases. Run's
+// window has closed with no session lock held (a lock keeps the loop
+// alive with nothing mapped). It returns ErrClosed in both cases. Run's
 // goroutine is the event-loop goroutine of the threading contract
 // (docs/threading.md): widget and callback work happens here, and
 // other goroutines reach it only through Invoke and Every. Run marks
@@ -526,7 +540,7 @@ func (a *Application) Run() error {
 		step = a.sess.Step
 	}
 	for {
-		if a.quit || len(a.windows) == 0 {
+		if a.done() {
 			return ErrClosed
 		}
 		if err := a.tick(step, time.Now()); err != nil {
@@ -593,7 +607,7 @@ func (a *Application) tick(step func() error, now time.Time) error {
 	}
 	a.windows = kept
 	a.reapWindowIcons()
-	if a.quit || len(a.windows) == 0 {
+	if a.done() {
 		return ErrClosed
 	}
 

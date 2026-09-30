@@ -100,6 +100,25 @@
 - Fix: a `WakeAfter` timer firing after `Session.Close` no longer
   panics on the closed connection.
 
+### Session lock: ext-session-lock-v1
+
+- `Application.LockSession(SessionLockConfig)` locks the session: a
+  lock surface per output built by `Surface(out)`, created right away
+  for every output and again for each output plugged in while the lock
+  holds; an unplugged output's surface is destroyed. `OnLocked` fires
+  once the compositor confirmed the lock, `OnFinished` when it refused
+  or ended it.
+- `SessionLock.Unlock` (only after locked: `ErrNotLocked` before) and
+  `SessionLock.Cancel` (only before locked: `ErrLocked` after) release
+  the lock with the one request the protocol allows in that state;
+  `ErrSessionLockActive` refuses a second lock, and
+  `ErrSessionLockUnavailable` a compositor without the global.
+- Lock surfaces make no initial commit and stay undrawable until their
+  first configure is acked, and are sized exactly as configured.
+- While a lock is held, `Run` keeps going with no window mapped.
+- `Session.WatchOutputs` subscribes to output hotplug next to the
+  single-slot `OnOutputAdded`/`OnOutputRemoved` hooks.
+
 ### Button: explicit transparent backgrounds
 
 - `widget.Button.BgExplicit`: with it set, `Bg`, `BgHover`, and
