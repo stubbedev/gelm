@@ -1,17 +1,21 @@
-// The CSS override layer (docs/css.md): classes and ids on the shared
-// node, stylesheet loading with hot reload, and the per-widget
-// computed style the render path reads where it reads Theme fields
-// today.
+// The CSS layer (docs/css.md): classes, ids, states, and inline styles
+// on the shared node; prioritized stylesheets with hot reload; and the
+// per-widget computed style the render path reads where it reads Theme
+// fields.
 //
-// The data flow is one direction. LoadStylesheet parses once and
-// installs the Sheet; a style generation stamp goes stale everywhere
-// at once. Each widget's cascade is computed lazily on first read
-// after an invalidation — never per paint — and the diff against the
-// previous values drives the smallest correct invalidation: repaint
+// The data flow is one direction. AddStylesheet and LoadStylesheet
+// parse once and install the layer; a style generation stamp goes stale
+// everywhere at once. Each widget's cascade is computed lazily on first
+// read after an invalidation — never per paint — and the diff against
+// the previous values drives the smallest correct invalidation: repaint
 // the widget, relayout it when a layout-affecting property moved, and
-// mark the subtree when an inherited one did. With no stylesheet
-// loaded the cascade is empty, every consumer falls through to its
-// theme-derived value, and the pixels are exactly the pre-CSS ones.
+// mark the subtree when an inherited one (a custom property included)
+// did. A state, class, or id flip restyles the widget alone unless a
+// loaded selector reads that fact left of a combinator; then the
+// subtree (and, for sibling selectors, the neighbors) restyle too. With
+// no stylesheet loaded the cascade is empty, every consumer falls
+// through to its theme-derived value, and the pixels are exactly the
+// pre-CSS ones.
 package widget
 
 import (
@@ -24,30 +28,152 @@ import (
 	"github.com/stubbedev/gelm/render"
 )
 
-// activeSheet holds the parsed stylesheet; nil means theme-only —
-// the palette is the source of truth and nothing else participates.
-var activeSheet atomic.Pointer[style.Sheet]
+// Style priorities, GTK's provider priorities: a higher priority wins
+// over any specificity below it; equal priorities fall to specificity,
+// then to load order.
+const (
+	// StylePriorityFallback is for defaults below everything.
+	StylePriorityFallback = style.PriorityFallback
+	// StylePriorityTheme is for a theme's stylesheet.
+	StylePriorityTheme = style.PriorityTheme
+	// StylePrioritySettings is for settings-derived rules.
+	StylePrioritySettings = style.PrioritySettings
+	// StylePriorityApplication is the application's own stylesheet;
+	// LoadStylesheet installs at it.
+	StylePriorityApplication = style.PriorityApplication
+	// StylePriorityUser is for user overrides, and the default priority
+	// of a widget's inline style.
+	StylePriorityUser = style.PriorityUser
+)
 
-// styleGen bumps on every stylesheet (re)load. Every widget's computed
-// style and measure cache compare their stamps against it, so a load
-// restyles and relayouts the whole tree without walking it, and the
-// damage collector repaints each widget once (the themeGen pattern).
+// Stylesheet is one installed stylesheet: a parsed sheet at a priority,
+// reloadable in place. Create one with AddStylesheet; the zero value is
+// not usable.
+type Stylesheet struct {
+	sheet    *style.Sheet
+	priority int
+	live     bool
+}
+
+// sheets is every installed stylesheet in install order; layersNow is
+// the snapshot the cascade reads, rebuilt on every change. Both are
+// loop-goroutine state, like the widget tree.
+var (
+	sheets    []*Stylesheet
+	layersNow []style.Layer
+	sensNow   sensitivity
+)
+
+// sensitivity is the union of the loaded sheets' selector summaries.
+type sensitivity struct {
+	states   style.State
+	classes  map[string]bool
+	siblings bool
+}
+
+// styleGen bumps on every stylesheet (re)load and environment change.
+// Every widget's computed style and measure cache compare their stamps
+// against it, so a load restyles and relayouts the whole tree without
+// walking it, and the damage collector repaints each widget once (the
+// themeGen pattern).
 var styleGen uint64 = 1
 
-// LoadStylesheet parses css and installs it as the active stylesheet,
-// replacing whatever was loaded before. An empty string removes the
-// stylesheet and returns to theme-only. The next frame repaints with
-// the new styles; call it from the event-loop goroutine, like SetTheme.
-// Malformed rules are skipped with a warning on the library logger —
-// the valid remainder still applies.
-func LoadStylesheet(css string) {
-	if css == "" {
-		activeSheet.Store(nil)
-	} else {
-		activeSheet.Store(style.Parse(css))
+// AddStylesheet parses css and installs it at priority, above or below
+// the other stylesheets by priority and, at equal priority, after every
+// earlier one. The next frame repaints with it; call it from the
+// event-loop goroutine, like SetTheme. Malformed rules are skipped with
+// a warning on the library logger — the valid remainder still applies.
+func AddStylesheet(css string, priority int) *Stylesheet {
+	s := &Stylesheet{sheet: style.Parse(css), priority: priority, live: true}
+	sheets = append(sheets, s)
+	relayer()
+	return s
+}
+
+// Load replaces the stylesheet's rules with css, keeping its priority
+// and position. Loading into a removed stylesheet reinstalls it.
+func (s *Stylesheet) Load(css string) {
+	s.sheet = style.Parse(css)
+	if !s.live {
+		s.live = true
+		sheets = append(sheets, s)
+	}
+	relayer()
+}
+
+// Remove uninstalls the stylesheet; removing twice is a no-op.
+func (s *Stylesheet) Remove() {
+	if !s.live {
+		return
+	}
+	s.live = false
+	sheets = slices.DeleteFunc(sheets, func(o *Stylesheet) bool { return o == s })
+	relayer()
+}
+
+// Priority returns the priority the stylesheet was installed at.
+func (s *Stylesheet) Priority() int { return s.priority }
+
+// relayer rebuilds the cascade snapshot and the sensitivity union and
+// stamps every widget stale.
+func relayer() {
+	layersNow = layersNow[:0]
+	sensNow = sensitivity{}
+	for _, s := range sheets {
+		layersNow = append(layersNow, style.Layer{Sheet: s.sheet, Priority: s.priority})
+		sn := s.sheet.Sensitivity()
+		sensNow.states |= sn.AncestorStates
+		sensNow.siblings = sensNow.siblings || sn.Siblings
+		for c := range sn.AncestorClasses {
+			if sensNow.classes == nil {
+				sensNow.classes = map[string]bool{}
+			}
+			sensNow.classes[c] = true
+		}
 	}
 	styleGen++
 }
+
+// appSheet is the stylesheet LoadStylesheet manages.
+var appSheet *Stylesheet
+
+// LoadStylesheet parses css and installs it as the application
+// stylesheet (StylePriorityApplication), replacing whatever
+// LoadStylesheet loaded before. An empty string removes it. Other
+// stylesheets added with AddStylesheet are untouched.
+func LoadStylesheet(css string) {
+	if css == "" {
+		if appSheet != nil {
+			appSheet.Remove()
+		}
+		return
+	}
+	if appSheet == nil {
+		appSheet = AddStylesheet(css, StylePriorityApplication)
+		return
+	}
+	appSheet.Load(css)
+}
+
+// styleEnv is the unit environment: what 1rem is, and the font size a
+// widget computes when nothing in its ancestry sets one.
+var styleEnv = style.Env{Rem: 16, FontPx: 16}
+
+// SetRootFontSize sets the root font size stylesheet units resolve
+// against: 1rem, and the default font size (CSS's `medium`) of widgets
+// nothing sets one for. The default is 16 logical pixels, the CSS
+// default; GTK derives its own from the desktop font setting. The whole
+// tree restyles.
+func SetRootFontSize(px float64) {
+	if px <= 0 || px == styleEnv.Rem {
+		return
+	}
+	styleEnv = style.Env{Rem: px, FontPx: px}
+	styleGen++
+}
+
+// RootFontSize returns the current root font size.
+func RootFontSize() float64 { return styleEnv.Rem }
 
 // styleFile remembers the loaded stylesheet file for the stat poll.
 type styleFile struct {
@@ -80,11 +206,11 @@ func SetStylesheetPoller(poll func(fn func())) {
 	pollHook.Store(&poll)
 }
 
-// LoadStylesheetFile loads a stylesheet from path and starts the
-// hot-reload poll on it: once the file is loaded, a stat per second
-// reloads on change, so a running showcase picks up edits for free.
-// The poll is the only recurring cost a stylesheet adds, and it
-// starts on the first file load.
+// LoadStylesheetFile loads a stylesheet from path as the application
+// stylesheet and starts the hot-reload poll on it: once the file is
+// loaded, a stat per second reloads on change, so a running showcase
+// picks up edits for free. The poll is the only recurring cost a
+// stylesheet adds, and it starts on the first file load.
 func LoadStylesheetFile(path string) error {
 	fi, err := os.Stat(path)
 	if err != nil {
@@ -153,8 +279,9 @@ func resolveFace(family string, weight int) (render.Font, bool) {
 }
 
 // effShadow resolves the box-shadow cascade for a floating surface:
-// the stylesheet's when it declares one, else the theme's. Blur 0
-// means off. The color defaults like the theme's unset one does.
+// the stylesheet's first outer layer when it declares a shadow, else
+// the theme's. Blur 0 means off. A zero color defaults like the theme's
+// unset one does.
 func effShadow(w Widget, t *Theme) (render.Color, int) {
 	n := nodeOf(w)
 	if n == nil {
@@ -162,53 +289,168 @@ func effShadow(w Widget, t *Theme) (render.Color, int) {
 	}
 	v := n.style(w)
 	if v.Has(style.PropBoxShadow) {
-		if v.ShadowBlur <= 0 {
-			return 0, 0
+		for _, sh := range v.Shadow.List() {
+			if sh.Inset || sh.Blur <= 0 {
+				continue
+			}
+			col := sh.Color
+			if col == 0 {
+				col = defaultShadowColor
+			}
+			return col, sh.Blur
 		}
-		col := v.ShadowColor
-		if col == 0 {
-			col = defaultShadowColor
-		}
-		return col, v.ShadowBlur
+		return 0, 0
 	}
 	return t.shadowPaint()
 }
 
+// StateFlags are the widget states a stylesheet matches that no router
+// drives: an application sets them to reflect its own model.
+type StateFlags uint8
+
+// The application-driven states.
+const (
+	// StateChecked matches :checked — a toggled-on control, or a menu
+	// button whose popup is open.
+	StateChecked StateFlags = 1 << iota
+	// StateSelected matches :selected.
+	StateSelected
+	// StateIndeterminate matches :indeterminate.
+	StateIndeterminate
+	// StateBackdrop matches :backdrop — the widget's window is inactive.
+	StateBackdrop
+)
+
+// styleBits maps flags onto the matcher's state bits.
+func (f StateFlags) styleBits() style.State {
+	var s style.State
+	if f&StateChecked != 0 {
+		s |= style.Checked
+	}
+	if f&StateSelected != 0 {
+		s |= style.Selected
+	}
+	if f&StateIndeterminate != 0 {
+		s |= style.Indeterminate
+	}
+	if f&StateBackdrop != 0 {
+		s |= style.Backdrop
+	}
+	return s
+}
+
+// SetState turns application-driven state flags on or off. The widget
+// restyles when the set changed.
+func (n *node) SetState(flags StateFlags, on bool) {
+	next := n.flags &^ flags
+	if on {
+		next |= flags
+	}
+	if next == n.flags {
+		return
+	}
+	changed := n.flags ^ next
+	n.flags = next
+	n.invalidateState(changed.styleBits())
+}
+
+// HasState reports whether every flag in flags is on.
+func (n *node) HasState(flags StateFlags) bool { return n.flags&flags == flags }
+
+// SetInlineStyle sets the widget's inline declarations — `color: red;
+// --accent: #f80` — the widget-scoped provider GTK attaches per widget.
+// They apply to this widget alone (custom properties then inherit into
+// its subtree) at StylePriorityUser, with no specificity. Empty clears.
+// Malformed declarations are skipped with a warning.
+func (n *node) SetInlineStyle(css string) {
+	n.SetInlineStylePriority(css, StylePriorityUser)
+}
+
+// SetInlineStylePriority is SetInlineStyle at an explicit priority.
+func (n *node) SetInlineStylePriority(css string, priority int) {
+	checkLoop("SetInlineStyle")
+	if css == n.inlineSrc && priority == n.inlinePrio && (n.inline != nil) == (css != "") {
+		return
+	}
+	n.inlineSrc, n.inlinePrio = css, priority
+	if css == "" {
+		n.inline = nil
+	} else {
+		n.inline = style.ParseDeclarations(css)
+	}
+	n.invalidateStyle()
+}
+
+// InlineStyle returns the inline declarations as set.
+func (n *node) InlineStyle() string { return n.inlineSrc }
+
 // AddClass adds style classes; a widget matches `.class` selectors
 // naming any of them. Adding a class already present is a no-op. The
-// change restyles the widget (and, for inherited properties, its
-// subtree) on the next read.
+// change restyles the widget (and, when a selector tests the class on
+// an ancestor or sibling, the widgets that depend on it) on the next
+// read.
 func (n *node) AddClass(names ...string) {
-	changed := false
+	var changed []string
 	for _, name := range names {
 		if name == "" || n.hasClass(name) {
 			continue
 		}
 		n.classes = append(n.classes, name)
-		changed = true
+		changed = append(changed, name)
 	}
-	if changed {
-		n.invalidateStyle()
+	if len(changed) > 0 {
+		n.invalidateClasses(changed)
 	}
 }
 
 // RemoveClass drops style classes; dropping one the widget does not
 // carry is a no-op.
 func (n *node) RemoveClass(names ...string) {
-	changed := false
+	var changed []string
 	for _, name := range names {
 		for i, c := range n.classes {
 			if c == name {
 				n.classes = append(n.classes[:i], n.classes[i+1:]...)
-				changed = true
+				changed = append(changed, name)
 				break
 			}
 		}
 	}
-	if changed {
-		n.invalidateStyle()
+	if len(changed) > 0 {
+		n.invalidateClasses(changed)
 	}
 }
+
+// SetClasses replaces the class list wholesale — the GTK
+// set_css_classes idiom for widgets whose modifiers are recomputed at
+// once. Order is irrelevant to matching.
+func (n *node) SetClasses(names ...string) {
+	var next []string
+	for _, name := range names {
+		if name != "" && !slices.Contains(next, name) {
+			next = append(next, name)
+		}
+	}
+	var changed []string
+	for _, c := range n.classes {
+		if !slices.Contains(next, c) {
+			changed = append(changed, c)
+		}
+	}
+	for _, c := range next {
+		if !slices.Contains(n.classes, c) {
+			changed = append(changed, c)
+		}
+	}
+	if len(changed) == 0 {
+		return
+	}
+	n.classes = next
+	n.invalidateClasses(changed)
+}
+
+// Classes returns a copy of the widget's classes.
+func (n *node) Classes() []string { return slices.Clone(n.classes) }
 
 // HasClass reports whether the widget carries the style class.
 func (n *node) HasClass(name string) bool { return n.hasClass(name) }
@@ -233,7 +475,7 @@ func (n *node) SetID(id string) {
 		return
 	}
 	n.id = id
-	n.invalidateStyle()
+	n.invalidateScope(true, true)
 }
 
 // ID returns the style id, empty when none is set.
@@ -249,7 +491,7 @@ func (n *node) SetElement(name string) {
 		return
 	}
 	n.element = name
-	n.invalidateStyle()
+	n.invalidateScope(true, true)
 }
 
 // Element returns the element name the widget matches: the override
@@ -274,14 +516,15 @@ func nodeOf(w Widget) *node {
 	return nil
 }
 
-// styleTargeter adapts one widget (and, through StyleParent, its
-// ancestor chain) to the matcher. Instances are process-level and
-// reused — the n/w fields are rewritten per node — so walking the
-// chain never allocates.
+// styleTargeter adapts one widget (and, through StyleParent and
+// StylePrev, its neighborhood) to the matcher. Instances are reused —
+// each link's adapters hang off the previous one and are rewritten per
+// match — so walking the tree allocates only on first use of a depth.
 type styleTargeter struct {
-	n   *node
-	w   Widget
-	anc *styleTargeter // the reused adapter for the chain's next link
+	n    *node
+	w    Widget
+	anc  *styleTargeter // the reused adapter for the parent link
+	prev *styleTargeter // the reused adapter for the previous sibling
 }
 
 func (s *styleTargeter) StyleTarget(t *style.Target) { s.n.fillTarget(t, s.w) }
@@ -302,6 +545,66 @@ func (s *styleTargeter) StyleParent() style.Node {
 	return s.anc
 }
 
+func (s *styleTargeter) StylePrev() style.Node {
+	sib, idx := visibleSiblings(s.n, s.w)
+	if idx <= 0 {
+		return nil
+	}
+	pw := sib[idx-1]
+	pn := nodeOf(pw)
+	if pn == nil {
+		return nil
+	}
+	if s.prev == nil {
+		s.prev = &styleTargeter{}
+	}
+	s.prev.n, s.prev.w = pn, pw
+	return s.prev
+}
+
+func (s *styleTargeter) StylePosition() (int, int) {
+	sib, idx := visibleSiblings(s.n, s.w)
+	if idx < 0 {
+		return 1, 1
+	}
+	return idx + 1, len(sib)
+}
+
+// siblingBuf is visibleSiblings' reusable buffer (loop-goroutine only).
+var siblingBuf []Widget
+
+// visibleSiblings returns the visible children of n's parent and n's
+// index among them; -1 when n has no parent or is not among them.
+func visibleSiblings(n *node, w Widget) ([]Widget, int) {
+	if n.parent == nil {
+		return nil, -1
+	}
+	siblingBuf = siblingBuf[:0]
+	switch p := n.parent.(type) {
+	case childBuf:
+		siblingBuf = p.appendChildren(siblingBuf)
+	case childser:
+		siblingBuf = append(siblingBuf, p.Children()...)
+	default:
+		return nil, -1
+	}
+	out := siblingBuf[:0]
+	idx := -1
+	for _, k := range siblingBuf {
+		if k == nil {
+			continue
+		}
+		if kn := nodeOf(k); kn != nil && kn.hidden {
+			continue
+		}
+		if k == w {
+			idx = len(out)
+		}
+		out = append(out, k)
+	}
+	return out, idx
+}
+
 // fillTarget fills the selector-relevant facts of one widget.
 func (n *node) fillTarget(t *style.Target, w Widget) {
 	t.Element = n.Element()
@@ -311,16 +614,28 @@ func (n *node) fillTarget(t *style.Target, w Widget) {
 	t.ID = n.id
 	t.Classes = n.classes
 	t.State = n.styleState(w)
+	t.Inline = n.inline
+	t.InlinePriority = n.inlinePrio
 }
 
 // styleState is the widget's interactive state for matching: the
-// focus bit the router maintains, the hover and press visuals each
-// widget tracks in its own fields, and the effective disabled state —
-// inherited, like IsEnabled reads it.
+// focus bits the router maintains, the hover chain (a hovered widget's
+// ancestors are hovered too, GTK's rule), the hover and press visuals
+// each widget tracks in its own fields, the application flags, and the
+// effective disabled state — inherited, like IsEnabled reads it.
 func (n *node) styleState(w Widget) style.State {
-	var s style.State
+	s := n.flags.styleBits()
 	if n.focused {
 		s |= style.Focus
+		if n.focusVisible {
+			s |= style.FocusVisible
+		}
+	}
+	if n.focusWithin > 0 {
+		s |= style.FocusWithin
+	}
+	if n.hoverChain {
+		s |= style.Hover
 	}
 	for p := n; p != nil; p = parentNodeOf(p) {
 		if p.disabled {
@@ -342,7 +657,8 @@ func parentNodeOf(n *node) *node {
 
 // hoverActiveOf reads the hover and press visuals a widget tracks in
 // its own fields, so the plain fields the router drives stay the one
-// source of truth for :hover and :active.
+// source of truth for :hover and :active, plus the intrinsic :checked
+// of toggles.
 func hoverActiveOf(w Widget) style.State {
 	var s style.State
 	switch t := w.(type) {
@@ -391,21 +707,28 @@ func hoverActiveOf(w Widget) style.State {
 		if t.hovered {
 			s |= style.Hover
 		}
+	case *Switch:
+		if t.On() {
+			s |= style.Checked
+		}
+	case *CheckButton:
+		if t.Checked() {
+			s |= style.Checked
+		}
 	}
 	return s
 }
 
 // styleScratch is the matcher's shared workspace, and styleSelf its
 // shared adapter: style work runs on the event-loop goroutine
-// (docs/threading.md), so one buffer serves the process and matching
-// allocates nothing.
+// (docs/threading.md), so one buffer serves the process.
 var styleScratch style.Scratch
 
 var styleSelf styleTargeter
 
 // style returns the widget's computed style — the paint path's entry
-// point, called exactly where Theme fields are read today. Steady
-// state is two integer compares; after an invalidation the first read
+// point, called exactly where Theme fields are read. Steady state is
+// two integer compares; after an invalidation the first read
 // recomputes and diff-invalidates.
 func (n *node) style(w Widget) *style.Values {
 	if !n.styleDirty && n.csGen == styleGen {
@@ -421,24 +744,26 @@ func (n *node) style(w Widget) *style.Values {
 func (n *node) restyle(w Widget) *style.Values {
 	old := n.cs
 	var v style.Values
-	if sheet := activeSheet.Load(); sheet != nil {
+	if len(layersNow) > 0 || n.inline != nil {
 		if n.element == "" && n.elemName == "" {
 			n.elemName = typeElementName(w)
 		}
-		styleSelf.n, styleSelf.w = n, w
-		sheet.Match(&styleSelf, &styleScratch, &v)
-	}
-	if pw := n.parent; pw != nil {
-		if pn := nodeOf(pw); pn != nil {
-			// The chain above must be fresh before its values inherit:
-			// a stale ancestor recomputes first, recursively.
-			v.InheritFrom(pn.style(pw))
+		var parent *style.Values
+		if pw := n.parent; pw != nil {
+			if pn := nodeOf(pw); pn != nil {
+				// The chain above must be fresh before it inherits: a
+				// stale ancestor recomputes first, recursively.
+				parent = pn.style(pw)
+			}
 		}
+		styleSelf.n, styleSelf.w = n, w
+		style.Compute(layersNow, &styleSelf, parent, &old, styleEnv, &styleScratch, &v)
 	}
 	n.cs = v
 	n.csGen = styleGen
 	n.styleSeen = styleGen
 	n.styleDirty = false
+	n.ink = inkOf(&v)
 	if v != old {
 		if inv, ok := w.(interface{ Invalidate() }); ok {
 			inv.Invalidate()
@@ -465,55 +790,201 @@ type styleRestyler interface {
 }
 
 // layoutKey projects the values that change what a widget wants to
-// measure; a change requests a relayout through InvalidateLayout.
-func layoutKey(v style.Values) style.Values {
-	const keep = 1<<style.PropPadding |
-		1<<style.PropFontSize | 1<<style.PropFontFamily | 1<<style.PropFontWeight |
-		1<<style.PropMinWidth | 1<<style.PropMinHeight
-	v.Set &= keep
-	v.Color, v.Background, v.BorderColor, v.ShadowColor = 0, 0, 0, 0
-	v.Radius, v.BorderWidth, v.ShadowBlur = 0, 0, 0
-	return v
+// measure or where its children go; a change requests a relayout
+// through InvalidateLayout.
+func layoutKey(v style.Values) layoutFacts {
+	eff := v.EffBorder()
+	return layoutFacts{
+		padding: v.Padding, margin: v.Margin, border: eff,
+		setPad: v.HasAny(style.PropPaddingTop, style.PropPaddingRight, style.PropPaddingBottom, style.PropPaddingLeft),
+		minW:   v.MinWidth, minH: v.MinHeight, spacingH: v.BorderSpacingH, spacingV: v.BorderSpacingV,
+		setSpacing: v.Has(style.PropBorderSpacing),
+		fontSize:   v.FontSize, fontFamily: v.FontFamily, fontWeight: v.FontWeight, italic: v.Italic,
+		iconSize: v.IconSize, transform: v.TextTransform, letter: v.LetterSpacing,
+		set: v.Set & (1<<style.PropFontSize | 1<<style.PropFontFamily | 1<<style.PropFontWeight |
+			1<<style.PropIconSize | 1<<style.PropMinWidth | 1<<style.PropMinHeight | 1<<style.PropTextTransform),
+	}
 }
 
-// inheritedKey projects the values descendants inherit; a change
-// restyles the subtree.
-func inheritedKey(v style.Values) style.Values {
-	const keep = 1<<style.PropColor |
-		1<<style.PropFontSize | 1<<style.PropFontFamily | 1<<style.PropFontWeight
-	v.Set &= keep
-	v.Background, v.BorderColor, v.ShadowColor = 0, 0, 0
-	v.Padding, v.Radius, v.BorderWidth, v.ShadowBlur, v.MinWidth, v.MinHeight = 0, 0, 0, 0, 0, 0
-	return v
+// layoutFacts is layoutKey's comparable projection.
+type layoutFacts struct {
+	padding, margin, border style.Sides
+	setPad                  bool
+	minW, minH              int
+	spacingH, spacingV      int
+	setSpacing              bool
+	fontSize                float64
+	fontFamily              string
+	fontWeight              int
+	italic                  bool
+	iconSize                int
+	transform               style.TextTransform
+	letter                  float64
+	set                     style.PropSet
 }
 
-// restyleSubtree marks every descendant's computed style stale and
-// repaint-owed: an inherited property changed above them, so each
-// recomputes (and diff-invalidates) on its next read.
+// inheritedKey projects the values descendants inherit — the custom
+// property environment included; a change restyles the subtree.
+func inheritedKey(v style.Values) inheritedFacts {
+	const keep = 1<<style.PropColor | 1<<style.PropFontSize | 1<<style.PropFontFamily |
+		1<<style.PropFontWeight | 1<<style.PropFontStyle | 1<<style.PropLetterSpacing |
+		1<<style.PropTextTransform | 1<<style.PropIconSize
+	return inheritedFacts{
+		set: v.Set & keep, color: v.Color, fontSize: v.FontSize, fontFamily: v.FontFamily,
+		fontWeight: v.FontWeight, italic: v.Italic, letter: v.LetterSpacing,
+		transform: v.TextTransform, iconSize: v.IconSize, vars: v.Vars,
+	}
+}
+
+// inheritedFacts is inheritedKey's comparable projection.
+type inheritedFacts struct {
+	set        style.PropSet
+	color      render.Color
+	fontSize   float64
+	fontFamily string
+	fontWeight int
+	italic     bool
+	letter     float64
+	transform  style.TextTransform
+	iconSize   int
+	vars       *style.Vars
+}
+
+// inkOf is how far a widget paints outside its border box: outer box
+// shadows and the outline. The damage collector grows the widget's
+// repaint rect by it.
+func inkOf(v *style.Values) render.Insets {
+	var ink render.Insets
+	for _, sh := range v.Shadow.List() {
+		e := render.BoxShadow{X: sh.X, Y: sh.Y, Blur: sh.Blur, Spread: sh.Spread, Color: sh.Color, Inset: sh.Inset}.Extent()
+		ink.Top, ink.Right = max(ink.Top, e.Top), max(ink.Right, e.Right)
+		ink.Bottom, ink.Left = max(ink.Bottom, e.Bottom), max(ink.Left, e.Left)
+	}
+	if o := v.EffOutline(); o > 0 {
+		reach := max(0, o+v.OutlineOffset)
+		ink.Top, ink.Right = max(ink.Top, reach), max(ink.Right, reach)
+		ink.Bottom, ink.Left = max(ink.Bottom, reach), max(ink.Left, reach)
+	}
+	return ink
+}
+
+// restyleSubtree marks every descendant's computed style stale:
+// something above them changed what they match or inherit, so each
+// recomputes on its next read — the damage walk reaches them
+// pre-order — and repaints only if its values actually moved (the
+// restyle diff invalidates).
 func restyleSubtree(w Widget) {
 	walkTree(w, 0, func(k Widget, _ int) {
 		if k == w {
 			return
 		}
-		n := nodeOf(k)
-		if n == nil {
-			return
-		}
-		n.styleDirty = true
-		if inv, ok := k.(interface{ Invalidate() }); ok {
-			inv.Invalidate()
+		if n := nodeOf(k); n != nil {
+			n.styleDirty = true
 		}
 	})
 }
 
-// invalidateStyle is the shared body of the style-relevant mutators
-// (state flips, class and id changes): mark the cascade stale and owe
-// the repaint. The diff-driven subtree and relayout work happens at
-// the next read, in restyle.
+// restyleChildren marks w's children (and their subtrees) stale: a
+// child was added, removed, reordered, or hidden, and a loaded sibling
+// selector may now match differently. Without sibling selectors it is
+// free.
+func restyleChildren(w Widget) {
+	if !sensNow.siblings {
+		return
+	}
+	restyleSubtree(w)
+}
+
+// invalidateStyle is the shared body of the self-only style mutators:
+// mark the cascade stale and owe the repaint. The diff-driven subtree
+// and relayout work happens at the next read, in restyle.
 func (n *node) invalidateStyle() {
 	checkLoop("invalidateStyle")
 	n.styleDirty = true
 	n.Invalidate()
+}
+
+// invalidateState restyles after the state bits in changed flipped:
+// the widget, plus its subtree when a selector reads one of them on an
+// ancestor, plus its siblings when sibling selectors are loaded. The
+// widget repaints: its own paint may read the state (a theme hover
+// shade).
+func (n *node) invalidateState(changed style.State) {
+	n.invalidateScope(sensNow.states&changed != 0, sensNow.siblings)
+}
+
+// restyleState is invalidateState for the propagated states — the
+// hover chain and focus-within — which no widget paints from itself:
+// the cascade is marked stale, and only a moved value repaints.
+func (n *node) restyleState(changed style.State) {
+	n.styleDirty = true
+	n.scope(sensNow.states&changed != 0, sensNow.siblings)
+}
+
+// invalidateClasses is invalidateState for a class-list change.
+func (n *node) invalidateClasses(changed []string) {
+	anc := false
+	for _, c := range changed {
+		if sensNow.classes[c] {
+			anc = true
+			break
+		}
+	}
+	n.invalidateScope(anc, sensNow.siblings)
+}
+
+// invalidateScope marks n stale, and its subtree when sub, and its
+// parent's other children when sib. A widget that has never been
+// arranged has no subtree links yet: its first restyle happens anyway.
+func (n *node) invalidateScope(sub, sib bool) {
+	n.invalidateStyle()
+	n.scope(sub, sib)
+}
+
+// scope marks the dependents of a flipped fact: the subtree when sub,
+// the parent's children (and theirs) when sib.
+func (n *node) scope(sub, sib bool) {
+	if !sub && !sib {
+		return
+	}
+	if sib && n.parent != nil {
+		restyleSubtree(n.parent)
+		return
+	}
+	if n.self != nil {
+		restyleSubtree(n.self)
+		return
+	}
+	// The root (or a widget no container arranged yet): no link to walk
+	// from, so the whole generation goes stale.
+	styleGen++
+}
+
+// setHoverChain moves the hover chain from old's ancestry to new's: a
+// hovered widget and all its ancestors match :hover. Nodes in both
+// chains keep their bit and restyle nothing.
+func setHoverChain(old, new Widget) {
+	if old == new {
+		return
+	}
+	in := map[*node]bool{}
+	for w := new; w != nil; w = parentOf(w) {
+		if n := nodeOf(w); n != nil {
+			in[n] = true
+		}
+	}
+	for w := old; w != nil; w = parentOf(w) {
+		if n := nodeOf(w); n != nil && n.hoverChain && !in[n] {
+			n.hoverChain = false
+			n.restyleState(style.Hover)
+		}
+	}
+	for w := new; w != nil; w = parentOf(w) {
+		if n := nodeOf(w); n != nil && !n.hoverChain {
+			n.hoverChain = true
+			n.restyleState(style.Hover)
+		}
+	}
 }
 
 // pickc resolves a color property: the programmatic widget color when
@@ -529,10 +1000,10 @@ func pickc(prog render.Color, v *style.Values, p style.Prop, def render.Color) r
 			return v.Color
 		case style.PropBackgroundColor:
 			return v.Background
-		case style.PropBorderColor:
-			return v.BorderColor
-		case style.PropBoxShadow:
-			return v.ShadowColor
+		case style.PropBorderTopColor:
+			return v.BorderColor[0]
+		case style.PropOutlineColor:
+			return v.OutlineColor
 		}
 	}
 	return def
@@ -545,19 +1016,71 @@ func pickc(prog render.Color, v *style.Values, p style.Prop, def render.Color) r
 func picki(v *style.Values, p style.Prop, def int) int {
 	if v.Has(p) {
 		switch p {
-		case style.PropPadding:
-			return v.Padding
-		case style.PropBorderRadius:
-			return v.Radius
-		case style.PropBorderWidth:
-			return v.BorderWidth
 		case style.PropMinWidth:
 			return v.MinWidth
 		case style.PropMinHeight:
 			return v.MinHeight
+		case style.PropBorderTopLeftRadius:
+			return v.Radius.TopLeft
+		case style.PropIconSize:
+			return v.IconSize
 		}
 	}
 	return def
+}
+
+// radiusOr returns the stylesheet's corner radii when any corner is
+// set, else def on every corner.
+func radiusOr(v *style.Values, def int) render.Corners {
+	if !v.HasAny(style.PropBorderTopLeftRadius, style.PropBorderTopRightRadius,
+		style.PropBorderBottomRightRadius, style.PropBorderBottomLeftRadius) {
+		return render.UniformCorners(def)
+	}
+	r := v.Radius
+	c := render.UniformCorners(def)
+	if v.Has(style.PropBorderTopLeftRadius) {
+		c.TopLeft = r.TopLeft
+	}
+	if v.Has(style.PropBorderTopRightRadius) {
+		c.TopRight = r.TopRight
+	}
+	if v.Has(style.PropBorderBottomRightRadius) {
+		c.BottomRight = r.BottomRight
+	}
+	if v.Has(style.PropBorderBottomLeftRadius) {
+		c.BottomLeft = r.BottomLeft
+	}
+	return c
+}
+
+// paddingOr returns the stylesheet's padding per side where set, def
+// elsewhere.
+func paddingOr(v *style.Values, def render.Insets) render.Insets {
+	if v.Has(style.PropPaddingTop) {
+		def.Top = v.Padding.Top
+	}
+	if v.Has(style.PropPaddingRight) {
+		def.Right = v.Padding.Right
+	}
+	if v.Has(style.PropPaddingBottom) {
+		def.Bottom = v.Padding.Bottom
+	}
+	if v.Has(style.PropPaddingLeft) {
+		def.Left = v.Padding.Left
+	}
+	return def
+}
+
+// borderOf returns the used border widths.
+func borderOf(v *style.Values) render.Insets {
+	b := v.EffBorder()
+	return render.Insets{Top: b.Top, Right: b.Right, Bottom: b.Bottom, Left: b.Left}
+}
+
+// marginOf returns the margins.
+func marginOf(v *style.Values) render.Insets {
+	m := v.Margin
+	return render.Insets{Top: m.Top, Right: m.Right, Bottom: m.Bottom, Left: m.Left}
 }
 
 // fontPx resolves the text size: the stylesheet's when matched, else
@@ -567,11 +1090,6 @@ func fontPx(v *style.Values, def float64) float64 {
 		return v.FontSize
 	}
 	return def
-}
-
-// shrinkRect pulls r in by n on every side.
-func shrinkRect(r render.Rect, n int) render.Rect {
-	return render.Rect{X: r.X + n, Y: r.Y + n, W: max(0, r.W-2*n), H: max(0, r.H-2*n)}
 }
 
 // typeElementName returns the widget type's element name: the

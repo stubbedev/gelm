@@ -122,7 +122,7 @@ func (e *Entry) fontPx() float64 {
 // pad is the effective horizontal text inset: the stylesheet's
 // padding when set, else the built-in 8.
 func (e *Entry) pad() int {
-	return picki(e.style(e), style.PropPadding, 8)
+	return paddingOr(e.style(e), render.UniformInsets(8)).Left
 }
 
 // SetPlaceholder sets the text shown when the entry is empty.
@@ -732,7 +732,7 @@ func (e *Entry) Paint(cv *render.Canvas) {
 		bg = t.DisabledSurface()
 	}
 	bg = pickc(0, v, style.PropBackgroundColor, bg)
-	radius := picki(v, style.PropBorderRadius, t.Radius)
+	radii := radiusOr(v, t.Radius)
 	textCol := pickc(e.color, v, style.PropColor, e.color)
 	caretCol := textCol
 	if !enabled {
@@ -741,12 +741,9 @@ func (e *Entry) Paint(cv *render.Canvas) {
 	} else if e.readOnly {
 		caretCol = scaleAlpha(caretCol, disabledFade)
 	}
-	if bw := picki(v, style.PropBorderWidth, 0); bw > 0 {
-		cv.RoundedRect(e.bounds, radius, pickc(0, v, style.PropBorderColor, t.Border))
-		cv.RoundedRect(shrinkRect(e.bounds, bw), max(0, radius-bw), bg)
-	} else {
-		cv.RoundedRect(e.bounds, radius, bg)
-	}
+	// The fill, then the rounded border ring over its edge, the same
+	// CSS box layers every styled widget paints.
+	paintBoxBehind(cv, v, e.bounds, radii, borderOf(v), bg)
 	disp := e.displayText()
 	if len(e.runes) == 0 && !e.composing() && e.placeholder != "" {
 		e.face.DrawAlignedDir(cv, e.placeholder, e.bounds, e.fontPx(), t.Border, render.AlignStart, e.dir)

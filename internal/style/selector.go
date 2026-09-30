@@ -105,12 +105,6 @@ type compound struct {
 	not []compound
 }
 
-// empty reports whether the compound constrains nothing (a bare `*`).
-func (c *compound) empty() bool {
-	return c.element == "" && c.id == "" && len(c.classes) == 0 && c.state == 0 &&
-		c.structs == 0 && len(c.nths) == 0 && len(c.not) == 0
-}
-
 // spec is a selector's specificity: ids, classes (with pseudo-classes
 // and attribute-level tests), and elements.
 type spec struct{ ids, cls, els int }

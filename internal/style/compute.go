@@ -73,7 +73,7 @@ func Compute(layers []Layer, n Node, parent, old *Values, env Env, sc *Scratch, 
 	if v.Has(PropColor) {
 		cx.color = v.Color
 	}
-	for p := Prop(0); p < numProps; p++ {
+	for p := range numProps {
 		if p == PropFontSize || p == PropColor {
 			continue
 		}
@@ -82,7 +82,7 @@ func Compute(layers []Layer, n Node, parent, old *Values, env Env, sc *Scratch, 
 
 	// Inheritance: unset inherited longhands take the parent's value,
 	// unless an explicit `initial` blocked it.
-	for p := Prop(0); p < numProps; p++ {
+	for p := range numProps {
 		if inheritedProps.Has(p) && !v.Has(p) && !blocked.Has(p) && pv.Has(p) {
 			copyProp(v, pv, p)
 			v.Set |= 1 << p

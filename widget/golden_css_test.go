@@ -32,6 +32,7 @@ func TestGoldenCSSButtonProperties(t *testing.T) {
 			border-radius: 14;
 			padding: 16;
 			border-width: 3;
+			border-style: solid;
 			border-color: #30d5c8;
 		}
 	`, btn, "css-button-properties")
@@ -114,6 +115,7 @@ func TestGoldenCSSEntryMinAndBorder(t *testing.T) {
 		entry {
 			min-width: 260;
 			border-width: 2;
+			border-style: solid;
 			border-color: #f5a623;
 			background-color: #1b2a34;
 		}
@@ -140,8 +142,8 @@ func TestGoldenCSSToastShadow(t *testing.T) {
 	}))
 	// The glow is subtle on the card; pin the cascade that painted it.
 	v := toast.style(toast)
-	if !v.Has(style.PropBoxShadow) || v.ShadowColor != render.RGBA(0xa0, 0x40, 0x00, 0xff) || v.ShadowBlur != 24 {
-		t.Errorf("toast shadow cascade = %v/%d", v.ShadowColor, v.ShadowBlur)
+	if !v.Has(style.PropBoxShadow) || v.Shadow.N != 1 || v.Shadow.Layers[0].Color != render.RGBA(0xa0, 0x40, 0x00, 0xff) || v.Shadow.Layers[0].Blur != 24 {
+		t.Errorf("toast shadow cascade = %+v", v.Shadow)
 	}
 }
 

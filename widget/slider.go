@@ -3,6 +3,7 @@ package widget
 import (
 	"math"
 
+	"github.com/stubbedev/gelm/internal/style"
 	"github.com/stubbedev/gelm/render"
 )
 
@@ -118,7 +119,7 @@ func (s *Slider) SetPressed(on bool) {
 		return
 	}
 	s.Pressed = on
-	s.invalidateStyle()
+	s.invalidateState(style.Active)
 }
 
 // DragMove sets the value from the pointer position while pressed.

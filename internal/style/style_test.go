@@ -2,6 +2,7 @@ package style
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 
@@ -126,7 +127,7 @@ func TestTokenizer(t *testing.T) {
 		tkIdent, tkColon, tkWS, tkFunc, tkNumber, tkComma, tkWS, tkNumber, tkComma, tkWS, tkNumber, tkComma, tkWS, tkPercent, tkRParen, tkSemi, tkWS,
 		tkIdent, tkColon, tkWS, tkString, tkWS, tkRBrace,
 	}
-	if fmt.Sprint(kinds) != fmt.Sprint(want) {
+	if !slices.Equal(kinds, want) {
 		t.Fatalf("kinds\n got %v\nwant %v", kinds, want)
 	}
 	if ts[16].num != 1.5 || ts[16].s != "rem" || ts[20].num != -2 {
@@ -269,9 +270,15 @@ func TestNthMicrosyntax(t *testing.T) {
 		a, b int
 		ok   bool
 	}{
-		{"odd", 2, 1, true}, {"even", 2, 0, true}, {"3", 0, 3, true}, {"n", 1, 0, true},
-		{"-n+3", -1, 3, true}, {"2n - 1", 2, -1, true}, {"+3n+2", 3, 2, true},
-		{"x", 0, 0, false}, {"2n+", 0, 0, false},
+		{"odd", 2, 1, true},
+		{"even", 2, 0, true},
+		{"3", 0, 3, true},
+		{"n", 1, 0, true},
+		{"-n+3", -1, 3, true},
+		{"2n - 1", 2, -1, true},
+		{"+3n+2", 3, 2, true},
+		{"x", 0, 0, false},
+		{"2n+", 0, 0, false},
 	}
 	for _, c := range cases {
 		x, ok := parseNth(c.in)

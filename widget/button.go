@@ -26,8 +26,8 @@ type Button struct {
 	// is transparent instead of unset, so a button can rest on
 	// whatever sits behind it and fill only on hover. Like any
 	// programmatic color it outranks the stylesheet. A transparent
-	// fill under a stylesheet border strokes the border square
-	// (render.Canvas.BorderRect).
+	// fill under a stylesheet border strokes just the rounded ring
+	// (render.Canvas.RoundedBorder).
 	BgExplicit bool
 
 	// Hovered and Pressed select the painted state; Pressed wins.
@@ -43,36 +43,30 @@ func NewButton(child Widget, padding, radius int) *Button {
 	return &Button{child: child, padding: padding, radius: radius}
 }
 
-// Measure pads the child's natural size on every side.
+// Measure pads the child's natural size inside the CSS box: the
+// constructor padding (or the stylesheet's, per side), border, margin,
+// and min sizes.
 func (b *Button) Measure(con Constraints) Size {
 	if sz, ok := b.measureHit(con); ok {
 		return sz
 	}
-	pad := b.pad()
-	inner := Constraints{
-		Min: Size{},
-		Max: Size{W: max(0, con.Max.W-2*pad), H: max(0, con.Max.H-2*pad)},
-	}
-	nat := b.child.Measure(inner)
-	return b.measureStore(con, clampSize(Size{W: nat.W + 2*pad, H: nat.H + 2*pad}, con))
+	v := b.style(b)
+	return b.measureStore(con, measureBox(v, b.box(v), con, func(inner Constraints) Size {
+		return b.child.Measure(Constraints{Max: inner.Max})
+	}))
 }
 
-// pad is the effective inner padding: the stylesheet's when set, else
-// the constructor default.
-func (b *Button) pad() int {
-	return picki(b.style(b), style.PropPadding, b.padding)
+// box is the button's resolved CSS box.
+func (b *Button) box(v *style.Values) cssInsets {
+	return boxOf(v, render.UniformInsets(b.padding))
 }
 
-// Arrange insets the child by the padding inside r.
+// Arrange insets the child by the box inside r, the margin box; Bounds
+// records the border box.
 func (b *Button) Arrange(r render.Rect) {
-	b.ArrangeRoot(r)
-	pad := b.pad()
-	b.child.Arrange(render.Rect{
-		X: r.X + pad,
-		Y: r.Y + pad,
-		W: max(0, r.W-2*pad),
-		H: max(0, r.H-2*pad),
-	})
+	border, inner := boxRects(b.box(b.style(b)), r)
+	b.ArrangeRoot(border)
+	b.child.Arrange(inner)
 	setParents(b, b.child)
 }
 
@@ -88,8 +82,9 @@ func (b *Button) ArrangeRoot(r render.Rect) {
 // knowing about the state.
 //
 // The stylesheet layers between the programmatic colors and the theme
-// per state slot, and border-width rounds the fill down inside a
-// border-color stroke.
+// per state slot; its shadows, background image, border ring (rounded,
+// per side), and outline paint around the fill, and opacity and filter
+// wrap the whole button.
 func (b *Button) Paint(cv *render.Canvas) {
 	t := Current()
 	v := b.style(b)
@@ -108,23 +103,18 @@ func (b *Button) Paint(cv *render.Canvas) {
 	if b.BgExplicit {
 		fill = prog
 	}
-	radius := picki(v, style.PropBorderRadius, b.radius)
-	switch bw := picki(v, style.PropBorderWidth, 0); {
-	case bw > 0 && fill == 0:
-		cv.BorderRect(b.bounds, bw, pickc(0, v, style.PropBorderColor, t.Border))
-	case bw > 0:
-		cv.RoundedRect(b.bounds, radius, pickc(0, v, style.PropBorderColor, t.Border))
-		cv.RoundedRect(shrinkRect(b.bounds, bw), max(0, radius-bw), fill)
-	case fill != 0:
-		cv.RoundedRect(b.bounds, radius, fill)
-	}
+	fx := pushEffects(cv, v)
+	radii := radiusOr(v, b.radius)
+	paintBoxBehind(cv, v, b.bounds, radii, borderOf(v), fill)
 	if IsEnabled(b) {
 		b.child.Paint(cv)
-		return
+	} else {
+		a := cv.PushAlpha(disabledFade)
+		b.child.Paint(cv)
+		cv.PopAlpha(a)
 	}
-	a := cv.PushAlpha(disabledFade)
-	b.child.Paint(cv)
-	cv.PopAlpha(a)
+	paintOutline(cv, v, b.bounds, radii)
+	fx.pop(cv)
 }
 
 // Role implements Roleer.
@@ -159,7 +149,7 @@ func (b *Button) SetHovered(on bool) {
 		return
 	}
 	b.Hovered = on
-	b.invalidateStyle()
+	b.invalidateState(style.Hover)
 }
 
 // SetPressed implements PressSetter; the pressed shade repaints.
@@ -168,7 +158,7 @@ func (b *Button) SetPressed(on bool) {
 		return
 	}
 	b.Pressed = on
-	b.invalidateStyle()
+	b.invalidateState(style.Active)
 }
 
 // KeyAction implements KeyActionHandler: Enter activates the button

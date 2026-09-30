@@ -42,7 +42,7 @@ type Box struct {
 	axis    Axis
 	dir     Direction
 	spacing int
-	padding int
+	padding render.Insets
 	child   []*childEntry
 }
 
@@ -80,7 +80,7 @@ func (b *Box) Direction() Direction { return b.dir }
 // NewBox returns an empty box along axis with the given spacing between
 // children and padding on every side.
 func NewBox(axis Axis, spacing, padding int) *Box {
-	return &Box{axis: axis, spacing: spacing, padding: padding}
+	return &Box{axis: axis, spacing: spacing, padding: render.UniformInsets(padding)}
 }
 
 // Append adds a widget to the box and reports whether it should expand
@@ -89,6 +89,7 @@ func NewBox(axis Axis, spacing, padding int) *Box {
 func (b *Box) Append(w Widget, expand bool) *Box {
 	b.child = append(b.child, &childEntry{w: w, expand: expand})
 	b.InvalidateLayout()
+	restyleChildren(b)
 	return b
 }
 
@@ -102,6 +103,7 @@ func (b *Box) detachChild(i int) {
 	b.child = slices.Delete(b.child, i, i+1)
 	clearParents(w)
 	b.InvalidateLayout()
+	restyleChildren(b)
 }
 
 // Remove detaches w, found by identity, and reports whether it was a
@@ -154,6 +156,7 @@ func (b *Box) InsertAt(i int, w Widget, expand bool) {
 	i = min(max(i, 0), len(b.child))
 	b.child = slices.Insert(b.child, i, &childEntry{w: w, expand: expand})
 	b.InvalidateLayout()
+	restyleChildren(b)
 }
 
 // SetEnabled turns the box's subtree on or off: the per-query enable
@@ -200,72 +203,105 @@ func (b *Box) crossMax(con Constraints) int {
 	return con.Max.W
 }
 
-// Measure measures every child and reports the box's natural size: the sum
-// of child sizes plus spacing and padding along the main axis, the largest
-// child plus padding across. The result is cached until an InvalidateLayout
-// anywhere in the subtree or a different constraint arrives, so a static
-// tree costs no recursion on later frames.
+// Measure measures every child and reports the box's natural size: the
+// sum of child sizes plus spacing along the main axis, the largest child
+// across, all inside the CSS box (padding, border, margin, min sizes).
+// The result is cached until an InvalidateLayout anywhere in the
+// subtree or a different constraint arrives, so a static tree costs no
+// recursion on later frames.
 func (b *Box) Measure(con Constraints) Size {
 	if sz, ok := b.measureHit(con); ok {
 		return sz
 	}
-	pad := b.pad()
-	innerCross := max(0, b.crossMax(con)-2*pad)
-	availMain := max(0, b.main(con.Max)-2*pad)
-	count := 0
-	for _, c := range b.child {
-		if !IsVisible(c.w) {
-			continue
+	v := b.style(b)
+	spacing := b.gap(v)
+	return b.measureStore(con, measureBox(v, b.box(v), con, func(inner Constraints) Size {
+		innerCross := b.crossMax(inner)
+		availMain := b.main(inner.Max)
+		count := 0
+		for _, c := range b.child {
+			if IsVisible(c.w) {
+				count++
+			}
 		}
-		count++
-	}
-	if count > 0 {
-		availMain -= b.spacing * (count - 1)
-	}
-	availMain = max(0, availMain)
-
-	total := 2 * pad
-	cross := 0
-	shown := 0
-	for i, c := range b.child {
-		if !IsVisible(c.w) {
-			b.child[i].nat = Size{}
-			continue
+		if count > 0 {
+			availMain -= spacing * (count - 1)
 		}
-		nat := c.w.Measure(Constraints{Max: b.withMain(Size{W: innerCross, H: innerCross}, availMain)})
-		b.child[i].nat = nat
-		total += b.main(nat) + b.spacing
-		cross = max(cross, b.crossOf(nat))
-		shown++
-	}
-	if shown > 0 {
-		total -= b.spacing
-	}
-	cross += 2 * pad
-	return b.measureStore(con, clampSize(b.withMain(Size{W: cross, H: cross}, total), con))
+		availMain = max(0, availMain)
+		total, cross, shown := 0, 0, 0
+		for i, c := range b.child {
+			if !IsVisible(c.w) {
+				b.child[i].nat = Size{}
+				continue
+			}
+			nat := c.w.Measure(Constraints{Max: b.withMain(Size{W: innerCross, H: innerCross}, availMain)})
+			b.child[i].nat = nat
+			total += b.main(nat) + spacing
+			cross = max(cross, b.crossOf(nat))
+			shown++
+		}
+		if shown > 0 {
+			total -= spacing
+		}
+		return b.withMain(Size{W: cross, H: cross}, total)
+	}))
 }
 
-// pad is the effective padding: the stylesheet's when set, else the
-// constructor default.
-func (b *Box) pad() int {
-	return picki(b.style(b), style.PropPadding, b.padding)
+// box is the box's resolved CSS box: the stylesheet's padding where
+// set, else the programmatic padding.
+func (b *Box) box(v *style.Values) cssInsets { return boxOf(v, b.padding) }
+
+// gap is the spacing between children: the stylesheet's border-spacing
+// along the main axis when set, else the constructor spacing.
+func (b *Box) gap(v *style.Values) int {
+	if !v.Has(style.PropBorderSpacing) {
+		return b.spacing
+	}
+	if b.axis == Row {
+		return v.BorderSpacingH
+	}
+	return v.BorderSpacingV
 }
 
-// Arrange positions the children inside r: the inner rect after padding,
-// expanding children sharing the leftover main-axis space, every child
-// stretched across the cross axis.
+// SetPadding sets the box's programmatic padding per side; the
+// stylesheet's padding still wins where it sets a side. The box
+// relayouts.
+func (b *Box) SetPadding(p render.Insets) {
+	if b.padding == p {
+		return
+	}
+	b.padding = p
+	b.InvalidateLayout()
+}
+
+// Padding returns the programmatic padding.
+func (b *Box) Padding() render.Insets { return b.padding }
+
+// SetSpacing sets the programmatic gap between children.
+func (b *Box) SetSpacing(spacing int) {
+	if b.spacing == spacing {
+		return
+	}
+	b.spacing = spacing
+	b.InvalidateLayout()
+}
+
+// Spacing returns the programmatic gap between children.
+func (b *Box) Spacing() int { return b.spacing }
+
+// Arrange positions the children inside the content box: expanding
+// children share the leftover main-axis space, every child stretches
+// across the cross axis. r is the margin box; Bounds records the border
+// box.
 func (b *Box) Arrange(r render.Rect) {
-	b.ArrangeRoot(r)
-	pad := b.pad()
-	inner := render.Rect{
-		X: r.X + pad,
-		Y: r.Y + pad,
-		W: r.W - 2*pad,
-		H: r.H - 2*pad,
-	}
+	v := b.style(b)
+	border, inner := boxRects(b.box(v), r)
+	b.ArrangeRoot(border)
+	spacing := b.gap(v)
 	if inner.Empty() {
 		for _, c := range b.child {
 			c.w.Arrange(render.Rect{})
+			setParents(b, c.w)
 		}
 		return
 	}
@@ -283,7 +319,7 @@ func (b *Box) Arrange(r render.Rect) {
 	if b.axis == Column {
 		avail = inner.H
 	}
-	free := avail - b.spacing*(shown-1) - sum
+	free := avail - spacing*(shown-1) - sum
 	expanders := 0
 	for _, c := range b.child {
 		if c.expand && IsVisible(c.w) {
@@ -316,7 +352,7 @@ func (b *Box) Arrange(r render.Rect) {
 		}
 		c.w.Arrange(rect)
 		setParents(b, c.w)
-		pos += size + b.spacing
+		pos += size + spacing
 	}
 }
 
@@ -325,13 +361,16 @@ func (b *Box) ArrangeRoot(r render.Rect) {
 	b.node.Arrange(r)
 }
 
-// Paint fills the background when the stylesheet gives the box one
-// (a bare box paints nothing — theme-only boxes are transparent), then
-// paints the children in order.
+// Paint draws the box's CSS layers when the stylesheet gives it any (a
+// bare box paints nothing — theme-only boxes are transparent), then the
+// children in order, then the outline; opacity and filter wrap it all.
 func (b *Box) Paint(cv *render.Canvas) {
 	v := b.style(b)
-	if bg := pickc(0, v, style.PropBackgroundColor, 0); bg != 0 {
-		cv.RoundedRect(b.bounds, picki(v, style.PropBorderRadius, 0), bg)
+	fx := pushEffects(cv, v)
+	radii := radiusOr(v, 0)
+	bg := pickc(0, v, style.PropBackgroundColor, 0)
+	if bg != 0 || hasBoxLayers(v) {
+		paintBoxBehind(cv, v, b.bounds, radii, borderOf(v), bg)
 	}
 	for _, c := range b.child {
 		if !IsVisible(c.w) {
@@ -339,6 +378,8 @@ func (b *Box) Paint(cv *render.Canvas) {
 		}
 		c.w.Paint(cv)
 	}
+	paintOutline(cv, v, b.bounds, radii)
+	fx.pop(cv)
 }
 
 // HitTest returns the deepest child under p, or the box itself when p is

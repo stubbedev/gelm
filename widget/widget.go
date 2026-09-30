@@ -152,8 +152,27 @@ type node struct {
 	classes  []string
 	// focused is the router's focus bit for :focus matching; hover and
 	// press stay in each widget's own fields, which the router already
-	// drives.
-	focused bool
+	// drives. focusVisible marks a focus that arrived by keyboard
+	// traversal (:focus-visible); focusWithin counts the focused widgets
+	// at or below this one (:focus-within); hoverChain is set on the
+	// hovered widget and every ancestor (:hover, GTK's rule).
+	focused      bool
+	focusVisible bool
+	focusWithin  int
+	hoverChain   bool
+	// flags are the application-driven states (SetState).
+	flags StateFlags
+	// inline is the widget-scoped declaration block (SetInlineStyle),
+	// kept with its source and priority.
+	inline     *style.Block
+	inlineSrc  string
+	inlinePrio int
+	// ink is how far the computed style paints outside the border box
+	// (outer shadows, the outline): damage grows by it.
+	ink render.Insets
+	// self is the widget embedding this node, recorded by the first
+	// arranging container, so a state flip can walk its own subtree.
+	self Widget
 
 	// disabled is the widget's own half of the enable state: false (the
 	// zero value) means enabled, so plain widgets accept input without
@@ -224,6 +243,9 @@ func (n *node) SetVisible(visible bool) {
 	}
 	n.hidden = !visible
 	n.InvalidateLayout()
+	if n.parent != nil {
+		restyleChildren(n.parent)
+	}
 }
 
 // Visible reports the widget's own visibility flag, not the effective
@@ -396,7 +418,7 @@ func (n *node) takeDamage() (bounds render.Rect, extra []render.Rect, dirty bool
 	if !boundsDirty {
 		return render.Rect{}, extra, true
 	}
-	return n.bounds, extra, true
+	return n.ink.Grow(n.bounds), extra, true
 }
 
 // Arrange records the widget's rect. A rect that moved or resized from
@@ -404,7 +426,7 @@ func (n *node) takeDamage() (bounds render.Rect, extra []render.Rect, dirty bool
 // damage does not leave the widget's old paint behind.
 func (n *node) Arrange(r render.Rect) {
 	if !n.bounds.Empty() && r != n.bounds {
-		n.InvalidateRect(n.bounds)
+		n.InvalidateRect(n.ink.Grow(n.bounds))
 		n.Invalidate()
 	}
 	n.bounds = r
@@ -428,7 +450,10 @@ func (n *node) Parent() Widget {
 // cascade walks the ancestor chain, which only exists once a container
 // has arranged this widget, so the next read recomputes — and repaints,
 // since an inherited value may now resolve differently.
-func (n *node) setParent(p Widget) {
+func (n *node) setParent(p, self Widget) {
+	if self != nil {
+		n.self = self
+	}
 	if n.parent == nil && p != nil {
 		n.csGen = 0
 		n.styleSeen = 0
@@ -451,8 +476,8 @@ func setParents(parent Widget, kids ...Widget) {
 		if k == nil {
 			continue
 		}
-		if s, ok := k.(interface{ setParent(Widget) }); ok {
-			s.setParent(parent)
+		if s, ok := k.(interface{ setParent(p, self Widget) }); ok {
+			s.setParent(parent, k)
 		}
 	}
 }
@@ -466,8 +491,8 @@ func clearParents(ws ...Widget) {
 		if w == nil {
 			continue
 		}
-		if s, ok := w.(interface{ setParent(Widget) }); ok {
-			s.setParent(nil)
+		if s, ok := w.(interface{ setParent(p, self Widget) }); ok {
+			s.setParent(nil, nil)
 		}
 	}
 }

@@ -973,7 +973,7 @@ func (t *TextArea) Paint(cv *render.Canvas) {
 		bg = th.DisabledSurface()
 	}
 	bg = pickc(0, v, style.PropBackgroundColor, bg)
-	radius := picki(v, style.PropBorderRadius, th.Radius)
+	radius := radiusOr(v, th.Radius).TopLeft
 	textCol := pickc(t.color, v, style.PropColor, t.color)
 	caretCol := textCol
 	if !enabled {

@@ -6,6 +6,7 @@ import (
 
 	"github.com/unxed/xkb-go"
 
+	"github.com/stubbedev/gelm/internal/style"
 	"github.com/stubbedev/gelm/render"
 )
 
@@ -381,6 +382,7 @@ func (r *Router) Move(p Point) {
 		if h, ok := r.hover.(HoverSetter); ok {
 			h.SetHovered(false)
 		}
+		setHoverChain(r.hover, hit)
 		r.hover = hit
 		if h, ok := hit.(HoverSetter); ok {
 			h.SetHovered(true)
@@ -415,7 +417,7 @@ func (r *Router) Press(button uint32, p Point) {
 	if hit != nil && !IsEnabled(hit) {
 		return
 	}
-	setFocusStyle(r.focus, hit)
+	setFocusStyle(r.focus, hit, false)
 	r.focus = hit
 	r.pressed = hit
 	r.dragging = hit != nil
@@ -424,20 +426,44 @@ func (r *Router) Press(button uint32, p Point) {
 	}
 }
 
-// setFocusStyle flips the :focus style bit between the old and new
+// setFocusStyle flips the :focus style bits between the old and new
 // focus and restyles both — the router is the one writer of focus, so
-// the bit stays in step with r.focus by construction.
-func setFocusStyle(old, new Widget) {
+// the bits stay in step with r.focus by construction. visible marks a
+// keyboard-driven focus (:focus-visible); the :focus-within count moves
+// along both ancestor chains.
+func setFocusStyle(old, new Widget, visible bool) {
 	if old == new {
+		if n := nodeOf(new); n != nil && n.focused && n.focusVisible != visible {
+			n.focusVisible = visible
+			n.invalidateState(style.FocusVisible)
+		}
 		return
 	}
 	if n := nodeOf(old); n != nil && n.focused {
-		n.focused = false
-		n.invalidateStyle()
+		n.focused, n.focusVisible = false, false
+		n.invalidateState(style.Focus | style.FocusVisible)
+		shiftFocusWithin(old, -1)
 	}
 	if n := nodeOf(new); n != nil && !n.focused {
-		n.focused = true
-		n.invalidateStyle()
+		n.focused, n.focusVisible = true, visible
+		n.invalidateState(style.Focus | style.FocusVisible)
+		shiftFocusWithin(new, 1)
+	}
+}
+
+// shiftFocusWithin moves the :focus-within count of w and every
+// ancestor by delta, restyling the ones whose bit flipped.
+func shiftFocusWithin(w Widget, delta int) {
+	for ; w != nil; w = parentOf(w) {
+		n := nodeOf(w)
+		if n == nil {
+			continue
+		}
+		was := n.focusWithin > 0
+		n.focusWithin = max(0, n.focusWithin+delta)
+		if was != (n.focusWithin > 0) {
+			n.restyleState(style.FocusWithin)
+		}
 	}
 }
 
@@ -483,6 +509,7 @@ func (r *Router) Leave() {
 	if h, ok := r.hover.(HoverSetter); ok {
 		h.SetHovered(false)
 	}
+	setHoverChain(r.hover, nil)
 	r.hover = nil
 }
 
@@ -532,15 +559,16 @@ func (r *Router) Forget(w Widget) {
 		if h, ok := r.hover.(HoverSetter); ok {
 			h.SetHovered(false)
 		}
+		setHoverChain(r.hover, nil)
 		r.hover = nil
 	}
 	if inSubtree(r.pressed, w) {
 		r.CancelPress()
 	}
 	if inSubtree(r.focus, w) {
-		setFocusStyle(r.focus, nil)
+		setFocusStyle(r.focus, nil, false)
 		r.focus = r.focusAfter(w)
-		setFocusStyle(nil, r.focus)
+		setFocusStyle(nil, r.focus, true)
 	}
 	if inSubtree(r.dragTarget, w) {
 		r.applyDragTarget(nil, false)
@@ -738,14 +766,14 @@ func walkTree(w Widget, depth int, fn func(Widget, int)) {
 // ignored and focus stays where it was; nil clears focus.
 func (r *Router) SetFocus(w Widget) {
 	if w == nil {
-		setFocusStyle(r.focus, nil)
+		setFocusStyle(r.focus, nil, false)
 		r.focus = nil
 		return
 	}
 	if _, ok := w.(KeyActionHandler); !ok || !IsEnabled(w) || !inTree(r.Root, w) {
 		return
 	}
-	setFocusStyle(r.focus, w)
+	setFocusStyle(r.focus, w, false)
 	r.focus = w
 }
 
@@ -793,7 +821,7 @@ func (r *Router) focusStep(dir int) {
 	} else if dir < 0 {
 		idx = len(order) - 1
 	}
-	setFocusStyle(r.focus, order[idx])
+	setFocusStyle(r.focus, order[idx], true)
 	r.focus = order[idx]
 }
 
@@ -808,7 +836,7 @@ func (r *Router) dropDisabledFocus() {
 		return
 	}
 	next := r.focusAfter(r.focus)
-	setFocusStyle(r.focus, next)
+	setFocusStyle(r.focus, next, true)
 	r.focus = next
 }
 

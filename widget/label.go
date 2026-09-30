@@ -2,6 +2,8 @@ package widget
 
 import (
 	"math"
+	"strings"
+	"unicode"
 
 	"github.com/stubbedev/gelm/internal/style"
 	"github.com/stubbedev/gelm/render"
@@ -192,12 +194,13 @@ func (l *Label) effStyleIn(v *style.Values) (render.Font, float64) {
 // effStyle is effStyleIn over the widget's current cascade.
 func (l *Label) effStyle() (render.Font, float64) { return l.effStyleIn(l.style(l)) }
 
-// styleRestyled implements styleRestyler: a changed effective face or
-// size reshapes the cached run and drops the measure cache.
+// styleRestyled implements styleRestyler: a changed effective face,
+// size, or text transform reshapes the cached run and drops the
+// measure cache.
 func (l *Label) styleRestyled(old, new style.Values) {
 	of, opx := l.effStyleIn(&old)
 	nf, npx := l.effStyleIn(&new)
-	if of != nf || opx != npx {
+	if of != nf || opx != npx || old.TextTransform != new.TextTransform {
 		l.retext()
 		l.InvalidateLayout()
 	}
@@ -210,50 +213,51 @@ func (l *Label) textColor(v *style.Values) render.Color {
 	return pickc(l.color, v, style.PropColor, l.color)
 }
 
-// padding is the content inset, the stylesheet's when set.
-func (l *Label) padding() int {
-	return picki(l.style(l), style.PropPadding, 0)
+// shown is the text as painted: the stylesheet's text-transform applied
+// (uppercase, lowercase, capitalize).
+func (l *Label) shown() string {
+	return transformText(l.text, l.style(l).TextTransform)
 }
 
 // retext re-resolves and reshapes the run under the label's base
 // direction and refreshes the cached natural size.
 func (l *Label) retext() {
 	face, px := l.effStyle()
-	l.shaped = face.ShapeDir(l.text, px, l.dir)
+	l.shaped = face.ShapeDir(l.shown(), px, l.dir)
 	l.natural = Size{
 		W: int(l.shaped.Advance() + 0.5),
 		H: l.shaped.LineHeight(),
 	}
 }
 
-// Measure returns the text's advance and line height, clamped to con.
-// Both layout modes key off the offered width: wrapping reports the
-// widest wrapped row by one line height per row, ellipsizing the
-// truncated advance. Results memoize per constraint set, so a panel
-// resize that changes the offered width re-measures on the next frame.
+// Measure returns the text's advance and line height inside the CSS box
+// (padding, border, margin, min sizes), clamped to con. Both layout
+// modes key off the offered width: wrapping reports the widest wrapped
+// row by one line height per row, ellipsizing the truncated advance.
+// Results memoize per constraint set, so a panel resize that changes
+// the offered width re-measures on the next frame.
 func (l *Label) Measure(con Constraints) Size {
 	if s, ok := l.measureHit(con); ok {
 		return s
 	}
-	return l.measureStore(con, l.measureNatural(con))
+	v := l.style(l)
+	return l.measureStore(con, measureBox(v, boxOf(v, render.Insets{}), con, l.measureNatural))
 }
 
-// measureNatural computes the wanted size for con from the label's
-// current text and modes. Fit checks compare the raw advance against
-// the offered width - the rounded natural size can lie by a pixel.
+// measureNatural computes the wanted content size for con from the
+// label's current text and modes. Fit checks compare the raw advance
+// against the offered width - the rounded natural size can lie by a
+// pixel.
 func (l *Label) measureNatural(con Constraints) Size {
 	face, px := l.effStyle()
 	lineH := l.shaped.LineHeight()
 	if !l.wrap {
-		if l.shaped.Advance() <= float64(con.Max.W) {
-			// The whole text fits the offered width; no mode applies.
+		if l.shaped.Advance() <= float64(con.Max.W) || l.ell == EllipsizeNone {
+			// The whole text fits the offered width, or it overflows and
+			// clips: no mode applies.
 			return clampSize(l.natural, con)
 		}
-		if l.ell == EllipsizeNone {
-			// Overflow: claim the offered box and clip, as before.
-			return clampSize(l.natural, con)
-		}
-		truncated := render.EllipsizeText(face, l.text, l.ell, float64(con.Max.W), px)
+		truncated := render.EllipsizeText(face, l.shown(), l.ell, float64(con.Max.W), px)
 		return clampSize(Size{
 			W: int(face.Shape(truncated, px).Advance() + 0.5),
 			H: lineH,
@@ -264,10 +268,7 @@ func (l *Label) measureNatural(con Constraints) Size {
 	for _, ln := range rows {
 		w = math.Max(w, face.Shape(ln, px).Advance())
 	}
-	return clampSize(Size{
-		W: int(w + 0.5),
-		H: len(rows)*lineH + 2*l.padding(),
-	}, con)
+	return clampSize(Size{W: int(w + 0.5), H: len(rows) * lineH}, con)
 }
 
 // wrapped breaks the text at width, ellipsizing the final row when a
@@ -275,7 +276,7 @@ func (l *Label) measureNatural(con Constraints) Size {
 // reports and draws the same rows.
 func (l *Label) wrapped(width float64) []string {
 	face, px := l.effStyle()
-	lines := render.WrapText(face, l.text, width, px)
+	lines := render.WrapText(face, l.shown(), width, px)
 	if last := len(lines) - 1; l.ell != EllipsizeNone && lines[last] != "" {
 		lines[last] = render.EllipsizeText(face, lines[last], l.ell, width, px)
 	}
@@ -286,54 +287,96 @@ func (l *Label) wrapped(width float64) []string {
 // unbreakable token — wrapping narrower than that clips tokens, the
 // one thing wrapping promised not to do — and one line height, the
 // height below which nothing paints. Without wrap there is no width
-// floor: clipping and ellipsizing own the narrow rects by design.
+// floor: clipping and ellipsizing own the narrow rects by design. The
+// CSS box adds around the floor.
 func (l *Label) MinSize() Size {
 	face, px := l.effStyle()
+	v := l.style(l)
+	o := boxOf(v, render.Insets{}).outer()
 	floor := Size{H: l.shaped.LineHeight()}
-	if !l.wrap || l.text == "" {
-		return floor
+	if l.wrap && l.text != "" {
+		w := 0.0
+		for _, tok := range render.WrapText(face, l.shown(), 1, px) {
+			w = math.Max(w, face.Shape(tok, px).Advance())
+		}
+		floor.W = int(w + 0.5)
 	}
-	w := 0.0
-	for _, tok := range render.WrapText(face, l.text, 1, px) {
-		w = math.Max(w, face.Shape(tok, px).Advance())
-	}
-	floor.W = int(w + 0.5)
+	floor.W = max(floor.W, picki(v, style.PropMinWidth, 0)) + o.Left + o.Right
+	floor.H = max(floor.H, picki(v, style.PropMinHeight, 0)) + o.Top + o.Bottom
 	return floor
 }
 
-// Paint draws the text inside the arranged rect: the wrapped rows when
+// Arrange records the border box inside r, the margin box.
+func (l *Label) Arrange(r render.Rect) {
+	border, _ := boxRects(boxOf(l.style(l), render.Insets{}), r)
+	l.node.Arrange(border)
+}
+
+// Paint draws the label's CSS layers (when the stylesheet gives it
+// any), then the text inside the content box: the wrapped rows when
 // wrapping is on, the single line ellipsized as configured otherwise.
-// Nothing is painted when the rect cannot hold one line.
 func (l *Label) Paint(cv *render.Canvas) {
-	face, px := l.effStyle()
-	col := l.textColor(l.style(l))
-	pad := l.padding()
+	v := l.style(l)
+	fx := pushEffects(cv, v)
+	b := boxOf(v, render.Insets{})
+	radii := radiusOr(v, 0)
+	if bg := pickc(0, v, style.PropBackgroundColor, 0); bg != 0 || hasBoxLayers(v) {
+		paintBoxBehind(cv, v, l.bounds, radii, b.border, bg)
+	}
+	content := b.padding.Shrink(b.border.Shrink(l.bounds))
+	face, px := l.effStyleIn(v)
+	col := l.textColor(v)
 	if l.wrap {
-		l.paintWrapped(cv, face, px, col, pad)
-		return
+		l.paintWrapped(cv, face, px, col, content)
+	} else {
+		text := l.shown()
+		if l.ell != EllipsizeNone && l.shaped.Advance() > float64(content.W) {
+			text = render.EllipsizeText(face, text, l.ell, float64(content.W), px)
+		}
+		face.DrawAlignedDir(cv, text, content, px, col, l.align, l.dir)
 	}
-	text := l.text
-	if l.ell != EllipsizeNone && l.shaped.Advance() > float64(l.bounds.W-2*pad) {
-		text = render.EllipsizeText(face, l.text, l.ell, float64(l.bounds.W-2*pad), px)
-	}
-	face.DrawAlignedDir(cv, text, shrinkRect(l.bounds, pad), px, col, l.align, l.dir)
+	paintOutline(cv, v, l.bounds, radii)
+	fx.pop(cv)
 }
 
 // paintWrapped draws the wrapped rows, the stack vertically centered in
 // a taller rect, each row aligned like a single line.
-func (l *Label) paintWrapped(cv *render.Canvas, face render.Font, px float64, col render.Color, pad int) {
-	lines := l.wrapped(float64(l.bounds.W - 2*pad))
+func (l *Label) paintWrapped(cv *render.Canvas, face render.Font, px float64, col render.Color, box render.Rect) {
+	lines := l.wrapped(float64(box.W))
 	lineH := l.shaped.LineHeight()
-	y := l.bounds.Y + pad
-	if extra := l.bounds.H - 2*pad - len(lines)*lineH; extra > 0 {
+	y := box.Y
+	if extra := box.H - len(lines)*lineH; extra > 0 {
 		y += extra / 2
 	}
 	for _, ln := range lines {
-		face.DrawAlignedDir(cv, ln, render.Rect{
-			X: l.bounds.X + pad, Y: y, W: l.bounds.W - 2*pad, H: lineH,
-		}, px, col, l.align, l.dir)
+		face.DrawAlignedDir(cv, ln, render.Rect{X: box.X, Y: y, W: box.W, H: lineH}, px, col, l.align, l.dir)
 		y += lineH
 	}
+}
+
+// transformText applies a CSS text-transform.
+func transformText(s string, t style.TextTransform) string {
+	switch t {
+	case style.TransformUppercase:
+		return strings.ToUpper(s)
+	case style.TransformLowercase:
+		return strings.ToLower(s)
+	case style.TransformCapitalize:
+		rs := []rune(s)
+		start := true
+		for i, r := range rs {
+			if unicode.IsSpace(r) {
+				start = true
+				continue
+			}
+			if start {
+				rs[i] = unicode.ToTitle(r)
+			}
+			start = false
+		}
+		return string(rs)
+	}
+	return s
 }
 
 // Role implements Roleer.

@@ -348,7 +348,7 @@ func (t *Toast) Paint(cv *render.Canvas) {
 	th := Current()
 	v := t.style(t)
 	col, blur := effShadow(t, th)
-	radius := picki(v, style.PropBorderRadius, th.Radius)
+	radius := radiusOr(v, th.Radius).TopLeft
 	fill := pickc(0, v, style.PropBackgroundColor, th.Surface)
 	ink := pickc(0, v, style.PropColor, th.Text)
 	prev := cv.PushClip(t.paintExtent())
