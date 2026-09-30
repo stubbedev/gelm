@@ -150,11 +150,13 @@ type windowHooks struct {
 	// opaque promises the surface is fully opaque: the frame pipeline
 	// sets wl_surface.set_opaque_region so the compositor can skip
 	// blending behind it. Computed once at config time by opaqueFor.
-	opaque   bool
-	onPress  func(button uint32, serial uint32, over widget.Widget)
-	onMove   func(x, y float64)
-	onKey    func(r *widget.Router, keycode uint32, mods wlsession.Mods)
-	onClosed func()
+	opaque  bool
+	onPress func(button uint32, serial uint32, over widget.Widget)
+	onMove  func(x, y float64)
+	onKey   func(r *widget.Router, keycode uint32, mods wlsession.Mods)
+	// keyCapture sees each press before any routing; true consumes it.
+	keyCapture func(Accel) bool
+	onClosed   func()
 }
 
 // opaqueFor reports whether a window may promise an opaque surface:

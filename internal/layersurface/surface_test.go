@@ -140,3 +140,24 @@ func TestProtocolEnumWireValues(t *testing.T) {
 		}
 	})
 }
+
+func TestSetSizeKeepsTheAutoAxisRule(t *testing.T) {
+	t.Run("an auto axis without both edges is refused before the wire", func(t *testing.T) {
+		// Layer is nil: reaching the wire would panic, so a refusal here
+		// proves the rule is enforced locally.
+		s := &Surface{cfg: Config{Anchor: AnchorTop, Width: 600, Height: 400}}
+		if err := s.SetSize(600, 0); err == nil {
+			t.Fatal("height 0 with only top anchored must be refused")
+		}
+		if s.cfg.Height != 400 {
+			t.Errorf("a refused size changed the recorded config: %+v", s.cfg)
+		}
+	})
+
+	t.Run("a closed surface refuses a new size", func(t *testing.T) {
+		s := &Surface{cfg: Config{Width: 600, Height: 400}, closed: true}
+		if err := s.SetSize(600, 300); !errors.Is(err, ErrClosed) {
+			t.Errorf("SetSize on a closed surface = %v, want ErrClosed", err)
+		}
+	})
+}
