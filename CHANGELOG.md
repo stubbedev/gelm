@@ -71,6 +71,35 @@
   external consumers can now construct the clipboard they hand to
   `SetClipboard`, and write to it from application code.
 
+### Screen capture
+
+- New `capture` package: a private capture connection (`Connect`)
+  that feature-detects and binds wlr-screencopy, ext-image-copy-capture
+  with its output and foreign-toplevel sources, ext-foreign-toplevel-
+  list, Hyprland's toplevel-export, and linux-dmabuf. `CaptureOutput`
+  and `CaptureOutputRegion` (screencopy, optional cursor, damage, one
+  reused shm slot), `Toplevels` + `CaptureToplevel` (single windows),
+  `CaptureOutputOnce`, `CaptureHyprlandWindow`, and the zero-copy trio
+  `DmabufFormat` / `ImportDmabuf` / `CaptureOutputDmabuf`.
+  `OpenOutputStream` is continuous, damage-driven output capture on its
+  own goroutine (a static screen costs no copies). `Frame.Image`
+  converts the 8-bit, 10-bit, and 24-bit formats compositors hand out
+  to `image.RGBA`, honoring y-invert. Missing protocols fail with
+  `ErrUnsupported`. The headless gate (`just headless`) now runs the
+  package's compositor-in-the-loop tests.
+- `wlr`: bindings for the six capture protocols.
+- Cursor shape `"none"` (`wlsession.CursorHidden`) hides the pointer
+  over a surface - a widget's `CursorName` can return it.
+- `Application.Clipboard` returns the installed clipboard, so code that
+  did not construct it (a screenshot copy) can still write to it.
+- `app.Mods` and the `Mod*` bits alias the modifier mask the `OnKey`
+  hooks receive.
+- `Canvas.DrawImageDevice` paints `*image.RGBA` rasters straight from
+  their pixel bytes (opaque pixels without a blend), so full-screen
+  rasters repaint at memory speed.
+- Fix: a `WakeAfter` timer firing after `Session.Close` no longer
+  panics on the closed connection.
+
 ### Button: explicit transparent backgrounds
 
 - `widget.Button.BgExplicit`: with it set, `Bg`, `BgHover`, and
