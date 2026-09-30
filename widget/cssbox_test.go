@@ -414,3 +414,62 @@ func TestSetRootFontSize(t *testing.T) {
 		t.Error("a non-positive size was accepted")
 	}
 }
+
+func TestAttachedStylesheetStylesItsSubtreeOnly(t *testing.T) {
+	face := goldenFace(t)
+	sheet := NewStylesheet(`* { padding: 0; } label { color: #00ff00; } .inner label { color: #0000ff; }`, StylePriorityUser)
+	a := NewBox(Column, 0, 5)
+	la := NewLabel(face, 14, "a", 0)
+	a.Append(la, false)
+	b := NewBox(Column, 0, 5)
+	lb := NewLabel(face, 14, "b", 0)
+	b.Append(lb, false)
+	arrangeTree(t, a, 100, 40)
+	arrangeTree(t, b, 100, 40)
+
+	a.AttachStylesheet(sheet)
+	a.AttachStylesheet(sheet) // idempotent
+	t.Cleanup(func() { a.DetachStylesheet(sheet) })
+	CollectDamage(a)
+	CollectDamage(b)
+	if got := la.style(la).Color; got != render.RGB(0, 0xff, 0) {
+		t.Errorf("attached sheet missed its subtree: %08x", uint32(got))
+	}
+	if lb.style(lb).Has(style.PropColor) || b.style(b).Has(style.PropPaddingTop) {
+		t.Error("an attached sheet leaked into another tree")
+	}
+	if got, want := a.Measure(Constraints{Max: Size{W: 100, H: 100}}).H, la.Measure(Constraints{Max: Size{W: 100, H: 100}}).H; got != want {
+		t.Errorf("the sheet's padding: 0 did not override the programmatic padding: %d, want %d", got, want)
+	}
+	// Selectors see the full ancestry.
+	a.AddClass("inner")
+	CollectDamage(a)
+	if got := la.style(la).Color; got != render.RGB(0, 0, 0xff) {
+		t.Errorf("ancestor selector inside the scope: %08x", uint32(got))
+	}
+	// A reload restyles every attached subtree.
+	sheet.Load(`label { color: #ff0000; }`)
+	CollectDamage(a)
+	if got := la.style(la).Color; got != render.RGB(0xff, 0, 0) {
+		t.Errorf("reload: %08x", uint32(got))
+	}
+	a.DetachStylesheet(sheet)
+	a.DetachStylesheet(sheet) // no-op
+	CollectDamage(a)
+	if la.style(la).Has(style.PropColor) {
+		t.Error("detach kept styling the subtree")
+	}
+}
+
+func TestInlineStyleInheritsWithoutAnyStylesheet(t *testing.T) {
+	face := goldenFace(t)
+	LoadStylesheet("")
+	box := NewBox(Column, 0, 0)
+	lbl := NewLabel(face, 14, "x", 0)
+	box.Append(lbl, false)
+	box.SetInlineStyle("color: #0a0a0a")
+	arrangeTree(t, box, 100, 40)
+	if got := lbl.style(lbl).Color; got != render.RGB(10, 10, 10) {
+		t.Errorf("inline color did not inherit with no sheet loaded: %08x", uint32(got))
+	}
+}
