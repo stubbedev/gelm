@@ -283,3 +283,35 @@ func px(data []byte, stride, x, y int) bool {
 	i := y*stride + x*4
 	return data[i+3] > 8
 }
+
+func TestWeightedResolvesTheRequestedWeight(t *testing.T) {
+	sans := mustSans(t)
+	bold, err := Weighted(sans.Family(), 16, 700, false)
+	if err != nil {
+		t.Fatalf("Weighted(700): %v", err)
+	}
+	if bold.Family() != sans.Family() {
+		t.Errorf("family = %q, want %q", bold.Family(), sans.Family())
+	}
+	if w := bold.Describe().Aspect.Weight; w != font.WeightBold && w != font.WeightNormal {
+		t.Errorf("weight = %v, want bold or the regular downgrade", w)
+	}
+	regular, err := Weighted(sans.Family(), 16, 400, false)
+	if err != nil {
+		t.Fatalf("Weighted(400): %v", err)
+	}
+	if w := regular.Describe().Aspect.Weight; w != font.WeightNormal {
+		t.Errorf("400 resolved weight %v, want regular", w)
+	}
+}
+
+func TestWeightedRejectsBadInput(t *testing.T) {
+	if _, err := Weighted("sans-serif", 0, 400, false); err == nil {
+		t.Error("zero size accepted")
+	}
+	for _, w := range []int{0, -100, 1001} {
+		if _, err := Weighted("sans-serif", 16, w, false); err == nil {
+			t.Errorf("weight %d accepted", w)
+		}
+	}
+}

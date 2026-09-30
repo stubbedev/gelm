@@ -205,6 +205,23 @@ func Variant(base *render.Typeface, bold, italic bool) (*render.Typeface, error)
 	return tf, nil
 }
 
+// Weighted resolves family at a CSS numeric weight (100-900) and
+// style, with the same closest-face fallback as Variant: a family
+// without that weight returns its nearest face. Size follows Best.
+func Weighted(family string, size float64, weight int, italic bool) (*render.Typeface, error) {
+	if size <= 0 {
+		return nil, fmt.Errorf("sysfont: Weighted(%q, %v): size must be positive", family, size)
+	}
+	if weight < 1 || weight > 1000 {
+		return nil, fmt.Errorf("sysfont: Weighted(%q): weight %d outside 1-1000", family, weight)
+	}
+	aspect := font.Aspect{Style: font.StyleNormal, Weight: font.Weight(weight)}
+	if italic {
+		aspect.Style = font.StyleItalic
+	}
+	return lookup(family, aspect, 0, 'x')
+}
+
 // Fallback returns a chain that shapes with base and, for runes it
 // lacks, first the standard Linux fallback families fontconfig itself
 // prefers (Noto Sans CJK for Han, Noto Color Emoji for emoji), then
