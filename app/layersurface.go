@@ -50,3 +50,14 @@ const (
 // global). LayerConfig pins surfaces to one; Session.Outputs lists
 // them.
 type Output = wlsession.Output
+
+// Mods is the held-modifier mask the OnKey hooks receive.
+type Mods = wlsession.Mods
+
+// Modifier bits of Mods.
+const (
+	ModShift    = wlsession.ModShift
+	ModCapsLock = wlsession.ModCapsLock
+	ModCtrl     = wlsession.ModCtrl
+	ModAlt      = wlsession.ModAlt
+)
