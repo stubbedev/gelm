@@ -9,13 +9,36 @@ import (
 	"github.com/stubbedev/gelm/render"
 )
 
-// Stack holds named children and shows exactly one at a time.
+// StackTransition is how a Stack moves between pages.
+type StackTransition uint8
+
+const (
+	// StackNone switches at once.
+	StackNone StackTransition = iota
+	// StackCrossfade cross-fades the old page into the new one.
+	StackCrossfade
+	// StackSlideLeftRight slides the pages sideways: a page added
+	// later comes in from the right, an earlier one from the left.
+	StackSlideLeftRight
+)
+
+// Stack holds named children and shows exactly one at a time, switching
+// through its transition (none by default).
 type Stack struct {
 	node
 	kids     map[string]Widget
 	order    []string
 	visible  string
 	measured map[string]Size
+
+	transition StackTransition
+	duration   time.Duration
+	// prev is the page leaving and progress how far the switch is
+	// (eased); cancel stops the running switch.
+	prev     string
+	progress float64
+	cancel   anim.Cancel
+	layers   [2]*render.Layer
 }
 
 // NewStack returns an empty stack.
@@ -64,6 +87,9 @@ func (s *Stack) Remove(name string) bool {
 	if s.visible == name {
 		s.visible = ""
 	}
+	if s.prev == name {
+		s.prev = ""
+	}
 	clearParents(w)
 	s.InvalidateLayout()
 	return true
@@ -111,14 +137,43 @@ func (o *Overlay) SetEnabled(enabled bool) {
 	invalidateTree(o)
 }
 
-// Show makes the child under name the visible one and invalidates the
-// stack's bounds; unknown names are ignored.
-func (s *Stack) Show(name string) {
-	if _, ok := s.kids[name]; ok && name != s.visible {
-		s.visible = name
-		s.Invalidate()
-	}
+// SetTransition picks how later Show calls switch pages and how long a
+// switch takes (GTK's stack transition type and duration); a zero
+// duration switches at once.
+func (s *Stack) SetTransition(t StackTransition, d time.Duration) {
+	s.transition, s.duration = t, max(0, d)
 }
+
+// Show makes the child under name the visible one through the stack's
+// transition; unknown names are ignored. A switch during a running one
+// starts from the page then showing.
+func (s *Stack) Show(name string) {
+	if _, ok := s.kids[name]; !ok || name == s.visible {
+		return
+	}
+	if s.cancel != nil {
+		s.cancel()
+		s.cancel = nil
+	}
+	prev := s.visible
+	s.visible = name
+	s.Invalidate()
+	if s.transition == StackNone || s.duration == 0 || prev == "" {
+		s.prev = ""
+		return
+	}
+	s.prev, s.progress = prev, 0
+	s.cancel = anim.Play(anim.Animate(s.duration, func(t float64) {
+		s.progress = t
+		if t >= 1 {
+			s.prev, s.cancel = "", nil
+		}
+		s.Invalidate()
+	}).Easing(anim.EaseOutCubic))
+}
+
+// Switching reports whether a page transition is running.
+func (s *Stack) Switching() bool { return s.prev != "" }
 
 // Visible returns the visible child's name.
 func (s *Stack) Visible() string {
@@ -155,10 +210,37 @@ func (s *Stack) ArrangeRoot(r render.Rect) {
 	s.node.Arrange(r)
 }
 
-// Paint draws only the visible child.
+// Paint draws the visible child, or both pages mid-switch.
 func (s *Stack) Paint(cv *render.Canvas) {
-	if w, ok := s.kids[s.visible]; ok {
+	w, ok := s.kids[s.visible]
+	if !ok {
+		return
+	}
+	old, switching := s.kids[s.prev]
+	if !switching {
 		w.Paint(cv)
+		return
+	}
+	dev := cv.MapRect(s.bounds)
+	s.layers[0] = cv.Layer(s.layers[0], dev)
+	s.layers[1] = cv.Layer(s.layers[1], dev)
+	old.Paint(s.layers[0].Canvas())
+	w.Paint(s.layers[1].Canvas())
+	switch s.transition {
+	case StackSlideLeftRight:
+		// Moving to a later page pushes the old one out to the left.
+		dir := 1.0
+		if slices.Index(s.order, s.visible) < slices.Index(s.order, s.prev) {
+			dir = -1
+		}
+		off := math.Round(float64(dev.W) * s.progress)
+		prev := cv.PushClip(dev)
+		cv.Composite(s.layers[0], dev, render.Translate(-dir*off, 0), 1)
+		cv.Composite(s.layers[1], dev, render.Translate(dir*(float64(dev.W)-off), 0), 1)
+		cv.PopClip(prev)
+	default:
+		s.layers[0].CrossFade(s.layers[1], dev, s.progress)
+		cv.Composite(s.layers[0], dev, render.Identity, 1)
 	}
 }
 
