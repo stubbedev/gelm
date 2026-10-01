@@ -162,6 +162,9 @@ type node struct {
 	hoverChain   bool
 	// onHoverWithin hears hoverChain flip (SetOnHoverWithin).
 	onHoverWithin func(on bool)
+	// onClickWithin hears clicks on non-clicking descendants
+	// (SetOnClickWithin).
+	onClickWithin func()
 	// flags are the application-driven states (SetState).
 	flags StateFlags
 	// inline is the widget-scoped declaration block (SetInlineStyle),
@@ -201,6 +204,18 @@ func (n *node) SetOnHoverWithin(fn func(on bool)) { n.onHoverWithin = fn }
 // HoverWithin reports whether the pointer is over the widget or a
 // descendant.
 func (n *node) HoverWithin() bool { return n.hoverChain }
+
+// SetOnClickWithin registers fn to hear a click (press and release on
+// the same widget) anywhere in the widget that nothing nearer takes:
+// GTK's GestureClick on a container. A button, entry or other
+// clicking widget inside keeps its own clicks, so a card can open on
+// a click and still hold a working close button. The nearest
+// registered ancestor of the clicked widget hears it; nil
+// unregisters.
+func (n *node) SetOnClickWithin(fn func()) { n.onClickWithin = fn }
+
+// clickWithin is the hook SetOnClickWithin registered.
+func (n *node) clickWithin() func() { return n.onClickWithin }
 
 // SetTooltip sets hover text shown after a dwell; empty clears it.
 func (n *node) SetTooltip(s string) {
