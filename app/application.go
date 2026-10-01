@@ -169,17 +169,12 @@ func NewApplication(sess *wlsession.Session) *Application {
 	// Icon lookups follow the portal's live icon-theme setting: a
 	// switch swaps the resolution theme (an empty name keeps the
 	// previous one, Warn) and the cache generation moves, so live
-	// themed icons re-resolve; the bridge into the loop requests the
-	// repaint that walks the damage and picks the change up.
+	// themed icons re-resolve. Any cache reset (that switch, new search
+	// paths, a refresh) is bridged into the loop as the repaint that
+	// walks the damage and picks the change up.
 	a.appearance = appearance.New()
 	a.stopIconFollow = a.appearance.OnIconThemeChange(icons.Default().ApplyIconTheme)
-	icons.Default().OnIconThemeChanged(func(string) {
-		a.Invoke(func() {
-			for _, w := range a.windows {
-				w.dirty = true
-			}
-		})
-	})
+	a.repaintOnIconReset(icons.Default())
 	if inspect.Enabled() {
 		a.setInspect(true)
 	}
@@ -1013,3 +1008,15 @@ func (l *LayerWindow) Closed() bool {
 // pointer binding reads, since pointer events carry no modifier state
 // of their own (a launcher's Ctrl+double-click).
 func (a *Application) HeldMods() Mods { return a.sess.Mods() }
+
+// repaintOnIconReset bridges every reset of c into the loop as a
+// repaint of every window, so live themed icons re-resolve.
+func (a *Application) repaintOnIconReset(c *icons.Cache) {
+	c.OnReset(func() {
+		a.Invoke(func() {
+			for _, w := range a.windows {
+				w.dirty = true
+			}
+		})
+	})
+}

@@ -316,3 +316,53 @@ func TestIconMeasureWantsLogicalSize(t *testing.T) {
 		}
 	}
 }
+
+// TestIconSearchPathsAndRefresh pins the public search-path API: a base
+// directory set first wins over the rest, a file installed under it
+// stays a miss until RefreshIcons, and a live icon showing it repaints.
+func TestIconSearchPathsAndRefresh(t *testing.T) {
+	iconTree(t)
+	fallback := IconSearchPaths()
+	extra := t.TempDir()
+	actions := filepath.Join(extra, "hicolor", "16x16", "apps")
+	if err := os.MkdirAll(actions, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(extra, "hicolor", "index.theme"), []byte("[Icon Theme]\nName=Hicolor\nDirectories=16x16/apps\n\n[16x16/apps]\nSize=16\nType=Fixed\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	SetIconSearchPaths(append([]string{extra}, fallback...))
+	if got := IconSearchPaths(); len(got) != len(fallback)+1 || got[0] != extra {
+		t.Fatalf("search paths = %v, want %s first", got, extra)
+	}
+	if !ThemeIconExists("flag") {
+		t.Error("flag no longer resolves from the original paths")
+	}
+
+	if ThemeIconExists("installed") {
+		t.Fatal("installed resolves before it exists")
+	}
+	w := NewThemeIcon("installed", 16)
+	CollectDamage(w)
+	paintIcon(w, 16, 1, 1)
+	CollectDamage(w)
+	if err := os.WriteFile(filepath.Join(actions, "installed.svg"), []byte(testBlueSVG), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, any := CollectDamage(w); any {
+		t.Error("damage before RefreshIcons: the cached miss was dropped without a refresh")
+	}
+	RefreshIcons()
+	if _, any := CollectDamage(w); !any {
+		t.Fatal("RefreshIcons produced no damage on the live icon")
+	}
+	data, dev := paintIcon(w, 16, 1, 1)
+	if got := centerPx(data, dev); got != render.RGB(0, 0, 0xff) {
+		t.Errorf("center = %v, want the installed blue", got)
+	}
+
+	SetIconSearchPaths(nil)
+	if got := IconSearchPaths(); len(got) == 0 || got[0] == extra {
+		t.Errorf("nil search paths = %v, want the XDG default", got)
+	}
+}

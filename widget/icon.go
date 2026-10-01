@@ -90,6 +90,29 @@ func ThemeIconExists(name string) bool {
 	return err == nil
 }
 
+// IconSearchPaths returns the base directories theme icons resolve
+// from: what SetIconSearchPaths set, else the XDG default (GTK's
+// IconTheme.search_path).
+func IconSearchPaths() []string {
+	return icons.Default().SearchPaths()
+}
+
+// SetIconSearchPaths replaces the base directories theme icons resolve
+// from, in priority order (GTK's IconTheme.set_search_path); nil
+// restores the XDG default. Live themed icons re-resolve on the next
+// repaint, which the application requests.
+func SetIconSearchPaths(paths []string) {
+	icons.Default().SetSearchPaths(paths)
+}
+
+// RefreshIcons forgets every resolved theme icon, a found file and a
+// miss alike, so icons installed or removed under the search paths
+// since are picked up; live themed icons re-resolve on the repaint the
+// application requests. Safe from any goroutine.
+func RefreshIcons() {
+	icons.Default().InvalidateTheme()
+}
+
 // NewFileIcon returns an icon widget that loads an image file (png,
 // svg, svgz) and draws it at size logical pixels.
 func NewFileIcon(path string, size int) *Icon {

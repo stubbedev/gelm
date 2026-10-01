@@ -43,8 +43,9 @@ type cacheEntry struct {
 // (name, size, scale) key with the scale in the 120-based convention of
 // internal/scale (120 is 1x, 240 is 2x). It is safe for concurrent use.
 //
-// Theme changes are explicit, not watched: SetTheme and InvalidateTheme
-// drop every cached raster and bump Generation. There is no live
+// Theme changes are explicit, not watched: SetTheme, SetSearchPaths and
+// InvalidateTheme drop every cached raster, bump Generation, and run the
+// OnReset listeners. There is no live
 // theme-change signal - following the freedesktop setting would drag
 // xsettings (or a settings daemon protocol) in as a new dependency, so
 // that is deferred by design (stubbedev/gelm#20). Callers that follow
@@ -59,6 +60,8 @@ type Cache struct {
 
 	// themeListeners hear every followed icon-theme switch (follow.go).
 	themeListeners []func(string)
+	// resetListeners hear every reset, whatever caused it.
+	resetListeners []func()
 
 	entries map[cacheKey]*cacheEntry
 	order   []cacheKey
@@ -94,24 +97,37 @@ func (c *Cache) Theme() string {
 // hicolor) and drops every cached raster.
 func (c *Cache) SetTheme(name string) {
 	c.mu.Lock()
-	defer c.mu.Unlock()
 	if name == c.theme {
+		c.mu.Unlock()
 		return
 	}
 	c.theme = name
-	c.resetLocked()
+	listeners := c.resetLocked()
+	c.mu.Unlock()
+	runAll(listeners)
 }
 
-// SetSearchPaths overrides the base directories lookups search; nil
-// restores the XDG default. Changing paths drops every cached raster.
+// SetSearchPaths overrides the base directories lookups search (the
+// slice is copied); nil restores the XDG default. Changing paths drops
+// every cached raster.
 func (c *Cache) SetSearchPaths(paths []string) {
 	c.mu.Lock()
-	defer c.mu.Unlock()
-	if slices.Equal(c.paths, paths) {
+	if slices.Equal(c.paths, paths) && (c.paths == nil) == (paths == nil) {
+		c.mu.Unlock()
 		return
 	}
-	c.paths = paths
-	c.resetLocked()
+	c.paths = slices.Clone(paths)
+	listeners := c.resetLocked()
+	c.mu.Unlock()
+	runAll(listeners)
+}
+
+// SearchPaths returns the base directories lookups search: what
+// SetSearchPaths set, else the XDG default.
+func (c *Cache) SearchPaths() []string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return slices.Clone(c.searchPathsLocked())
 }
 
 // Generation counts cache-wide resets: every SetTheme, SetSearchPaths,
@@ -124,19 +140,43 @@ func (c *Cache) Generation() uint64 {
 	return c.gen
 }
 
-// InvalidateTheme drops every cached raster and bumps Generation. It is
-// the explicit hook for a desktop theme switch; nothing calls it
-// automatically (see the type comment for why that is deferred).
+// InvalidateTheme drops every cached raster and bumps Generation: the
+// hook for a theme switch or for icon files installed or removed under
+// the search paths, since a miss is cached as firmly as a hit.
 func (c *Cache) InvalidateTheme() {
 	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.resetLocked()
+	listeners := c.resetLocked()
+	c.mu.Unlock()
+	runAll(listeners)
 }
 
-func (c *Cache) resetLocked() {
+// OnReset registers fn to run after every reset (SetTheme,
+// SetSearchPaths, InvalidateTheme, an applied ApplyIconTheme), once
+// Generation has moved. Callbacks run on the caller's goroutine; bridge
+// into the loop with Application.Invoke, where the usual reaction is
+// requesting a repaint.
+func (c *Cache) OnReset(fn func()) {
+	if fn == nil {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.resetListeners = append(c.resetListeners, fn)
+}
+
+// resetLocked drops every cached raster and bumps Generation; it
+// returns the reset listeners for the caller to run once unlocked.
+func (c *Cache) resetLocked() []func() {
 	c.entries = map[cacheKey]*cacheEntry{}
 	c.order = nil
 	c.gen++
+	return slices.Clone(c.resetListeners)
+}
+
+func runAll(fns []func()) {
+	for _, fn := range fns {
+		fn()
+	}
 }
 
 func (c *Cache) searchPathsLocked() []string {
