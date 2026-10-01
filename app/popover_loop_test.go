@@ -8,6 +8,7 @@ import (
 	"github.com/unxed/xkb-go"
 	"golang.org/x/image/font/gofont/goregular"
 
+	"github.com/stubbedev/gelm/internal/wlsession"
 	"github.com/stubbedev/gelm/render"
 	"github.com/stubbedev/gelm/widget"
 )
@@ -299,5 +300,14 @@ func TestDrivePopoversReapsChildrenFirst(t *testing.T) {
 	_ = a.drivePopovers(false)
 	if a.openPopovers[0] != keep1 || a.openPopovers[1] != keep2 {
 		t.Error("live popovers were reordered")
+	}
+}
+
+// TestHeldModsReadsTheSession pins HeldMods to the session's keyboard
+// state: nothing held is no modifiers.
+func TestHeldModsReadsTheSession(t *testing.T) {
+	a := &Application{sess: &wlsession.Session{}}
+	if a.HeldMods() != 0 {
+		t.Errorf("held = %v with no keyboard state", a.HeldMods())
 	}
 }
