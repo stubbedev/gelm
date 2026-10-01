@@ -251,3 +251,23 @@ func TestRevealerGenieCollapsesTowardItsEdge(t *testing.T) {
 		t.Errorf("a genie toward the top: top red %d, bottom red %d", redAt(cv, 40, 20), redAt(cv, 40, 38))
 	}
 }
+
+func TestRevealerFinishLandsAtOnce(t *testing.T) {
+	c := pinAnimClock(t)
+	r, _ := revealerAt(t, RevealFade)
+	var landed []bool
+	r.SetOnTransitionDone(func(v bool) { landed = append(landed, v) })
+	r.Finish() // nothing running
+	if len(landed) != 0 {
+		t.Fatalf("Finish with nothing running reported %v", landed)
+	}
+	r.SetRevealed(true)
+	advance(c, 30*time.Millisecond)
+	r.Finish()
+	if r.Progress() != 1 || !slicesEqualBool(landed, []bool{true}) {
+		t.Errorf("after Finish: progress %v, landings %v", r.Progress(), landed)
+	}
+	if c.step() {
+		t.Error("the finished tween kept running")
+	}
+}

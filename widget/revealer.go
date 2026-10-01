@@ -161,6 +161,22 @@ func (r *Revealer) SetRevealed(reveal bool) {
 	}).Easing(anim.Linear))
 }
 
+// Finish lands a running transition at once, reporting it as its end
+// would; with none running it does nothing. It is the escape for a
+// surface that must go now (a shutdown, a test without a clock).
+func (r *Revealer) Finish() {
+	if r.cancel == nil {
+		return
+	}
+	r.cancel()
+	r.cancel = nil
+	target := 0.0
+	if r.reveal {
+		target = 1
+	}
+	r.land(target)
+}
+
 // land settles the progress at a transition's end and reports it.
 func (r *Revealer) land(target float64) {
 	r.setProgress(target)
