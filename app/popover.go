@@ -152,9 +152,12 @@ func (r *popoverKeyRoot) Paint(cv *render.Canvas) { r.content.Paint(cv) }
 // Children exposes the content to the tree walks (damage, focus).
 func (r *popoverKeyRoot) Children() []widget.Widget { return []widget.Widget{r.content} }
 
+// HitTest is the content's own hit, so the widget under the pointer
+// (a button, an entry) takes the press, and the root itself off the
+// content.
 func (r *popoverKeyRoot) HitTest(p widget.Point) widget.Widget {
-	if r.content.HitTest(p) != nil {
-		return r.content
+	if hit := r.content.HitTest(p); hit != nil {
+		return hit
 	}
 	return r
 }

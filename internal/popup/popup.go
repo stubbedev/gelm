@@ -508,6 +508,7 @@ func (in *popupInput) HandlePointerButton(button, state, serial uint32) {
 		return
 	}
 	pt := widget.Point{X: int(in.pointer.x), Y: int(in.pointer.y)}
+	debug.Log("input", "popup route button %d state=%d at (%d,%d)", button, state, pt.X, pt.Y)
 	if state == 1 {
 		in.router.Press(button, pt)
 	} else {
@@ -516,8 +517,15 @@ func (in *popupInput) HandlePointerButton(button, state, serial uint32) {
 	in.markDirty()
 }
 
-// HandlePointerAxis implements wlsession.SurfacePointerHandler.
-func (in *popupInput) HandlePointerAxis(dx, dy float64) {}
+// HandlePointerAxis implements wlsession.SurfacePointerHandler: the
+// wheel scrolls whatever scrolls under the pointer, as in a window.
+func (in *popupInput) HandlePointerAxis(dx, dy float64) {
+	if in.dismissed() {
+		return
+	}
+	in.router.Axis(float64(wlsession.AxisSteps(dx)), float64(wlsession.AxisSteps(dy)))
+	in.markDirty()
+}
 
 // HandlePointerLeave implements wlsession.SurfacePointerHandler. The
 // session leaves a surface only when the pointer truly left or the

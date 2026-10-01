@@ -12,6 +12,7 @@ import (
 
 	"github.com/stubbedev/gelm/internal/anim"
 	"github.com/stubbedev/gelm/internal/surfx"
+	"github.com/stubbedev/gelm/internal/wlsession"
 	"github.com/stubbedev/gelm/render"
 	"github.com/stubbedev/gelm/widget"
 )
@@ -234,4 +235,42 @@ func TestPaintPlateShadowGutter(t *testing.T) {
 			}
 		}
 	})
+}
+
+// scrollProbe is a hit-anywhere ScrollHandler recording its steps.
+type scrollProbe struct {
+	inkProbe
+	dx, dy int
+}
+
+func (s *scrollProbe) HitTest(widget.Point) widget.Widget { return s }
+func (s *scrollProbe) ScrollBy(dx, dy int)                { s.dx += dx; s.dy += dy }
+
+// TestPopupWheelScrolls pins the popup's wheel: a scroll over the
+// content reaches what scrolls under the pointer (a dropdown's list),
+// in the windows' steps, and goes inert once the popup is dismissed.
+// Regression: HandlePointerAxis was empty, so nothing in a popover
+// scrolled.
+func TestPopupWheelScrolls(t *testing.T) {
+	p, _ := wireFreePopup(t, surfx.KindMenu)
+	p.fx.Enter()
+	probe := &scrollProbe{}
+	dirties := 0
+	input := &popupInput{
+		dismissed: p.Dismissed,
+		router:    &widget.Router{Root: probe},
+		pointer:   &struct{ x, y float64 }{},
+		markDirty: func() { dirties++ },
+	}
+	input.HandlePointerEnter(5, 5)
+	input.HandlePointerAxis(0, 25)
+	input.HandlePointerAxis(0, -3)
+	if probe.dy != wlsession.AxisSteps(25)+wlsession.AxisSteps(-3) || probe.dy != 1 || dirties != 3 {
+		t.Fatalf("scrolled %d (dirties %d), want 2 then -1 steps", probe.dy, dirties)
+	}
+	p.Dismiss()
+	input.HandlePointerAxis(0, 40)
+	if probe.dy != 1 || dirties != 3 {
+		t.Errorf("a dismissed popup scrolled: %d", probe.dy)
+	}
 }
