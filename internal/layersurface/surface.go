@@ -167,6 +167,27 @@ func (s *Surface) SetSize(width, height uint32) error {
 	return nil
 }
 
+// KeyboardMode is the keyboard interactivity in effect.
+func (s *Surface) KeyboardMode() KeyboardMode { return s.cfg.Keyboard }
+
+// SetKeyboardMode changes the keyboard interactivity after creation (a
+// bar that takes keys while one of its popovers is open). The state is
+// double-buffered: it is committed here so it applies before the next
+// request that depends on it, a popup grab.
+func (s *Surface) SetKeyboardMode(mode KeyboardMode) error {
+	if s.closed {
+		return ErrClosed
+	}
+	if mode == s.cfg.Keyboard {
+		return nil
+	}
+	if err := s.Layer.SetKeyboardInteractivity(uint32(mode)); err != nil {
+		return fmt.Errorf("layersurface: set_keyboard_interactivity: %w", err)
+	}
+	s.cfg.Keyboard = mode
+	return s.WLSurface.Commit()
+}
+
 // HandleZwlrLayerSurfaceV1Configure implements the configure handler: it
 // records the new size and acknowledges the serial. A zero width or height
 // keeps the current choice for that axis, per the protocol.

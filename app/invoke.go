@@ -214,14 +214,20 @@ func (a *Application) Every(d time.Duration, fn func()) (cancel func()) {
 // now. This is the single point where off-loop code crosses onto the
 // loop goroutine, so everything it runs has event-callback guarantees.
 // Run calls it with the pass's clock reading.
-func (a *Application) pump(now time.Time) {
+// pump reports whether any work ran: the loop then owes every
+// surface a damage check, since an Invoke or timer may have touched any
+// widget tree.
+func (a *Application) pump(now time.Time) (ran bool) {
 	for _, fn := range a.queues.drain() {
 		fn()
+		ran = true
 	}
 	for _, t := range a.queues.timerWork(now) {
+		ran = true
 		t.fn()
 		// Anchor the next tick at fire time: no catch-up bursts after
 		// a stall, one tick maximum per pass.
 		t.next = now.Add(t.every)
 	}
+	return ran
 }

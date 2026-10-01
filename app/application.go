@@ -68,6 +68,8 @@ type Application struct {
 	windows  []*hostWindow
 	dialogs  []*Dialog
 	popovers popoverRegistry
+	// openPopovers are the popovers the loop drives, oldest first.
+	openPopovers []*openPopover
 	// toasts tracks each window's toast stack (see toast.go).
 	toasts toastRegistry
 	// appearance follows the portal's live icon-theme setting (#64) so
@@ -556,8 +558,15 @@ func (a *Application) Run() error {
 func (a *Application) tick(step func() error, now time.Time) error {
 	// Off-loop work queued since the last pass: Invoke fns first,
 	// then the periodic timers (pollers) that came due. Everything
-	// here runs on this goroutine, the loop goroutine.
-	a.pump(now)
+	// here runs on this goroutine, the loop goroutine. Work that ran
+	// owes every surface a damage check; a window whose tree drained
+	// nothing skips its draw.
+	worked := a.pump(now)
+	if worked {
+		for _, w := range a.windows {
+			w.dirty = true
+		}
+	}
 
 	if code, mods, ok := a.rep.tick(); ok {
 		a.deliverKey(code, mods)
@@ -644,6 +653,9 @@ func (a *Application) tick(step func() error, now time.Time) error {
 			}
 		}
 	}
+	if err := a.drivePopovers(worked); err != nil {
+		return a.loopError(err)
+	}
 	if a.quit {
 		return ErrClosed
 	}
@@ -713,6 +725,10 @@ func (a *Application) routeKey(keycode uint32, mods wlsession.Mods) {
 // window - consulting only the app-level hook silently dropped every
 // Config.OnKey a client passed to Run, so Escape-to-close never fired.
 func (a *Application) deliverKey(keycode uint32, mods wlsession.Mods) {
+	if op := a.keyPopover(); op != nil {
+		a.deliverPopoverKey(a.sess, op, keycode, mods)
+		return
+	}
 	target := a.focused()
 	if target == nil {
 		return
@@ -974,6 +990,14 @@ func (l *LayerWindow) SetSize(width, height uint32) error {
 	}
 	return nil
 }
+
+// KeyboardMode is the surface's keyboard interactivity.
+func (l *LayerWindow) KeyboardMode() KeyboardMode { return l.ls.KeyboardMode() }
+
+// SetKeyboardMode changes the keyboard interactivity: None, Exclusive,
+// or OnDemand. Popovers opened on a None surface switch it to OnDemand
+// while they are open, so their grab can take the keyboard.
+func (l *LayerWindow) SetKeyboardMode(mode KeyboardMode) error { return l.ls.SetKeyboardMode(mode) }
 
 // Closed reports whether the compositor or client closed the surface.
 // A surface running its exit tween reads closed here (the logical

@@ -14,6 +14,7 @@ import (
 	"github.com/neurlang/wayland/wlclient"
 
 	"github.com/stubbedev/gelm/internal/buffer"
+	"github.com/stubbedev/gelm/internal/debug"
 	"github.com/stubbedev/gelm/internal/scale"
 	"github.com/stubbedev/gelm/internal/wlsession"
 	"github.com/stubbedev/gelm/render"
@@ -154,18 +155,23 @@ func (pc *Painter) Pass() (bool, error) {
 		p.mu.Unlock()
 		return false, err
 	}
+	// The frame request is double-buffered state: it must precede the
+	// commit it rides on. Requested after, it would wait for a commit
+	// that never comes - this pass only commits again once the callback
+	// it is waiting for has fired.
+	cb, err := pc.surf.Frame()
+	if err != nil {
+		p.mu.Unlock()
+		return false, err
+	}
+	wlclient.CallbackAddListener(cb, frameDone{ready: &pc.frameReady})
 	if err := pc.surf.Commit(); err != nil {
 		p.mu.Unlock()
 		return false, err
 	}
 	p.mu.Unlock()
-
-	cb, err := pc.surf.Frame()
-	if err != nil {
-		return false, err
-	}
-	wlclient.CallbackAddListener(cb, frameDone{ready: &pc.frameReady})
 	pc.framePending = true
+	debug.Log("frame", "popup %d frame %dx%d", pc.surf.Id(), b.Width, b.Height)
 	return true, nil
 }
 
