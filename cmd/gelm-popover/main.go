@@ -51,17 +51,14 @@ func run() error {
 	root.Append(menuButton, false)
 
 	// Popovers parent to layer surfaces (a bar's dropdowns): a top-left
-	// anchored layer keeps the traced coordinates compositor ones.
+	// anchored layer keeps the traced coordinates compositor ones. It
+	// names no output, so the compositor picks one: the null output
+	// argument the suite exercises on every run.
 	if err := sess.Roundtrip(); err != nil {
 		return err
 	}
-	outputs := sess.Outputs()
-	if len(outputs) == 0 {
-		return errors.New("gelm-popover: no output")
-	}
 	var w *app.LayerWindow
 	w, err = application.NewLayer(app.LayerConfig{
-		Output:     outputs[0],
 		Layer:      app.LayerTop,
 		Anchor:     app.AnchorTop | app.AnchorLeft,
 		Width:      300,

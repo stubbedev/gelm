@@ -22,6 +22,7 @@ import (
 	"github.com/stubbedev/gelm/internal/debug"
 	"github.com/stubbedev/gelm/internal/scale"
 	"github.com/stubbedev/gelm/internal/surfx"
+	"github.com/stubbedev/gelm/internal/wlnull"
 	"github.com/stubbedev/gelm/internal/wlsession"
 	"github.com/stubbedev/gelm/render"
 	"github.com/stubbedev/gelm/widget"
@@ -547,24 +548,11 @@ func (in *popupInput) HandlePointerAxis(dx, dy float64) {
 func (in *popupInput) HandlePointerLeave() { in.router.PointerLost() }
 
 // getPopup is xdg_surface.get_popup. A layer-parented popup has no
-// xdg parent; the generated binding cannot send that null: a typed-nil
-// *xdg.Surface encodes as object 0 but then panics in the new-id scan,
-// which calls Id on every proxy argument. nullParent is a nil proxy
-// whose methods are nil-safe.
+// xdg parent, which goes on the wire as wlnull.Null.
 func getPopup(s *xdg.Surface, parent *xdg.Surface, positioner *xdg.Positioner) (*xdg.Popup, error) {
 	if parent != nil {
 		return s.GetPopup(parent, positioner)
 	}
 	pop := xdg.NewPopup(s.Context())
-	return pop, s.Context().SendRequest(s, 2, pop, (*nullParent)(nil), positioner)
+	return pop, s.Context().SendRequest(s, 2, pop, wlnull.Null, positioner)
 }
-
-// nullParent is the null object argument: a nil pointer the wire
-// writes as id 0, with every Proxy method safe on it.
-type nullParent struct{}
-
-func (*nullParent) Context() *wl.Context   { return nil }
-func (*nullParent) SetContext(*wl.Context) {}
-func (*nullParent) Id() wl.ProxyId         { return 0 }
-func (*nullParent) SetId(wl.ProxyId)       {}
-func (*nullParent) Unregister()            {}
