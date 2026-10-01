@@ -51,6 +51,9 @@ type Label struct {
 	// maxChars caps the natural width at that many approximate
 	// character widths (GTK max-width-chars); 0 is uncapped.
 	maxChars int
+	// maxLines caps a wrapping, ellipsizing label at that many rows
+	// (GTK lines); 0 is uncapped.
+	maxLines int
 	shaped   *render.ShapedText
 	natural  Size
 }
@@ -187,6 +190,22 @@ func (l *Label) SetMaxWidthChars(n int) {
 // MaxWidthChars returns the width cap in characters, 0 when uncapped.
 func (l *Label) MaxWidthChars() int { return l.maxChars }
 
+// SetMaxLines limits a wrapping, ellipsizing label to n rows (GTK's
+// set_lines): the text past row n folds into the final row, which the
+// ellipsize mode truncates. Like GTK it has no effect unless the label
+// both wraps and ellipsizes. n <= 0 removes the limit.
+func (l *Label) SetMaxLines(n int) {
+	n = max(n, 0)
+	if l.maxLines == n {
+		return
+	}
+	l.maxLines = n
+	l.InvalidateLayout()
+}
+
+// MaxLines returns the row limit, 0 when unlimited.
+func (l *Label) MaxLines() int { return l.maxLines }
+
 // approxCharSample stands in for pango's per-language sample text: the
 // approximate character width is its mean advance.
 const approxCharSample = "abcdefghijklmnopqrstuvwxyz0123456789"
@@ -314,6 +333,9 @@ func (l *Label) measureNatural(con Constraints) Size {
 func (l *Label) wrapped(width float64) []string {
 	face, px := l.effStyle()
 	lines := render.WrapText(face, l.shown(), width, px)
+	if n := l.maxLines; n > 0 && l.ell != EllipsizeNone && len(lines) > n {
+		lines = append(lines[:n-1], strings.Join(lines[n-1:], " "))
+	}
 	if last := len(lines) - 1; l.ell != EllipsizeNone && lines[last] != "" {
 		lines[last] = render.EllipsizeText(face, lines[last], l.ell, width, px)
 	}
