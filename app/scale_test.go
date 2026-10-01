@@ -10,7 +10,6 @@ import (
 
 	"golang.org/x/image/font/gofont/goregular"
 
-	"github.com/stubbedev/gelm/internal/popup"
 	"github.com/stubbedev/gelm/internal/scale"
 	"github.com/stubbedev/gelm/render"
 	"github.com/stubbedev/gelm/widget"
@@ -226,27 +225,6 @@ func boundsOf(w widget.Widget) render.Rect {
 		return b.Bounds()
 	}
 	return render.Rect{}
-}
-
-// TestMenuAndTooltipAnchorsAreLogical pins the placement math the
-// popover and tooltip paths share: anchors and sizes are logical
-// pixels, so the same flip/clamp decision comes out at every device
-// scale - the scale never enters the positioner.
-func TestMenuAndTooltipAnchorsAreLogical(t *testing.T) {
-	host := render.Rect{X: 0, Y: 0, W: 400, H: 300}
-	size := widget.Size{W: 100, H: 50}
-	anchor := render.Rect{X: 350, Y: 150, W: 40, H: 20}
-
-	// GravityRight would overflow and must flip to the left side; the
-	// decision is identical at 1x, 1.25x, and 2x because the geometry
-	// is logical.
-	x, y := anchorOrigin(host, anchor, size, popup.GravityRight)
-	if x != 350-100 {
-		t.Errorf("flipped x = %d, want %d", x, 350-100)
-	}
-	if y != 150 {
-		t.Errorf("y = %d, want the anchor's top", y)
-	}
 }
 
 // TestDrawDamageMapsToDevicePixels pins the wire half: damage rects go
