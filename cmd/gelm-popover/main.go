@@ -76,18 +76,26 @@ func run() error {
 	// nothing else happens, so its frames prove loop-driven repaints.
 	ticks := 0
 	var tick *widget.Label
+	var content *widget.Box
 	application.Every(100*time.Millisecond, func() {
 		if tick == nil {
 			return
 		}
 		ticks++
 		tick.SetText("tick " + strconv.Itoa(ticks))
+		// Three ticks in, the content grows a row: the popover must
+		// grow with it (xdg_popup.reposition), not clip it.
+		if ticks == 3 {
+			content.Append(widget.NewLabel(tf, 12, "a row added while open", t.TextMuted), false)
+			debug.Log("demo", "popover grew")
+		}
 	})
 	button.OnClick = func() {
 		entry := widget.NewEntry(tf, 13, t.Text)
 		entry.OnChanged = func(s string) { debug.Log("demo", "popover text %s", s) }
+		ticks = 0
 		tick = widget.NewLabel(tf, 12, "tick 0", t.TextMuted)
-		content := widget.NewBox(widget.Column, 6, 8)
+		content = widget.NewBox(widget.Column, 6, 8)
 		content.Append(entry, false)
 		content.Append(tick, false)
 		_, err := application.OpenPopover(w, app.PopoverConfig{

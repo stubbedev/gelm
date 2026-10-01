@@ -103,6 +103,7 @@ type Session struct {
 	pointer             pointerAPI
 	keyboard            keyboardAPI
 	wmBase              *xdg.WmBase
+	wmBaseVersion       uint32
 	compositorVersion   uint32
 	outputs             []*Output
 	hasArgb             bool
@@ -401,7 +402,8 @@ func (s *Session) HandleRegistryGlobal(ev wl.RegistryGlobalEvent) {
 	case "xdg_wm_base":
 		ctx, _ := wl.GetUserData[wl.Context](s.registry)
 		wmBase := xdg.NewShell(ctx)
-		_ = s.registry.Bind(ev.Name, ev.Interface, bindVersion(ev.Version, 5), wmBase)
+		s.wmBaseVersion = bindVersion(ev.Version, 5)
+		_ = s.registry.Bind(ev.Name, ev.Interface, s.wmBaseVersion, wmBase)
 		xdg.WmBaseAddListener(wmBase, s)
 		s.wmBase = wmBase
 	case "wl_data_device_manager":
@@ -1098,6 +1100,10 @@ func (s *Session) Outputs() []*Output { return s.outputs }
 // WmBase returns the bound xdg_wm_base, or nil when the compositor does
 // not provide it; window support needs it.
 func (s *Session) WmBase() *xdg.WmBase { return s.wmBase }
+
+// WmBaseVersion is the bound xdg_wm_base version (popup repositioning
+// needs 3); 0 without one.
+func (s *Session) WmBaseVersion() uint32 { return s.wmBaseVersion }
 
 // Seat returns the bound wl_seat, or nil when the compositor has none.
 func (s *Session) Seat() *wl.Seat { return s.seat }

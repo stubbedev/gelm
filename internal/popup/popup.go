@@ -86,6 +86,10 @@ type Popup struct {
 	// pressSerial is the serial of the last button press on the popup,
 	// the grab serial a popup nested under it opens with.
 	pressSerial atomic.Uint32
+	// cfg is the placement the popup opened with, for a reposition at
+	// a new size; repositions counts the requests (their tokens).
+	cfg         Config
+	repositions uint32
 }
 
 // LastPressSerial is the serial of the last button press inside the
@@ -157,23 +161,15 @@ func New(sess *wlsession.Session, cfg Config) (*Popup, error) {
 		return nil, fmt.Errorf("popup: create surface: %w", err)
 	}
 	debug.Log("input", "popup surface %d created", surf.Id())
-	p := &Popup{WLSurface: surf, w: int32(cfg.Width), h: int32(cfg.Height), sess: sess, gravity: cfg.Gravity, gutter: cfg.Gutter}
+	p := &Popup{WLSurface: surf, w: int32(cfg.Width), h: int32(cfg.Height), sess: sess, gravity: cfg.Gravity, gutter: cfg.Gutter, cfg: cfg}
 	p.sc = scale.New(sess, surf, nil)
 	p.fx = surfx.NewCoordinator(cfg.Kind, p, func() bool { return widget.Current().Animations })
-	if cfg.Gutter > 0 {
-		// The gutter is display-only: clicks in it route to whatever is
-		// beneath instead of landing on a shadow pixel. Sealed once at
-		// open; the dismissal state machine re-seals it empty, and
-		// later commits keep the region (double-buffered state
-		// persists until changed).
-		if region, err := sess.Compositor().CreateRegion(); err == nil {
-			_ = region.Add(int32(cfg.Gutter), int32(cfg.Gutter),
-				max(0, int32(cfg.Width)-2*int32(cfg.Gutter)),
-				max(0, int32(cfg.Height)-2*int32(cfg.Gutter)))
-			_ = surf.SetInputRegion(region)
-			_ = region.Destroy()
-		}
-	}
+	// The gutter is display-only: clicks in it route to whatever is
+	// beneath instead of landing on a shadow pixel. Sealed at open (and
+	// at each resize); the dismissal state machine re-seals it empty,
+	// and later commits keep the region (double-buffered state persists
+	// until changed).
+	p.sealGutter(cfg.Width, cfg.Height)
 
 	xdgSurf, err := wmBase.GetSurface(surf)
 	if err != nil {
@@ -232,6 +228,59 @@ func New(sess *wlsession.Session, cfg Config) (*Popup, error) {
 	return p, nil
 }
 
+// sealGutter limits input to the content inside the shadow gutter.
+func (p *Popup) sealGutter(w, h int) {
+	if p.gutter <= 0 {
+		return
+	}
+	if region, err := p.sess.Compositor().CreateRegion(); err == nil {
+		g := int32(p.gutter)
+		_ = region.Add(g, g, max(0, int32(w)-2*g), max(0, int32(h)-2*g))
+		_ = p.WLSurface.SetInputRegion(region)
+		_ = region.Destroy()
+	}
+}
+
+// Resize re-places the popup at a new size against its original
+// anchor (xdg_popup.reposition, xdg_wm_base 3 and later): the
+// compositor answers with a configure carrying the new geometry, which
+// the next frame paints at. It reports false when the compositor
+// cannot reposition popups; the popup then keeps its size.
+func (p *Popup) Resize(w, h int) bool {
+	if p.Dismissed() || p.sess.WmBaseVersion() < 3 {
+		return false
+	}
+	positioner, err := p.sess.WmBase().CreatePositioner()
+	if err != nil {
+		return false
+	}
+	defer func() { _ = positioner.Destroy() }()
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	cfg := p.cfg
+	cfg.Width, cfg.Height = w, h
+	if positioner.SetSize(int32(w), int32(h)) != nil || place(positioner, cfg) != nil {
+		return false
+	}
+	p.repositions++
+	if p.XdgPopup.Reposition(positioner, p.repositions) != nil {
+		return false
+	}
+	p.cfg = cfg
+	p.sealGutter(w, h)
+	return true
+}
+
+// RequestedSize is the size last asked for: at open, or by Resize.
+func (p *Popup) RequestedSize() (int, int) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.cfg.Width, p.cfg.Height
+}
+
+// Gutter is the shadow margin the content sits inside.
+func (p *Popup) Gutter() int { return p.gutter }
+
 // HandleSurfaceConfigure completes the configure round.
 func (p *Popup) HandleSurfaceConfigure(ev xdg.SurfaceConfigureEvent) {
 	p.configured = true
@@ -248,6 +297,8 @@ func (p *Popup) HandlePopupConfigure(ev xdg.PopupConfigureEvent) {
 	if ev.Height != 0 {
 		p.h = ev.Height
 	}
+	// A reposition lands here with the new size: repaint at it.
+	p.dirty.Store(true)
 }
 
 // HandlePopupPopupDone implements xdg.PopupPopupDoneEvent: outside-

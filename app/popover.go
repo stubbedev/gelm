@@ -294,7 +294,7 @@ func (a *Application) OpenPopover(host Host, cfg PopoverConfig) (*Popover, error
 	// The popover's content styles as the `popover` element (css.md):
 	// whatever widget tree the app hands over IS the card.
 	nameSurfaceElement(cfg.Content, elemPopover)
-	size := cfg.Content.Measure(widget.Constraints{Max: widget.Size{W: bw, H: 600}})
+	size := cfg.Content.Measure(widget.Constraints{Max: widget.Size{W: bw, H: popoverMaxH}})
 	// The positioner anchors to the anchor widget's rect on the gravity
 	// side and the compositor flips or slides it against the output (a
 	// bar is never tall enough to judge room by). The shadow gutter rides
@@ -450,6 +450,10 @@ type popSurface interface {
 	Destroyed() bool
 	Dismissed() bool
 	MarkFrame()
+	// RequestedSize, Gutter and Resize fit the surface to its content.
+	RequestedSize() (int, int)
+	Gutter() int
+	Resize(w, h int) bool
 }
 
 // popPainter is the frame pipeline half (a *popup.Painter).
@@ -490,6 +494,7 @@ func (a *Application) drivePopovers(all bool) error {
 			continue
 		}
 		if _, damaged := widget.CollectDamage(op.keyRoot); damaged || all {
+			op.fitContent()
 			op.pop.MarkFrame()
 		}
 		if _, err := op.painter.Pass(); err != nil {
@@ -500,6 +505,22 @@ func (a *Application) drivePopovers(all bool) error {
 	slices.Reverse(kept)
 	a.openPopovers = kept
 	return nil
+}
+
+// fitContent grows (or shrinks) an open popover to its content's
+// natural size when that changed - a tray menu re-publishing more rows
+// - measured as at open, against the host's width and a 600px cap.
+func (op *openPopover) fitContent() {
+	if op.pop.Dismissed() {
+		return
+	}
+	bw, _ := op.host.Size()
+	size := op.keyRoot.content.Measure(widget.Constraints{Max: widget.Size{W: bw, H: popoverMaxH}})
+	g := op.pop.Gutter()
+	w, h := size.W+2*g, size.H+2*g
+	if rw, rh := op.pop.RequestedSize(); rw != w || rh != h {
+		op.pop.Resize(w, h)
+	}
 }
 
 // keyPopover is the popover holding the keyboard: the newest one still
@@ -545,3 +566,6 @@ type keyboardModer interface {
 	KeyboardMode() KeyboardMode
 	SetKeyboardMode(KeyboardMode) error
 }
+
+// popoverMaxH caps a popover's height when its content is measured.
+const popoverMaxH = 600
