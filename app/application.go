@@ -1008,3 +1008,8 @@ func (l *LayerWindow) Closed() bool {
 	}
 	return l.ls.Closed()
 }
+
+// HeldMods is the modifiers held right now (shift, ctrl, alt): what a
+// pointer binding reads, since pointer events carry no modifier state
+// of their own (a launcher's Ctrl+double-click).
+func (a *Application) HeldMods() Mods { return a.sess.Mods() }
