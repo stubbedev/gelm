@@ -31,7 +31,9 @@ func (f *fakeHost) resizeTo(w, h int) { f.w, f.h = w, h }
 // fakeSurface records the wire traffic draw produces.
 type fakeSurface struct {
 	attaches, commits, frames int
-	damage                    []render.Rect
+	// calls is the request order ("frame", "commit").
+	calls  []string
+	damage []render.Rect
 	// opaque records the SetOpaqueRegion device rects in call order;
 	// an opaque window sets one per size change, translucent ones
 	// never.
@@ -45,10 +47,15 @@ func (f *fakeSurface) Damage(rects []render.Rect) error {
 	return nil
 }
 
-func (f *fakeSurface) Commit() error { f.commits++; return nil }
+func (f *fakeSurface) Commit() error {
+	f.commits++
+	f.calls = append(f.calls, "commit")
+	return nil
+}
 
 func (f *fakeSurface) Frame(ready *bool) error {
 	f.frames++
+	f.calls = append(f.calls, "frame")
 	*ready = true
 	return nil
 }
@@ -295,4 +302,19 @@ func BenchmarkProgressOnlyFrames(b *testing.B) {
 	}
 	b.ReportMetric(float64(painted), "px/frame")
 	b.ReportMetric(100*float64(painted)/(640*470), "%-painted")
+}
+
+// TestFrameCallbackRidesItsOwnCommit pins the request order: the frame
+// callback is double-buffered state, so it must be requested before the
+// commit it is meant for. Regression: requested after, it waited on a
+// next commit the pending callback itself held back, and a window with
+// nothing animating painted once and never again (the launcher froze
+// on its first frame).
+func TestFrameCallbackRidesItsOwnCommit(t *testing.T) {
+	ph := newPaintHarness(widget.NewBox(widget.Column, 0, 0), 40, 20)
+	ph.frame()
+	calls := ph.surf.calls
+	if len(calls) < 2 || calls[len(calls)-2] != "frame" || calls[len(calls)-1] != "commit" {
+		t.Errorf("calls = %v, want the frame request right before its commit", calls)
+	}
 }

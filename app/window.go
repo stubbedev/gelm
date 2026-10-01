@@ -679,6 +679,14 @@ func (w *hostWindow) draw() bool {
 		w.drawErr = fmt.Errorf("app: damage: %w", err)
 		return false
 	}
+	// The frame callback is double-buffered state: requested before the
+	// commit it rides on this frame. Requested after, it waited on a
+	// next commit that the pending callback itself held back, so a
+	// window with no animation running painted once and never again.
+	if err := w.surf.Frame(&w.frameReady); err != nil {
+		w.drawErr = fmt.Errorf("app: frame callback: %w", err)
+		return false
+	}
 	if err := w.surf.Commit(); err != nil {
 		w.drawErr = fmt.Errorf("app: commit: %w", err)
 		return false
@@ -687,10 +695,6 @@ func (w *hostWindow) draw() bool {
 	// and every other pooled buffer lags by what changed here.
 	w.pool.Presented(b, changed)
 
-	if err := w.surf.Frame(&w.frameReady); err != nil {
-		w.drawErr = fmt.Errorf("app: frame callback: %w", err)
-		return false
-	}
 	debug.Log("frame", "frame committed, waiting for callback")
 	w.framePending = true
 	w.frameArmedAt = time.Now()
