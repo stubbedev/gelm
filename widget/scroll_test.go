@@ -79,3 +79,31 @@ func TestHorizontalWheelScrolls(t *testing.T) {
 		t.Error("no horizontal bar for horizontally overflowing content")
 	}
 }
+
+// TestScrollMaxContentHeight pins the cap: content shorter than it
+// measures natural, taller content measures the cap plus the gutter
+// it scrolls behind, and no cap is the uncapped natural height.
+func TestScrollMaxContentHeight(t *testing.T) {
+	unbounded := Constraints{Max: Size{W: 500, H: 500}}
+	s := NewScroll(newStub(60, 200))
+	if got := s.Measure(unbounded); got != (Size{W: 60, H: 200}) {
+		t.Errorf("uncapped = %v, want the natural 60x200", got)
+	}
+	s.SetMaxContentHeight(80)
+	if got := s.Measure(unbounded); got != (Size{W: 60 + gutter, H: 80}) {
+		t.Errorf("capped = %v, want 80 high with the gutter on the width", got)
+	}
+	s.Arrange(render.Rect{W: 60 + gutter, H: 80})
+	if s.viewW != 60 {
+		t.Errorf("viewport width = %d, want the content's 60 beside the gutter", s.viewW)
+	}
+	short := NewScroll(newStub(60, 40))
+	short.SetMaxContentHeight(80)
+	if got := short.Measure(unbounded); got != (Size{W: 60, H: 40}) {
+		t.Errorf("short content = %v, want its natural 60x40", got)
+	}
+	s.SetMaxContentHeight(-5)
+	if s.MaxContentHeight() != 0 || s.Measure(unbounded).H != 200 {
+		t.Error("a negative cap is no cap")
+	}
+}
