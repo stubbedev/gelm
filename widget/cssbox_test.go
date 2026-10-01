@@ -473,3 +473,41 @@ func TestInlineStyleInheritsWithoutAnyStylesheet(t *testing.T) {
 		t.Errorf("inline color did not inherit with no sheet loaded: %08x", uint32(got))
 	}
 }
+
+func TestOnHoverWithinFollowsTheChain(t *testing.T) {
+	face := goldenFace(t)
+	btn := NewButton(NewLabel(face, 14, "hi", 0), 4, 0)
+	inner := NewLabel(face, 14, "x", 0)
+	row := NewBox(Row, 0, 0)
+	row.Append(btn, false)
+	row.Append(inner, false)
+	other := NewSpacer(40, 20)
+	root := NewBox(Row, 0, 0)
+	root.Append(row, false)
+	root.Append(other, false)
+	arrangeTree(t, root, 300, 40)
+	var events []bool
+	row.SetOnHoverWithin(func(on bool) { events = append(events, on) })
+	r := &Router{Root: root}
+
+	r.Move(Point{X: btn.Bounds().X + 2, Y: 5})
+	// Moving between two children of the row is not a leave.
+	r.Move(Point{X: inner.Bounds().X + 1, Y: 5})
+	if len(events) != 1 || !events[0] || !row.HoverWithin() {
+		t.Fatalf("enter = %v (within %v)", events, row.HoverWithin())
+	}
+	r.Move(Point{X: other.Bounds().X + 2, Y: 5})
+	if len(events) != 2 || events[1] || row.HoverWithin() {
+		t.Fatalf("leave = %v", events)
+	}
+	r.Move(Point{X: btn.Bounds().X + 2, Y: 5})
+	r.Leave()
+	if len(events) != 4 || !events[2] || events[3] {
+		t.Errorf("re-enter and pointer leave = %v", events)
+	}
+	row.SetOnHoverWithin(nil)
+	r.Move(Point{X: btn.Bounds().X + 2, Y: 5})
+	if len(events) != 4 {
+		t.Error("an unregistered callback still fired")
+	}
+}

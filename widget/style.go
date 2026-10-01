@@ -1047,12 +1047,18 @@ func setHoverChain(old, new Widget) {
 		if n := nodeOf(w); n != nil && n.hoverChain && !in[n] {
 			n.hoverChain = false
 			n.restyleState(style.Hover)
+			if n.onHoverWithin != nil {
+				n.onHoverWithin(false)
+			}
 		}
 	}
 	for w := new; w != nil; w = parentOf(w) {
 		if n := nodeOf(w); n != nil && !n.hoverChain {
 			n.hoverChain = true
 			n.restyleState(style.Hover)
+			if n.onHoverWithin != nil {
+				n.onHoverWithin(true)
+			}
 		}
 	}
 }
