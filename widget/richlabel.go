@@ -65,6 +65,11 @@ type RichLabel struct {
 
 	// OnLinkClick fires when a press-release lands on a link run.
 	OnLinkClick func(href string)
+
+	// ell is the truncation mode; fitW the width the shaped runs were
+	// last fitted to, -1 while they hold the whole line.
+	ell  EllipsizeMode
+	fitW int
 }
 
 // richRun is one shaped markup run.
@@ -82,7 +87,7 @@ type richRun struct {
 // face, then sizePx, then the content, then colors. A nil face panics
 // here (see requireFace) instead of failing later, in shaping.
 func NewRichLabel(face render.Font, sizePx float64, markup string, color render.Color) *RichLabel {
-	l := &RichLabel{base: requireFace("widget.NewRichLabel", face), markup: markup, sizePx: sizePx, color: color}
+	l := &RichLabel{base: requireFace("widget.NewRichLabel", face), markup: markup, sizePx: sizePx, color: color, fitW: -1}
 	l.retext()
 	return l
 }
@@ -171,12 +176,28 @@ func (l *RichLabel) retext() {
 		spans = []MarkupRun{{Text: l.markup}}
 	}
 	l.runs = spans
+	l.fitW = -1
+	line, runes := spansText(spans)
+	l.text = line
+	l.runes = runes
+	l.shapeSpans(spans)
+	l.natural = Size{W: int(l.advance + 0.5), H: int(math.Ceil(l.lineAsc + l.lineDesc))}
+}
+
+// spansText is the spans' joined text and its rune count.
+func spansText(spans []MarkupRun) (string, int) {
 	var sb strings.Builder
 	for _, r := range spans {
 		sb.WriteString(r.Text)
 	}
-	line := sb.String()
-	l.text = line
+	return sb.String(), utf8.RuneCountInString(sb.String())
+}
+
+// shapeSpans resolves the line's directional runs over the spans' whole
+// text and shapes every styled span the runs touch into l.shaped, with
+// the line's ascent, descent, and advance.
+func (l *RichLabel) shapeSpans(spans []MarkupRun) {
+	line, _ := spansText(spans)
 	l.shaped = make([]*richRun, 0, len(spans))
 	// Span rune spans, to intersect the styled spans with the
 	// directional runs.
@@ -215,8 +236,112 @@ func (l *RichLabel) retext() {
 		asc, desc = sh.Ascent(), sh.Descent()
 	}
 	l.lineAsc, l.lineDesc, l.advance = asc, desc, adv
-	l.runes = spanStart[len(spans)]
-	l.natural = Size{W: int(adv + 0.5), H: int(math.Ceil(asc + desc))}
+}
+
+// richEllipsis is the mark a truncated line ends (or starts, or breaks)
+// with.
+const richEllipsis = "…"
+
+// SetEllipsize sets how a line wider than its box truncates: Start,
+// Middle, or End trade runes for an ellipsis, in the style of the run
+// it stands beside, until the line fits; None (the default) lets it
+// overflow. The natural width stays the whole line's.
+func (l *RichLabel) SetEllipsize(mode EllipsizeMode) {
+	if l.ell == mode {
+		return
+	}
+	l.ell = mode
+	l.retext()
+	l.InvalidateLayout()
+}
+
+// Ellipsize returns the truncation mode.
+func (l *RichLabel) Ellipsize() EllipsizeMode { return l.ell }
+
+// Arrange records the box and fits the line to its width.
+func (l *RichLabel) Arrange(r render.Rect) {
+	l.node.Arrange(r)
+	l.fit(r.W)
+}
+
+// fit shapes the line for width w: the whole line when it fits or
+// truncation is off, else the longest cut that fits with the ellipsis.
+func (l *RichLabel) fit(w int) {
+	if l.ell == EllipsizeNone || l.natural.W <= w {
+		if l.fitW != -1 {
+			l.shapeSpans(l.runs)
+			l.fitW = -1
+		}
+		return
+	}
+	if l.fitW == w {
+		return
+	}
+	width := func(keep int) float64 {
+		l.shapeSpans(l.cutSpans(keep))
+		return l.advance
+	}
+	// The largest kept rune count that fits; 0 is the bare ellipsis.
+	lo, hi := 0, l.runes-1
+	for lo < hi {
+		mid := (lo + hi + 1) / 2
+		if width(mid) <= float64(w) {
+			lo = mid
+		} else {
+			hi = mid - 1
+		}
+	}
+	l.shapeSpans(l.cutSpans(lo))
+	l.fitW = w
+}
+
+// cutSpans is the line with keep runes kept and the ellipsis where the
+// mode puts it.
+func (l *RichLabel) cutSpans(keep int) []MarkupRun {
+	n := l.runes
+	switch l.ell {
+	case EllipsizeStart:
+		tail := sliceSpans(l.runs, n-keep, n)
+		return append([]MarkupRun{{Text: richEllipsis, Style: styleAt(l.runs, n-keep)}}, tail...)
+	case EllipsizeMiddle:
+		head, tail := (keep+1)/2, keep/2
+		out := sliceSpans(l.runs, 0, head)
+		out = append(out, MarkupRun{Text: richEllipsis, Style: styleAt(l.runs, max(head-1, 0))})
+		return append(out, sliceSpans(l.runs, n-tail, n)...)
+	}
+	out := sliceSpans(l.runs, 0, keep)
+	return append(out, MarkupRun{Text: richEllipsis, Style: styleAt(l.runs, max(keep-1, 0))})
+}
+
+// sliceSpans is the spans' runes [lo, hi), each piece keeping its
+// span's style.
+func sliceSpans(spans []MarkupRun, lo, hi int) []MarkupRun {
+	var out []MarkupRun
+	at := 0
+	for _, s := range spans {
+		rs := []rune(s.Text)
+		a, b := max(lo-at, 0), min(hi-at, len(rs))
+		if a < b {
+			out = append(out, MarkupRun{Text: string(rs[a:b]), Style: s.Style})
+		}
+		at += len(rs)
+	}
+	return out
+}
+
+// styleAt is the style of the span holding rune i.
+func styleAt(spans []MarkupRun, i int) TextStyle {
+	at := 0
+	for _, s := range spans {
+		at += utf8.RuneCountInString(s.Text)
+		if i < at {
+			return s.Style
+		}
+	}
+	if len(spans) > 0 {
+		return spans[len(spans)-1].Style
+	}
+	return TextStyle{}
 }
 
 // Measure returns the line's total advance and its line height - the
