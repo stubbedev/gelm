@@ -9,6 +9,7 @@ import (
 	"image/png"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -619,5 +620,72 @@ func TestDeviceBoxAndDirScale(t *testing.T) {
 		if got := dirScale(tc.frac); got != tc.wantRule {
 			t.Errorf("dirScale(%d) = %d, want %d", tc.frac, got, tc.wantRule)
 		}
+	}
+}
+
+func TestCacheResetListeners(t *testing.T) {
+	root := writeTree(t)
+	c := newTestCacheAt(t, "testtheme", root)
+	resets := 0
+	c.OnReset(func() { resets++ })
+	c.OnReset(nil)
+
+	steps := []struct {
+		name string
+		do   func()
+		want int
+	}{
+		{"SetTheme to the current theme is a no-op", func() { c.SetTheme("testtheme") }, 0},
+		{"SetTheme to another theme resets", func() { c.SetTheme("hicolor") }, 1},
+		{"equal search paths are a no-op", func() { c.SetSearchPaths([]string{root}) }, 1},
+		{"new search paths reset", func() { c.SetSearchPaths([]string{root, root + "/hicolor"}) }, 2},
+		{"InvalidateTheme resets", c.InvalidateTheme, 3},
+		{"an empty followed theme is a no-op", func() { c.ApplyIconTheme("") }, 3},
+		{"a followed theme switch resets", func() { c.ApplyIconTheme("testtheme") }, 4},
+	}
+	for _, s := range steps {
+		gen, before := c.Generation(), resets
+		s.do()
+		if resets != s.want {
+			t.Errorf("%s: %d resets, want %d", s.name, resets, s.want)
+		}
+		if moved, reset := c.Generation() != gen, resets != before; moved != reset {
+			t.Errorf("%s: generation moved = %v, listeners ran = %v", s.name, moved, reset)
+		}
+	}
+}
+
+func TestCacheSearchPaths(t *testing.T) {
+	c := New("hicolor")
+	if got, want := c.SearchPaths(), defaultSearchPaths(); !slices.Equal(got, want) {
+		t.Errorf("unset paths = %v, want the XDG default %v", got, want)
+	}
+
+	root := writeTree(t)
+	paths := []string{root}
+	c.SetSearchPaths(paths)
+	paths[0] = "/elsewhere"
+	if got := c.SearchPaths(); !slices.Equal(got, []string{root}) {
+		t.Errorf("paths = %v, want [%s]: the caller's slice was not copied", got, root)
+	}
+	if _, err := c.Lookup("hicoloronly", 16, 120); err != nil {
+		t.Errorf("lookup under the set path: %v", err)
+	}
+
+	resets := 0
+	c.OnReset(func() { resets++ })
+	c.SetSearchPaths([]string{})
+	if resets != 1 {
+		t.Errorf("empty paths after [%s]: %d resets, want 1", root, resets)
+	}
+	if _, err := c.Lookup("hicoloronly", 16, 120); !errors.Is(err, ErrNotFound) {
+		t.Errorf("lookup with no search paths: err = %v, want ErrNotFound", err)
+	}
+	c.SetSearchPaths(nil)
+	if resets != 2 {
+		t.Errorf("nil after empty paths: %d resets, want 2 (nil is the default, not empty)", resets)
+	}
+	if got, want := c.SearchPaths(), defaultSearchPaths(); !slices.Equal(got, want) {
+		t.Errorf("nil paths = %v, want the XDG default %v", got, want)
 	}
 }

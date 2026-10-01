@@ -33,9 +33,10 @@ func (c *Cache) ApplyIconTheme(name string) {
 		return
 	}
 	c.theme = name
-	c.resetLocked()
+	resets := c.resetLocked()
 	listeners := cloneThemeListeners(c.themeListeners)
 	c.mu.Unlock()
+	runAll(resets)
 	for _, fn := range listeners {
 		fn(name)
 	}

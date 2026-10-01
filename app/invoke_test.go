@@ -9,6 +9,7 @@ import (
 
 	"golang.org/x/image/font/gofont/goregular"
 
+	"github.com/stubbedev/gelm/internal/icons"
 	"github.com/stubbedev/gelm/render"
 	"github.com/stubbedev/gelm/widget"
 )
@@ -291,4 +292,33 @@ func TestEveryRejectsZeroInterval(t *testing.T) {
 		}
 	}()
 	a.Every(0, func() {})
+}
+
+// TestIconResetRepaints pins the icon-cache bridge: a reset from any
+// goroutine (a refresh after icons were installed) marks every window
+// dirty on the next pump, and nothing is marked before the pump runs.
+func TestIconResetRepaints(t *testing.T) {
+	a := testApp(nil)
+	w1, w2 := &hostWindow{}, &hostWindow{}
+	a.windows = []*hostWindow{w1, w2}
+	c := icons.New("hicolor")
+	a.repaintOnIconReset(c)
+
+	done := make(chan struct{})
+	go func() { c.InvalidateTheme(); close(done) }()
+	<-done
+	if w1.dirty || w2.dirty {
+		t.Fatal("windows marked dirty off the loop, before the pump")
+	}
+	a.pump(time.Now())
+	if !w1.dirty || !w2.dirty {
+		t.Errorf("dirty after the pump = %v, %v; want both", w1.dirty, w2.dirty)
+	}
+
+	w1.dirty, w2.dirty = false, false
+	c.SetTheme("hicolor")
+	a.pump(time.Now())
+	if w1.dirty || w2.dirty {
+		t.Error("a no-op SetTheme repainted")
+	}
 }
