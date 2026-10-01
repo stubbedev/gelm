@@ -899,6 +899,34 @@ func TestHeadlessPopoverTakesTypingAndRepaints(t *testing.T) {
 	if _, err := w.Wait("demo", "popover text hi", traceTimeout); err != nil {
 		t.Errorf("typing never reached the focused entry: %v\n%s", err, tailTraces(w, 25))
 	}
+	first, err := w.Wait("frame", "popup ", traceTimeout)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var id, fw, fh int
+	if _, err := fmt.Sscanf(first.Message, "popup %d frame %dx%d", &id, &fw, &fh); err != nil {
+		t.Fatalf("bad frame trace %q: %v", first.Message, err)
+	}
+	// A row added while open grows the popover (xdg_popup.reposition):
+	// a later frame is taller.
+	if _, err := w.Wait("demo", "popover grew", traceTimeout); err != nil {
+		t.Fatal(err)
+	}
+	grew := false
+	for range 20 {
+		tr, err := w.Wait("frame", "popup ", traceTimeout)
+		if err != nil {
+			break
+		}
+		var gid, gw, gh int
+		if _, err := fmt.Sscanf(tr.Message, "popup %d frame %dx%d", &gid, &gw, &gh); err == nil && gid == id && gh > fh {
+			grew = true
+			break
+		}
+	}
+	if !grew {
+		t.Errorf("the popover never grew past %dx%d with its content\n%s", fw, fh, tailTraces(w, 25))
+	}
 	// The ticker changes the label every 100ms with no input arriving:
 	// an app-loop popover paints each change.
 	for i := range 3 {

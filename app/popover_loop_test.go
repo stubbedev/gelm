@@ -17,11 +17,21 @@ import (
 type fakePopSurface struct {
 	destroyed, dismissed bool
 	frames               int
+	// w, h is the requested size; resizes records each Resize.
+	w, h    int
+	resizes [][2]int
 }
 
 func (f *fakePopSurface) Destroyed() bool { return f.destroyed }
 func (f *fakePopSurface) Dismissed() bool { return f.dismissed }
 func (f *fakePopSurface) MarkFrame()      { f.frames++ }
+func (f *fakePopSurface) RequestedSize() (int, int) { return f.w, f.h }
+func (f *fakePopSurface) Gutter() int               { return 2 }
+func (f *fakePopSurface) Resize(w, h int) bool {
+	f.resizes = append(f.resizes, [2]int{w, h})
+	f.w, f.h = w, h
+	return true
+}
 
 // fakePopPainter records passes.
 type fakePopPainter struct {
@@ -309,5 +319,47 @@ func TestHeldModsReadsTheSession(t *testing.T) {
 	a := &Application{sess: &wlsession.Session{}}
 	if a.HeldMods() != 0 {
 		t.Errorf("held = %v with no keyboard state", a.HeldMods())
+	}
+}
+
+// TestDrivePopoversFitsGrowingContent pins the resize: content whose
+// natural size changed (a menu re-published with more rows) asks the
+// popup for the new size plus its gutter, once; unchanged content and
+// a dismissed popover ask nothing.
+func TestDrivePopoversFitsGrowingContent(t *testing.T) {
+	box := widget.NewBox(widget.Column, 0, 0)
+	box.Append(widget.NewSpacer(40, 20), false)
+	op, surf, _, _ := newLoopPopover(box)
+	surf.w, surf.h = 44, 24 // 40x20 plus the gutter
+	op.keyRoot.Arrange(render.Rect{W: 40, H: 20})
+	widget.CollectDamage(op.keyRoot)
+	a := &Application{openPopovers: []*openPopover{op}}
+
+	if err := a.drivePopovers(true); err != nil {
+		t.Fatal(err)
+	}
+	if len(surf.resizes) != 0 {
+		t.Fatalf("unchanged content resized: %v", surf.resizes)
+	}
+	box.Append(widget.NewSpacer(60, 30), false)
+	if err := a.drivePopovers(false); err != nil {
+		t.Fatal(err)
+	}
+	if len(surf.resizes) != 1 || surf.resizes[0] != [2]int{64, 54} {
+		t.Fatalf("grown content: resizes %v, want one to 64x54", surf.resizes)
+	}
+	if err := a.drivePopovers(true); err != nil {
+		t.Fatal(err)
+	}
+	if len(surf.resizes) != 1 {
+		t.Errorf("the same size was asked for again: %v", surf.resizes)
+	}
+	surf.dismissed = true
+	box.Append(widget.NewSpacer(10, 10), false)
+	if err := a.drivePopovers(false); err != nil {
+		t.Fatal(err)
+	}
+	if len(surf.resizes) != 1 {
+		t.Errorf("a dismissed popover resized: %v", surf.resizes)
 	}
 }

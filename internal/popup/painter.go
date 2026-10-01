@@ -33,6 +33,10 @@ type Painter struct {
 	bg      render.Color
 	gutter  int           // the shadow margin the content is inset by
 	visual  widget.Widget // the slide wrapper around the fader-wrapped content
+	// create allocates a buffer at the popup's current size; w, h is
+	// the size the pool's buffers have, so a resize retires them.
+	create func() (*buffer.Buffer, error)
+	w, h   int
 
 	frameReady   bool
 	framePending bool
@@ -63,7 +67,9 @@ func (p *Popup) NewPainter(sess *wlsession.Session, frac120 uint32, root widget.
 		bg:      bg,
 		gutter:  p.gutter,
 		visual:  p.anim.slide,
+		create:  create,
 	}
+	pc.w, pc.h = p.Size()
 	pc.dirty.Store(true)
 	p.painter = pc
 	return pc
@@ -104,6 +110,12 @@ func (pc *Painter) Pass() (bool, error) {
 		return true, nil
 	}
 	pc.dirty.Store(false)
+	if w, h := pc.p.Size(); w != pc.w || h != pc.h {
+		// The popup was re-placed at a new size: buffers of the old one
+		// retire as they come back.
+		pc.pool.Resize(pc.create)
+		pc.w, pc.h = w, h
+	}
 	b, err := pc.pool.Acquire()
 	if errors.Is(err, buffer.ErrBusy) {
 		// The release event (dispatched by the owning loop) wakes it.
