@@ -10,6 +10,7 @@ import (
 	"golang.org/x/image/font/gofont/goregular"
 
 	"github.com/stubbedev/gelm/internal/icons"
+	"github.com/stubbedev/gelm/internal/surfx"
 	"github.com/stubbedev/gelm/render"
 	"github.com/stubbedev/gelm/widget"
 )
@@ -320,5 +321,18 @@ func TestIconResetRepaints(t *testing.T) {
 	a.pump(time.Now())
 	if w1.dirty || w2.dirty {
 		t.Error("a no-op SetTheme repainted")
+	}
+}
+
+func TestSetSurfaceMotion(t *testing.T) {
+	a := testApp(nil)
+	t.Cleanup(func() { surfx.SetEnabled(true) })
+	a.SetSurfaceMotion(false)
+	if surfx.Enabled() || surfx.Plan(surfx.KindOverlay, true).Enter.Duration != 0 {
+		t.Error("surface motion off left the overlay tween running")
+	}
+	a.SetSurfaceMotion(true)
+	if !surfx.Enabled() || surfx.Plan(surfx.KindOverlay, true).Enter.Duration == 0 {
+		t.Error("surface motion on did not restore the tween")
 	}
 }

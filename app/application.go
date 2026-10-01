@@ -1020,3 +1020,11 @@ func (a *Application) repaintOnIconReset(c *icons.Cache) {
 		})
 	})
 }
+
+// SetSurfaceMotion turns gelm's own surface tweens on or off app-wide:
+// the fade and slide every layer surface, dialog, popover and tooltip
+// plays as it maps and closes. An application that animates its
+// surfaces' content itself (through a widget.Revealer) turns them off
+// so the two do not stack; surfaces then map and close at once, with
+// the same callbacks in the same order.
+func (a *Application) SetSurfaceMotion(on bool) { surfx.SetEnabled(on) }
