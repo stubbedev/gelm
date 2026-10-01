@@ -34,9 +34,10 @@ func (s *Session) bindSessionLockManager(ev wl.RegistryGlobalEvent) {
 	debug.Log("shell", "ext-session-lock-v1 bound")
 }
 
-// outputWatcher is one WatchOutputs subscription.
+// outputWatcher is one WatchOutputs or WatchOutputIdentity
+// subscription.
 type outputWatcher struct {
-	added, removed func(*Output)
+	added, removed, identity func(*Output)
 }
 
 // WatchOutputs subscribes to output hotplug alongside the
@@ -45,7 +46,18 @@ type outputWatcher struct {
 // returned stop unsubscribes; it is idempotent. Watchers run on the
 // event-loop goroutine, inside dispatch, after the hooks.
 func (s *Session) WatchOutputs(added, removed func(*Output)) (stop func()) {
-	w := &outputWatcher{added: added, removed: removed}
+	return s.watch(&outputWatcher{added: added, removed: removed})
+}
+
+// WatchOutputIdentity subscribes to output identities alongside the
+// OnOutputIdentity hook: fn runs when an output's xdg-output name
+// arrives or changes. The returned stop unsubscribes; it is
+// idempotent. Watchers run on the event-loop goroutine, after the hook.
+func (s *Session) WatchOutputIdentity(fn func(*Output)) (stop func()) {
+	return s.watch(&outputWatcher{identity: fn})
+}
+
+func (s *Session) watch(w *outputWatcher) (stop func()) {
 	s.outputWatchers = append(s.outputWatchers, w)
 	return func() {
 		for i, cur := range s.outputWatchers {
@@ -53,6 +65,19 @@ func (s *Session) WatchOutputs(added, removed func(*Output)) (stop func()) {
 				s.outputWatchers = append(s.outputWatchers[:i], s.outputWatchers[i+1:]...)
 				return
 			}
+		}
+	}
+}
+
+// notifyOutputIdentity fans a named output out to the hook and every
+// identity watcher.
+func (s *Session) notifyOutputIdentity(out *Output) {
+	if s.OnOutputIdentity != nil {
+		s.OnOutputIdentity(out)
+	}
+	for _, w := range append([]*outputWatcher(nil), s.outputWatchers...) {
+		if w.identity != nil {
+			w.identity(out)
 		}
 	}
 }

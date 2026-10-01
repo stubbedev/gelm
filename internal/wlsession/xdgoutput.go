@@ -128,9 +128,7 @@ func (e *xdgOutputEvents) HandleZxdgOutputV1Name(ev wlr.ZxdgOutputV1NameEvent) {
 		return
 	}
 	e.out.Name = ev.Name
-	if e.sess.OnOutputIdentity != nil {
-		e.sess.OnOutputIdentity(e.out)
-	}
+	e.sess.notifyOutputIdentity(e.out)
 }
 
 // HandleZxdgOutputV1Description implements

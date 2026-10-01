@@ -2,6 +2,7 @@ package wlsession
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/neurlang/wayland/wl"
@@ -135,3 +136,35 @@ func TestXdgOutputNameLandsOnOutput(t *testing.T) {
 }
 
 var errXdgFail = errors.New("get_xdg_output failed")
+
+// Every identity watcher hears a name after the hook; a stopped one
+// hears nothing more, and an unchanged name notifies no one.
+func TestWatchOutputIdentityFansOut(t *testing.T) {
+	s := &Session{}
+	fake := &fakeXdgOutputMaker{}
+	s.xdgOutputMgr = fake
+	var order []string
+	s.OnOutputIdentity = func(*Output) { order = append(order, "hook") }
+	stopA := s.WatchOutputIdentity(func(o *Output) { order = append(order, "a:"+o.Name) })
+	s.WatchOutputIdentity(func(o *Output) { order = append(order, "b:"+o.Name) })
+
+	out := &Output{WL: &wl.Output{}, Scale: 1, name: 41}
+	s.trackOutput(out)
+	s.ensureXdgOutputs()
+	name := fake.outs[0].nameH
+	name.HandleZxdgOutputV1Name(wlr.ZxdgOutputV1NameEvent{Name: "DP-1"})
+	if got := strings.Join(order, ","); got != "hook,a:DP-1,b:DP-1" {
+		t.Fatalf("notify order = %s", got)
+	}
+	order = nil
+	name.HandleZxdgOutputV1Name(wlr.ZxdgOutputV1NameEvent{Name: "DP-1"})
+	if len(order) != 0 {
+		t.Fatalf("an unchanged name notified %v", order)
+	}
+	stopA()
+	stopA()
+	name.HandleZxdgOutputV1Name(wlr.ZxdgOutputV1NameEvent{Name: "DP-2"})
+	if got := strings.Join(order, ","); got != "hook,b:DP-2" {
+		t.Fatalf("after stop = %s", got)
+	}
+}
