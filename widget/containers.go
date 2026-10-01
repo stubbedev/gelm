@@ -245,8 +245,10 @@ type Scroll struct {
 	node
 	child      Widget
 	nat        Size
+	measured   Size // the size Measure last returned, for Shrinkable
 	offX, offY int
 	maxH       int
+	measuredAt int // the width a VerticalOnly child was last measured at
 
 	// ShowBars enables the auto-hiding scrollbar indicators.
 	ShowBars bool
@@ -257,6 +259,11 @@ type Scroll struct {
 	// FillX and FillY stretch a smaller child across the viewport
 	// instead of centering it.
 	FillX, FillY bool
+	// VerticalOnly scrolls up and down only (GTK's hscrollbar-policy
+	// never): the child is measured and laid out at the viewport's
+	// width, so a wrapping label wraps there instead of at infinity.
+	// The bar's gutter is always reserved beside it.
+	VerticalOnly bool
 
 	// viewW/viewH is the child area inside the reserved gutters.
 	viewW, viewH   int
@@ -442,15 +449,27 @@ func (s *Scroll) Measure(con Constraints) Size {
 	}
 	s.nat = Size{}
 	if s.child != nil {
-		s.nat = s.child.Measure(Constraints{Max: Size{W: math.MaxInt, H: math.MaxInt}})
+		w := math.MaxInt
+		if s.VerticalOnly {
+			w = max(0, con.Max.W-gutter)
+			s.measuredAt = w
+		}
+		s.nat = s.child.Measure(Constraints{Max: Size{W: w, H: math.MaxInt}})
 	}
 	want := s.nat
+	if s.VerticalOnly && s.child != nil {
+		want.W += gutter // the bar's column is always there
+	}
 	if s.maxH > 0 && want.H > s.maxH {
 		// Capped, the content overflows: the vertical bar's gutter
 		// comes on top of the content width, not out of it.
-		want = Size{W: want.W + gutter, H: s.maxH}
+		if !s.VerticalOnly {
+			want.W += gutter
+		}
+		want.H = s.maxH
 	}
-	return s.measureStore(con, clampSize(want, con))
+	s.measured = clampSize(want, con)
+	return s.measureStore(con, s.measured)
 }
 
 // SetMaxContentHeight caps the height the scroll asks for (GTK's
@@ -483,10 +502,20 @@ func (s *Scroll) Arrange(r render.Rect) {
 	if s.nat.W > r.W && r.W > 40 {
 		gutterH = gutter
 	}
+	if s.VerticalOnly {
+		gutterV, gutterH = gutter, 0
+		if w := max(0, r.W-gutter); w != s.measuredAt && s.child != nil {
+			s.nat = s.child.Measure(Constraints{Max: Size{W: w, H: math.MaxInt}})
+			s.measuredAt = w
+		}
+	}
 	s.viewW = r.W - gutterV
 	s.viewH = r.H - gutterH
 
 	childW, childH := s.nat.W, s.nat.H
+	if s.VerticalOnly {
+		childW = s.viewW
+	}
 	if s.FillX && childW < s.viewW {
 		childW = s.viewW
 	}
