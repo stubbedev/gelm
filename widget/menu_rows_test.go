@@ -134,3 +134,38 @@ func TestMenuRowIcons(t *testing.T) {
 		}
 	})
 }
+
+// TestMenuHoverHookAndRowBounds pins what a nested presenter reads:
+// OnHover fires once per row change under the pointer (not on leaving
+// the menu), and RowBounds is the row the pointer is over.
+func TestMenuHoverHookAndRowBounds(t *testing.T) {
+	face := entryFace(t)
+	m := NewMenu(face, 13, MenuItem{Label: "one"}, MenuItem{Label: "two"}, MenuItem{Label: "three"})
+	m.Measure(Constraints{Max: Size{W: 200, H: 400}})
+	m.Arrange(render.Rect{X: 10, Y: 20, W: 120, H: 200})
+	var hovered []int
+	m.OnHover = func(i int) { hovered = append(hovered, i) }
+	center := func(i int) Point {
+		r := m.RowBounds(i)
+		return Point{X: r.X + r.W/2, Y: r.Y + r.H/2}
+	}
+	m.HoverMove(center(1))
+	m.HoverMove(center(1))
+	m.HoverMove(center(2))
+	m.SetHovered(false)
+	if len(hovered) != 2 || hovered[0] != 1 || hovered[1] != 2 {
+		t.Errorf("hovered = %v, want [1 2]", hovered)
+	}
+	if got := m.itemAt(center(2)); got != 2 {
+		t.Errorf("RowBounds(2) center maps to row %d", got)
+	}
+	if r := m.RowBounds(0); r.X != 10 || r.W != 120 || r.Y < 20 {
+		t.Errorf("RowBounds(0) = %v", r)
+	}
+	if !m.RowBounds(3).Empty() || !m.RowBounds(-1).Empty() {
+		t.Error("an out-of-range row has bounds")
+	}
+	if len(m.Items()) != 3 {
+		t.Error("Items")
+	}
+}

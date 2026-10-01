@@ -49,6 +49,12 @@ type PopoverConfig struct {
 	// focus as the popover opens (a form's first Entry, as GTK focuses
 	// a popover's first input): typing then reaches it without a click.
 	Focus widget.Widget
+	// Parent, when set, nests the popover under that open popover (an
+	// xdg_popup child of its surface, GTK's nested PopoverMenu): Anchor
+	// is a widget inside the parent, the host argument is ignored, and
+	// the popover closes with its parent. A parent holds one child at a
+	// time: opening another closes the one before.
+	Parent *Popover
 }
 
 // Popover is a widget-anchored transient popup. It closes on
@@ -60,6 +66,79 @@ type Popover struct {
 	closeFn func()
 	// focus moves the open popover's keyboard focus (loop only).
 	focus func(w widget.Widget)
+
+	// host is the window the popover (or its root) opened over, pop its
+	// surface, teardown its no-tween close; parent and children link a
+	// nested chain (loop only).
+	host     Host
+	pop      *popup.Popup
+	teardown func()
+	parent   *Popover
+	children []*Popover
+}
+
+// Parent is the popover this one is nested under, nil for a root.
+func (p *Popover) Parent() *Popover { return p.parent }
+
+// Child is the open popover nested under this one, nil without one.
+func (p *Popover) Child() *Popover {
+	if p == nil || len(p.children) == 0 {
+		return nil
+	}
+	return p.children[len(p.children)-1]
+}
+
+// Root is the outermost popover of the chain.
+func (p *Popover) Root() *Popover {
+	for p != nil && p.parent != nil {
+		p = p.parent
+	}
+	return p
+}
+
+// closeChildren tears every nested popover down on the spot, deepest
+// first through each one's own close: a child surface must be gone
+// before its parent's (xdg_popup's topmost rule), and an exit tween
+// would outlive the parent's.
+func (p *Popover) closeChildren() {
+	for len(p.children) > 0 {
+		child := p.children[len(p.children)-1]
+		p.children = p.children[:len(p.children)-1]
+		if child.teardown != nil {
+			child.teardown()
+		}
+	}
+}
+
+// settle is a popover's close bookkeeping, whatever closed it: the
+// first call flips it closed, closes what nests under it, and leaves
+// its parent's list, reporting true; later calls report false.
+func (p *Popover) settle() bool {
+	if !p.markClosed() {
+		return false
+	}
+	p.closeChildren()
+	if p.parent != nil {
+		p.parent.dropChild(p)
+	}
+	return true
+}
+
+// dropChild forgets a child that closed on its own.
+func (p *Popover) dropChild(child *Popover) {
+	p.children = slices.DeleteFunc(p.children, func(c *Popover) bool { return c == child })
+}
+
+// chainPressSerial is the newest press serial over the chain's
+// surfaces: the grab serial a popover nested under p opens with.
+func (p *Popover) chainPressSerial() uint32 {
+	var serial uint32
+	for at := p; at != nil; at = at.parent {
+		if at.pop != nil {
+			serial = max(serial, at.pop.LastPressSerial())
+		}
+	}
+	return serial
 }
 
 // SetFocus moves keyboard focus to w inside the open popover - a form
@@ -199,7 +278,14 @@ func (a *Application) OpenPopover(host Host, cfg PopoverConfig) (*Popover, error
 	if cfg.Anchor == nil || cfg.Content == nil {
 		return nil, errors.New("app: popover needs an anchor and content")
 	}
-	if prev := a.popovers.take(host); prev != nil {
+	parent := cfg.Parent
+	if parent != nil {
+		if parent.Closed() || parent.pop == nil {
+			return nil, errors.New("app: the parent popover is closed")
+		}
+		host = parent.host
+		parent.closeChildren()
+	} else if prev := a.popovers.take(host); prev != nil {
 		prev.Dismiss()
 	}
 
@@ -219,7 +305,7 @@ func (a *Application) OpenPopover(host Host, cfg PopoverConfig) (*Popover, error
 	gutter := widget.Current().ShadowGutter()
 	debug.Log("input", "popover anchor %+v size %dx%d gravity %d gutter %d", anchor, size.W, size.H, cfg.Gravity, gutter)
 
-	p := &Popover{}
+	p := &Popover{host: host, parent: parent}
 	keyRoot := &popoverKeyRoot{
 		onDismiss: p.Dismiss,
 		content:   cfg.Content,
@@ -240,19 +326,29 @@ func (a *Application) OpenPopover(host Host, cfg PopoverConfig) (*Popover, error
 		Serial:  cfg.Serial,
 	}
 	layer, onLayer := host.(LayerSurfacer)
-	if onLayer {
+	tooltipHost, onWindow := host.(tooltipSurfacer)
+	switch {
+	case parent != nil:
+		// A nested popup grabs with the newest press anywhere on the
+		// chain: the click that opened it may have landed in the parent.
+		pcfg.Parent = parent.pop.XdgSurface
+		if pcfg.Serial == 0 {
+			pcfg.Serial = max(parent.chainPressSerial(), a.LastPressSerial(host))
+		}
+	case onLayer:
 		pcfg.LayerParent = layer.LayerPopupSurface()
-	} else if ts, ok := host.(tooltipSurfacer); ok {
-		pcfg.Parent = ts.TooltipSurface()
-	} else {
+	case onWindow:
+		pcfg.Parent = tooltipHost.TooltipSurface()
+	default:
 		return nil, errors.New("app: host cannot carry popups")
 	}
 
 	// A bar-style layer declines the keyboard; the popover's grab needs
 	// it (Esc, menus, a form's Entry), so the layer takes keys on demand
 	// while the popover is open, as the Rust bar does around a dropdown.
+	// A nested popover rides on its root's.
 	restoreKeys := func() {}
-	if km, ok := host.(keyboardModer); ok && km.KeyboardMode() == KeyboardNone {
+	if km, ok := host.(keyboardModer); ok && parent == nil && km.KeyboardMode() == KeyboardNone {
 		if err := km.SetKeyboardMode(KeyboardOnDemand); err == nil {
 			restoreKeys = func() { _ = km.SetKeyboardMode(KeyboardNone) }
 		}
@@ -267,8 +363,12 @@ func (a *Application) OpenPopover(host Host, cfg PopoverConfig) (*Popover, error
 	// fires, and the surface runs its exit tween before the wire
 	// teardown.
 	p.closeFn = pop.Dismiss
+	p.teardown = pop.Close
+	p.pop = pop
 	fireClosed := func() {
-		if !p.markClosed() {
+		// Whatever closed this popover (Esc, a click away, the
+		// compositor's popup_done, Dismiss) closes what nests under it.
+		if !p.settle() {
 			return
 		}
 		restoreKeys()
@@ -278,7 +378,11 @@ func (a *Application) OpenPopover(host Host, cfg PopoverConfig) (*Popover, error
 	}
 	pop.SetOnClosed(fireClosed)
 
-	a.popovers.openOrReplace(host, p)
+	if parent != nil {
+		parent.children = append(parent.children, p)
+	} else {
+		a.popovers.openOrReplace(host, p)
+	}
 	// The application loop drives the popover like any of its windows:
 	// one painter pass per loop pass, pointer input through a Router on
 	// the loop goroutine, keys through the same Router once a widget
@@ -372,8 +476,10 @@ type openPopover struct {
 // dirty (loop work ran that may have touched its content) — and paints
 // at most one frame.
 func (a *Application) drivePopovers(all bool) error {
-	kept := a.openPopovers[:0]
-	for _, op := range a.openPopovers {
+	// Newest first: a nested popover destroyed in the same pass as its
+	// parent must leave the wire before it (xdg_popup's topmost rule).
+	kept := make([]*openPopover, 0, len(a.openPopovers))
+	for _, op := range slices.Backward(a.openPopovers) {
 		if op.pop.Destroyed() {
 			op.painter.Close()
 			op.detach()
@@ -391,7 +497,7 @@ func (a *Application) drivePopovers(all bool) error {
 		}
 		kept = append(kept, op)
 	}
-	clear(a.openPopovers[len(kept):])
+	slices.Reverse(kept)
 	a.openPopovers = kept
 	return nil
 }

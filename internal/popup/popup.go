@@ -82,7 +82,14 @@ type Popup struct {
 	// painter is the frame pipeline whoever paints this surface built
 	// (Run internally, or the application loop for tooltips).
 	painter *Painter
+	// pressSerial is the serial of the last button press on the popup,
+	// the grab serial a popup nested under it opens with.
+	pressSerial atomic.Uint32
 }
+
+// LastPressSerial is the serial of the last button press inside the
+// popup, 0 before any.
+func (p *Popup) LastPressSerial() uint32 { return p.pressSerial.Load() }
 
 // Config describes where the popup goes and how big it is.
 type Config struct {
@@ -470,6 +477,7 @@ func (p *Popup) AttachInput(sess *wlsession.Session, router *widget.Router) (det
 		router:    router,
 		pointer:   &pointer,
 		markDirty: func() { p.dirty.Store(true) },
+		pressed:   p.pressSerial.Store,
 	}
 	sess.SetSurfaceInput(p.WLSurface, input)
 	return func() { sess.SetSurfaceInput(p.WLSurface, nil) }
@@ -485,6 +493,8 @@ type popupInput struct {
 	router    *widget.Router
 	pointer   *struct{ x, y float64 }
 	markDirty func()
+	// pressed records a press's serial (nil: not recorded).
+	pressed func(serial uint32)
 }
 
 // HandlePointerEnter implements wlsession.SurfacePointerHandler.
@@ -510,6 +520,9 @@ func (in *popupInput) HandlePointerButton(button, state, serial uint32) {
 	pt := widget.Point{X: int(in.pointer.x), Y: int(in.pointer.y)}
 	debug.Log("input", "popup route button %d state=%d at (%d,%d)", button, state, pt.X, pt.Y)
 	if state == 1 {
+		if in.pressed != nil {
+			in.pressed(serial)
+		}
 		in.router.Press(button, pt)
 	} else {
 		in.router.Release(button, pt)
