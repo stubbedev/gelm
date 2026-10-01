@@ -13,8 +13,17 @@ type Object struct{}
 // Null is the null object argument.
 var Null = (*Object)(nil)
 
-func (*Object) Context() *wl.Context   { return nil }
+// Context is no connection.
+func (*Object) Context() *wl.Context { return nil }
+
+// SetContext ignores the connection.
 func (*Object) SetContext(*wl.Context) {}
-func (*Object) Id() wl.ProxyId         { return 0 }
-func (*Object) SetId(wl.ProxyId)       {}
-func (*Object) Unregister()            {}
+
+// Id is 0, the null object.
+func (*Object) Id() wl.ProxyId { return 0 }
+
+// SetId ignores the id: the null object never takes one.
+func (*Object) SetId(wl.ProxyId) {}
+
+// Unregister has nothing to unregister.
+func (*Object) Unregister() {}
