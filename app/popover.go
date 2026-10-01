@@ -58,6 +58,18 @@ type Popover struct {
 	mu      sync.Mutex
 	closed  bool
 	closeFn func()
+	// focus moves the open popover's keyboard focus (loop only).
+	focus func(w widget.Widget)
+}
+
+// SetFocus moves keyboard focus to w inside the open popover - a form
+// that appears in it takes typing at once (GTK's grab_focus). A w the
+// router cannot focus is ignored (see widget.Router.SetFocus); nil
+// clears focus. Loop goroutine only.
+func (p *Popover) SetFocus(w widget.Widget) {
+	if p != nil && p.focus != nil && !p.Closed() {
+		p.focus(w)
+	}
 }
 
 // Dismiss closes the popover programmatically; OnClosed still fires
@@ -281,6 +293,10 @@ func (a *Application) OpenPopover(host Host, cfg PopoverConfig) (*Popover, error
 	}
 	if cfg.Focus != nil {
 		router.SetFocus(cfg.Focus)
+	}
+	p.focus = func(w widget.Widget) {
+		router.SetFocus(w)
+		op.pop.MarkFrame()
 	}
 	op.detach = pop.AttachInput(a.sess, router)
 	a.openPopovers = append(a.openPopovers, op)
