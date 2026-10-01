@@ -5,76 +5,9 @@ import (
 
 	"github.com/neurlang/wayland/wl"
 
-	"github.com/stubbedev/gelm/internal/popup"
 	"github.com/stubbedev/gelm/render"
 	"github.com/stubbedev/gelm/widget"
 )
-
-// TestAnchorOrigin pins the gravity math: below by default, flipping
-// inside the host when the content would overflow, and clamped along
-// the perpendicular axis.
-func TestAnchorOrigin(t *testing.T) {
-	host := render.Rect{X: 0, Y: 0, W: 400, H: 300}
-	size := widget.Size{W: 100, H: 50}
-
-	t.Run("gravity bottom opens below the anchor", func(t *testing.T) {
-		anchor := render.Rect{X: 100, Y: 100, W: 60, H: 20}
-		x, y := anchorOrigin(host, anchor, size, popup.GravityBottom)
-		if x != 100 || y != 120 {
-			t.Errorf("got (%d,%d), want (100,120)", x, y)
-		}
-	})
-
-	t.Run("gravity bottom flips above when there is no room", func(t *testing.T) {
-		anchor := render.Rect{X: 100, Y: 280, W: 60, H: 20}
-		_, y := anchorOrigin(host, anchor, size, popup.GravityBottom)
-		if y != 280-50 {
-			t.Errorf("y = %d, want flipped above the anchor", y)
-		}
-	})
-
-	t.Run("gravity top opens above the anchor", func(t *testing.T) {
-		anchor := render.Rect{X: 100, Y: 100, W: 60, H: 20}
-		_, y := anchorOrigin(host, anchor, size, popup.GravityTop)
-		if y != 100-50 {
-			t.Errorf("y = %d, want above", y)
-		}
-	})
-
-	t.Run("gravity top flips below when pinned at the top", func(t *testing.T) {
-		anchor := render.Rect{X: 100, Y: 10, W: 60, H: 20}
-		_, y := anchorOrigin(host, anchor, size, popup.GravityTop)
-		if y != 10+20 {
-			t.Errorf("y = %d, want flipped below the anchor", y)
-		}
-	})
-
-	t.Run("gravity right opens to the right and flips at the edge", func(t *testing.T) {
-		anchor := render.Rect{X: 100, Y: 100, W: 60, H: 20}
-		x, _ := anchorOrigin(host, anchor, size, popup.GravityRight)
-		if x != 160 {
-			t.Errorf("x = %d, want right of the anchor", x)
-		}
-		anchor = render.Rect{X: 350, Y: 100, W: 40, H: 20}
-		x, _ = anchorOrigin(host, anchor, size, popup.GravityRight)
-		if x != 350-100 {
-			t.Errorf("x = %d, want flipped left of the anchor", x)
-		}
-	})
-
-	t.Run("gravity left opens to the left and flips at the edge", func(t *testing.T) {
-		anchor := render.Rect{X: 150, Y: 100, W: 40, H: 20}
-		x, _ := anchorOrigin(host, anchor, size, popup.GravityLeft)
-		if x != 150-100 {
-			t.Errorf("x = %d, want left of the anchor", x)
-		}
-		anchor = render.Rect{X: 20, Y: 100, W: 40, H: 20}
-		x, _ = anchorOrigin(host, anchor, size, popup.GravityLeft)
-		if x != 20+40 {
-			t.Errorf("x = %d, want flipped right of the anchor", x)
-		}
-	})
-}
 
 // fakePopoverHost is a wire-free Host for registry tests.
 type fakePopoverHost struct{ id int }

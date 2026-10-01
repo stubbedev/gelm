@@ -9,6 +9,7 @@ import (
 	"github.com/neurlang/wayland/wl"
 	"github.com/unxed/xkb-go"
 
+	"github.com/stubbedev/gelm/internal/debug"
 	"github.com/stubbedev/gelm/internal/popup"
 	"github.com/stubbedev/gelm/internal/scale"
 	"github.com/stubbedev/gelm/internal/wlsession"
@@ -17,13 +18,25 @@ import (
 	"github.com/stubbedev/gelm/wlr"
 )
 
+// Gravity is the side of its anchor a popover opens on.
+type Gravity = popup.Gravity
+
+// Popover gravities; the compositor flips to the opposite side when
+// there is no room on the asked-for one.
+const (
+	GravityBottom = popup.GravityBottom
+	GravityTop    = popup.GravityTop
+	GravityRight  = popup.GravityRight
+	GravityLeft   = popup.GravityLeft
+)
+
 // PopoverConfig declares a popover anchored to a widget.
 type PopoverConfig struct {
 	// Anchor is the widget to open beside; its Bounds must be current
 	// (any arranged widget qualifies).
 	Anchor widget.Boundser
 	// Gravity picks the side; zero opens below the anchor.
-	Gravity popup.Gravity
+	Gravity Gravity
 	// Content is the popover's widget tree (a Menu is the common
 	// case).
 	Content widget.Widget
@@ -96,42 +109,6 @@ func (r *popoverRegistry) take(h Host) *Popover {
 	p := r.open[h]
 	delete(r.open, h)
 	return p
-}
-
-// anchorOrigin picks the popup's top-left for the requested gravity,
-// flipping to the opposite side when the content would leave the host
-// bounds, and clamping along the perpendicular axis. This is the
-// testable half of the positioner setup.
-func anchorOrigin(host, anchor render.Rect, size widget.Size, g popup.Gravity) (int, int) {
-	x, y := anchor.X, anchor.Y
-	switch g {
-	case popup.GravityTop:
-		y = anchor.Y - size.H
-		if y < host.Y {
-			y = anchor.Y + anchor.H
-		}
-	case popup.GravityRight:
-		x = anchor.X + anchor.W
-		if x+size.W > host.X+host.W {
-			x = anchor.X - size.W
-		}
-	case popup.GravityLeft:
-		x = anchor.X - size.W
-		if x < host.X {
-			x = anchor.X + anchor.W
-		}
-	default:
-		y = anchor.Y + anchor.H
-		if y+size.H > host.Y+host.H {
-			y = anchor.Y - size.H
-		}
-	}
-	if g == popup.GravityTop || g == popup.GravityBottom {
-		x = min(max(x, host.X), max(host.X, host.X+host.W-size.W))
-	} else {
-		y = min(max(y, host.Y), max(host.Y, host.Y+host.H-size.H))
-	}
-	return x, y
 }
 
 // popoverKeyRoot wraps popover content with Esc dismissal and the
@@ -212,18 +189,20 @@ func (a *Application) OpenPopover(host Host, cfg PopoverConfig) (*Popover, error
 	}
 
 	anchor := cfg.Anchor.Bounds()
-	bw, bh := host.Size()
+	bw, _ := host.Size()
 	// The popover's content styles as the `popover` element (css.md):
 	// whatever widget tree the app hands over IS the card.
 	nameSurfaceElement(cfg.Content, elemPopover)
 	size := cfg.Content.Measure(widget.Constraints{Max: widget.Size{W: bw, H: 600}})
-	x, y := anchorOrigin(render.Rect{W: bw, H: bh}, anchor, size, cfg.Gravity)
-	// The shadow gutter rides on the surface: it grows the popup on
-	// every side and shifts the anchor math so the CONTENT (not the
-	// gutter) lands where the positioner places it. The theme can
+	// The positioner anchors to the anchor widget's rect on the gravity
+	// side and the compositor flips or slides it against the output (a
+	// bar is never tall enough to judge room by). The shadow gutter rides
+	// on the surface: it grows the popup on every side and the
+	// positioner offset keeps the CONTENT (not the gutter) aligned. The theme can
 	// turn it off (ShadowGutter 0), collapsing to the exact pre-shadow
 	// geometry.
 	gutter := widget.Current().ShadowGutter()
+	debug.Log("input", "popover anchor %+v size %dx%d gravity %d gutter %d", anchor, size.W, size.H, cfg.Gravity, gutter)
 
 	p := &Popover{}
 	keyRoot := &popoverKeyRoot{
@@ -239,8 +218,8 @@ func (a *Application) OpenPopover(host Host, cfg PopoverConfig) (*Popover, error
 	}
 
 	pcfg := popup.Config{
-		X: x - gutter, Y: y - gutter,
-		Width: size.W + 2*gutter, Height: size.H + 2*gutter,
+		AnchorRect: anchor,
+		Width:      size.W + 2*gutter, Height: size.H + 2*gutter,
 		Gutter:  gutter,
 		Gravity: cfg.Gravity,
 		Serial:  cfg.Serial,

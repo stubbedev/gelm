@@ -94,6 +94,12 @@ type Config struct {
 	LayerParent *wlr.ZwlrLayerSurfaceV1
 	// X, Y is the anchor point in parent surface coordinates.
 	X, Y int
+	// AnchorRect, when non-empty, anchors the popup to a widget's rect
+	// (parent surface coordinates) instead of the X, Y point: it opens on
+	// the Gravity side, edge-aligned, and the compositor flips it to the
+	// opposite side or slides it along when it would leave the output.
+	// Popovers anchor this way; menus and tooltips use the point.
+	AnchorRect render.Rect
 	// Width, Height is the popup's size in surface pixels.
 	Width, Height int
 	// Gravity picks which side of the anchor the popup opens on; zero
@@ -134,18 +140,7 @@ func New(sess *wlsession.Session, cfg Config) (*Popup, error) {
 	if err := positioner.SetSize(int32(cfg.Width), int32(cfg.Height)); err != nil {
 		return nil, err
 	}
-	// A 1x1 anchor rect at the pointer; gravity pushes the popup down
-	// and right of it, sliding/flipping if that would leave the output.
-	if err := positioner.SetAnchorRect(int32(cfg.X), int32(cfg.Y), 1, 1); err != nil {
-		return nil, err
-	}
-	if err := positioner.SetAnchor(xdg.PositionerAnchorTopLeft); err != nil {
-		return nil, err
-	}
-	if err := positioner.SetGravity(xdg.PositionerGravityBottomRight); err != nil {
-		return nil, err
-	}
-	if err := positioner.SetConstraintAdjustment(1 | 2 | 8); err != nil {
+	if err := place(positioner, cfg); err != nil {
 		return nil, err
 	}
 
