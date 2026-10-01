@@ -160,6 +160,8 @@ type node struct {
 	focusVisible bool
 	focusWithin  int
 	hoverChain   bool
+	// onHoverWithin hears hoverChain flip (SetOnHoverWithin).
+	onHoverWithin func(on bool)
 	// flags are the application-driven states (SetState).
 	flags StateFlags
 	// inline is the widget-scoped declaration block (SetInlineStyle),
@@ -189,6 +191,16 @@ type node struct {
 	// the siblings; widget.IsVisible folds the ancestors in.
 	hidden bool
 }
+
+// SetOnHoverWithin registers fn to hear the pointer enter or leave the
+// widget or any descendant (the :hover chain; GTK's motion controller
+// on a container): a row that reveals its actions on hover whichever
+// child the pointer is over. nil unregisters.
+func (n *node) SetOnHoverWithin(fn func(on bool)) { n.onHoverWithin = fn }
+
+// HoverWithin reports whether the pointer is over the widget or a
+// descendant.
+func (n *node) HoverWithin() bool { return n.hoverChain }
 
 // SetTooltip sets hover text shown after a dwell; empty clears it.
 func (n *node) SetTooltip(s string) {
