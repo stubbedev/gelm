@@ -1,0 +1,253 @@
+package widget
+
+import (
+	"testing"
+	"time"
+
+	"github.com/stubbedev/gelm/internal/anim"
+	"github.com/stubbedev/gelm/render"
+)
+
+// solidLeaf fills its rect with one color.
+type solidLeaf struct {
+	node
+	sz  Size
+	col render.Color
+}
+
+func (s *solidLeaf) Measure(con Constraints) Size { return clampSize(s.sz, con) }
+func (s *solidLeaf) Arrange(r render.Rect)        { s.node.Arrange(r) }
+func (s *solidLeaf) Paint(cv *render.Canvas)      { cv.FillRect(s.bounds, s.col) }
+func (s *solidLeaf) HitTest(p Point) Widget       { return s.HitLeaf(s, p) }
+
+var (
+	revealBG   = render.RGB(0, 0, 0)
+	revealFill = render.RGB(255, 255, 255)
+)
+
+// revealerAt arranges a 40x20 white child revealer at (20, 20) on an
+// 80x60 canvas.
+func revealerAt(t *testing.T, tr RevealTransition) (*Revealer, *solidLeaf) {
+	t.Helper()
+	leaf := &solidLeaf{sz: Size{W: 40, H: 20}, col: revealFill}
+	r := NewRevealer(leaf)
+	r.SetTransition(tr)
+	r.SetDuration(100 * time.Millisecond)
+	r.Measure(Constraints{Max: Size{W: 80, H: 60}})
+	r.Arrange(render.Rect{X: 20, Y: 20, W: 40, H: 20})
+	return r, leaf
+}
+
+// shot is a painted 80x60 frame.
+type shot []byte
+
+// paintReveal paints r over black.
+func paintReveal(r *Revealer) shot {
+	data := make([]byte, render.Stride(80)*60)
+	cv := render.New(data, render.Stride(80), 80, 60)
+	cv.Clear(cv.Rect(), revealBG)
+	r.Paint(cv)
+	return data
+}
+
+// lit counts the pixels brighter than the background inside rect.
+func lit(data shot, rect render.Rect) int {
+	n := 0
+	stride := render.Stride(80)
+	for y := rect.Y; y < rect.Y+rect.H; y++ {
+		for x := rect.X; x < rect.X+rect.W; x++ {
+			if data[y*stride+x*4+2] > 8 { // red channel of BGRA
+				n++
+			}
+		}
+	}
+	return n
+}
+
+// redAt is the red channel at (x, y).
+func redAt(data shot, x, y int) uint8 {
+	return data[y*render.Stride(80)+x*4+2]
+}
+
+// advance steps the pinned clock frame by frame while the next frame
+// is due within d.
+func advance(c *animClock, d time.Duration) {
+	until := c.now().Add(d)
+	for {
+		wake, ok := anim.Next()
+		if !ok || wake.After(until) {
+			return
+		}
+		c.step()
+	}
+}
+
+func TestRevealerRevealsAndHides(t *testing.T) {
+	c := pinAnimClock(t)
+	r, _ := revealerAt(t, RevealFade)
+	var landed []bool
+	r.SetOnTransitionDone(func(v bool) { landed = append(landed, v) })
+
+	if got := lit(paintReveal(r), render.Rect{W: 80, H: 60}); got != 0 {
+		t.Fatalf("a new revealer drew %d px, want hidden", got)
+	}
+	if sz := r.Measure(Constraints{Max: Size{W: 80, H: 60}}); sz != (Size{W: 40, H: 20}) {
+		t.Errorf("hidden fade measures %v, want the full child size held", sz)
+	}
+
+	r.SetRevealed(true)
+	start := c.now()
+	advance(c, 50*time.Millisecond)
+	if p, want := r.Progress(), float64(c.now().Sub(start))/float64(100*time.Millisecond); p < want-0.01 || p > want+0.01 || p < 0.3 || p > 0.6 {
+		t.Errorf("progress after %v = %v, want %v (linear in time)", c.now().Sub(start), p, want)
+	}
+	if red := redAt(paintReveal(r), 30, 30); red < 100 || red > 160 {
+		t.Errorf("half-faded red = %d, want about half", red)
+	}
+	if len(landed) != 0 {
+		t.Errorf("landed mid-flight: %v", landed)
+	}
+	c.drive()
+	if r.Progress() != 1 || len(landed) != 1 || !landed[0] {
+		t.Fatalf("after the enter: progress %v, landings %v", r.Progress(), landed)
+	}
+	if red := redAt(paintReveal(r), 30, 30); red != 255 {
+		t.Errorf("revealed red = %d, want full", red)
+	}
+
+	// A reversal mid-exit starts from where it is, the full duration.
+	r.SetRevealed(false)
+	advance(c, 50*time.Millisecond)
+	mid := r.Progress()
+	r.SetRevealed(true)
+	advance(c, 50*time.Millisecond)
+	if p := r.Progress(); p <= mid || p >= 1 {
+		t.Errorf("reversed from %v to %v after half the duration, want between", mid, p)
+	}
+	c.drive()
+	if !slicesEqualBool(landed, []bool{true, true}) {
+		t.Errorf("landings %v: the interrupted exit must not report", landed)
+	}
+	r.SetRevealed(true) // already the target
+	if c.step() {
+		t.Error("asking for the current target scheduled a transition")
+	}
+}
+
+func slicesEqualBool(a, b []bool) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func TestRevealerZeroDurationSnaps(t *testing.T) {
+	c := pinAnimClock(t)
+	r, _ := revealerAt(t, RevealZoom)
+	r.SetDuration(0)
+	landed := 0
+	r.SetOnTransitionDone(func(bool) { landed++ })
+	r.SetRevealed(true)
+	if r.Progress() != 1 || landed != 1 {
+		t.Errorf("zero duration: progress %v, %d landings; want an instant landing", r.Progress(), landed)
+	}
+	if c.step() {
+		t.Error("a zero-duration reveal scheduled frames")
+	}
+}
+
+func TestRevealerNoneTakesNoSpaceHidden(t *testing.T) {
+	pinAnimClock(t)
+	r, _ := revealerAt(t, RevealNone)
+	if sz := r.Measure(Constraints{Max: Size{W: 80, H: 60}}); sz != (Size{}) {
+		t.Errorf("hidden none measures %v, want nothing", sz)
+	}
+	if r.HitTest(Point{X: 30, Y: 30}) != nil {
+		t.Error("a hidden child took input")
+	}
+	r.SetRevealed(true)
+	if sz := r.Measure(Constraints{Max: Size{W: 80, H: 60}}); sz != (Size{W: 40, H: 20}) {
+		t.Errorf("shown none measures %v", sz)
+	}
+	if got := redAt(paintReveal(r), 30, 30); got != 255 {
+		t.Errorf("none shows at once: red %d", got)
+	}
+	if r.HitTest(Point{X: 30, Y: 30}) == nil {
+		t.Error("a shown child took no input")
+	}
+}
+
+func TestRevealerSlideStaysInItsSlot(t *testing.T) {
+	c := pinAnimClock(t)
+	r, _ := revealerAt(t, RevealSlideUp)
+	r.SetRevealed(true)
+	advance(c, 50*time.Millisecond)
+	cv := paintReveal(r)
+	// Entering from below: the bottom of the slot shows, the top not yet.
+	if redAt(cv, 30, 38) != 255 || redAt(cv, 30, 22) != 0 {
+		t.Errorf("mid-slide: bottom red %d, top red %d; want the child entering from below",
+			redAt(cv, 30, 38), redAt(cv, 30, 22))
+	}
+	if got := lit(cv, render.Rect{X: 20, Y: 40, W: 40, H: 20}); got != 0 {
+		t.Errorf("%d px drawn below the slot; a slide is clipped to it", got)
+	}
+}
+
+func TestRevealerTransformsAndDamage(t *testing.T) {
+	c := pinAnimClock(t)
+	r, _ := revealerAt(t, RevealZoom)
+	r.SetRevealed(true)
+	advance(c, 50*time.Millisecond)
+	cv := paintReveal(r)
+	if redAt(cv, 40, 30) == 0 {
+		t.Error("a half zoom drew nothing at the center")
+	}
+	if redAt(cv, 21, 21) != 0 {
+		t.Error("a half zoom reached the corner")
+	}
+
+	// A bounce overshoots its slot near the end; the damage covers it,
+	// and the frame after repaints what the overshoot left behind.
+	b, _ := revealerAt(t, RevealBounce)
+	b.SetRevealed(true)
+	advance(c, 85*time.Millisecond) // the last frame before landing, still overshooting
+	cv = paintReveal(b)
+	if got := lit(cv, render.Rect{X: 0, Y: 0, W: 80, H: 20}); got == 0 {
+		t.Error("the bounce's overshoot drew nothing above the slot")
+	}
+	CollectDamage(b)
+	c.step() // landed: the slot alone draws now
+	if b.Progress() != 1 {
+		t.Fatalf("progress %v after one more frame, want the landing", b.Progress())
+	}
+	rects, any := CollectDamage(b)
+	if !any || !coversRect(rects, render.Rect{X: 20, Y: 19, W: 40, H: 1}) {
+		t.Errorf("damage %v misses the overshoot above the slot", rects)
+	}
+}
+
+func coversRect(rects []render.Rect, want render.Rect) bool {
+	for _, r := range rects {
+		if r.Intersect(want) == want {
+			return true
+		}
+	}
+	return false
+}
+
+func TestRevealerGenieCollapsesTowardItsEdge(t *testing.T) {
+	c := pinAnimClock(t)
+	r, _ := revealerAt(t, RevealGenie)
+	r.SetGenieEdge(EdgeTop)
+	r.SetRevealed(true)
+	advance(c, 50*time.Millisecond)
+	cv := paintReveal(r)
+	if redAt(cv, 40, 20) == 0 || redAt(cv, 40, 38) != 0 {
+		t.Errorf("a genie toward the top: top red %d, bottom red %d", redAt(cv, 40, 20), redAt(cv, 40, 38))
+	}
+}
