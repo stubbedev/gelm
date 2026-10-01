@@ -22,9 +22,9 @@ type fakePopSurface struct {
 	resizes [][2]int
 }
 
-func (f *fakePopSurface) Destroyed() bool { return f.destroyed }
-func (f *fakePopSurface) Dismissed() bool { return f.dismissed }
-func (f *fakePopSurface) MarkFrame()      { f.frames++ }
+func (f *fakePopSurface) Destroyed() bool           { return f.destroyed }
+func (f *fakePopSurface) Dismissed() bool           { return f.dismissed }
+func (f *fakePopSurface) MarkFrame()                { f.frames++ }
 func (f *fakePopSurface) RequestedSize() (int, int) { return f.w, f.h }
 func (f *fakePopSurface) Gutter() int               { return 2 }
 func (f *fakePopSurface) Resize(w, h int) bool {
