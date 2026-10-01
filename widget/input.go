@@ -492,6 +492,8 @@ func (r *Router) Release(button uint32, p Point) {
 		if !handled {
 			if c, ok := hit.(Clicker); ok {
 				c.ClickAt(p)
+			} else if fn := clickWithinOf(hit); fn != nil {
+				fn()
 			}
 		}
 		r.lastClick = time.Now()
@@ -874,4 +876,27 @@ func (r *Router) keyboardTarget() Widget {
 // ring around whatever widget.Boundser the router focuses.
 type Boundser interface {
 	Bounds() render.Rect
+}
+
+// clickWithinOf is the nearest SetOnClickWithin hook at or above w, nil
+// when no enabled ancestor registered one. A clicking widget on the way
+// up stops the walk: its own click is the one that counts, so a label
+// inside a button never bubbles past the button.
+func clickWithinOf(w Widget) func() {
+	for at := w; at != nil; at = parentOf(at) {
+		if at != w {
+			if _, ok := at.(Clicker); ok {
+				return nil
+			}
+		}
+		if cw, ok := at.(interface{ clickWithin() func() }); ok {
+			if fn := cw.clickWithin(); fn != nil {
+				if !IsEnabled(at) {
+					return nil
+				}
+				return fn
+			}
+		}
+	}
+	return nil
 }
