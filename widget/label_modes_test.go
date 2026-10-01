@@ -314,3 +314,40 @@ func TestLabelEllipsizeTooltipCombo(t *testing.T) {
 		t.Error("Label does not satisfy TooltipTexter; the tooltip plumbing cannot read it")
 	}
 }
+
+// SetMaxWidthChars caps the natural width at n approximate character
+// widths: longer text measures at the cap (and ellipsizes there),
+// shorter text keeps its own width, and 0 lifts the cap.
+func TestLabelMaxWidthChars(t *testing.T) {
+	face := testFace(t)
+	white := render.RGB(255, 255, 255)
+	avg := face.Shape(approxCharSample, modePx).Advance() / float64(len(approxCharSample))
+	limit := int(math.Ceil(avg * 5))
+	wide := Constraints{Max: Size{W: 4096, H: 100}}
+
+	long := NewLabel(face, modePx, "alphabetagammadeltaepsilon", white)
+	long.SetEllipsize(EllipsizeEnd)
+	long.SetMaxWidthChars(5)
+	if got := long.Measure(wide).W; got > limit || got == 0 {
+		t.Errorf("capped width = %d, want within the 5-char cap %d", got, limit)
+	}
+	if long.MaxWidthChars() != 5 {
+		t.Errorf("MaxWidthChars = %d", long.MaxWidthChars())
+	}
+
+	short := NewLabel(face, modePx, "ab", white)
+	short.SetMaxWidthChars(5)
+	if got := short.Measure(wide).W; got != short.natural.W {
+		t.Errorf("short text = %d, want its natural %d", got, short.natural.W)
+	}
+
+	long.SetMaxWidthChars(0)
+	if got := long.Measure(wide).W; got != long.natural.W {
+		t.Errorf("uncapped width = %d, want the natural %d", got, long.natural.W)
+	}
+	// A negative count is no cap, not a zero-width label.
+	long.SetMaxWidthChars(-3)
+	if long.MaxWidthChars() != 0 || long.Measure(wide).W != long.natural.W {
+		t.Error("a negative cap was applied")
+	}
+}

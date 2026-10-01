@@ -40,16 +40,19 @@ const (
 // SetTooltip and let the mode shorten what paints.
 type Label struct {
 	node
-	face    render.Font
-	text    string
-	sizePx  float64
-	color   render.Color
-	align   render.Alignment
-	dir     Direction
-	wrap    bool
-	ell     EllipsizeMode
-	shaped  *render.ShapedText
-	natural Size
+	face   render.Font
+	text   string
+	sizePx float64
+	color  render.Color
+	align  render.Alignment
+	dir    Direction
+	wrap   bool
+	ell    EllipsizeMode
+	// maxChars caps the natural width at that many approximate
+	// character widths (GTK max-width-chars); 0 is uncapped.
+	maxChars int
+	shaped   *render.ShapedText
+	natural  Size
 }
 
 // NewLabel returns a label that paints text with face at sizePx
@@ -169,6 +172,39 @@ func (l *Label) SetEllipsize(mode EllipsizeMode) {
 // Ellipsize returns the label's truncation mode.
 func (l *Label) Ellipsize() EllipsizeMode { return l.ell }
 
+// SetMaxWidthChars caps the label's natural width at n approximate
+// character widths (GTK's max-width-chars): longer text overflows the
+// cap and truncates by the ellipsize mode. n <= 0 removes the cap.
+func (l *Label) SetMaxWidthChars(n int) {
+	n = max(n, 0)
+	if l.maxChars == n {
+		return
+	}
+	l.maxChars = n
+	l.InvalidateLayout()
+}
+
+// MaxWidthChars returns the width cap in characters, 0 when uncapped.
+func (l *Label) MaxWidthChars() int { return l.maxChars }
+
+// approxCharSample stands in for pango's per-language sample text: the
+// approximate character width is its mean advance.
+const approxCharSample = "abcdefghijklmnopqrstuvwxyz0123456789"
+
+// capWidth applies the max-width-chars cap to the offered width.
+func (l *Label) capWidth(con Constraints) Constraints {
+	if l.maxChars <= 0 {
+		return con
+	}
+	face, px := l.effStyle()
+	avg := face.Shape(approxCharSample, px).Advance() / float64(len(approxCharSample))
+	limit := int(math.Ceil(avg * float64(l.maxChars)))
+	if limit < con.Max.W {
+		con.Max.W = max(limit, con.Min.W)
+	}
+	return con
+}
+
 // effStyleIn resolves the paint parameters one cascade value implies:
 // the face (a font-family/font-weight declaration shaped through the
 // installed face resolver, else the constructor face) and the size
@@ -249,6 +285,7 @@ func (l *Label) Measure(con Constraints) Size {
 // against the offered width - the rounded natural size can lie by a
 // pixel.
 func (l *Label) measureNatural(con Constraints) Size {
+	con = l.capWidth(con)
 	face, px := l.effStyle()
 	lineH := l.shaped.LineHeight()
 	if !l.wrap {
