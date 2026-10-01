@@ -72,3 +72,11 @@ const (
 	multilistH    = 300
 	multilistRows = 10
 )
+
+// popoverW and popoverH mirror the popover client's layer surface
+// (cmd/gelm-popover), anchored top-left so its traced button center is
+// a compositor coordinate.
+const (
+	popoverW = 300
+	popoverH = 200
+)

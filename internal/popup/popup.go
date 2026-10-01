@@ -176,9 +176,17 @@ func New(sess *wlsession.Session, cfg Config) (*Popup, error) {
 	if err != nil {
 		return nil, fmt.Errorf("popup: get xdg surface: %w", err)
 	}
-	pop, err := xdgSurf.GetPopup(cfg.Parent, positioner)
+	pop, err := getPopup(xdgSurf, cfg.Parent, positioner)
 	if err != nil {
 		return nil, fmt.Errorf("popup: get popup: %w", err)
+	}
+	// A layer-shell parent has no xdg_surface: the popup is created
+	// parentless and the layer surface adopts it (get_popup), before
+	// the grab and the mapping commit.
+	if cfg.LayerParent != nil {
+		if err := cfg.LayerParent.GetPopup(pop); err != nil {
+			return nil, fmt.Errorf("popup: layer get_popup: %w", err)
+		}
 	}
 	p.XdgSurface, p.XdgPopup = xdgSurf, pop
 	debug.Log("input", "popup xdg_surface %d xdg_popup %d", xdgSurf.Id(), pop.Id())
@@ -406,15 +414,7 @@ func Run(sess *wlsession.Session, p *Popup, frac120 uint32, root widget.Widget, 
 	defer frame.Close()
 
 	router := &widget.Router{Root: root}
-	var pointer struct{ x, y float64 }
-	input := &popupInput{
-		dismissed: p.Dismissed,
-		router:    router,
-		pointer:   &pointer,
-		markDirty: func() { p.dirty.Store(true) },
-	}
-	sess.SetSurfaceInput(p.WLSurface, input)
-	defer sess.SetSurfaceInput(p.WLSurface, nil)
+	defer p.AttachInput(sess, router)()
 
 	if keys != nil {
 		prevKey := sess.OnKey
@@ -462,6 +462,22 @@ func Run(sess *wlsession.Session, p *Popup, frac120 uint32, root widget.Widget, 
 		}
 	}
 	return ErrClosed
+}
+
+// AttachInput routes the popup surface's pointer events into router
+// (press, release, motion, leave), each one marking the popup for a
+// repaint, until the returned detach. Run attaches its own; the
+// application loop attaches one for the popovers it drives.
+func (p *Popup) AttachInput(sess *wlsession.Session, router *widget.Router) (detach func()) {
+	var pointer struct{ x, y float64 }
+	input := &popupInput{
+		dismissed: p.Dismissed,
+		router:    router,
+		pointer:   &pointer,
+		markDirty: func() { p.dirty.Store(true) },
+	}
+	sess.SetSurfaceInput(p.WLSurface, input)
+	return func() { sess.SetSurfaceInput(p.WLSurface, nil) }
 }
 
 // popupInput routes one popup surface's pointer events into its widget
@@ -513,3 +529,26 @@ func (in *popupInput) HandlePointerAxis(dx, dy float64) {}
 // device went away, so the whole gesture ends: an in-flight press is
 // cancelled without a click, its release will never arrive.
 func (in *popupInput) HandlePointerLeave() { in.router.PointerLost() }
+
+// getPopup is xdg_surface.get_popup. A layer-parented popup has no
+// xdg parent; the generated binding cannot send that null: a typed-nil
+// *xdg.Surface encodes as object 0 but then panics in the new-id scan,
+// which calls Id on every proxy argument. nullParent is a nil proxy
+// whose methods are nil-safe.
+func getPopup(s *xdg.Surface, parent *xdg.Surface, positioner *xdg.Positioner) (*xdg.Popup, error) {
+	if parent != nil {
+		return s.GetPopup(parent, positioner)
+	}
+	pop := xdg.NewPopup(s.Context())
+	return pop, s.Context().SendRequest(s, 2, pop, (*nullParent)(nil), positioner)
+}
+
+// nullParent is the null object argument: a nil pointer the wire
+// writes as id 0, with every Proxy method safe on it.
+type nullParent struct{}
+
+func (*nullParent) Context() *wl.Context   { return nil }
+func (*nullParent) SetContext(*wl.Context) {}
+func (*nullParent) Id() wl.ProxyId         { return 0 }
+func (*nullParent) SetId(wl.ProxyId)       {}
+func (*nullParent) Unregister()            {}

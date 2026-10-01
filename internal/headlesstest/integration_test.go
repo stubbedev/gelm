@@ -858,3 +858,58 @@ func TestHeadlessDialogModality(t *testing.T) {
 		t.Errorf("d never reached the parent after the close: %v", err)
 	}
 }
+
+// TestHeadlessPopoverTakesTypingAndRepaints drives a popover the
+// application loop owns: its focused Entry takes typing through the
+// popup grab, its content repaints while the app changes it from a
+// timer (no input arriving), and Esc dismisses it with focus inside.
+func TestHeadlessPopoverTakesTypingAndRepaints(t *testing.T) {
+	requireEnv(t)
+	bin, err := BuildClient(testEnv.Dir, "./cmd/gelm-popover", "gelm-popover")
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := testEnv.StartClient(bin, "client-"+t.Name(), "input,frame,demo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(c.Stop)
+	w, err := c.Watch()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.Wait("demo", fmt.Sprintf("mapped %dx%d", popoverW, popoverH), traceTimeout); err != nil {
+		t.Fatalf("popover client never mapped: %v", err)
+	}
+	tr, err := w.Wait("demo", "control open center ", traceTimeout)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var x, y int
+	if _, err := fmt.Sscanf(tr.Message, "control open center (%d,%d)", &x, &y); err != nil {
+		t.Fatalf("bad trace %q: %v", tr.Message, err)
+	}
+	in := newInput(t)
+	if err := clickUntil(w, in, "demo", x, y, BTNLeft, "popover open"); err != nil {
+		t.Fatalf("popover never opened: %v", err)
+	}
+	if err := in.TypeText("hi"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.Wait("demo", "popover text hi", traceTimeout); err != nil {
+		t.Errorf("typing never reached the focused entry: %v\n%s", err, tailTraces(w, 25))
+	}
+	// The ticker changes the label every 100ms with no input arriving:
+	// an app-loop popover paints each change.
+	for i := range 3 {
+		if _, err := w.Wait("frame", "popup ", traceTimeout); err != nil {
+			t.Fatalf("popover frame %d after the timer change never painted: %v\n%s", i, err, tailTraces(w, 25))
+		}
+	}
+	if err := in.Tap(KeyEscape); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.Wait("demo", "popover closed", traceTimeout); err != nil {
+		t.Errorf("Esc with the entry focused never dismissed: %v", err)
+	}
+}

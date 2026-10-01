@@ -2,6 +2,8 @@ package app
 
 import (
 	"errors"
+	"fmt"
+	"slices"
 	"sync"
 
 	"github.com/neurlang/wayland/wl"
@@ -30,6 +32,10 @@ type PopoverConfig struct {
 	OnClosed func()
 	// Serial is the pointer serial of the opening event, for the grab.
 	Serial uint32
+	// Focus, when set, is the widget inside Content that takes keyboard
+	// focus as the popover opens (a form's first Entry, as GTK focuses
+	// a popover's first input): typing then reaches it without a click.
+	Focus widget.Widget
 }
 
 // Popover is a widget-anchored transient popup. It closes on
@@ -154,6 +160,9 @@ func (r *popoverKeyRoot) Arrange(rect render.Rect) {
 
 func (r *popoverKeyRoot) Paint(cv *render.Canvas) { r.content.Paint(cv) }
 
+// Children exposes the content to the tree walks (damage, focus).
+func (r *popoverKeyRoot) Children() []widget.Widget { return []widget.Widget{r.content} }
+
 func (r *popoverKeyRoot) HitTest(p widget.Point) widget.Widget {
 	if r.content.HitTest(p) != nil {
 		return r.content
@@ -245,8 +254,18 @@ func (a *Application) OpenPopover(host Host, cfg PopoverConfig) (*Popover, error
 		return nil, errors.New("app: host cannot carry popups")
 	}
 
+	// A bar-style layer declines the keyboard; the popover's grab needs
+	// it (Esc, menus, a form's Entry), so the layer takes keys on demand
+	// while the popover is open, as the Rust bar does around a dropdown.
+	restoreKeys := func() {}
+	if km, ok := host.(keyboardModer); ok && km.KeyboardMode() == KeyboardNone {
+		if err := km.SetKeyboardMode(KeyboardOnDemand); err == nil {
+			restoreKeys = func() { _ = km.SetKeyboardMode(KeyboardNone) }
+		}
+	}
 	pop, err := popup.New(a.sess, pcfg)
 	if err != nil {
+		restoreKeys()
 		return nil, err
 	}
 	// Dismiss, not Close: the programmatic path takes the same two-
@@ -255,18 +274,37 @@ func (a *Application) OpenPopover(host Host, cfg PopoverConfig) (*Popover, error
 	// teardown.
 	p.closeFn = pop.Dismiss
 	fireClosed := func() {
-		if p.markClosed() && cfg.OnClosed != nil {
+		if !p.markClosed() {
+			return
+		}
+		restoreKeys()
+		if cfg.OnClosed != nil {
 			cfg.OnClosed()
 		}
 	}
 	pop.SetOnClosed(fireClosed)
 
 	a.popovers.openOrReplace(host, p)
-	go func() {
-		_ = popup.Run(a.sess, pop, a.fracFor(host), keyRoot, widget.Current().Surface, keyRoot)
-		a.popovers.take(host)
-		fireClosed()
-	}()
+	// The application loop drives the popover like any of its windows:
+	// one painter pass per loop pass, pointer input through a Router on
+	// the loop goroutine, keys through the same Router once a widget
+	// holds focus. Content the app mutates from Invoke repaints on the
+	// next pass, and nothing paints from a second goroutine.
+	router := &widget.Router{Root: keyRoot}
+	op := &openPopover{
+		host:       host,
+		pop:        pop,
+		painter:    pop.NewPainter(a.sess, a.fracFor(host), keyRoot, widget.Current().Surface),
+		router:     router,
+		keyRoot:    keyRoot,
+		popover:    p,
+		fireClosed: fireClosed,
+	}
+	if cfg.Focus != nil {
+		router.SetFocus(cfg.Focus)
+	}
+	op.detach = pop.AttachInput(a.sess, router)
+	a.openPopovers = append(a.openPopovers, op)
 	return p, nil
 }
 
@@ -303,4 +341,103 @@ func (l *LayerWindow) HostSurface() *wl.Surface { return l.ls.HostSurface() }
 // LayerPopupSurface implements LayerSurfacer for the layer handle.
 func (l *LayerWindow) LayerPopupSurface() *wlr.ZwlrLayerSurfaceV1 {
 	return l.ls.LayerPopupSurface()
+}
+
+// popSurface is the popup half the loop drives (a *popup.Popup).
+type popSurface interface {
+	Destroyed() bool
+	Dismissed() bool
+	MarkFrame()
+}
+
+// popPainter is the frame pipeline half (a *popup.Painter).
+type popPainter interface {
+	Pass() (bool, error)
+	Close()
+}
+
+// openPopover is one popover the application loop drives.
+type openPopover struct {
+	host       Host
+	pop        popSurface
+	painter    popPainter
+	router     *widget.Router
+	keyRoot    *popoverKeyRoot
+	popover    *Popover
+	detach     func()
+	fireClosed func()
+}
+
+// drivePopovers runs one loop pass over the open popovers: a destroyed
+// one (its exit tween landed) releases its painter and input and fires
+// its close; a live one repaints when anything changed — all marks it
+// dirty (loop work ran that may have touched its content) — and paints
+// at most one frame.
+func (a *Application) drivePopovers(all bool) error {
+	kept := a.openPopovers[:0]
+	for _, op := range a.openPopovers {
+		if op.pop.Destroyed() {
+			op.painter.Close()
+			op.detach()
+			if a.popovers.open[op.host] == op.popover {
+				a.popovers.take(op.host)
+			}
+			op.fireClosed()
+			continue
+		}
+		if _, damaged := widget.CollectDamage(op.keyRoot); damaged || all {
+			op.pop.MarkFrame()
+		}
+		if _, err := op.painter.Pass(); err != nil {
+			return fmt.Errorf("app: popover paint: %w", err)
+		}
+		kept = append(kept, op)
+	}
+	clear(a.openPopovers[len(kept):])
+	a.openPopovers = kept
+	return nil
+}
+
+// keyPopover is the popover holding the keyboard: the newest one still
+// taking input. An open popover grabs the seat, so keys never reach
+// the windows beneath it.
+func (a *Application) keyPopover() *openPopover {
+	for _, op := range slices.Backward(a.openPopovers) {
+		if !op.pop.Dismissed() {
+			return op
+		}
+	}
+	return nil
+}
+
+// deliverPopoverKey routes one press inside a popover. Esc dismisses
+// whatever has focus (GTK's popover rule). With a focused widget — an
+// Entry the user clicked — the press takes the windows' full key path
+// (editing, clipboard, focus traversal, text); without one, the
+// actions and raw keys go to the popover root, which forwards them to
+// the content (a menu's arrows, mnemonics, accelerators).
+func (a *Application) deliverPopoverKey(tr keyTranslator, op *openPopover, keycode uint32, mods wlsession.Mods) {
+	defer op.pop.MarkFrame()
+	sym := tr.KeySym(keycode)
+	act, isAction := widget.KeyActionForSym(sym)
+	if isAction && act == widget.KeyDismiss {
+		op.keyRoot.onDismiss()
+		return
+	}
+	if op.router.Focused() != nil {
+		routeKey(tr, op.router, keycode, mods, a.clip, a.accels, nil)
+		return
+	}
+	if isAction {
+		op.keyRoot.KeyAction(act, widget.Mods(mods))
+		return
+	}
+	_ = op.keyRoot.RawKey(keycode, widget.Mods(mods), sym)
+}
+
+// keyboardModer is a host whose keyboard interactivity a popover can
+// raise while open (*LayerWindow).
+type keyboardModer interface {
+	KeyboardMode() KeyboardMode
+	SetKeyboardMode(KeyboardMode) error
 }
