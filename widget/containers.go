@@ -246,6 +246,7 @@ type Scroll struct {
 	child      Widget
 	nat        Size
 	offX, offY int
+	maxH       int
 
 	// ShowBars enables the auto-hiding scrollbar indicators.
 	ShowBars bool
@@ -443,8 +444,30 @@ func (s *Scroll) Measure(con Constraints) Size {
 	if s.child != nil {
 		s.nat = s.child.Measure(Constraints{Max: Size{W: math.MaxInt, H: math.MaxInt}})
 	}
-	return s.measureStore(con, clampSize(s.nat, con))
+	want := s.nat
+	if s.maxH > 0 && want.H > s.maxH {
+		// Capped, the content overflows: the vertical bar's gutter
+		// comes on top of the content width, not out of it.
+		want = Size{W: want.W + gutter, H: s.maxH}
+	}
+	return s.measureStore(con, clampSize(want, con))
 }
+
+// SetMaxContentHeight caps the height the scroll asks for (GTK's
+// max-content-height with propagate-natural-height): up to h it is as
+// tall as its content, past it h tall and scrolling. 0, the default,
+// is no cap; a negative h is 0.
+func (s *Scroll) SetMaxContentHeight(h int) {
+	h = max(h, 0)
+	if h == s.maxH {
+		return
+	}
+	s.maxH = h
+	s.InvalidateLayout()
+}
+
+// MaxContentHeight is the cap SetMaxContentHeight set, 0 for none.
+func (s *Scroll) MaxContentHeight() int { return s.maxH }
 
 // Arrange pins the viewport to r, reserving a gutter for each
 // overflowing axis, and places the child at the negative offset:
