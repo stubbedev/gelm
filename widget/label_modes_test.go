@@ -351,3 +351,57 @@ func TestLabelMaxWidthChars(t *testing.T) {
 		t.Error("a negative cap was applied")
 	}
 }
+
+func TestLabelMaxLines(t *testing.T) {
+	face := testFace(t)
+	lineH := modeLineH(t, face)
+	text := "alpha beta gam-ma delta epsilon zeta eta theta iota kappa lambda"
+	w := widthForLines(t, face, text, 4)
+
+	t.Run("wrap and ellipsize fold the overflow into the last row", func(t *testing.T) {
+		l := NewLabel(face, modePx, text, render.RGB(255, 255, 255))
+		l.SetWrap(true)
+		l.SetEllipsize(EllipsizeEnd)
+		l.SetMaxLines(2)
+		rows := l.wrapped(float64(w))
+		if len(rows) != 2 {
+			t.Fatalf("rows = %d, want 2", len(rows))
+		}
+		plain := render.WrapText(face, text, float64(w), modePx)
+		if rows[0] != plain[0] {
+			t.Errorf("row 0 = %q, want the plain wrap %q", rows[0], plain[0])
+		}
+		if !strings.HasSuffix(rows[1], "…") {
+			t.Errorf("last row = %q, want an ellipsis for the dropped rows", rows[1])
+		}
+		if got := l.Measure(Constraints{Max: Size{W: w, H: 400}}); got.H != 2*lineH {
+			t.Errorf("height = %d, want two rows %d", got.H, 2*lineH)
+		}
+	})
+
+	t.Run("text within the limit is untouched", func(t *testing.T) {
+		l := NewLabel(face, modePx, text, render.RGB(255, 255, 255))
+		l.SetWrap(true)
+		l.SetEllipsize(EllipsizeEnd)
+		l.SetMaxLines(9)
+		if rows := l.wrapped(float64(w)); len(rows) != 4 || strings.Contains(strings.Join(rows, ""), "…") {
+			t.Errorf("rows = %q, want the four plain rows", rows)
+		}
+	})
+
+	t.Run("without ellipsize the limit has no effect, as in GTK", func(t *testing.T) {
+		l := NewLabel(face, modePx, text, render.RGB(255, 255, 255))
+		l.SetWrap(true)
+		l.SetMaxLines(2)
+		if rows := l.wrapped(float64(w)); len(rows) != 4 {
+			t.Errorf("rows = %d, want all 4", len(rows))
+		}
+		if l.MaxLines() != 2 {
+			t.Errorf("MaxLines = %d", l.MaxLines())
+		}
+		l.SetMaxLines(-3)
+		if l.MaxLines() != 0 {
+			t.Errorf("negative limit = %d, want 0", l.MaxLines())
+		}
+	})
+}
