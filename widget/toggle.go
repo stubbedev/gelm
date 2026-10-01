@@ -112,6 +112,9 @@ func (s *Switch) InsertRune(r rune) {
 type ProgressBar struct {
 	node
 	value float64
+	// Fill and Trough color the bar; zero is the theme's accent and
+	// surface.
+	Fill, Trough render.Color
 }
 
 // NewProgressBar returns a progress bar at value clamped to [0, 1].
@@ -155,11 +158,18 @@ func (p *ProgressBar) Measure(con Constraints) Size {
 // to the theme.
 func (p *ProgressBar) Paint(cv *render.Canvas) {
 	t := Current()
-	cv.RoundedRect(p.bounds, p.bounds.H/2, t.Surface)
+	trough, fillColor := p.Trough, p.Fill
+	if trough == 0 {
+		trough = t.Surface
+	}
+	if fillColor == 0 {
+		fillColor = t.Accent
+	}
+	cv.RoundedRect(p.bounds, p.bounds.H/2, trough)
 	fill := p.bounds
 	fill.W = int(float64(p.bounds.W) * p.value)
 	if fill.W > 0 {
-		cv.RoundedRect(fill, p.bounds.H/2, t.Accent)
+		cv.RoundedRect(fill, p.bounds.H/2, fillColor)
 	}
 }
 
