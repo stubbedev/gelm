@@ -196,3 +196,44 @@ func TestPopoverSetFocusRoutesThroughItsRouter(t *testing.T) {
 	var none *Popover
 	none.SetFocus(a) // nil-safe
 }
+
+// TestPopoverClickReachesTheWidgetUnderThePointer pins the popover's
+// pointer routing: a press and release over a button inside the
+// content click that button. Regression: the root's hit test answered
+// the whole content, so no widget inside any popover ever got a click.
+func TestPopoverClickReachesTheWidgetUnderThePointer(t *testing.T) {
+	face, err := render.LoadFont(goregular.TTF)
+	if err != nil {
+		t.Fatal(err)
+	}
+	clicks := 0
+	button := widget.NewButton(widget.NewLabel(face, 14, "go", render.RGB(255, 255, 255)), 4, 4)
+	button.OnClick = func() { clicks++ }
+	content := widget.NewBox(widget.Column, 0, 10)
+	content.Append(widget.NewLabel(face, 14, "title", render.RGB(255, 255, 255)), false)
+	content.Append(button, false)
+	op, _, _, _ := newLoopPopover(content)
+	op.keyRoot.Measure(widget.Constraints{Max: widget.Size{W: 200, H: 200}})
+	op.keyRoot.Arrange(render.Rect{W: 200, H: 200})
+
+	b := button.Bounds()
+	at := widget.Point{X: b.X + b.W/2, Y: b.Y + b.H/2}
+	if hit := op.keyRoot.HitTest(at); hit != widget.Widget(button) {
+		t.Fatalf("hit %T, want the button", hit)
+	}
+	op.router.Move(at)
+	op.router.Press(widget.BTNLeft, at)
+	op.router.Release(widget.BTNLeft, at)
+	if clicks != 1 {
+		t.Errorf("clicks = %d, want the button clicked once", clicks)
+	}
+	// Off the button: nothing clicks; off the content, the root answers.
+	op.router.Press(widget.BTNLeft, widget.Point{X: 2, Y: 2})
+	op.router.Release(widget.BTNLeft, widget.Point{X: 2, Y: 2})
+	if clicks != 1 {
+		t.Error("a press off the button clicked it")
+	}
+	if hit := op.keyRoot.HitTest(widget.Point{X: 500, Y: 500}); hit != widget.Widget(op.keyRoot) {
+		t.Errorf("off-content hit = %T, want the root", hit)
+	}
+}

@@ -1241,3 +1241,17 @@ func (s *Session) Close() {
 		_ = s.Display.Context().Close()
 	}
 }
+
+// AxisSteps converts a smooth axis value to scroll steps (one per 10
+// units), keeping at least one step when the value is nonzero: what
+// every surface's HandlePointerAxis hands its router.
+func AxisSteps(v float64) int {
+	steps := int(v / 10)
+	if v != 0 && steps == 0 {
+		steps = 1
+		if v < 0 {
+			steps = -1
+		}
+	}
+	return steps
+}
