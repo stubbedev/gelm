@@ -45,8 +45,10 @@ func run() error {
 	t := widget.Current()
 
 	button := widget.NewButton(widget.NewLabel(tf, 13, "open", t.Text), 8, 6)
+	menuButton := widget.NewButton(widget.NewLabel(tf, 13, "menu", t.Text), 8, 6)
 	root := widget.NewBox(widget.Column, 8, 10)
 	root.Append(button, false)
+	root.Append(menuButton, false)
 
 	// Popovers parent to layer surfaces (a bar's dropdowns): a top-left
 	// anchored layer keeps the traced coordinates compositor ones.
@@ -105,6 +107,42 @@ func run() error {
 		debug.Log("demo", "popover open")
 	}
 
+	// The nested menu: a submenu row and a leaf inside it, so the suite
+	// drives a popover nested under a popover from the keyboard.
+	var menu *app.MenuPopover
+	menuButton.OnClick = func() {
+		m, err := application.OpenMenuPopover(w, app.MenuPopoverConfig{
+			Anchor: menuButton,
+			Face:   tf,
+			SizePx: 13,
+			Serial: application.LastPressSerial(w),
+			Items: []widget.MenuItem{
+				{Label: "Recent", Items: []widget.MenuItem{
+					{Label: "a.txt", OnClick: func() { debug.Log("demo", "menu leaf a") }},
+				}},
+				{Label: "Quit", OnClick: func() { debug.Log("demo", "menu leaf quit") }},
+			},
+			OnClosed: func() { debug.Log("demo", "menu closed") },
+		})
+		if err != nil {
+			debug.Log("demo", "menu error %v", err)
+			return
+		}
+		menu = m
+		debug.Log("demo", "menu open")
+	}
+	depth := 0
+	application.Every(20*time.Millisecond, func() {
+		d := 0
+		if menu != nil {
+			d = menu.Depth()
+		}
+		if d != depth {
+			depth = d
+			debug.Log("demo", "menu depth %d", d)
+		}
+	})
+
 	traced := false
 	application.Every(50*time.Millisecond, func() {
 		if traced || w.EnsureUsable() != nil {
@@ -117,6 +155,8 @@ func run() error {
 		root.Arrange(render.Rect{W: ww, H: wh})
 		b := button.Bounds()
 		debug.Log("demo", "control open center (%d,%d)", b.X+b.W/2, b.Y+b.H/2)
+		mb := menuButton.Bounds()
+		debug.Log("demo", "control menu center (%d,%d)", mb.X+mb.W/2, mb.Y+mb.H/2)
 	})
 	return application.Run()
 }

@@ -237,3 +237,67 @@ func TestPopoverClickReachesTheWidgetUnderThePointer(t *testing.T) {
 		t.Errorf("off-content hit = %T, want the root", hit)
 	}
 }
+
+// TestNestedPopoverChain pins the chain bookkeeping: a parent's close
+// tears its children down deepest first through their own teardown, a
+// child that closes on its own leaves the parent's list, and Root and
+// Child walk the links.
+func TestNestedPopoverChain(t *testing.T) {
+	var order []string
+	mk := func(name string, parent *Popover) *Popover {
+		p := &Popover{parent: parent}
+		p.teardown = func() {
+			order = append(order, name)
+			p.closeChildren()
+		}
+		if parent != nil {
+			parent.children = append(parent.children, p)
+		}
+		return p
+	}
+	root := mk("root", nil)
+	mid := mk("mid", root)
+	leaf := mk("leaf", mid)
+	if leaf.Root() != root || root.Child() != mid || mid.Child() != leaf || leaf.Child() != nil || mid.Parent() != root {
+		t.Fatal("chain links")
+	}
+	root.closeChildren()
+	if len(order) != 2 || order[0] != "mid" || order[1] != "leaf" || root.Child() != nil {
+		t.Errorf("teardown order = %v", order)
+	}
+	// A child closing on its own leaves its parent alone.
+	other := mk("other", root)
+	root.dropChild(other)
+	if root.Child() != nil {
+		t.Error("a closed child stayed listed")
+	}
+}
+
+// TestDrivePopoversReapsChildrenFirst pins the wire order: a nested
+// popover destroyed in the same pass as its parent goes first, so the
+// parent never leaves while a child of it is still mapped.
+func TestDrivePopoversReapsChildrenFirst(t *testing.T) {
+	var order []string
+	mk := func(name string) *openPopover {
+		op, surf, _, _ := newLoopPopover(widget.NewBox(widget.Column, 0, 0))
+		surf.destroyed = true
+		op.fireClosed = func() { order = append(order, name) }
+		return op
+	}
+	parent, child := mk("parent"), mk("child")
+	a := &Application{openPopovers: []*openPopover{parent, child}}
+	if err := a.drivePopovers(false); err != nil {
+		t.Fatal(err)
+	}
+	if len(order) != 2 || order[0] != "child" || order[1] != "parent" || len(a.openPopovers) != 0 {
+		t.Errorf("reaped %v", order)
+	}
+	// Survivors keep their order.
+	keep1, _, _, _ := newLoopPopover(widget.NewBox(widget.Column, 0, 0))
+	keep2, _, _, _ := newLoopPopover(widget.NewBox(widget.Column, 0, 0))
+	a.openPopovers = []*openPopover{keep1, keep2}
+	_ = a.drivePopovers(false)
+	if a.openPopovers[0] != keep1 || a.openPopovers[1] != keep2 {
+		t.Error("live popovers were reordered")
+	}
+}

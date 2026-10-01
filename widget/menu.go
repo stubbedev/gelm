@@ -88,6 +88,10 @@ type Menu struct {
 	// OnSubmenu fires when a row with nested Items is activated; the
 	// host opens a child popup for it beside the parent row.
 	OnSubmenu func(index int, items []MenuItem)
+	// OnHover fires when the pointer moves onto another row, with its
+	// index: a nested menu opens the row's submenu, or closes the one
+	// a sibling had open, on hover as GTK's does.
+	OnHover func(index int)
 
 	// mnemonics maps each row's lowercased Alt-letter to its row index;
 	// mnemRunes holds the letter's rune index in the row's label (-1
@@ -343,8 +347,23 @@ func (m *Menu) HoverMove(p Point) {
 	if i := m.itemAt(p); i != m.hovered {
 		m.hovered = i
 		m.Invalidate()
+		if i >= 0 && m.OnHover != nil {
+			m.OnHover(i)
+		}
 	}
 }
+
+// RowBounds is row i's rect in the menu's coordinates: where a
+// submenu anchors beside it. Empty for an index out of range.
+func (m *Menu) RowBounds(i int) render.Rect {
+	if i < 0 || i >= len(m.items) {
+		return render.Rect{}
+	}
+	return render.Rect{X: m.bounds.X, Y: m.bounds.Y + 4 + i*m.itemH, W: m.bounds.W, H: m.itemH}
+}
+
+// Items returns the menu's rows.
+func (m *Menu) Items() []MenuItem { return m.items }
 
 // itemAt maps a root-space point to an item index, -1 outside.
 func (m *Menu) itemAt(p Point) int {

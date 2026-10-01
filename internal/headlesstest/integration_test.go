@@ -913,3 +913,66 @@ func TestHeadlessPopoverTakesTypingAndRepaints(t *testing.T) {
 		t.Errorf("Esc with the entry focused never dismissed: %v", err)
 	}
 }
+
+// TestHeadlessNestedMenuPopover drives a menu whose submenu is a
+// popover nested under the root popover (an xdg_popup child of a
+// popup) through a real compositor: Right opens the submenu with the
+// keyboard, the nested popover takes the keys, Enter on its leaf runs
+// it and closes the whole chain, child before parent, and the client
+// lives on to open the menu again.
+func TestHeadlessNestedMenuPopover(t *testing.T) {
+	requireEnv(t)
+	bin, err := BuildClient(testEnv.Dir, "./cmd/gelm-popover", "gelm-popover")
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := testEnv.StartClient(bin, "client-"+t.Name(), "input,demo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(c.Stop)
+	w, err := c.Watch()
+	if err != nil {
+		t.Fatal(err)
+	}
+	tr, err := w.Wait("demo", "control menu center ", traceTimeout)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var x, y int
+	if _, err := fmt.Sscanf(tr.Message, "control menu center (%d,%d)", &x, &y); err != nil {
+		t.Fatalf("bad trace %q: %v", tr.Message, err)
+	}
+	in := newInput(t)
+	for round := range 2 {
+		if err := clickUntil(w, in, "demo", x, y, BTNLeft, "menu open"); err != nil {
+			t.Fatalf("round %d: the menu never opened: %v", round, err)
+		}
+		if _, err := w.Wait("demo", "menu depth 1", traceTimeout); err != nil {
+			t.Fatal(err)
+		}
+		for _, key := range []uint32{KeyDown, KeyRight} {
+			if err := in.Tap(key); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if _, err := w.Wait("demo", "menu depth 2", traceTimeout); err != nil {
+			t.Fatalf("round %d: Right never opened the nested popover: %v\n%s", round, err, tailTraces(w, 25))
+		}
+		for _, key := range []uint32{KeyDown, KeyEnter} {
+			if err := in.Tap(key); err != nil {
+				t.Fatal(err)
+			}
+		}
+		// The chain closes first, then the leaf acts.
+		if _, err := w.Wait("demo", "menu closed", traceTimeout); err != nil {
+			t.Fatalf("round %d: the leaf did not close the chain: %v\n%s", round, err, tailTraces(w, 25))
+		}
+		if _, err := w.Wait("demo", "menu leaf a", traceTimeout); err != nil {
+			t.Fatalf("round %d: the nested popover never took the keys: %v", round, err)
+		}
+		if _, err := w.Wait("demo", "menu depth 0", traceTimeout); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
