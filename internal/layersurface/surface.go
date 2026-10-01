@@ -98,8 +98,11 @@ type Surface struct {
 	cfg        Config
 	configured bool
 	closed     bool
-	width      uint32
-	height     uint32
+	// destroyed is the client-side destroy (Close); closed also covers
+	// the compositor closing the surface.
+	destroyed bool
+	width     uint32
+	height    uint32
 }
 
 // New assigns the layer role and sends the initial state. The caller must
@@ -168,8 +171,19 @@ func (s *Surface) SetSize(width, height uint32) error {
 // records the new size and acknowledges the serial. A zero width or height
 // keeps the current choice for that axis, per the protocol.
 func (s *Surface) HandleZwlrLayerSurfaceV1Configure(ev wlr.ZwlrLayerSurfaceV1ConfigureEvent) {
-	s.applyConfigure(ev.Width, ev.Height)
-	_ = s.Layer.AckConfigure(ev.Serial)
+	s.configure(ev.Serial, ev.Width, ev.Height, s.Layer.AckConfigure)
+}
+
+// configure applies one configure and acks it through ack. A surface
+// the client destroyed ignores the configures still in flight: the
+// proxy stays registered until the compositor's delete_id, and acking
+// the destroyed object is a fatal protocol error ("invalid object").
+func (s *Surface) configure(serial, width, height uint32, ack func(uint32) error) {
+	if s.destroyed {
+		return
+	}
+	s.applyConfigure(width, height)
+	_ = ack(serial)
 }
 
 // applyConfigure records the configure without touching the wire; tests
@@ -211,6 +225,7 @@ func (s *Surface) Closed() bool {
 // flag turns on immediately so the owning loop drops the window.
 func (s *Surface) Close() {
 	_ = s.Layer.Destroy()
+	s.destroyed = true
 	s.closed = true
 }
 

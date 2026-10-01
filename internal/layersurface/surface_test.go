@@ -161,3 +161,26 @@ func TestSetSizeKeepsTheAutoAxisRule(t *testing.T) {
 		}
 	})
 }
+
+// A live surface records each configure and acks its serial; once the
+// client destroyed it, a configure still in flight is neither applied
+// nor acked (the ack would name a dead object).
+func TestConfigureAfterDestroyIsNotAcked(t *testing.T) {
+	var acked []uint32
+	ack := func(serial uint32) error { acked = append(acked, serial); return nil }
+
+	s := &Surface{}
+	s.configure(7, 800, 32, ack)
+	if len(acked) != 1 || acked[0] != 7 || !s.configured {
+		t.Fatalf("live configure: acked %v configured %v, want serial 7 acked", acked, s.configured)
+	}
+
+	s.destroyed = true
+	s.configure(8, 1024, 40, ack)
+	if len(acked) != 1 {
+		t.Fatalf("destroyed surface acked %v; serial 8 must be dropped", acked)
+	}
+	if w, h := s.Size(); w != 800 || h != 32 {
+		t.Errorf("destroyed surface resized to %dx%d", w, h)
+	}
+}
