@@ -107,3 +107,41 @@ func TestScrollMaxContentHeight(t *testing.T) {
 		t.Error("a negative cap is no cap")
 	}
 }
+
+// TestScrollVerticalOnly pins GTK's hscrollbar-policy never: a
+// wrapping label inside wraps at the viewport's width (the bar's
+// gutter reserved beside it) and nothing scrolls sideways, where a
+// two-way scroll lets it run one line wide.
+func TestScrollVerticalOnly(t *testing.T) {
+	face := entryFace(t)
+	text := "a long sentence that cannot fit on one line of a narrow popover at all"
+	label := NewLabel(face, 12, text, render.RGB(255, 255, 255))
+	label.SetWrap(true)
+	s := NewScroll(label)
+	s.VerticalOnly = true
+	if got := s.Measure(Constraints{Max: Size{W: 120, H: 50}}); got.W > 120 {
+		t.Errorf("measured %v, wider than the 120 it was given", got)
+	}
+	s.Arrange(render.Rect{W: 120, H: 50})
+	wrapped := func(w int) int { return label.Measure(Constraints{Max: Size{W: w, H: 1 << 20}}).H }
+	if lb := label.Bounds(); s.viewW != 120-gutter || lb.W != s.viewW || lb.H != wrapped(s.viewW) || lb.H <= 50 {
+		t.Errorf("label %v in a %dpx viewport: want it the viewport's width less the gutter, wrapped there", lb, s.viewW)
+	}
+	if mx, my := s.scrollMax(); mx != 0 || my == 0 {
+		t.Errorf("scroll range %d,%d: want vertical only", mx, my)
+	}
+	// Arranged narrower than it was measured: it wraps at the width it
+	// got, not the one it was offered.
+	s.Measure(Constraints{Max: Size{W: 400, H: 50}})
+	s.Arrange(render.Rect{W: 90, H: 50})
+	if lb := label.Bounds(); lb.W != 90-gutter || lb.H != wrapped(90-gutter) {
+		t.Errorf("re-arranged label %v, want %dx%d", lb, 90-gutter, wrapped(90-gutter))
+	}
+
+	two := NewScroll(NewLabel(face, 12, text, render.RGB(255, 255, 255)))
+	two.Measure(Constraints{Max: Size{W: 120, H: 30}})
+	two.Arrange(render.Rect{W: 120, H: 30})
+	if mx, _ := two.scrollMax(); mx == 0 {
+		t.Error("a two-way scroll stopped scrolling sideways")
+	}
+}

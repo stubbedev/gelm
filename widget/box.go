@@ -30,9 +30,10 @@ type childEntry struct {
 // height (Row) or width (Column) of the box.
 //
 // Leftover main-axis space is distributed equally among expanding children
-// (the remainder is dropped). Children never shrink below their measured
-// size; when the natural sizes overflow the available space they overflow
-// the box, and the painter's clip decides what is visible.
+// (the remainder is dropped). A column short of room takes the shortfall
+// from its expanding Shrinker children (a Scroll, or a box holding one),
+// down to their floors; past that, and for every other child, the natural
+// sizes overflow the box and the painter's clip decides what is visible.
 //
 // A row's start/end semantics mirror with the box's direction: an RTL
 // row flows from the right edge, so the first child sits rightmost,
@@ -327,10 +328,11 @@ func (b *Box) Arrange(r render.Rect) {
 		}
 	}
 	extra := max(0, free) / max(1, expanders)
+	takes := b.shrinkTakes(-free)
 
 	pos := 0
 	rtl := b.axis == Row && b.dir == DirectionRTL
-	for _, c := range b.child {
+	for i, c := range b.child {
 		if !IsVisible(c.w) {
 			c.w.Arrange(render.Rect{})
 			setParents(b, c.w)
@@ -339,6 +341,9 @@ func (b *Box) Arrange(r render.Rect) {
 		size := b.main(c.nat)
 		if c.expand {
 			size += extra
+		}
+		if takes != nil {
+			size -= takes[i]
 		}
 		var rect render.Rect
 		if b.axis == Row {
