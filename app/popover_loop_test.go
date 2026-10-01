@@ -171,3 +171,28 @@ func TestPumpReportsWork(t *testing.T) {
 		t.Error("an Invoke did not report work")
 	}
 }
+
+func TestPopoverSetFocusRoutesThroughItsRouter(t *testing.T) {
+	face, err := render.LoadFont(goregular.TTF)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, b := widget.NewEntry(face, 13, 0), widget.NewEntry(face, 13, 0)
+	content := widget.NewBox(widget.Column, 0, 0)
+	content.Append(a, false)
+	content.Append(b, false)
+	op, surf, _, _ := newLoopPopover(content)
+	p := op.popover
+	p.focus = func(w widget.Widget) { op.router.SetFocus(w); op.pop.MarkFrame() }
+	p.SetFocus(b)
+	if op.router.Focused() != b || surf.frames != 1 {
+		t.Errorf("focused %v frames %d, want b and a repaint", op.router.Focused(), surf.frames)
+	}
+	p.markClosed()
+	p.SetFocus(a)
+	if op.router.Focused() != b {
+		t.Error("a closed popover moved focus")
+	}
+	var none *Popover
+	none.SetFocus(a) // nil-safe
+}
