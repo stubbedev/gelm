@@ -7,6 +7,7 @@ import (
 
 	"github.com/stubbedev/gelm/internal/sysfont"
 	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/gelm/widget"
 )
 
 // Font resolves a system font family by name at the given logical
@@ -27,6 +28,21 @@ func FontWeighted(family string, sizePx float64, weight int, italic bool) (*rend
 // back to the closest face the family has.
 func FontVariant(base *render.Typeface, bold, italic bool) (*render.Typeface, error) {
 	return sysfont.Variant(base, bold, italic)
+}
+
+// FontVariants is the widget.VariantFunc of base's family: each
+// bold/italic style resolved through FontVariant (the font cache keeps
+// the faces), base itself where the family has none.
+func FontVariants(base *render.Typeface) widget.VariantFunc {
+	return func(bold, italic bool) *render.Typeface {
+		if !bold && !italic {
+			return base
+		}
+		if f, err := FontVariant(base, bold, italic); err == nil && f != nil {
+			return f
+		}
+		return base
+	}
 }
 
 // FontFallback wraps a face in the glyph fallback chain, so glyphs the
