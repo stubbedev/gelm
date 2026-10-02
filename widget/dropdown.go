@@ -62,6 +62,12 @@ type Dropdown struct {
 	dir      Direction
 	items    []string
 	selected int
+	// entries are the rich rows (their labels mirrored in items);
+	// faceIcon is the selected row's icon on the face, built for
+	// faceFor.
+	entries  []DropdownRow
+	faceIcon *Icon
+	faceFor  int
 
 	menu    *Menu
 	open    bool
@@ -91,16 +97,57 @@ type Dropdown struct {
 // sizePx, with the selected index clamped into range (-1 when there
 // are no items). Face may be a render.Chain for mixed-script fallback.
 func NewDropdown(face render.Font, sizePx float64, items []string, selected int) *Dropdown {
-	sel := -1
-	if len(items) > 0 {
-		sel = min(max(selected, 0), len(items)-1)
+	entries := make([]DropdownRow, len(items))
+	for i, label := range items {
+		entries[i] = DropdownRow{Label: label}
 	}
-	return &Dropdown{
-		face:     requireFace("widget.NewDropdown", face),
-		sizePx:   sizePx,
-		items:    items,
-		selected: sel,
+	return buildDropdown("widget.NewDropdown", face, sizePx, entries, selected)
+}
+
+// DropdownRow is one row of a dropdown built with NewDropdownRows,
+// GTK's DropDown with a row factory. Icon, when set, builds the row's
+// leading icon: it is called for the list row and for the face, so
+// each owns its instance. A Header row is a group caption: listed,
+// never selected, stepped onto, or matched by type-ahead.
+type DropdownRow struct {
+	Label  string
+	Icon   func() *Icon
+	Header bool
+}
+
+// NewDropdownRows is NewDropdown over rich rows. A selected index on
+// a header moves to the nearest selectable row after it (before it at
+// the end).
+func NewDropdownRows(face render.Font, sizePx float64, items []DropdownRow, selected int) *Dropdown {
+	return buildDropdown("widget.NewDropdownRows", face, sizePx, items, selected)
+}
+
+func buildDropdown(ctor string, face render.Font, sizePx float64, entries []DropdownRow, selected int) *Dropdown {
+	d := &Dropdown{face: requireFace(ctor, face), sizePx: sizePx, entries: entries, selected: -1, faceFor: -1}
+	d.items = make([]string, len(entries))
+	for i, e := range entries {
+		d.items[i] = e.Label
 	}
+	if len(entries) > 0 {
+		d.selected = d.selectableFrom(min(max(selected, 0), len(entries)-1))
+	}
+	return d
+}
+
+// selectableFrom is the first non-header row at or after i, else the
+// last one before it; -1 when every row is a header.
+func (d *Dropdown) selectableFrom(i int) int {
+	for j := max(i, 0); j < len(d.entries); j++ {
+		if !d.entries[j].Header {
+			return j
+		}
+	}
+	for j := min(i, len(d.entries)) - 1; j >= 0; j-- {
+		if !d.entries[j].Header {
+			return j
+		}
+	}
+	return -1
 }
 
 // Selected returns the selected item index, -1 when empty.
@@ -143,6 +190,9 @@ func (d *Dropdown) selectIndex(i int) {
 		return
 	}
 	i = min(max(i, 0), len(d.items)-1)
+	if d.entries[i].Header {
+		return // a caption is not a choice
+	}
 	if i == d.selected {
 		return
 	}
@@ -175,9 +225,15 @@ func (d *Dropdown) list() *Menu {
 	if d.menu != nil {
 		return d.menu
 	}
-	items := make([]MenuItem, len(d.items))
-	for i, label := range d.items {
-		items[i] = MenuItem{Label: label, OnClick: func() { d.selectIndex(i) }}
+	items := make([]MenuItem, len(d.entries))
+	for i, e := range d.entries {
+		items[i] = MenuItem{Label: e.Label, OnClick: func() { d.selectIndex(i) }}
+		if e.Header {
+			items[i] = MenuItem{Label: e.Label, Kind: ItemHeader}
+		}
+		if e.Icon != nil {
+			items[i].Icon = e.Icon()
+		}
 	}
 	d.menu = NewMenu(d.face, d.sizePx, items...)
 	// A combobox list has no Alt-letters: type-ahead is its keyboard
@@ -296,8 +352,9 @@ func (d *Dropdown) Measure(con Constraints) Size {
 	}
 	w := 80
 	h := d.face.Shape("lg", d.sizePx).LineHeight() + 12
+	slot := d.iconSlot()
 	for _, label := range d.items {
-		if adv := int(d.face.Shape(label, d.sizePx).Advance()+0.5) + 14 + 24; adv > w {
+		if adv := int(d.face.Shape(label, d.sizePx).Advance()+0.5) + 14 + 24 + slot; adv > w {
 			w = adv
 		}
 	}
@@ -337,6 +394,13 @@ func (d *Dropdown) Paint(cv *render.Canvas) {
 	baseline := d.bounds.Y + (d.bounds.H-lineH)/2 + int(d.face.Shape("lg", d.sizePx).Ascent()+0.5)
 	sh := d.face.ShapeDir(d.Selection(), d.sizePx, d.dir)
 	lx := d.bounds.X + 8
+	if ic := d.selectedIcon(); ic != nil {
+		setParents(d, ic)
+		sz := ic.Measure(Constraints{Max: Size{W: d.bounds.W, H: d.bounds.H}})
+		ic.Arrange(render.Rect{X: lx, Y: d.bounds.Y + (d.bounds.H-sz.H)/2, W: sz.W, H: sz.H})
+		PaintChild(cv, ic)
+		lx += sz.W + dropdownIconGap
+	}
 	if text.RTL(d.Selection(), d.dir) {
 		// A right-to-left selection reads from the right edge; keep
 		// clear of the chevron.
@@ -519,7 +583,7 @@ func (d *Dropdown) typeAhead(r rune) {
 func (d *Dropdown) prefixRows(prefix string) []int {
 	var rows []int
 	for i, label := range d.items {
-		if strings.HasPrefix(strings.ToLower(label), prefix) {
+		if !d.entries[i].Header && strings.HasPrefix(strings.ToLower(label), prefix) {
 			rows = append(rows, i)
 		}
 	}
@@ -592,4 +656,41 @@ func (d *DropdownOf[T]) Value() T {
 		return zero
 	}
 	return d.values[i]
+}
+
+// dropdownIconGap separates a row's icon from its label on the face.
+const dropdownIconGap = 6
+
+// selectedIcon is the face's icon for the selected row, rebuilt when
+// the selection moves; nil for a row without one.
+func (d *Dropdown) selectedIcon() *Icon {
+	if d.selected < 0 || d.selected >= len(d.entries) || d.entries[d.selected].Icon == nil {
+		d.faceIcon, d.faceFor = nil, -1
+		return nil
+	}
+	if d.faceFor != d.selected || d.faceIcon == nil {
+		d.faceIcon, d.faceFor = d.entries[d.selected].Icon(), d.selected
+	}
+	return d.faceIcon
+}
+
+// iconSlot is the widest row icon plus the gap, 0 without icons: the
+// face reserves it so a selection change never relayouts.
+func (d *Dropdown) iconSlot() int {
+	w := 0
+	for _, e := range d.entries {
+		if e.Icon != nil {
+			w = max(w, e.Icon().Measure(Constraints{Max: Size{W: 1 << 10, H: 1 << 10}}).W+dropdownIconGap)
+		}
+	}
+	return w
+}
+
+// styleChildren is the face's icon (styleKids).
+func (d *Dropdown) styleChildren() []Widget {
+	kids := d.Children()
+	if d.faceIcon != nil {
+		kids = append(kids, d.faceIcon)
+	}
+	return kids
 }

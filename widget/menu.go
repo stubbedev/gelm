@@ -21,6 +21,9 @@ const (
 	ItemCheck
 	ItemRadio
 	ItemSeparator
+	// ItemHeader is a group's caption: muted text, never hovered,
+	// stepped onto, or activated.
+	ItemHeader
 )
 
 // MenuItem is one row of a Menu.
@@ -154,7 +157,7 @@ func resolveMnemonics(items []MenuItem) (rows map[rune]int, runes []int) {
 		runes[i] = strings.IndexRune(strings.ToLower(items[i].Label), letter)
 	}
 	for i, it := range items {
-		if it.Mnemonic == 0 || it.Kind == ItemSeparator || it.Disabled {
+		if it.Mnemonic == 0 || it.Kind == ItemSeparator || it.Kind == ItemHeader || it.Disabled {
 			continue
 		}
 		explicit[i] = true
@@ -166,7 +169,7 @@ func resolveMnemonics(items []MenuItem) (rows map[rune]int, runes []int) {
 		claim(letter, i)
 	}
 	for i, it := range items {
-		if runes[i] >= 0 || explicit[i] || it.Kind == ItemSeparator || it.Disabled || it.Label == "" {
+		if runes[i] >= 0 || explicit[i] || it.Kind == ItemSeparator || it.Kind == ItemHeader || it.Disabled || it.Label == "" {
 			continue
 		}
 		for _, r := range strings.ToLower(it.Label) {
@@ -223,7 +226,7 @@ func (m *Menu) iconSlot() int {
 
 // selectable reports whether keyboard motion may land on row i.
 func (m *Menu) selectable(i int) bool {
-	return i >= 0 && i < len(m.items) && m.items[i].Kind != ItemSeparator && !m.items[i].Disabled
+	return i >= 0 && i < len(m.items) && m.items[i].Kind != ItemSeparator && m.items[i].Kind != ItemHeader && !m.items[i].Disabled
 }
 
 // nextSelectable returns the nearest selectable row at or after i in
@@ -289,7 +292,10 @@ func (m *Menu) Paint(cv *render.Canvas) {
 		}
 		x += slot
 		col := t.Text
-		if it.inert() || !IsEnabled(m) {
+		switch {
+		case it.Kind == ItemHeader:
+			col = t.DisabledText() // the muted ink (TextMuted when set)
+		case it.inert() || !IsEnabled(m):
 			col = t.DisabledText()
 		}
 		baseline := row.Y + (row.H-lineH)/2 + int(m.face.Shape("lg", m.sizePx).Ascent()+0.5)

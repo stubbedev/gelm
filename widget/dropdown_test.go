@@ -523,3 +523,68 @@ func TestDropdownListHasNoMnemonics(t *testing.T) {
 		t.Error("test premise: a plain menu auto-assigns its mnemonic")
 	}
 }
+
+// Rich rows: headers are captions (never selected, typed to, or
+// stepped onto) and icons ride the list rows and the face.
+func TestDropdownRows(t *testing.T) {
+	built := 0
+	dot := func() *Icon {
+		built++
+		return NewSVGIcon([]byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8"><circle cx="4" cy="4" r="4"/></svg>`), 8)
+	}
+	rows := []DropdownRow{
+		{Label: "Colors", Header: true},
+		{Label: "Red", Icon: dot},
+		{Label: "Blue", Icon: dot},
+		{Label: "Greys", Header: true},
+		{Label: "Black"},
+	}
+	d := NewDropdownRows(testFace(t), 13, rows, 0)
+	if d.Selected() != 1 {
+		t.Fatalf("selected %d, want the first row after the header", d.Selected())
+	}
+	var fired []int
+	d.OnSelect = func(i int) { fired = append(fired, i) }
+	d.SetSelected(3)
+	if d.Selected() != 1 || len(fired) != 0 {
+		t.Errorf("selecting a header moved to %d (fired %v)", d.Selected(), fired)
+	}
+	d.InsertRune('g')
+	if d.Selected() != 1 {
+		t.Errorf("type-ahead landed on the Greys header (%d)", d.Selected())
+	}
+	d.InsertRune('b')
+	if d.Selected() != 2 {
+		t.Errorf("type-ahead b = %d, want Blue", d.Selected())
+	}
+	d.Open()
+	d.InsertRune('g')
+	if d.menu.hovered == 3 {
+		t.Error("open type-ahead highlighted the Greys header")
+	}
+	d.Close()
+	m := d.list()
+	if m.selectable(0) || m.selectable(3) || !m.selectable(4) || m.items[0].Kind != ItemHeader {
+		t.Error("the list's headers are selectable")
+	}
+	if m.items[1].Icon == nil || m.items[4].Icon != nil {
+		t.Error("the list rows did not take their icons")
+	}
+	m.activate(0)
+	if d.Selected() != 2 {
+		t.Error("activating a header selected it")
+	}
+	if ic := d.selectedIcon(); ic == nil || d.selectedIcon() != ic {
+		t.Error("the face has no stable icon for an icon row")
+	}
+	d.SetSelected(4)
+	if d.selectedIcon() != nil {
+		t.Error("an iconless row kept the face icon")
+	}
+	if d.iconSlot() <= dropdownIconGap {
+		t.Errorf("icon slot %d, want the icon width plus the gap", d.iconSlot())
+	}
+	if only := NewDropdownRows(testFace(t), 13, []DropdownRow{{Label: "h", Header: true}}, 0); only.Selected() != -1 {
+		t.Errorf("all-header dropdown selected %d", only.Selected())
+	}
+}
