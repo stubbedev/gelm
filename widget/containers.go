@@ -39,6 +39,11 @@ type Stack struct {
 	progress float64
 	cancel   anim.Cancel
 	layers   [2]*render.Layer
+	// heterogeneous sizes the stack to its visible page instead of its
+	// largest (GTK's homogeneous off); interpolate tweens that size
+	// through a switch (GTK's interpolate-size).
+	heterogeneous bool
+	interpolate   bool
 }
 
 // NewStack returns an empty stack.
@@ -144,6 +149,35 @@ func (s *Stack) SetTransition(t StackTransition, d time.Duration) {
 	s.transition, s.duration = t, max(0, d)
 }
 
+// SetHomogeneous picks whether the stack is as large as its largest
+// page (true, the default) or as its visible one (GTK's hhomogeneous
+// and vhomogeneous off), so pages of different sizes resize what holds
+// the stack.
+func (s *Stack) SetHomogeneous(h bool) {
+	if s.heterogeneous == !h {
+		return
+	}
+	s.heterogeneous = !h
+	s.InvalidateLayout()
+}
+
+// SetInterpolateSize makes a stack sized to its visible page tween
+// between the two pages' sizes through a switch, on the switch's own
+// easing (GTK's interpolate-size); off, the size jumps.
+func (s *Stack) SetInterpolateSize(on bool) { s.interpolate = on }
+
+// PageExtent is the largest page at con: the homogeneous size, which a
+// holder that cannot grow (a mapped popup) reserves up front for a
+// stack sized to its visible page.
+func (s *Stack) PageExtent(con Constraints) Size {
+	best := Size{}
+	for _, name := range s.order {
+		nat := s.kids[name].Measure(con)
+		best.W, best.H = max(best.W, nat.W), max(best.H, nat.H)
+	}
+	return clampSize(best, con)
+}
+
 // Show makes the child under name the visible one through the stack's
 // transition; unknown names are ignored. A switch during a running one
 // starts from the page then showing.
@@ -158,6 +192,10 @@ func (s *Stack) Show(name string) {
 	prev := s.visible
 	s.visible = name
 	s.Invalidate()
+	if s.heterogeneous {
+		// The visible page sizes the stack: the holder relayouts.
+		s.InvalidateLayout()
+	}
 	if s.transition == StackNone || s.duration == 0 || prev == "" {
 		s.prev = ""
 		return
@@ -169,6 +207,9 @@ func (s *Stack) Show(name string) {
 			s.prev, s.cancel = "", nil
 		}
 		s.Invalidate()
+		if s.heterogeneous && s.interpolate {
+			s.InvalidateLayout()
+		}
 	}).Easing(anim.EaseOutCubic))
 }
 
@@ -181,7 +222,8 @@ func (s *Stack) Visible() string {
 }
 
 // Measure measures every child once and reports the largest, clamped to
-// con.
+// con - or, sized to its visible page, that page, tweened from the page
+// leaving while an interpolating switch runs.
 func (s *Stack) Measure(con Constraints) Size {
 	if sz, ok := s.measureHit(con); ok {
 		return sz
@@ -192,6 +234,13 @@ func (s *Stack) Measure(con Constraints) Size {
 		s.measured[name] = nat
 		best.W = max(best.W, nat.W)
 		best.H = max(best.H, nat.H)
+	}
+	if s.heterogeneous {
+		best = s.measured[s.visible]
+		if from, ok := s.measured[s.prev]; ok && s.interpolate && s.prev != "" {
+			lerp := func(a, b int) int { return a + int(math.Round(float64(b-a)*s.progress)) }
+			best = Size{W: lerp(from.W, best.W), H: lerp(from.H, best.H)}
+		}
 	}
 	return s.measureStore(con, clampSize(best, con))
 }
