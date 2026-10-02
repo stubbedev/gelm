@@ -75,7 +75,7 @@ func TestCSSElementNames(t *testing.T) {
 	probe("image", &Image{})
 	probe("label", &Label{})
 	probe("listview", &List{})
-	probe("listrow", &listRow{})
+	probe("row", &listRow{})
 	probe("menu", &Menu{})
 	probe("notebook", &Notebook{})
 	probe("overlay", NewOverlay())

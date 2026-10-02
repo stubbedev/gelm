@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/stubbedev/gelm/internal/anim"
+	"github.com/stubbedev/gelm/internal/style"
 	"github.com/stubbedev/gelm/render"
 )
 
@@ -304,6 +305,7 @@ func (l *List) selectRow(i int) {
 		return
 	}
 	l.sel = i
+	l.syncSelected()
 	if i >= 0 {
 		l.scrollTo(i)
 	}
@@ -324,11 +326,22 @@ func (l *List) isSelected(i int) bool {
 }
 
 // applyMulti replaces the multiple-mode set wholesale, syncing the
-// checkbox rows and repainting; callers notify.
+// checkbox rows and the proxies' :selected state and repainting;
+// callers notify.
 func (l *List) applyMulti(set map[int]struct{}) {
 	l.multi = set
 	l.syncChecks()
+	l.syncSelected()
 	l.Invalidate()
+}
+
+// syncSelected mirrors membership into the cached row proxies'
+// :selected state; SetState restyles only the rows that flipped.
+// Virtualization means the rest are seeded by newRow as they scroll in.
+func (l *List) syncSelected() {
+	for i, r := range l.rows {
+		r.SetState(StateSelected, l.isSelected(i))
+	}
 }
 
 // toggleRow flips one row's membership and anchors there.
@@ -514,6 +527,9 @@ func (l *List) visible() (first, last int) {
 // checkbox row in multiple mode and syncing it to membership.
 func (l *List) newRow(i int) *listRow {
 	r := &listRow{list: l, idx: i, row: l.model.row(i)}
+	if l.isSelected(i) {
+		r.flags = StateSelected // seeded pre-style; syncSelected carries the flips
+	}
 	if l.mode == SelectionMultiple {
 		r.check = findCheckButton(r.row)
 		if r.check != nil {
@@ -552,8 +568,9 @@ func findCheckButton(w Widget) *CheckButton {
 	return nil
 }
 
-// Paint draws the viewport background, the selection, cursor, and
-// hover bands, and exactly the visible rows.
+// Paint draws the viewport background, the cursor ring, and exactly
+// the visible rows; the rows paint their own hover and selection fills
+// (the `row` node's CSS box).
 func (l *List) Paint(cv *render.Canvas) {
 	th := Current()
 	prev := cv.PushClip(l.bounds)
@@ -567,20 +584,28 @@ func (l *List) Paint(cv *render.Canvas) {
 		// its cascade must reach the stylesheets above the list.
 		setParents(l, w)
 		w.Arrange(rect)
-		switch {
-		case l.isSelected(i):
-			hl := th.Accent
-			cv.FillRect(rect, render.RGBA(hl.R(), hl.G(), hl.B(), 70))
-		case i == l.hover:
-			tint := th.SurfaceHover
-			cv.FillRect(rect, render.RGBA(tint.R(), tint.G(), tint.B(), 120))
-		}
 		if l.mode == SelectionMultiple && i == l.cursor {
 			cv.BorderRect(rect, 1, th.Accent)
 		}
 		PaintChild(cv, w)
 	}
 	cv.PopClip(prev)
+}
+
+// rowFill is the theme's band tint behind a hovered or selected row,
+// the fallback under a stylesheet's `row:hover` / `row:selected`
+// background: translucent over the viewport fill, as the bands always
+// painted.
+func (l *List) rowFill(i int) render.Color {
+	switch {
+	case l.isSelected(i):
+		hl := Current().Accent
+		return render.RGBA(hl.R(), hl.G(), hl.B(), 70)
+	case i == l.hover:
+		tint := Current().SurfaceHover
+		return render.RGBA(tint.R(), tint.G(), tint.B(), 120)
+	}
+	return 0
 }
 
 // Role implements Roleer.
@@ -985,26 +1010,44 @@ type listRow struct {
 	check *CheckButton
 }
 
-// Measure delegates to the row widget, parented first so it measures
-// as styled.
+// Measure wraps the row widget in the row's CSS box: margin, border,
+// and padding around the row's natural size. The row is parented first
+// so it measures as styled.
 func (r *listRow) Measure(con Constraints) Size {
 	setParents(r, r.row)
-	return r.row.Measure(con)
+	v := r.style(r)
+	return measureBox(v, boxOf(v, render.Insets{}), con, func(inner Constraints) Size {
+		return r.row.Measure(inner)
+	})
 }
 
-// Arrange records the proxy's rect and lays the row widget out in the
-// same rect, linking it below the proxy for the ancestor walks. The
-// row is measured first: no Measure pass reaches it (the list measures
-// as a viewport), and containers arrange from what they measured.
+// Arrange records the proxy's border box and lays the row widget out
+// in the content box, linking it below the proxy for the ancestor
+// walks. The row is measured first: no Measure pass reaches it (the
+// list measures as a viewport), and containers arrange from what they
+// measured.
 func (r *listRow) Arrange(rect render.Rect) {
-	r.node.Arrange(rect)
+	border, inner := boxRects(boxOf(r.style(r), render.Insets{}), rect)
+	r.node.Arrange(border)
 	setParents(r, r.row)
-	r.row.Measure(Constraints{Max: Size{W: rect.W, H: rect.H}})
-	r.row.Arrange(rect)
+	r.row.Measure(Constraints{Max: Size{W: inner.W, H: inner.H}})
+	r.row.Arrange(inner)
 }
 
-// Paint delegates to the row widget.
-func (r *listRow) Paint(cv *render.Canvas) { PaintChild(cv, r.row) }
+// Paint draws the row's CSS box behind the row widget — GTK's `row`:
+// the background the theme tints for hover and selection and a
+// stylesheet overrides per state, rounded and bordered, with the
+// outline above the content.
+func (r *listRow) Paint(cv *render.Canvas) {
+	v := r.style(r)
+	fill := pickc(0, v, style.PropBackgroundColor, r.list.rowFill(r.idx))
+	radii := radiusOr(v, 0)
+	fx := pushEffects(cv, v)
+	paintBoxBehind(cv, v, r.bounds, radii, borderOf(v), fill)
+	PaintChild(cv, r.row)
+	paintOutline(cv, v, r.bounds, radii)
+	fx.pop(cv)
+}
 
 // HitTest returns the proxy while p is inside its band.
 func (r *listRow) HitTest(p Point) Widget { return r.HitLeaf(r, p) }
