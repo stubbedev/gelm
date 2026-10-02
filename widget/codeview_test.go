@@ -35,7 +35,7 @@ func inkIn(data []byte, stride int, r render.Rect, col render.Color) int {
 }
 
 func TestTextAreaLineNumbers(t *testing.T) {
-	loadCSS(t, `textarea { background-color: #000000; }`)
+	loadCSS(t, `textview { background-color: #000000; }`)
 	ta := NewTextArea(entryFace(t), 14, render.RGB(0xff, 0xff, 0xff))
 	ta.SetText("one\ntwo\n" + string(make([]rune, 0)) + "three")
 	plain := ta.textRect()
@@ -105,7 +105,7 @@ func (h *spanHL) Highlight(line []rune, state int) ([]TextSpan, int) {
 }
 
 func TestTextAreaHighlights(t *testing.T) {
-	loadCSS(t, `textarea { background-color: #000000; }`)
+	loadCSS(t, `textview { background-color: #000000; }`)
 	ta := NewTextArea(entryFace(t), 14, render.RGB(0xff, 0xff, 0xff))
 	ta.SetText("MMMMMMMM")
 	red := render.RGB(0xff, 0, 0)
@@ -243,9 +243,9 @@ func TestTextAreaKeepsTheCaretInItsScroll(t *testing.T) {
 
 func TestTextAreaCSSBoxAndTextNode(t *testing.T) {
 	loadCSS(t, `
-		textarea.ed { padding: 10px; border: 2px solid #202020; background-color: #000000; font-size: 20px; }
-		textarea.ed > text { padding-left: 5px; color: #ff0000; }
-		textarea.ed > text > selection { background-color: #0000ff; color: #ffff00; }
+		textview.ed { padding: 10px; border: 2px solid #202020; background-color: #000000; font-size: 20px; }
+		textview.ed > text { padding-left: 5px; color: #ff0000; }
+		textview.ed > text > selection { background-color: #0000ff; color: #ffff00; }
 	`)
 	ta := NewTextArea(entryFace(t), 14, 0)
 	ta.AddClass("ed")
@@ -283,7 +283,7 @@ func TestTextAreaRowsFollowTheFontSize(t *testing.T) {
 	ta := newTextArea(t, "word word word word word word word")
 	areaShot(ta, 200, 300)
 	small := len(ta.rows)
-	loadCSS(t, `textarea { font-size: 28px; }`)
+	loadCSS(t, `textview { font-size: 28px; }`)
 	areaShot(ta, 200, 300)
 	if len(ta.rows) <= small {
 		t.Errorf("%d rows at 28px, %d at 14px: the row cache kept the old size", len(ta.rows), small)

@@ -70,7 +70,7 @@ and state, on top of — not instead of — the palette.
 
 | Form | Meaning | Example |
 | --- | --- | --- |
-| element | widget type, lowercased (`button`, `label`, `entry`, `textarea`, `box`, `listrow`, `menuitem`, ...) | `button { }` |
+| element | GTK's CSS node name where gelm has the GTK widget (`button`, `label`, `entry`, `image`, `scale`, `scrolledwindow`, `textview`, `listview`, `flowbox`, `flowboxchild`, ...), else the widget type lowercased (`box`, `listrow`, ...); sub-nodes too (`entry > text`, `scale trough slider`) | `button { }` |
 | `.class` | classes carried by the widget (new `AddClass`/`RemoveClass`/`HasClass`) | `.destructive { }` |
 | `#id` | widget id (new `SetID`) | `#sidebar { }` |
 | `:hover`, `:focus`, `:active`, `:disabled` | the widget state machine the paint path already tracks | `button:hover { }` |

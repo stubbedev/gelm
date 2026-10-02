@@ -126,7 +126,7 @@ func TestGoldenCSSTextAreaBackground(t *testing.T) {
 	face := goldenFace(t)
 	area := NewTextArea(face, 13, render.RGB(0xff, 0xff, 0xff))
 	area.SetText("styled area\nsecond line")
-	cssShot(t, `textarea { background-color: #123456; }`, area, "css-textarea-background")
+	cssShot(t, `textview { background-color: #123456; }`, area, "css-textarea-background")
 }
 
 func TestGoldenCSSToastShadow(t *testing.T) {

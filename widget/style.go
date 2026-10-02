@@ -1204,10 +1204,15 @@ func fontPx(v *style.Values, def float64) float64 {
 	return def
 }
 
-// typeElementName returns the widget type's element name: the
-// lowercased Go type name. The list is pinned by TestCSSElementNames;
-// a type missing from the switch matches no element selector — the
-// same graceful no-op as an unknown name in a stylesheet.
+// typeElementName returns the widget type's element name: GTK's CSS
+// node name where gelm has the GTK widget (an Icon is GtkImage's
+// image, a Scroll GtkScrolledWindow's scrolledwindow, a TextArea
+// GtkTextView's textview, a Slider GtkScale's scale, a List GtkListView's
+// listview, a RichLabel a label), so a GTK stylesheet applies as
+// written; else the lowercased Go type name. The list is pinned by
+// TestCSSElementNames; a type missing from the switch matches no
+// element selector — the same graceful no-op as an unknown name in a
+// stylesheet.
 func typeElementName(w Widget) string {
 	switch w.(type) {
 	case *Box:
@@ -1235,13 +1240,13 @@ func typeElementName(w Widget) string {
 	case *Grid:
 		return "grid"
 	case *Icon:
-		return "icon"
+		return "image"
 	case *Image:
 		return "image"
 	case *Label:
 		return "label"
 	case *List:
-		return "list"
+		return "listview"
 	case *listRow:
 		return "listrow"
 	case *Menu:
@@ -1255,9 +1260,9 @@ func typeElementName(w Widget) string {
 	case *ProgressBar:
 		return "progressbar"
 	case *RichLabel:
-		return "richlabel"
+		return "label"
 	case *Scroll:
-		return "scroll"
+		return "scrolledwindow"
 	case *Separator:
 		return "separator"
 	case *Slider:
@@ -1269,7 +1274,7 @@ func typeElementName(w Widget) string {
 	case *Switch:
 		return "switch"
 	case *TextArea:
-		return "textarea"
+		return "textview"
 	case *Toast:
 		return "toast"
 	default:
