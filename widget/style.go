@@ -972,17 +972,15 @@ func restyleSubtree(w Widget) {
 	}
 }
 
-// styleKids are the widgets that inherit from w: its Children, and a
-// Button's content, which inherits the button's color and font but
-// stays out of the Children walks (focus, hit testing, a11y treat the
-// button as the leaf).
+// styleKids are the widgets that inherit from w: its Children, or what
+// a widget that keeps its children out of the Children walks (a
+// Button's content, a List's rows, a Menu's icons: focus, hit
+// testing and a11y treat the parent as the leaf) lists through
+// styleChildren.
 func styleKids(w Widget) []Widget {
 	switch c := w.(type) {
-	case interface{ styleChild() Widget }:
-		if k := c.styleChild(); k != nil {
-			return []Widget{k}
-		}
-		return nil
+	case interface{ styleChildren() []Widget }:
+		return c.styleChildren()
 	case childser:
 		return c.Children()
 	}

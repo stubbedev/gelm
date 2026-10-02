@@ -370,3 +370,6 @@ func (s *Spacer) Paint(*render.Canvas) {}
 
 // HitTest returns nil: empty space is not interactive.
 func (s *Spacer) HitTest(Point) Widget { return nil }
+
+// styleChildren is the knob (styleKids).
+func (s *Switch) styleChildren() []Widget { return []Widget{&s.knob} }

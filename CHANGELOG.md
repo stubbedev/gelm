@@ -22,6 +22,9 @@
 - `Paned.SetMaxPosition(px)`: caps the divider (drags, keys,
   SetPosition) above the start pane's floor; zero lifts the cap.
 - Entries and text areas paint their caret only while focused (GTK).
+- Every widget a container parents is in its style walk (a subtree
+  restyle reaches a List's rows, a Menu's icons, a Switch's knob),
+  pinned by a test over every container.
 - Fix: a list row takes the stylesheets above the list (rows were
   arranged before they were parented, styling them without the
   sheet).
