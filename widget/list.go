@@ -537,7 +537,7 @@ func (l *List) Paint(cv *render.Canvas) {
 		if l.mode == SelectionMultiple && i == l.cursor {
 			cv.BorderRect(rect, 1, th.Accent)
 		}
-		w.Paint(cv)
+		PaintChild(cv, w)
 	}
 	cv.PopClip(prev)
 }

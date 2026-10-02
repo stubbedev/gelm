@@ -674,12 +674,17 @@ func (w *hostWindow) draw() bool {
 	cv := render.NewScaled(b.Data, b.Stride, b.Width, b.Height, w.devNum(), scale.Denom)
 	prev := cv.PushClip(region)
 	cv.ClearDevice(region, w.cfg.background)
+	// The focus ring draws right after its widget, in tree order, so
+	// what paints later (a card over the list) covers it.
+	if ring := w.focusRingRect(); !ring.Empty() {
+		cv.MarkFocus(w.router.Focused(), func(cv *render.Canvas) {
+			cv.BorderRect(ring, focusRingPad, widget.Current().Accent)
+		})
+	}
 	cv.BeginOverlays()
 	w.router.Root.Paint(cv)
 	cv.FlushOverlays()
-	if ring := w.focusRingRect(); !ring.Empty() {
-		cv.BorderRect(ring, focusRingPad, widget.Current().Accent)
-	}
+	cv.FinishFocus()
 	cv.PopClip(prev)
 	w.paintedPixels = cv.Touched()
 	w.lastDamage = rects

@@ -544,7 +544,7 @@ func alignRect(cell render.Rect, nat Size, h, v Align) render.Rect {
 // composite bottom to top.
 func (g *Grid) Paint(cv *render.Canvas) {
 	for _, c := range g.child {
-		c.w.Paint(cv)
+		PaintChild(cv, c.w)
 	}
 }
 

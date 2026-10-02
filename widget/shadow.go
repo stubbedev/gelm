@@ -172,7 +172,7 @@ func (e *Elevation) Paint(cv *render.Canvas) {
 	if plate != 0 {
 		cv.RoundedRect(e.bounds, radius, plate)
 	}
-	e.child.Paint(cv)
+	PaintChild(cv, e.child)
 }
 
 // HitTest resolves through the child alone: the shadow gutter is never

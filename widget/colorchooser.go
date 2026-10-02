@@ -301,9 +301,9 @@ func (c *ColorChooser) Paint(cv *render.Canvas) {
 	cursorBar(cv, c.hueStrip, int(c.hue*float64(c.hueStrip.H)), false)
 	cursorBar(cv, c.alphaStrip, int((1-c.alpha)*float64(c.alphaStrip.H)), false)
 
-	c.hex.Paint(cv)
+	PaintChild(cv, c.hex)
 	if c.custom != nil {
-		c.addTo.Paint(cv)
+		PaintChild(cv, c.addTo)
 	}
 
 	// Palette rows: theme presets, then the session's picks.

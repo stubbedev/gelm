@@ -612,3 +612,13 @@ func clampSize(s Size, con Constraints) Size {
 	}
 	return s
 }
+
+// PaintChild paints a container's child and then, when the frame armed
+// it for that child, the keyboard focus ring (render.Canvas.MarkFocus),
+// so later siblings cover the ring. Containers defined outside the kit
+// call it for their children too; one that does not still gets the ring,
+// drawn over the whole frame at its end.
+func PaintChild(cv *render.Canvas, w Widget) {
+	w.Paint(cv)
+	cv.Painted(w)
+}
