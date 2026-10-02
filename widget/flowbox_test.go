@@ -1,6 +1,7 @@
 package widget
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/stubbedev/gelm/render"
@@ -215,5 +216,54 @@ func TestListShrinks(t *testing.T) {
 	col.Arrange(render.Rect{W: 200, H: 3 * l.rowH})
 	if b := l.Bounds(); b.H != 3*l.rowH {
 		t.Errorf("list in a short column: %v, want three rows tall", b)
+	}
+}
+
+// GtkScale's nodes style the slider: the trough's background, size and
+// natural width, the highlight's fill, and a knob hidden until the
+// scale is hovered.
+func TestSliderScaleNodes(t *testing.T) {
+	loadCSS(t, `
+		scale { all: unset; }
+		scale trough { background-color: #202020; min-height: 8px; min-width: 160px; border-radius: 4px; }
+		scale trough highlight { background-color: #0000ff; }
+		scale trough slider { background-color: #ffffff; min-width: 16px; min-height: 16px; opacity: 0; }
+		scale:hover trough slider { opacity: 1; }
+	`)
+	s := NewSlider(0, 100, 0, 50)
+	if sz := s.Measure(Constraints{Max: Size{W: 1000, H: 100}}); sz != (Size{W: 160, H: 18}) {
+		t.Errorf("measured %v, want the trough's 160px by 18", sz)
+	}
+	s.Arrange(render.Rect{W: 160, H: 20})
+	paint := func() []byte {
+		data := make([]byte, render.Stride(160)*20)
+		cv := render.New(data, render.Stride(160), 160, 20)
+		s.Paint(cv)
+		return data
+	}
+	px := func(data []byte, x, y int) render.Color {
+		return render.ColorFromBytes(data[y*render.Stride(160)+x*4:])
+	}
+	data := paint()
+	if px(data, 40, 10) != render.RGB(0, 0, 0xff) || px(data, 120, 10) != render.RGB(0x20, 0x20, 0x20) {
+		t.Errorf("highlight %v, trough %v", px(data, 40, 10), px(data, 120, 10))
+	}
+	if px(data, 80, 3) != 0 {
+		t.Errorf("the knob shows (%v) before hover", px(data, 80, 3))
+	}
+	if tr := s.troughRect(); tr != (render.Rect{X: 0, Y: 6, W: 160, H: 8}) {
+		t.Errorf("trough %v", tr)
+	}
+	s.SetHovered(true)
+	data = paint()
+	if px(data, 80, 3) != render.RGB(0xff, 0xff, 0xff) {
+		t.Errorf("hovered knob %v, want it shown", px(data, 80, 3))
+	}
+	// The value maps across the styled trough's full width.
+	if v := s.ValueFromX(40); v != 25 {
+		t.Errorf("x=40 maps to %v, want 25", v)
+	}
+	if !slices.Contains(styleKids(s), Widget(&s.trough)) || parentOf(&s.trough.knob) != Widget(&s.trough) {
+		t.Error("the scale's nodes are not walked")
 	}
 }
