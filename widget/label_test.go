@@ -126,3 +126,37 @@ func TestLabelNaturalHeightPaints(t *testing.T) {
 		}
 	})
 }
+
+// TestLabelFitsItsNaturalWidth pins that a label laid out at exactly
+// its natural width shows its whole text: Paint ellipsizes and wraps
+// against the raw advance, so the natural width must round up. Rounded
+// to nearest, every advance with a fraction under a half ellipsized at
+// its own natural size ("Images" painted as "Imag…").
+func TestLabelFitsItsNaturalWidth(t *testing.T) {
+	face := testFace(t)
+	checked := 0
+	for _, text := range []string{"Images", "Cancel", "All Files", "Downloads", "wayle", "ij", "Mm", "Open With", "Text Editor", "x"} {
+		for _, px := range []float64{11, 12, 13, 14, 15, 17} {
+			adv := face.Shape(text, px).Advance()
+			if frac := adv - float64(int(adv)); frac == 0 || frac >= 0.5 {
+				continue
+			}
+			checked++
+			l := NewLabel(face, px, text, render.RGB(255, 255, 255))
+			l.SetEllipsize(EllipsizeEnd)
+			nat := l.Measure(Constraints{Max: Size{W: 1000, H: 100}})
+			if float64(nat.W) < adv {
+				t.Errorf("%q at %vpx: natural width %d is short of its %.2f advance", text, px, nat.W, adv)
+			}
+			w := NewLabel(face, px, text+" "+text, render.RGB(255, 255, 255))
+			w.SetWrap(true)
+			wn := w.Measure(Constraints{Max: Size{W: 1000, H: 100}})
+			if rows := w.wrapped(float64(wn.W)); len(rows) != 1 {
+				t.Errorf("%q at %vpx: wrapping at its natural width %d broke into %d rows", text, px, wn.W, len(rows))
+			}
+		}
+	}
+	if checked == 0 {
+		t.Fatal("no sample had an advance with a fraction under a half")
+	}
+}

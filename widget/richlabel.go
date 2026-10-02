@@ -181,7 +181,7 @@ func (l *RichLabel) retext() {
 	l.text = line
 	l.runes = runes
 	l.shapeSpans(spans)
-	l.natural = Size{W: int(l.advance + 0.5), H: int(math.Ceil(l.lineAsc + l.lineDesc))}
+	l.natural = Size{W: int(math.Ceil(l.advance)), H: int(math.Ceil(l.lineAsc + l.lineDesc))}
 }
 
 // spansText is the spans' joined text and its rune count.
