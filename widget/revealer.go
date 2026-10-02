@@ -1,6 +1,7 @@
 package widget
 
 import (
+	"math"
 	"time"
 
 	"github.com/stubbedev/gelm/internal/anim"
@@ -86,6 +87,10 @@ type Revealer struct {
 	// painted is the logical rect the last frame drew into, so the
 	// next one repaints what a transform left behind.
 	painted render.Rect
+	// collapse sizes a slide's slot by its progress (SetCollapse);
+	// full is the child's natural size the last Measure found.
+	collapse bool
+	full     Size
 }
 
 // NewRevealer wraps child hidden, fading over 200ms.
@@ -161,6 +166,38 @@ func (r *Revealer) SetRevealed(reveal bool) {
 	}).Easing(anim.Linear))
 }
 
+// SetCollapse makes a slide take space as it shows, the way a GTK
+// revealer does: along the slide's axis the revealer measures the
+// child's natural size scaled by the eased progress, nothing while
+// hidden, and the child keeps its full size, its leading edge riding
+// the slot's growing edge, clipped to the slot. Content below a
+// collapsing revealer moves with it. Only the four slides collapse;
+// the other transitions reserve the child's full size whatever this
+// says.
+func (r *Revealer) SetCollapse(collapse bool) {
+	if r.collapse != collapse {
+		r.collapse = collapse
+		r.InvalidateLayout()
+	}
+}
+
+// Collapse reports SetCollapse.
+func (r *Revealer) Collapse() bool { return r.collapse }
+
+// collapses reports whether the slot follows the progress.
+func (r *Revealer) collapses() bool {
+	switch r.transition {
+	case RevealSlideUp, RevealSlideDown, RevealSlideLeft, RevealSlideRight:
+		return r.collapse
+	}
+	return false
+}
+
+// vertical reports a slide along y.
+func (r *Revealer) vertical() bool {
+	return r.transition == RevealSlideUp || r.transition == RevealSlideDown
+}
+
 // Finish lands a running transition at once, reporting it as its end
 // would; with none running it does nothing. It is the escape for a
 // surface that must go now (a shutdown, a test without a clock).
@@ -190,6 +227,9 @@ func (r *Revealer) setProgress(p float64) {
 		return
 	}
 	r.progress = p
+	if r.collapses() {
+		r.InvalidateLayout()
+	}
 	r.Invalidate()
 	if !r.painted.Empty() {
 		r.InvalidateRect(r.painted)
@@ -199,7 +239,9 @@ func (r *Revealer) setProgress(p float64) {
 	}
 }
 
-// Measure is the child's size, or nothing for a hidden RevealNone.
+// Measure is the child's size, nothing for a hidden RevealNone, and
+// for a collapsing slide the child's natural extent along the slide
+// scaled by the eased progress.
 func (r *Revealer) Measure(con Constraints) Size {
 	if sz, ok := r.measureHit(con); ok {
 		return sz
@@ -207,16 +249,56 @@ func (r *Revealer) Measure(con Constraints) Size {
 	if r.child == nil || (r.transition == RevealNone && !r.reveal) {
 		return r.measureStore(con, clampSize(Size{}, con))
 	}
-	return r.measureStore(con, clampSize(measureChild(r, r.child, con), con))
+	if !r.collapses() {
+		return r.measureStore(con, clampSize(measureChild(r, r.child, con), con))
+	}
+	// The child measures free along the slide: its natural extent is
+	// what the slot grows to.
+	free := Constraints{Max: con.Max}
+	t := anim.EaseInOutCubic(r.progress)
+	if r.vertical() {
+		free.Max.H = math.MaxInt
+		r.full = measureChild(r, r.child, free)
+		return r.measureStore(con, clampSize(Size{W: r.full.W, H: int(roundHalfUp(float64(r.full.H) * t))}, con))
+	}
+	free.Max.W = math.MaxInt
+	r.full = measureChild(r, r.child, free)
+	return r.measureStore(con, clampSize(Size{W: int(roundHalfUp(float64(r.full.W) * t)), H: r.full.H}, con))
 }
 
-// Arrange gives the child the whole rect.
+// Arrange gives the child the whole rect; a collapsing slide's child
+// keeps its natural extent along the slide, its leading edge on the
+// slot's growing edge.
 func (r *Revealer) Arrange(rect render.Rect) {
 	r.node.Arrange(rect)
-	if r.child != nil {
-		r.child.Arrange(rect)
-		setParents(r, r.child)
+	if r.child == nil {
+		return
 	}
+	setParents(r, r.child)
+	if r.collapses() {
+		rect = r.childRect(rect)
+	}
+	r.child.Arrange(rect)
+}
+
+// childRect places a collapsing slide's child in slot: entering from
+// above (slide down) its bottom shows first, from below its top, and
+// likewise across.
+func (r *Revealer) childRect(slot render.Rect) render.Rect {
+	c := slot
+	switch r.transition {
+	case RevealSlideDown:
+		c.H = max(r.full.H, slot.H)
+		c.Y = slot.Y + slot.H - c.H
+	case RevealSlideUp:
+		c.H = max(r.full.H, slot.H)
+	case RevealSlideRight:
+		c.W = max(r.full.W, slot.W)
+		c.X = slot.X + slot.W - c.W
+	case RevealSlideLeft:
+		c.W = max(r.full.W, slot.W)
+	}
+	return c
 }
 
 // shows reports whether any of the child is drawn.
@@ -243,6 +325,13 @@ func (r *Revealer) Paint(cv *render.Canvas) {
 		prev := cv.PushAlpha(p)
 		PaintChild(cv, r.child)
 		cv.PopAlpha(prev)
+		r.painted = r.bounds
+		return
+	case r.collapses():
+		// The arrangement already slid the child: clip it to the slot.
+		prev := cv.PushClip(cv.MapRect(r.bounds))
+		PaintChild(cv, r.child)
+		cv.PopClip(prev)
 		r.painted = r.bounds
 		return
 	}
@@ -360,6 +449,9 @@ func roundHalfUp(v float64) float64 {
 // HitTest picks inside the child while any of it shows.
 func (r *Revealer) HitTest(p Point) Widget {
 	if r.child == nil || !r.shows() {
+		return nil
+	}
+	if r.collapses() && !r.bounds.Contains(p.X, p.Y) {
 		return nil
 	}
 	if hit := r.child.HitTest(p); hit != nil {

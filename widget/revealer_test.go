@@ -271,3 +271,106 @@ func TestRevealerFinishLandsAtOnce(t *testing.T) {
 		t.Error("the finished tween kept running")
 	}
 }
+
+// collapsingAt is revealerAt with a collapsing slide, laid out like a
+// box would: measured, then arranged at (20, 20) in what it measured.
+func collapsingAt(t *testing.T, tr RevealTransition) (*Revealer, *solidLeaf) {
+	t.Helper()
+	r, leaf := revealerAt(t, tr)
+	r.SetCollapse(true)
+	relayout(r)
+	return r, leaf
+}
+
+func relayout(r *Revealer) Size {
+	sz := r.Measure(Constraints{Max: Size{W: 80, H: 60}})
+	r.Arrange(render.Rect{X: 20, Y: 20, W: sz.W, H: sz.H})
+	return sz
+}
+
+func TestRevealerCollapsingSlideGrowsWithItsProgress(t *testing.T) {
+	c := pinAnimClock(t)
+	r, leaf := collapsingAt(t, RevealSlideDown)
+	if sz := relayout(r); sz != (Size{W: 40}) {
+		t.Errorf("hidden collapsing slide measures %v, want no height", sz)
+	}
+	if !r.Collapse() {
+		t.Error("Collapse does not report SetCollapse")
+	}
+	r.SetRevealed(true)
+	advance(c, 50*time.Millisecond)
+	sz := relayout(r)
+	if sz.W != 40 || sz.H < 6 || sz.H > 14 {
+		t.Fatalf("mid-slide measures %v, want about half the child's 20px height", sz)
+	}
+	// Entering from above: the child's bottom rides the slot's bottom.
+	if want := (render.Rect{X: 20, Y: 20 + sz.H - 20, W: 40, H: 20}); leaf.bounds != want {
+		t.Errorf("child arranged at %v, want %v", leaf.bounds, want)
+	}
+	cv := paintReveal(r)
+	if redAt(cv, 30, 20+sz.H-1) != 255 {
+		t.Error("the slot's last row is not drawn")
+	}
+	if got := lit(cv, render.Rect{X: 20, Y: 0, W: 40, H: 20}); got != 0 {
+		t.Errorf("%d px drawn above the slot; the child is clipped to it", got)
+	}
+	if r.HitTest(Point{X: 30, Y: 19}) != nil {
+		t.Error("the child took input outside the slot")
+	}
+	if r.HitTest(Point{X: 30, Y: 20}) == nil {
+		t.Error("the slot took no input")
+	}
+	c.drive()
+	if sz := relayout(r); sz != (Size{W: 40, H: 20}) {
+		t.Errorf("revealed measures %v, want the child", sz)
+	}
+	if leaf.bounds != (render.Rect{X: 20, Y: 20, W: 40, H: 20}) {
+		t.Errorf("revealed child at %v", leaf.bounds)
+	}
+}
+
+func TestRevealerCollapsingSlidesPlaceTheirLeadingEdge(t *testing.T) {
+	c := pinAnimClock(t)
+	for _, tc := range []struct {
+		tr   RevealTransition
+		want func(sz Size) render.Rect
+	}{
+		{RevealSlideUp, func(sz Size) render.Rect { return render.Rect{X: 20, Y: 20, W: 40, H: 20} }},
+		{RevealSlideRight, func(sz Size) render.Rect { return render.Rect{X: 20 + sz.W - 40, Y: 20, W: 40, H: 20} }},
+		{RevealSlideLeft, func(sz Size) render.Rect { return render.Rect{X: 20, Y: 20, W: 40, H: 20} }},
+	} {
+		r, leaf := collapsingAt(t, tc.tr)
+		r.SetRevealed(true)
+		advance(c, 50*time.Millisecond)
+		sz := relayout(r)
+		horizontal := tc.tr != RevealSlideUp
+		if horizontal && (sz.H != 20 || sz.W < 12 || sz.W > 28) || !horizontal && (sz.W != 40 || sz.H < 6 || sz.H > 14) {
+			t.Errorf("transition %d mid-slide measures %v", tc.tr, sz)
+		}
+		if want := tc.want(sz); leaf.bounds != want {
+			t.Errorf("transition %d child at %v, want %v", tc.tr, leaf.bounds, want)
+		}
+		c.drive()
+	}
+}
+
+func TestRevealerCollapseLeavesOtherTransitionsTheirSlot(t *testing.T) {
+	pinAnimClock(t)
+	for _, tr := range []RevealTransition{RevealFade, RevealZoom} {
+		r, leaf := collapsingAt(t, tr)
+		if sz := relayout(r); sz != (Size{W: 40, H: 20}) {
+			t.Errorf("hidden collapsing transition %d measures %v, want the child held", tr, sz)
+		}
+		if leaf.bounds != (render.Rect{X: 20, Y: 20, W: 40, H: 20}) {
+			t.Errorf("transition %d child at %v", tr, leaf.bounds)
+		}
+	}
+	r, _ := collapsingAt(t, RevealSlideDown)
+	r.SetCollapse(false)
+	if r.Collapse() {
+		t.Error("Collapse reports true after SetCollapse(false)")
+	}
+	if sz := relayout(r); sz != (Size{W: 40, H: 20}) {
+		t.Errorf("an uncollapsed hidden slide measures %v, want the child held", sz)
+	}
+}
