@@ -29,8 +29,8 @@ func TestPlacementForAPoint(t *testing.T) {
 func TestPlacementForARect(t *testing.T) {
 	rect := render.Rect{X: 400, Y: 6, W: 180, H: 42}
 	const g = 10
-	flipY := uint32(xdg.PositionerConstraintAdjustmentSlideX | xdg.PositionerConstraintAdjustmentFlipY)
-	flipX := uint32(xdg.PositionerConstraintAdjustmentSlideY | xdg.PositionerConstraintAdjustmentFlipX)
+	flipY := uint32(xdg.PositionerConstraintAdjustmentSlideX | xdg.PositionerConstraintAdjustmentFlipY | xdg.PositionerConstraintAdjustmentResizeY)
+	flipX := uint32(xdg.PositionerConstraintAdjustmentSlideY | xdg.PositionerConstraintAdjustmentFlipX | xdg.PositionerConstraintAdjustmentResizeX)
 	for _, tc := range []struct {
 		gravity         Gravity
 		anchor, grow    uint32

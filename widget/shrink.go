@@ -187,3 +187,8 @@ const scrollFloor = 4 * gutter
 // Shrinkable implements Shrinker: a scroll gives up everything above
 // its floor and scrolls the rest.
 func (s *Scroll) Shrinkable() int { return max(0, s.measured.H-scrollFloor) }
+
+// Shrinkable implements Shrinker: a list scrolls the rows that no
+// longer fit, down to one row (a ListView's scrolled window giving
+// way in a popover short of room).
+func (l *List) Shrinkable() int { return max(0, l.measureOut.H-l.rowH) }

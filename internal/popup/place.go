@@ -22,13 +22,17 @@ type placement struct {
 // on both axes and flipping up. A rect (popovers) is edge-aligned on
 // the Gravity side and may flip across the anchor on that axis and
 // slide along the other, so a bar's dropdown that has no room below
-// the screen edge opens above the bar instead of over it.
+// the screen edge opens above the bar instead of over it; with room
+// on neither side it shrinks on that axis (GtkPopover's resize), its
+// content giving way, rather than leave the output.
 func placementFor(cfg Config) placement {
 	const (
-		slideX = xdg.PositionerConstraintAdjustmentSlideX
-		slideY = xdg.PositionerConstraintAdjustmentSlideY
-		flipX  = xdg.PositionerConstraintAdjustmentFlipX
-		flipY  = xdg.PositionerConstraintAdjustmentFlipY
+		slideX  = xdg.PositionerConstraintAdjustmentSlideX
+		slideY  = xdg.PositionerConstraintAdjustmentSlideY
+		flipX   = xdg.PositionerConstraintAdjustmentFlipX
+		flipY   = xdg.PositionerConstraintAdjustmentFlipY
+		resizeX = xdg.PositionerConstraintAdjustmentResizeX
+		resizeY = xdg.PositionerConstraintAdjustmentResizeY
 	)
 	if cfg.AnchorRect.Empty() {
 		return placement{
@@ -42,16 +46,16 @@ func placementFor(cfg Config) placement {
 	p := placement{rect: cfg.AnchorRect}
 	switch cfg.Gravity {
 	case GravityTop:
-		p.anchor, p.gravity, p.adjust = xdg.PositionerAnchorTopLeft, xdg.PositionerGravityTopRight, slideX|flipY
+		p.anchor, p.gravity, p.adjust = xdg.PositionerAnchorTopLeft, xdg.PositionerGravityTopRight, slideX|flipY|resizeY
 		p.offsetX, p.offsetY = -g, g
 	case GravityRight:
-		p.anchor, p.gravity, p.adjust = xdg.PositionerAnchorTopRight, xdg.PositionerGravityBottomRight, slideY|flipX
+		p.anchor, p.gravity, p.adjust = xdg.PositionerAnchorTopRight, xdg.PositionerGravityBottomRight, slideY|flipX|resizeX
 		p.offsetX, p.offsetY = -g, -g
 	case GravityLeft:
-		p.anchor, p.gravity, p.adjust = xdg.PositionerAnchorTopLeft, xdg.PositionerGravityBottomLeft, slideY|flipX
+		p.anchor, p.gravity, p.adjust = xdg.PositionerAnchorTopLeft, xdg.PositionerGravityBottomLeft, slideY|flipX|resizeX
 		p.offsetX, p.offsetY = g, -g
 	default:
-		p.anchor, p.gravity, p.adjust = xdg.PositionerAnchorBottomLeft, xdg.PositionerGravityBottomRight, slideX|flipY
+		p.anchor, p.gravity, p.adjust = xdg.PositionerAnchorBottomLeft, xdg.PositionerGravityBottomRight, slideX|flipY|resizeY
 		p.offsetX, p.offsetY = -g, -g
 	}
 	return p
