@@ -288,3 +288,32 @@ func TestPanedPaintsItsPanes(t *testing.T) {
 		t.Errorf("lone pane pixel = %#08x, want red across", uint32(got))
 	}
 }
+
+// A label inside a button under a Paned styles from the sheet above
+// too, and follows the button's inherited color when it changes.
+func TestButtonContentRestylesWithItsButton(t *testing.T) {
+	loadCSS(t, `.b { color: #ff0000; } .b.hot { color: #00ff00; }`)
+	face := testFace(t)
+	label := NewLabel(face, 12, "x", 0)
+	type wrapped struct{ *Button }
+	btn := wrapped{NewButton(label, 0, 0)}
+	btn.AddClass("b")
+	side := NewBox(Column, 0, 0)
+	side.Append(btn, false)
+	root := NewBox(Column, 0, 0)
+	root.Append(NewPaned(Row, side, NewBox(Row, 0, 0)), true)
+	frame := func() {
+		root.Measure(Constraints{Max: Size{W: 200, H: 100}})
+		root.Arrange(render.Rect{W: 200, H: 100})
+	}
+	frame()
+	frame()
+	if got := label.style(label).Color; got != render.RGB(0xff, 0, 0) {
+		t.Fatalf("label color %#08x, want the button's red", uint32(got))
+	}
+	btn.AddClass("hot")
+	frame()
+	if got := label.style(label).Color; got != render.RGB(0, 0xff, 0) {
+		t.Errorf("label color %#08x after the button turned hot, want green", uint32(got))
+	}
+}

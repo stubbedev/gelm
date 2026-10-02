@@ -964,14 +964,29 @@ func inkOf(v *style.Values) render.Insets {
 // pre-order — and repaints only if its values actually moved (the
 // restyle diff invalidates).
 func restyleSubtree(w Widget) {
-	walkTree(w, 0, func(k Widget, _ int) {
-		if k == w {
-			return
-		}
+	for _, k := range styleKids(w) {
 		if n := nodeOf(k); n != nil {
 			n.styleDirty = true
 		}
-	})
+		restyleSubtree(k)
+	}
+}
+
+// styleKids are the widgets that inherit from w: its Children, and a
+// Button's content, which inherits the button's color and font but
+// stays out of the Children walks (focus, hit testing, a11y treat the
+// button as the leaf).
+func styleKids(w Widget) []Widget {
+	switch c := w.(type) {
+	case interface{ styleChild() Widget }:
+		if k := c.styleChild(); k != nil {
+			return []Widget{k}
+		}
+		return nil
+	case childser:
+		return c.Children()
+	}
+	return nil
 }
 
 // restyleChildren marks w's children (and their subtrees) stale: a
