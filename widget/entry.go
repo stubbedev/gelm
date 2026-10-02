@@ -784,10 +784,11 @@ func (e *Entry) Paint(cv *render.Canvas) {
 			}, render.RGBA(a.R(), a.G(), a.B(), 200))
 		}
 	}
-	// Cursor bar after the text before the caret; hidden while the
-	// input method hides its composing caret. Every frame reads the
-	// same offset, so a repaint (blink or otherwise) never jumps it.
-	if caret := e.caretRune(); caret >= 0 {
+	// Cursor bar after the text before the caret, while the entry has
+	// keyboard focus (GTK's rule); hidden while the input method hides
+	// its composing caret. Every frame reads the same offset, so a
+	// repaint (blink or otherwise) never jumps it.
+	if caret := e.caretRune(); caret >= 0 && e.focused {
 		cv.FillRect(render.Rect{X: e.caretX(sh, caret), Y: e.bounds.Y + 6, W: 2, H: e.bounds.H - 12}, caretCol)
 	}
 	cv.PopClip(prev)

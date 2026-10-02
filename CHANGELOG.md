@@ -21,6 +21,7 @@
   `Dialog.Respond`, Esc and Enter still mapping to its responses.
 - `Paned.SetMaxPosition(px)`: caps the divider (drags, keys,
   SetPosition) above the start pane's floor; zero lifts the cap.
+- Entries and text areas paint their caret only while focused (GTK).
 - The window's focus ring marks keyboard focus only (GTK's
   `:focus-visible`): a click focuses without a ring.
   `widget.FocusVisible(w)` reports it.
