@@ -701,7 +701,9 @@ func (e *Entry) Measure(con Constraints) Size {
 	v := e.style(e)
 	w = max(w, picki(v, style.PropMinWidth, 0))
 	h = max(h, picki(v, style.PropMinHeight, 0))
-	return e.measureStore(con, clampSize(Size{W: w, H: h}, con))
+	// The stylesheet's margin sits outside the field, as in every CSS box.
+	m := marginOf(v)
+	return e.measureStore(con, clampSize(Size{W: w + m.Left + m.Right, H: h + m.Top + m.Bottom}, con))
 }
 
 // MinSize implements MinSizer: the stylesheet's min-* floors when set,
@@ -793,9 +795,10 @@ func (e *Entry) Paint(cv *render.Canvas) {
 
 // Arrange pins the field's rect and re-pans: a resize changes the
 // visible width, so the caret may need pulling back into view. The
-// resize itself already scheduled the layout damage.
+// resize itself already scheduled the layout damage. r is the margin box;
+// Bounds records the field inside the stylesheet's margin.
 func (e *Entry) Arrange(r render.Rect) {
-	e.node.Arrange(r)
+	e.node.Arrange(marginOf(e.style(e)).Shrink(r))
 	e.panToCaret()
 }
 

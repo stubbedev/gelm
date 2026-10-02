@@ -608,3 +608,26 @@ func TestInvalidationClimbsPastAnUncachedWidget(t *testing.T) {
 		t.Errorf("root still measures %v after the label grew (was %v)", after, before)
 	}
 }
+
+// TestEntryHonorsItsMargin pins the field inside the stylesheet's
+// margin: it measures the margin in and arranges its field (and hit
+// area) inside it, as every CSS box does. A save-name field styled
+// `margin: 0 12px 8px` used to run edge to edge.
+func TestEntryHonorsItsMargin(t *testing.T) {
+	face := testFace(t)
+	plain := NewEntry(face, 13, render.RGB(255, 255, 255))
+	base := plain.Measure(Constraints{Max: Size{W: 500, H: 100}})
+	loadCSS(t, `.m { margin: 1px 12px 8px 4px; }`)
+	e := NewEntry(face, 13, render.RGB(255, 255, 255))
+	e.AddClass("m")
+	if got, want := e.Measure(Constraints{Max: Size{W: 500, H: 100}}), (Size{W: base.W + 16, H: base.H + 9}); got != want {
+		t.Errorf("measure = %+v, want %+v (the field plus its margin)", got, want)
+	}
+	e.Arrange(render.Rect{W: 300, H: 40})
+	if got, want := e.Bounds(), (render.Rect{X: 4, Y: 1, W: 284, H: 31}); got != want {
+		t.Errorf("field = %+v, want %+v inside the margin", got, want)
+	}
+	if e.HitTest(Point{X: 2, Y: 20}) != nil {
+		t.Error("the margin hit the field")
+	}
+}
