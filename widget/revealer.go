@@ -236,12 +236,12 @@ func (r *Revealer) Paint(cv *render.Canvas) {
 	p := r.progress
 	switch {
 	case r.transition == RevealNone || p >= 1:
-		r.child.Paint(cv)
+		PaintChild(cv, r.child)
 		r.painted = r.bounds
 		return
 	case r.transition == RevealFade:
 		prev := cv.PushAlpha(p)
-		r.child.Paint(cv)
+		PaintChild(cv, r.child)
 		cv.PopAlpha(prev)
 		r.painted = r.bounds
 		return

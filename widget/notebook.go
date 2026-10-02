@@ -189,7 +189,7 @@ func (n *Notebook) Paint(cv *render.Canvas) {
 			X: n.bounds.X, Y: n.bounds.Y + tabBarHeight,
 			W: n.bounds.W, H: max(0, n.bounds.H-tabBarHeight),
 		})
-		n.tabs[n.selected].w.Paint(cv)
+		PaintChild(cv, n.tabs[n.selected].w)
 		cv.PopClip(prev)
 	}
 }

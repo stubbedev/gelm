@@ -384,7 +384,7 @@ func (b *Box) Paint(cv *render.Canvas) {
 		if !IsVisible(c.w) {
 			continue
 		}
-		c.w.Paint(cv)
+		PaintChild(cv, c.w)
 	}
 	paintOutline(cv, v, b.bounds, radii)
 	fx.pop(cv)

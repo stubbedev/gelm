@@ -278,7 +278,7 @@ func (c *Calendar) Paint(cv *render.Canvas) {
 		cv.Line(x, gy, x, gy+calendarRows*c.cellH, 1, th.Border)
 	}
 	for _, b := range c.nav {
-		b.Paint(cv)
+		PaintChild(cv, b)
 	}
 }
 

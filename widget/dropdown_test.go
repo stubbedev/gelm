@@ -473,3 +473,35 @@ func TestDropdownListPaintsAboveLaterSiblings(t *testing.T) {
 		t.Errorf("unarmed, the list escaped the paint order (%v)", got)
 	}
 }
+
+// TestFocusRingIsCoveredByLaterSiblings pins the ring in paint order: a
+// card overlaid after the focused widget covers the ring where they
+// overlap, instead of the ring crossing the card.
+func TestFocusRingIsCoveredByLaterSiblings(t *testing.T) {
+	red, blue := render.RGB(255, 0, 0), render.RGB(0, 0, 255)
+	focused := &fillSpy{nat: Size{W: 100, H: 100}, color: render.RGB(0, 255, 0)}
+	card := &fillSpy{nat: Size{W: 100, H: 100}, color: blue}
+	ov := NewOverlay().Append(focused).Append(card)
+	ov.Measure(Constraints{Max: Size{W: 100, H: 100}})
+	ov.Arrange(render.Rect{W: 100, H: 100})
+	ring := func(cv *render.Canvas) { cv.BorderRect(render.Rect{X: 10, Y: 10, W: 50, H: 50}, 2, red) }
+	paint := func(card bool) render.Color {
+		data := make([]byte, render.Stride(100)*100)
+		cv := render.New(data, render.Stride(100), 100, 100)
+		cv.MarkFocus(focused, ring)
+		if card {
+			ov.Paint(cv)
+		} else {
+			focused.Paint(cv)
+			cv.Painted(focused)
+		}
+		cv.FinishFocus()
+		return render.ColorFromBytes(data[10*render.Stride(100)+30*4:])
+	}
+	if got := paint(true); got != blue {
+		t.Errorf("under the card the ring shows (%v)", got)
+	}
+	if got := paint(false); got != red {
+		t.Errorf("uncovered, the ring is missing (%v)", got)
+	}
+}

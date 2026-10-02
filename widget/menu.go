@@ -285,7 +285,7 @@ func (m *Menu) Paint(cv *render.Canvas) {
 			setParents(m, it.Icon)
 			sz := it.Icon.Measure(Constraints{Max: Size{W: slot, H: row.H}})
 			it.Icon.Arrange(render.Rect{X: x, Y: row.Y + (row.H-sz.H)/2, W: sz.W, H: sz.H})
-			it.Icon.Paint(cv)
+			PaintChild(cv, it.Icon)
 		}
 		x += slot
 		col := t.Text

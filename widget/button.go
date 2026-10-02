@@ -107,10 +107,10 @@ func (b *Button) Paint(cv *render.Canvas) {
 	radii := radiusOr(v, b.radius)
 	paintBoxBehind(cv, v, b.bounds, radii, borderOf(v), fill)
 	if IsEnabled(b) {
-		b.child.Paint(cv)
+		PaintChild(cv, b.child)
 	} else {
 		a := cv.PushAlpha(disabledFade)
-		b.child.Paint(cv)
+		PaintChild(cv, b.child)
 		cv.PopAlpha(a)
 	}
 	paintOutline(cv, v, b.bounds, radii)

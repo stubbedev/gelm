@@ -218,7 +218,7 @@ func (s *Stack) Paint(cv *render.Canvas) {
 	}
 	old, switching := s.kids[s.prev]
 	if !switching {
-		w.Paint(cv)
+		PaintChild(cv, w)
 		return
 	}
 	dev := cv.MapRect(s.bounds)
@@ -310,7 +310,7 @@ func (o *Overlay) Paint(cv *render.Canvas) {
 		if !IsVisible(k) {
 			continue
 		}
-		k.Paint(cv)
+		PaintChild(cv, k)
 	}
 }
 
@@ -645,7 +645,7 @@ func (s *Scroll) ArrangeRoot(r render.Rect) {
 func (s *Scroll) Paint(cv *render.Canvas) {
 	prev := cv.PushClip(s.bounds)
 	if s.child != nil {
-		s.child.Paint(cv)
+		PaintChild(cv, s.child)
 	}
 	if s.ShowBars && s.alpha > 0 {
 		s.tickFade()

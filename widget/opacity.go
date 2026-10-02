@@ -61,10 +61,10 @@ func (o *Opacity) paintChild(cv *render.Canvas, child Widget) {
 	case o.alpha <= 0:
 		return
 	case o.alpha >= 1:
-		child.Paint(cv)
+		PaintChild(cv, child)
 	default:
 		prev := cv.PushAlpha(o.alpha)
-		child.Paint(cv)
+		PaintChild(cv, child)
 		cv.PopAlpha(prev)
 	}
 }

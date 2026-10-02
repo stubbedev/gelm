@@ -261,7 +261,7 @@ func (e *Expander) Paint(cv *render.Canvas) {
 	}
 	if e.progress > 0 && e.child != nil && !e.childRect.Empty() {
 		prev := cv.PushClip(e.childRect)
-		e.child.Paint(cv)
+		PaintChild(cv, e.child)
 		cv.PopClip(prev)
 	}
 }
