@@ -218,6 +218,11 @@ func (t *Transition) Covers(p Prop) bool {
 // comparable, so a restyle diffs old against new with ==.
 type Values struct {
 	Set PropSet
+	// Own are the properties the node's own rules declared, before
+	// inheritance filled in the rest of Set: a part that styles only
+	// what a stylesheet names for it (an entry's placeholder color)
+	// reads these.
+	Own PropSet
 
 	Color      render.Color
 	Background render.Color
@@ -261,6 +266,10 @@ type Values struct {
 
 // Has reports whether the property was set for this node.
 func (v *Values) Has(p Prop) bool { return v.Set.Has(p) }
+
+// Declares reports whether the node's own rules set p, not its
+// inheritance.
+func (v *Values) Declares(p Prop) bool { return v.Own.Has(p) }
 
 // HasAny reports whether any of the properties was set.
 func (v *Values) HasAny(ps ...Prop) bool {

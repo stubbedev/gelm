@@ -211,10 +211,10 @@ func TestEntryPlaceholderNeverPans(t *testing.T) {
 	if first < 0 {
 		t.Fatal("placeholder painted nothing")
 	}
-	// The placeholder sits at the field's left edge as always — neither
-	// panned nor pushed in by the text padding.
-	if first < 0 || first > 4 {
-		t.Errorf("placeholder ink starts at x = %d, want the unshifted origin (~0..4)", first)
+	// The placeholder sits where the text starts (GTK draws it inside
+	// the text node): unpanned, at the text area's left edge.
+	if left := with.textInsets().Left; first < left || first > left+4 {
+		t.Errorf("placeholder ink starts at x = %d, want the text area's origin (~%d..%d)", first, left, left+4)
 	}
 }
 
@@ -301,7 +301,8 @@ func TestEntryTextWidthIsFixed(t *testing.T) {
 	face := entryFace(t)
 	con := Constraints{Max: Size{W: 5000, H: 100}}
 	e := NewEntry(face, 14, render.RGB(255, 255, 255))
-	pad := 2 * e.pad()
+	in := e.textInsets()
+	pad := in.Left + in.Right
 	hug := e.Measure(con).W
 	if hug != pad {
 		t.Fatalf("empty content-hugging width = %d, want the padding %d", hug, pad)

@@ -54,6 +54,9 @@ type Entry struct {
 	// zero hugs the content.
 	textWidth int
 
+	// text is GtkText's node under the field (`entry > text`).
+	text entryText
+
 	// Echo masking: echo picks the display mode (dots, nothing) while
 	// the contents stay logical, and reveal is the app's temporary
 	// show-the-real-text override.
@@ -86,7 +89,62 @@ type Entry struct {
 // may be a render.Chain for mixed-script fallback. A nil face panics
 // here (see requireFace) instead of failing later, in shaping.
 func NewEntry(face render.Font, sizePx float64, color render.Color) *Entry {
-	return &Entry{face: requireFace("widget.NewEntry", face), sizePx: sizePx, color: color}
+	e := &Entry{face: requireFace("widget.NewEntry", face), sizePx: sizePx, color: color}
+	e.text.SetElement("text")
+	e.text.placeholder.SetElement("placeholder")
+	e.text.selection.SetElement("selection")
+	setParents(e, &e.text)
+	setParents(&e.text, &e.text.placeholder, &e.text.selection)
+	return e
+}
+
+// entryText is GtkText's node under an entry (`entry > text`): its
+// margin, border and padding inset the text, its color paints the
+// text, and its placeholder and selection children (`text >
+// placeholder`, `text > selection`) color those. The entry matches
+// and paints them; they are never laid out on their own.
+type entryText struct {
+	entryPart
+	placeholder, selection entryPart
+}
+
+func (t *entryText) styleChildren() []Widget { return []Widget{&t.placeholder, &t.selection} }
+
+// entryPart is a style-only node of an entry.
+type entryPart struct{ node }
+
+func (*entryPart) Measure(con Constraints) Size { return clampSize(Size{}, con) }
+func (*entryPart) Paint(*render.Canvas)         {}
+func (*entryPart) HitTest(Point) Widget         { return nil }
+
+// styleChildren is the text node (styleKids).
+func (e *Entry) styleChildren() []Widget { return []Widget{&e.text} }
+
+// entryPad is an unstyled field's padding: lineheight plus 12 tall.
+var entryPad = render.Insets{Top: 6, Right: 8, Bottom: 6, Left: 8}
+
+// textInsets are the text area's insets inside the field's bounds:
+// the field's border and padding (entryPad where unstyled) and the
+// text node's margin, border and padding.
+func (e *Entry) textInsets() render.Insets {
+	v := e.style(e)
+	b, p := borderOf(v), paddingOr(v, entryPad)
+	t := boxOf(e.text.style(&e.text), render.Insets{}).outer()
+	return render.Insets{
+		Top:    b.Top + p.Top + t.Top,
+		Right:  b.Right + p.Right + t.Right,
+		Bottom: b.Bottom + p.Bottom + t.Bottom,
+		Left:   b.Left + p.Left + t.Left,
+	}
+}
+
+// contentRect is the text area: the bounds less textInsets.
+func (e *Entry) contentRect() render.Rect {
+	in := e.textInsets()
+	return render.Rect{
+		X: e.bounds.X + in.Left, Y: e.bounds.Y + in.Top,
+		W: max(e.bounds.W-in.Left-in.Right, 0), H: max(e.bounds.H-in.Top-in.Bottom, 0),
+	}
 }
 
 // Placeholder returns the text shown when the entry is empty.
@@ -129,9 +187,6 @@ func (e *Entry) fontPx() float64 {
 
 // pad is the effective horizontal text inset: the stylesheet's
 // padding when set, else the built-in 8.
-func (e *Entry) pad() int {
-	return paddingOr(e.style(e), render.UniformInsets(8)).Left
-}
 
 // SetPlaceholder sets the text shown when the entry is empty.
 func (e *Entry) SetPlaceholder(s string) {
@@ -597,8 +652,8 @@ func (e *Entry) MoveEnd() {
 // innerRect is the padded text viewport: the rect painting clips to
 // and the pan moves text across.
 func (e *Entry) innerRect() render.Rect {
-	pad := e.pad()
-	return render.Rect{X: e.bounds.X + pad, Y: e.bounds.Y, W: max(e.bounds.W-2*pad, 0), H: e.bounds.H}
+	c := e.contentRect()
+	return render.Rect{X: c.X, Y: e.bounds.Y, W: c.W, H: e.bounds.H}
 }
 
 // panCaret is the display-space caret the pan follows: the composing
@@ -618,7 +673,7 @@ func (e *Entry) panCaret() int {
 // slides the window toward the reading end, mirroring LTR exactly with
 // the caret's distance from the right edge in the caret's role.
 func (e *Entry) lineX(sh *render.ShapedText) int {
-	left := e.bounds.X + e.pad()
+	left := e.contentRect().X
 	if !text.RTL(e.displayText(), e.dir) {
 		return left - e.scrollX
 	}
@@ -712,15 +767,17 @@ func (e *Entry) Measure(con Constraints) Size {
 		text = e.placeholder
 	}
 	px := e.fontPx()
-	pad := e.pad()
-	w := 2 * pad
+	in := e.textInsets()
+	w := in.Left + in.Right
 	switch {
 	case e.textWidth > 0:
 		w += e.textWidth
 	case text != "":
 		w += int(e.face.Shape(text, px).Advance() + 0.5)
 	}
-	h := int(e.face.Shape("lg", px).Ascent()+e.face.Shape("lg", px).Descent()+0.5) + 12
+	lg := e.face.Shape("lg", px)
+	line := max(int(lg.Ascent()+lg.Descent()+0.5), picki(e.text.style(&e.text), style.PropMinHeight, 0))
+	h := line + in.Top + in.Bottom
 	if e.MaxWidth > 0 {
 		w = min(w, max(e.MaxWidth, 16))
 	}
@@ -767,7 +824,8 @@ func (e *Entry) Paint(cv *render.Canvas) {
 	}
 	bg = pickc(0, v, style.PropBackgroundColor, bg)
 	radii := radiusOr(v, t.Radius)
-	textCol := pickc(e.color, v, style.PropColor, e.color)
+	// The text node's color, its own or the field's it inherits.
+	textCol := pickc(e.color, e.text.style(&e.text), style.PropColor, pickc(0, v, style.PropColor, e.color))
 	caretCol := textCol
 	if !enabled {
 		textCol = scaleAlpha(textCol, disabledFade)
@@ -778,9 +836,25 @@ func (e *Entry) Paint(cv *render.Canvas) {
 	// The fill, then the rounded border ring over its edge, the same
 	// CSS box layers every styled widget paints.
 	paintBoxBehind(cv, v, e.bounds, radii, borderOf(v), bg)
+	c := e.contentRect()
 	disp := e.displayText()
 	if len(e.runes) == 0 && !e.composing() && e.placeholder != "" {
-		e.face.DrawAlignedDir(cv, e.placeholder, e.bounds, e.fontPx(), t.Border, render.AlignStart, e.dir)
+		col := t.Border
+		if pv := e.text.placeholder.style(&e.text.placeholder); pv.Declares(style.PropColor) {
+			col = pv.Color
+		}
+		if !enabled {
+			col = scaleAlpha(col, disabledFade)
+		}
+		// On the text's baseline at the reading's start edge, unpanned.
+		ph := e.face.ShapeDir(e.placeholder, e.fontPx(), e.dir)
+		x := c.X
+		if text.RTL(e.placeholder, e.dir) {
+			x = c.X + c.W - int(ph.Advance()+0.5)
+		}
+		prev := cv.PushClip(e.innerRect())
+		ph.Draw(cv, x, e.baseline(ph, c), col)
+		cv.PopClip(prev)
 		return
 	}
 	// The highlight and the caret map through the display shape: in
@@ -791,23 +865,38 @@ func (e *Entry) Paint(cv *render.Canvas) {
 	sh := e.shape(disp)
 	lx := e.lineX(sh)
 	prev := cv.PushClip(e.innerRect())
-	if start, end, active := e.Selection(); active {
+	baseline := e.baseline(sh, c)
+	start, end, selecting := e.Selection()
+	var selFg render.Color
+	if selecting {
 		a := t.Accent
+		fill := render.RGBA(a.R(), a.G(), a.B(), 90)
+		sv := e.text.selection.style(&e.text.selection)
+		if sv.Declares(style.PropBackgroundColor) {
+			fill = sv.Background
+		}
+		if sv.Declares(style.PropColor) {
+			selFg = sv.Color
+		}
 		for _, band := range sh.AppendCaretBands(e.bands[:0], start, end) {
-			cv.FillRect(render.Rect{
-				X: lx + int(band[0]+0.5), Y: e.bounds.Y + 4,
-				W: int(band[1]+0.5) - int(band[0]+0.5), H: e.bounds.H - 8,
-			}, render.RGBA(a.R(), a.G(), a.B(), 90))
+			cv.FillRect(e.bandRect(lx, band, c), fill)
 		}
 	}
-	baseline := e.bounds.Y + int(math.Round((float64(e.bounds.H)-float64(sh.LineHeight()))/2+sh.Ascent()))
 	sh.Draw(cv, lx, baseline, textCol)
+	if selFg != 0 {
+		// The selected runes redraw in the selection's color.
+		for _, band := range sh.AppendCaretBands(e.bands[:0], start, end) {
+			clip := cv.PushClip(e.bandRect(lx, band, c))
+			sh.Draw(cv, lx, baseline, selFg)
+			cv.PopClip(clip)
+		}
+	}
 	if e.composing() {
 		// Accent underline under the composing range.
 		a := t.Accent
 		for _, band := range sh.AppendCaretBands(e.bands[:0], e.peAt, e.peAt+len(e.peText)) {
 			cv.FillRect(render.Rect{
-				X: lx + int(band[0]+0.5), Y: e.bounds.Y + e.bounds.H - 8,
+				X: lx + int(band[0]+0.5), Y: c.Y + c.H - 2,
 				W: max(int(band[1]+0.5)-int(band[0]+0.5), 2), H: 2,
 			}, render.RGBA(a.R(), a.G(), a.B(), 200))
 		}
@@ -817,9 +906,23 @@ func (e *Entry) Paint(cv *render.Canvas) {
 	// its composing caret. Every frame reads the same offset, so a
 	// repaint (blink or otherwise) never jumps it.
 	if caret := e.caretRune(); caret >= 0 && e.focused {
-		cv.FillRect(render.Rect{X: e.caretX(sh, caret), Y: e.bounds.Y + 6, W: 2, H: e.bounds.H - 12}, caretCol)
+		cv.FillRect(render.Rect{X: e.caretX(sh, caret), Y: c.Y, W: 2, H: c.H}, caretCol)
 	}
 	cv.PopClip(prev)
+}
+
+// baseline centers sh's line in the text area c.
+func (e *Entry) baseline(sh *render.ShapedText, c render.Rect) int {
+	return c.Y + int(math.Round((float64(c.H)-float64(sh.LineHeight()))/2+sh.Ascent()))
+}
+
+// bandRect is a selection band's rect: the band's run across the
+// text area, 2px taller each way, within the field.
+func (e *Entry) bandRect(lx int, band [2]float64, c render.Rect) render.Rect {
+	return render.Rect{
+		X: lx + int(band[0]+0.5), Y: c.Y - 2,
+		W: int(band[1]+0.5) - int(band[0]+0.5), H: c.H + 4,
+	}.Intersect(e.bounds)
 }
 
 // Arrange pins the field's rect and re-pans: a resize changes the

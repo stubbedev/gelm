@@ -82,6 +82,7 @@ func Compute(layers []Layer, n Node, parent, old *Values, env Env, sc *Scratch, 
 
 	// Inheritance: unset inherited longhands take the parent's value,
 	// unless an explicit `initial` blocked it.
+	v.Own = v.Set
 	for p := range numProps {
 		if inheritedProps.Has(p) && !v.Has(p) && !blocked.Has(p) && pv.Has(p) {
 			copyProp(v, pv, p)
