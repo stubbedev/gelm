@@ -22,6 +22,8 @@
 - `Paned.SetMaxPosition(px)`: caps the divider (drags, keys,
   SetPosition) above the start pane's floor; zero lifts the cap.
 - Entries and text areas paint their caret only while focused (GTK).
+- A List with an auto row height (0) sizes rows by the styled first
+  row (its padding and fonts), re-measured as styles change.
 - Every widget a container parents is in its style walk (a subtree
   restyle reaches a List's rows, a Menu's icons, a Switch's knob),
   pinned by a test over every container.
