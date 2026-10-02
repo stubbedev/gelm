@@ -36,8 +36,10 @@ type childEntry struct {
 // Leftover main-axis space is distributed equally among expanding children
 // (the remainder is dropped). A column short of room takes the shortfall
 // from its expanding Shrinker children (a Scroll, or a box holding one),
-// down to their floors; past that, and for every other child, the natural
-// sizes overflow the box and the painter's clip decides what is visible.
+// down to their floors; a row takes it from any WidthShrinker child (an
+// entry, an ellipsizing label, a flow box), measuring those again at the
+// width they get. Past the floors the natural sizes overflow the box and
+// the painter's clip decides what is visible.
 //
 // A row's start/end semantics mirror with the box's direction: an RTL
 // row flows from the right edge, so the first child sits rightmost,
@@ -258,6 +260,25 @@ func (b *Box) Measure(con Constraints) Size {
 		}
 		if shown > 0 {
 			total -= spacing
+		}
+		// Height for width: a row too narrow for its children narrows
+		// those that can give, and measures them again at the width
+		// they get, a wrapping child growing taller.
+		if b.axis == Row && total-spacing*max(shown-1, 0) > availMain {
+			if takes := b.shrinkTakes(total - spacing*max(shown-1, 0) - availMain); takes != nil {
+				total, cross = 0, 0
+				for i, c := range b.child {
+					if !IsVisible(c.w) {
+						continue
+					}
+					if takes[i] > 0 {
+						b.child[i].nat = measureChild(b, c.w, Constraints{Max: Size{W: c.nat.W - takes[i], H: innerCross}})
+					}
+					total += b.child[i].nat.W + spacing
+					cross = max(cross, b.child[i].nat.H)
+				}
+				total -= spacing
+			}
 		}
 		return b.withMain(Size{W: cross, H: cross}, total)
 	}))
