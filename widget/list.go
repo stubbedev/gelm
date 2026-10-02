@@ -944,11 +944,14 @@ type listRow struct {
 // Measure delegates to the row widget.
 func (r *listRow) Measure(con Constraints) Size { return r.row.Measure(con) }
 
-// Arrange records the proxy's rect and arranges the row widget into
-// the same rect, linking it below the proxy for the ancestor walks.
+// Arrange records the proxy's rect and lays the row widget out in the
+// same rect, linking it below the proxy for the ancestor walks. The
+// row is measured first: no Measure pass reaches it (the list measures
+// as a viewport), and containers arrange from what they measured.
 func (r *listRow) Arrange(rect render.Rect) {
 	r.node.Arrange(rect)
 	setParents(r, r.row)
+	r.row.Measure(Constraints{Max: Size{W: rect.W, H: rect.H}})
 	r.row.Arrange(rect)
 }
 
