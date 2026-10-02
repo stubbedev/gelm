@@ -267,3 +267,23 @@ func TestSliderScaleNodes(t *testing.T) {
 		t.Error("the scale's nodes are not walked")
 	}
 }
+
+// A press on the trough warps the value there (GTK's
+// primary-button-warps-slider), before any drag; disabled, nothing.
+func TestSliderWarpsOnPress(t *testing.T) {
+	s := NewSlider(0, 100, 0, 0)
+	s.Measure(Constraints{Max: Size{W: 208, H: 18}})
+	s.Arrange(render.Rect{W: 208, H: 18})
+	r := &Router{Root: s}
+	r.Press(BTNLeft, Point{X: 104, Y: 9})
+	if v := s.Value(); v != 50 {
+		t.Errorf("pressed at the middle: %v, want 50", v)
+	}
+	r.Release(BTNLeft, Point{X: 104, Y: 9})
+	s.SetEnabled(false)
+	r.Press(BTNLeft, Point{X: 4, Y: 9})
+	s.PressAt(Point{X: 4, Y: 9})
+	if v := s.Value(); v != 50 {
+		t.Errorf("a disabled slider warped to %v", v)
+	}
+}

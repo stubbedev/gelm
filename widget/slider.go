@@ -202,6 +202,15 @@ func (s *Slider) SetPressed(on bool) {
 	s.invalidateState(style.Active)
 }
 
+// PressAt implements PressAter: the value warps to the press, and a
+// drag carries on from there (GTK's primary-button warp). Disabled
+// sliders ignore it.
+func (s *Slider) PressAt(p Point) {
+	if IsEnabled(s) {
+		s.SetValue(s.ValueFromX(p.X))
+	}
+}
+
 // DragMove sets the value from the pointer position while pressed.
 // Disabled sliders ignore the drag.
 func (s *Slider) DragMove(p Point) {
