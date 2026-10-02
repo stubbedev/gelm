@@ -1,6 +1,7 @@
 package widget
 
 import (
+	"math"
 	"testing"
 
 	"golang.org/x/image/font/gofont/goregular"
@@ -158,5 +159,57 @@ func TestLabelFitsItsNaturalWidth(t *testing.T) {
 	}
 	if checked == 0 {
 		t.Fatal("no sample had an advance with a fraction under a half")
+	}
+}
+
+// TestRowGivesWayToAnEllipsizingLabel pins the row half of the shrink
+// protocol: a Row Box short of room narrows its expanding ellipsizing
+// label, so the fixed cells after it stay inside the row instead of
+// overflowing; never below the ellipsis; and a label that clips or
+// wraps keeps its width.
+func TestRowGivesWayToAnEllipsizingLabel(t *testing.T) {
+	face := testFace(t)
+	row := func(mode EllipsizeMode, wrap bool) (*Box, *Label, *stub) {
+		l := NewLabel(face, 13, "a rather long file name that will not fit.png", render.RGB(255, 255, 255))
+		l.SetEllipsize(mode)
+		l.SetWrap(wrap)
+		cell := newStub(50, 10)
+		b := NewBox(Row, 0, 0)
+		b.Append(l, true)
+		b.Append(cell, false)
+		b.Measure(Constraints{Max: Size{W: 1000, H: 100}})
+		b.Arrange(render.Rect{W: 150, H: 20})
+		return b, l, cell
+	}
+	_, l, cell := row(EllipsizeEnd, false)
+	if got := cell.rect; got.X != 100 || got.W != 50 {
+		t.Errorf("the fixed cell = %+v, want it at the row's end, 100..150", got)
+	}
+	if l.Bounds().W != 100 {
+		t.Errorf("the label = %d wide, want the 100 left over", l.Bounds().W)
+	}
+	// Not below the ellipsis.
+	b, l, _ := row(EllipsizeEnd, false)
+	b.Arrange(render.Rect{W: 52, H: 20})
+	floor := int(math.Ceil(face.Shape(render.Ellipsis, 13).Advance()))
+	if l.Bounds().W != floor {
+		t.Errorf("a starved label = %d wide, want the ellipsis's %d", l.Bounds().W, floor)
+	}
+	for _, c := range []struct {
+		name string
+		mode EllipsizeMode
+		wrap bool
+	}{{"clipping", EllipsizeNone, false}} {
+		_, l, cell := row(c.mode, c.wrap)
+		if cell.rect.X <= 100 || l.Bounds().W <= 100 {
+			t.Errorf("a %s label gave way: label %d, cell at %d", c.name, l.Bounds().W, cell.rect.X)
+		}
+	}
+	wrapped := NewLabel(face, 13, "wraps instead", render.RGB(255, 255, 255))
+	wrapped.SetWrap(true)
+	wrapped.SetEllipsize(EllipsizeEnd)
+	wrapped.Measure(Constraints{Max: Size{W: 1000, H: 100}})
+	if got := wrapped.ShrinkableWidth(); got != 0 {
+		t.Errorf("a wrapping label offers %dpx of width", got)
 	}
 }

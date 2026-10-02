@@ -56,6 +56,9 @@ type Label struct {
 	maxLines int
 	shaped   *render.ShapedText
 	natural  Size
+	// measured is the last Measure result, what ShrinkableWidth gives
+	// from.
+	measured Size
 }
 
 // NewLabel returns a label that paints text with face at sizePx
@@ -293,10 +296,26 @@ func (l *Label) retext() {
 // the offered width re-measures on the next frame.
 func (l *Label) Measure(con Constraints) Size {
 	if s, ok := l.measureHit(con); ok {
+		l.measured = s
 		return s
 	}
 	v := l.style(l)
-	return l.measureStore(con, measureBox(v, boxOf(v, render.Insets{}), con, l.measureNatural))
+	l.measured = measureBox(v, boxOf(v, render.Insets{}), con, l.measureNatural)
+	return l.measureStore(con, l.measured)
+}
+
+// ShrinkableWidth implements WidthShrinker: a single-line ellipsizing
+// label gives up its measured width down to the ellipsis and its CSS
+// box, the minimum GTK gives an ellipsized label. Wrapping and
+// clipping labels keep their width.
+func (l *Label) ShrinkableWidth() int {
+	if l.wrap || l.ell == EllipsizeNone {
+		return 0
+	}
+	face, px := l.effStyle()
+	o := boxOf(l.style(l), render.Insets{}).outer()
+	floor := int(math.Ceil(face.Shape(render.Ellipsis, px).Advance())) + o.Left + o.Right
+	return max(0, l.measured.W-floor)
 }
 
 // measureNatural computes the wanted content size for con from the
