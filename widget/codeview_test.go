@@ -289,3 +289,40 @@ func TestTextAreaRowsFollowTheFontSize(t *testing.T) {
 		t.Errorf("%d rows at 28px, %d at 14px: the row cache kept the old size", len(ta.rows), small)
 	}
 }
+
+func TestTextAreaOnChanged(t *testing.T) {
+	ta := newTextArea(t, "ab")
+	n := 0
+	ta.OnChanged = func() { n++ }
+	steps := []struct {
+		name string
+		do   func()
+	}{
+		{"typing", func() { ta.InsertRune('c') }},
+		{"insert", func() { ta.Insert("de") }},
+		{"enter", func() { ta.KeyAction(KeyEnter, 0) }},
+		{"backspace", func() { ta.Backspace() }},
+		{"delete word", func() { ta.SetCursor(0, 0); ta.DeleteWordForward() }},
+		{"undo", func() { ta.Undo() }},
+		{"redo", func() { ta.Redo() }},
+		{"set text", func() { ta.SetText("new") }},
+		{"input method delete", func() { ta.SetCursor(0, 2); ta.IMEDelete(1, 0) }},
+		{"input method commit", func() { ta.IMECommit("ok") }},
+	}
+	for _, st := range steps {
+		before := n
+		st.do()
+		if n != before+1 {
+			t.Errorf("%s fired OnChanged %d times, want once", st.name, n-before)
+		}
+	}
+	before := n
+	ta.SetCursor(0, 1)
+	ta.KeyAction(KeyRight, 0)
+	ta.SelectAll()
+	ta.SetReadOnly(true)
+	ta.InsertRune('x')
+	if n != before {
+		t.Errorf("motion, selection and a read-only edit fired OnChanged %d times", n-before)
+	}
+}

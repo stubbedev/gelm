@@ -73,6 +73,11 @@ type TextArea struct {
 	// selection child.
 	text entryText
 
+	// OnChanged fires after the contents change, whatever the source:
+	// typing, editing keys, paste, undo and redo, or SetText (GTK's
+	// TextBuffer changed). Text reads the new contents.
+	OnChanged func()
+
 	// The code view (codeview.go): the line-number gutter, Enter's
 	// indent copy, the highlighter with its scheme and styled faces,
 	// the per-line highlight cache, and the caret last revealed.
@@ -239,6 +244,20 @@ func (t *TextArea) Text() string {
 	return strings.Join(parts, "\n")
 }
 
+// recordEdit records an edit from before to now in the history and
+// reports the change.
+func (t *TextArea) recordEdit(before areaState) {
+	t.hist.record(before, t.snapshot())
+	t.notifyChanged()
+}
+
+// notifyChanged fires OnChanged.
+func (t *TextArea) notifyChanged() {
+	if t.OnChanged != nil {
+		t.OnChanged()
+	}
+}
+
 // splitLines replaces the logical lines with s split on newlines,
 // leaving cursor and caches alone.
 func (t *TextArea) splitLines(s string) {
@@ -264,6 +283,7 @@ func (t *TextArea) SetText(s string) {
 	t.panX = nil // a fresh document starts unpanned
 	t.hist.reset()
 	t.InvalidateLayout()
+	t.notifyChanged()
 }
 
 // Undo restores the state before the most recent edit — contents,
@@ -326,6 +346,7 @@ func (t *TextArea) snapshot() areaState {
 // history for a later redo. The pan is not restored: it is view state,
 // so it follows the restored caret instead.
 func (t *TextArea) applyState(s areaState) {
+	defer t.notifyChanged()
 	t.lines = make([][]rune, len(s.lines))
 	for i, l := range s.lines {
 		t.lines[i] = append([]rune{}, l...)
@@ -560,7 +581,7 @@ func (t *TextArea) Insert(s string) {
 	}
 	before := t.snapshot()
 	t.splice(s)
-	t.hist.record(before, t.snapshot())
+	t.recordEdit(before)
 }
 
 // deleteAt removes the selection, or one grapheme cluster/line break
@@ -597,7 +618,7 @@ func (t *TextArea) Delete() {
 	}
 	before := t.snapshot()
 	t.deleteAt()
-	t.hist.record(before, t.snapshot())
+	t.recordEdit(before)
 }
 
 // Backspace removes the selection, or one grapheme cluster/line break
@@ -612,7 +633,7 @@ func (t *TextArea) Backspace() {
 	t.clearPreedit()
 	if _, _, active := t.Selection(); active {
 		t.collapse()
-		t.hist.record(before, t.snapshot())
+		t.recordEdit(before)
 		return
 	}
 	c := t.clamp(t.cursor)
@@ -629,7 +650,7 @@ func (t *TextArea) Backspace() {
 	t.panToCaret()
 	t.Invalidate()
 	t.deleteAt()
-	t.hist.record(before, t.snapshot())
+	t.recordEdit(before)
 }
 
 // DeleteWordBackward removes the word before the cursor — ctrl+
@@ -645,7 +666,7 @@ func (t *TextArea) DeleteWordBackward() {
 	t.clearPreedit()
 	if _, _, active := t.Selection(); active {
 		t.collapse()
-		t.hist.record(before, t.snapshot())
+		t.recordEdit(before)
 		return
 	}
 	c := t.clamp(t.cursor)
@@ -658,7 +679,7 @@ func (t *TextArea) DeleteWordBackward() {
 	t.panToCaret()
 	t.Invalidate()
 	t.deleteAt()
-	t.hist.record(before, t.snapshot())
+	t.recordEdit(before)
 }
 
 // DeleteWordForward removes the word after the cursor — ctrl+delete —
@@ -674,7 +695,7 @@ func (t *TextArea) DeleteWordForward() {
 	t.clearPreedit()
 	if _, _, active := t.Selection(); active {
 		t.collapse()
-		t.hist.record(before, t.snapshot())
+		t.recordEdit(before)
 		return
 	}
 	c := t.clamp(t.cursor)
@@ -685,7 +706,7 @@ func (t *TextArea) DeleteWordForward() {
 	t.anchor = t.cursor
 	t.cursor = pos{c.line, end}
 	t.collapse()
-	t.hist.record(before, t.snapshot())
+	t.recordEdit(before)
 }
 
 // CursorPos returns the cursor as line/column.
@@ -1304,6 +1325,7 @@ func (t *TextArea) InsertRune(r rune) {
 	before := t.snapshot()
 	t.splice(string(r))
 	t.hist.recordTyping(before, t.snapshot(), r)
+	t.notifyChanged()
 }
 
 // KeyAction implements KeyActionHandler. Shift-extended motion grows
