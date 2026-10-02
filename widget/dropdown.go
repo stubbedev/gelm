@@ -346,21 +346,25 @@ func (d *Dropdown) Paint(cv *render.Canvas) {
 	cv.Line(cx, cy+2, cx+4, cy-2, 1, col)
 
 	if d.open {
+		// The list hangs below the face, over whatever follows it: it
+		// paints on the frame's top layer, after every later sibling.
 		// The tween's slide is masked to the list's rest rect: the
 		// shifted rows that would paint above it are clipped away, and
 		// the fade rides the menu's own colors through PushAlpha.
 		reveal := min(max(d.reveal, 0), 1)
 		switch reveal {
-		case 1:
-			d.menu.Paint(cv)
 		case 0:
 			// Hidden: paint nothing (the skip proof's zero fast path).
+		case 1:
+			cv.Overlay(d.menu.Paint)
 		default:
-			prev := cv.PushClip(d.listRect)
-			alpha := cv.PushAlpha(reveal)
-			d.menu.Paint(cv)
-			cv.PopAlpha(alpha)
-			cv.PopClip(prev)
+			cv.Overlay(func(cv *render.Canvas) {
+				prev := cv.PushClip(d.listRect)
+				alpha := cv.PushAlpha(reveal)
+				d.menu.Paint(cv)
+				cv.PopAlpha(alpha)
+				cv.PopClip(prev)
+			})
 		}
 	}
 }

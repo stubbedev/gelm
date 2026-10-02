@@ -674,7 +674,9 @@ func (w *hostWindow) draw() bool {
 	cv := render.NewScaled(b.Data, b.Stride, b.Width, b.Height, w.devNum(), scale.Denom)
 	prev := cv.PushClip(region)
 	cv.ClearDevice(region, w.cfg.background)
+	cv.BeginOverlays()
 	w.router.Root.Paint(cv)
+	cv.FlushOverlays()
 	if ring := w.focusRingRect(); !ring.Empty() {
 		cv.BorderRect(ring, focusRingPad, widget.Current().Accent)
 	}

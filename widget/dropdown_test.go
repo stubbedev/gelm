@@ -421,3 +421,55 @@ func TestDropdownPaintAndRole(t *testing.T) {
 		}
 	})
 }
+
+// fillSpy paints its whole rect in one color: a later sibling that
+// would cover anything painted beneath it.
+type fillSpy struct {
+	stub
+	color render.Color
+}
+
+func (f *fillSpy) Paint(cv *render.Canvas) { cv.FillRect(f.rect, f.color) }
+
+// TestDropdownListPaintsAboveLaterSiblings pins the open list on the
+// frame's top layer: in a column, the rows after the dropdown paint
+// first and the list over them, the way a popover covers them. Painted
+// inline, the next row covered the list.
+func TestDropdownListPaintsAboveLaterSiblings(t *testing.T) {
+	c := pinAnimClock(t)
+	dd := newDropdown(t, "Light", "Dark", "System")
+	red := render.RGB(255, 0, 0)
+	next := &fillSpy{nat: Size{W: 200, H: 200}, color: red}
+	col := NewBox(Column, 0, 0)
+	col.Append(dd, false)
+	col.Append(next, false)
+	col.Measure(Constraints{Max: Size{W: 200, H: 400}})
+	col.Arrange(render.Rect{W: 200, H: 400})
+	dd.ClickAt(facePoint(dd))
+	c.drive()
+	col.Arrange(render.Rect{W: 200, H: 400})
+	list := dd.menu.Bounds()
+	if list.Intersect(next.rect).Empty() {
+		t.Fatalf("the list %v does not hang over the next row %v", list, next.rect)
+	}
+	paint := func(armed bool) render.Color {
+		data := make([]byte, render.Stride(200)*400)
+		cv := render.New(data, render.Stride(200), 200, 400)
+		if armed {
+			cv.BeginOverlays()
+		}
+		col.Paint(cv)
+		if armed {
+			cv.FlushOverlays()
+		}
+		x, y := list.X+list.W/2, max(list.Y, next.rect.Y)+list.H/3
+		return render.ColorFromBytes(data[y*render.Stride(200)+x*4:])
+	}
+	if got := paint(true); got == red {
+		t.Error("in a frame the next row painted over the open list")
+	}
+	// A subtree painted on its own keeps the in-place paint order.
+	if got := paint(false); got != red {
+		t.Errorf("unarmed, the list escaped the paint order (%v)", got)
+	}
+}
