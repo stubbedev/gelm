@@ -570,7 +570,8 @@ func routeKey(sess keyTranslator, router *widget.Router, keycode uint32, mods wl
 		return
 	}
 	if !handled {
-		if !isCtrl && mods&wlsession.ModAlt == 0 {
+		// Ctrl, Alt and Super chords are shortcuts, never text.
+		if !isCtrl && mods&(wlsession.ModAlt|wlsession.ModSuper) == 0 {
 			// Compose consumes backspace ONLY while a sequence is in
 			// flight (one level per press); every other time backspace
 			// falls through to the widget's delete action below.

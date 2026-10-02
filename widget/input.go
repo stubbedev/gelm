@@ -281,12 +281,14 @@ func (r *Router) pixelSteps(dx, dy float64) [2]int {
 // Mods is a bitmask of held keyboard modifiers.
 type Mods uint8
 
-// Modifier bits.
+// Modifier bits, xkb's core modifier indices.
 const (
 	ModShift Mods = 1 << iota
 	ModCapsLock
 	ModCtrl
 	ModAlt
+	// ModSuper is the logo key (Mod4).
+	ModSuper Mods = 1 << 6
 )
 
 // TabTrapper lets a focused widget absorb a plain Tab press as

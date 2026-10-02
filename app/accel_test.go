@@ -74,6 +74,9 @@ func TestParseAccel(t *testing.T) {
 		{"alt+Delete", Accel{Sym: xkb.KeyDelete, Mods: wlsession.ModAlt}},
 		{"<Control>q", Accel{Sym: xkb.Keysym('q'), Mods: wlsession.ModCtrl}},
 		{"<Control><Shift>p", Accel{Sym: xkb.Keysym('p'), Mods: wlsession.ModCtrl | wlsession.ModShift}},
+		{"super+q", Accel{Sym: xkb.Keysym('q'), Mods: wlsession.ModSuper}},
+		{"Logo+Return", Accel{Sym: xkb.KeyReturn, Mods: wlsession.ModSuper}},
+		{"<Super><Shift>space", Accel{Sym: xkb.Keysym(' '), Mods: wlsession.ModSuper | wlsession.ModShift}},
 	}
 	for _, tc := range valid {
 		got, err := ParseAccel(tc.in)
@@ -96,7 +99,10 @@ func TestParseAccel(t *testing.T) {
 	if got := (Accel{Sym: xkb.KeyReturn, Mods: wlsession.ModCtrl | wlsession.ModShift}).String(); got != "Ctrl+Shift+Return" {
 		t.Errorf("label = %q, want Ctrl+Shift+Return", got)
 	}
-	for _, bad := range []string{"", "ctrl", "ctrl+", "ctrl+bogus", "super+q", "logo+q", "ctrl+shift", "<Control}q", "space+q"} {
+	if got := (Accel{Sym: xkb.Keysym('q'), Mods: wlsession.ModSuper | wlsession.ModCtrl}).String(); got != "Ctrl+Super+Q" {
+		t.Errorf("label = %q, want Ctrl+Super+Q", got)
+	}
+	for _, bad := range []string{"", "ctrl", "ctrl+", "ctrl+bogus", "hyper+q", "super", "ctrl+shift", "<Control}q", "space+q"} {
 		if got, err := ParseAccel(bad); err == nil {
 			t.Errorf("ParseAccel(%q) = %v, want error", bad, got)
 		}
@@ -285,5 +291,26 @@ func TestRemoveAccel(t *testing.T) {
 	}
 	if err := f.app.RemoveAccel("ctrl+q"); err == nil {
 		t.Error("removing an unbound accelerator succeeded, want error")
+	}
+}
+
+// A Super chord is a shortcut: a binding fires, an unbound one types
+// nothing (the logo key held is never text).
+func TestSuperChordsAreShortcuts(t *testing.T) {
+	f := newAccelFixture(t)
+	f.tr.text[25], f.tr.syms[25] = "p", xkb.Keysym('p')
+	fired := 0
+	f.app.AddAction("launch", func() { fired++ })
+	if err := f.app.AddAccel("super+p", "launch"); err != nil {
+		t.Fatal(err)
+	}
+	f.press(25, wlsession.ModSuper)
+	if fired != 1 || f.entry.Text() != "" {
+		t.Errorf("super+p fired %d, typed %q; want the binding and no text", fired, f.entry.Text())
+	}
+	f.tr.text[26], f.tr.syms[26] = "q", xkb.Keysym('q')
+	f.press(26, wlsession.ModSuper)
+	if f.entry.Text() != "" {
+		t.Errorf("an unbound super+q typed %q", f.entry.Text())
 	}
 }

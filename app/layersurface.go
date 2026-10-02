@@ -60,4 +60,5 @@ const (
 	ModCapsLock = wlsession.ModCapsLock
 	ModCtrl     = wlsession.ModCtrl
 	ModAlt      = wlsession.ModAlt
+	ModSuper    = wlsession.ModSuper
 )
