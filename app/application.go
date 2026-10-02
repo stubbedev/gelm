@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -101,6 +102,12 @@ type Application struct {
 	// wake is a field so tests can drive Invoke without a session.
 	queues loopQueues
 	wake   func(time.Duration)
+	// watchers are the WatchFD and WatchFiles pollers; ended closes when
+	// the loop ends, releasing a poller waiting on a dropped invoke.
+	watchers  watchSet
+	endedOnce sync.Once
+	ended     chan struct{}
+	endedMu   sync.Mutex
 }
 
 // IdleInhibitAvailable reports whether the compositor supports the
@@ -538,6 +545,8 @@ func (a *Application) Run() error {
 		// on the disconnect path too — timers and invokes die with the
 		// loop, whatever killed it.
 		a.queues.shutdown()
+		a.watchers.shutdown()
+		a.endLoop()
 		// The tagged AT-SPI bridge dies with the loop: its samplers hop
 		// through Invoke, which shutdown just drained.
 		if a.stopA11y != nil {
