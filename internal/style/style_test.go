@@ -669,8 +669,14 @@ func TestInheritanceSet(t *testing.T) {
 	if v.Has(PropBackgroundColor) || v.Has(PropPaddingTop) {
 		t.Error("non-inherited properties inherited")
 	}
-	if v := computeTree(s, b.add("label", "own")); v.Color != render.RGB(7, 7, 7) {
-		t.Errorf("a direct declaration lost to inheritance: %08x", uint32(v.Color))
+	if v.Declares(PropColor) || v.Own != 0 {
+		t.Errorf("inherited values count as declared: own %b", v.Own)
+	}
+	if v := computeTree(s, b.add("label", "own")); v.Color != render.RGB(7, 7, 7) || !v.Declares(PropColor) || v.Declares(PropFontSize) {
+		t.Errorf("a direct declaration lost to inheritance: %08x (own %b)", uint32(v.Color), v.Own)
+	}
+	if v := computeTree(s, b); !v.Declares(PropColor) || !v.Declares(PropPaddingTop) {
+		t.Errorf("the box's own declarations: own %b", v.Own)
 	}
 }
 
