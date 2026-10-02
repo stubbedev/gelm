@@ -196,3 +196,24 @@ func TestFlowBoxWrapsInATightRow(t *testing.T) {
 		t.Errorf("a non-expanding entry kept %dpx in a 100px row", e.Bounds().W)
 	}
 }
+
+// A list gives up its height down to one row, so a popover that the
+// compositor shrank keeps it scrolling inside.
+func TestListShrinks(t *testing.T) {
+	face := entryFace(t)
+	rows := make([]Widget, 20)
+	for i := range rows {
+		rows[i] = NewLabel(face, 14, "row", 0)
+	}
+	l := NewList[Widget](staticRows(rows), 0)
+	col := NewBox(Column, 0, 0)
+	col.Append(l, true)
+	full := col.Measure(Constraints{Max: Size{W: 200, H: 5000}}).H
+	if l.Shrinkable() != full-l.rowH || l.rowH == 0 {
+		t.Fatalf("shrinkable %d of %d (row %d)", l.Shrinkable(), full, l.rowH)
+	}
+	col.Arrange(render.Rect{W: 200, H: 3 * l.rowH})
+	if b := l.Bounds(); b.H != 3*l.rowH {
+		t.Errorf("list in a short column: %v, want three rows tall", b)
+	}
+}
