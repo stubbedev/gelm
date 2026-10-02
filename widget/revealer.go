@@ -329,7 +329,7 @@ func (r *Revealer) Paint(cv *render.Canvas) {
 		return
 	case r.collapses():
 		// The arrangement already slid the child: clip it to the slot.
-		prev := cv.PushClip(cv.MapRect(r.bounds))
+		prev := cv.PushClip(r.bounds)
 		PaintChild(cv, r.child)
 		cv.PopClip(prev)
 		r.painted = r.bounds
@@ -340,7 +340,7 @@ func (r *Revealer) Paint(cv *render.Canvas) {
 	r.layer = cv.Layer(r.layer, dev)
 	r.child.Paint(r.layer.Canvas())
 	if clip {
-		prev := cv.PushClip(dev)
+		prev := cv.PushClipDevice(dev)
 		cv.Composite(r.layer, dev, m, alpha)
 		cv.PopClip(prev)
 		r.painted = r.bounds
