@@ -252,16 +252,19 @@ func (b *Box) Measure(con Constraints) Size {
 // set, else the programmatic padding.
 func (b *Box) box(v *style.Values) cssInsets { return boxOf(v, b.padding) }
 
-// gap is the spacing between children: the stylesheet's border-spacing
-// along the main axis when set, else the constructor spacing.
+// gap is the spacing between children: the constructor spacing plus
+// the stylesheet's border-spacing along the main axis, as GTK 4's
+// GtkBoxLayout adds the CSS spacing to its spacing property
+// (gtkboxlayout.c get_spacing). A stylesheet's blanket
+// `* { border-spacing: 0 }` therefore keeps a box's own spacing.
 func (b *Box) gap(v *style.Values) int {
 	if !v.Has(style.PropBorderSpacing) {
 		return b.spacing
 	}
 	if b.axis == Row {
-		return v.BorderSpacingH
+		return b.spacing + v.BorderSpacingH
 	}
-	return v.BorderSpacingV
+	return b.spacing + v.BorderSpacingV
 }
 
 // SetPadding sets the box's programmatic padding per side; the
