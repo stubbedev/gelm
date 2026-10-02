@@ -542,3 +542,69 @@ func TestFirstLayoutResolvesScopedStyles(t *testing.T) {
 		t.Error("a settled tree still has layout pending")
 	}
 }
+
+// passthrough is a cache-less wrapper, as the inspector overlay is.
+type passthrough struct{ child Widget }
+
+func (p passthrough) Measure(c Constraints) Size { return p.child.Measure(c) }
+func (p passthrough) Arrange(r render.Rect)      { p.child.Arrange(r) }
+func (p passthrough) Paint(cv *render.Canvas)    { p.child.Paint(cv) }
+func (p passthrough) HitTest(pt Point) Widget    { return p.child.HitTest(pt) }
+func (p passthrough) Children() []Widget         { return []Widget{p.child} }
+
+func TestLayoutPendingSeesThroughWrappers(t *testing.T) {
+	root := NewBox(Column, 0, 0)
+	root.Append(NewSpacer(10, 10), false)
+	wrapped := passthrough{root}
+	wrapped.Measure(Constraints{Max: Size{W: 100, H: 100}})
+	wrapped.Arrange(render.Rect{W: 100, H: 100})
+	if !LayoutPending(wrapped) {
+		t.Fatal("a wrapper hid its root's pending layout")
+	}
+	for LayoutPending(wrapped) {
+		wrapped.Measure(Constraints{Max: Size{W: 100, H: 100}})
+		wrapped.Arrange(render.Rect{W: 100, H: 100})
+	}
+	if LayoutPending(wrapped) {
+		t.Error("still pending once settled")
+	}
+}
+
+// uncached measures without the cache, as a Base embedder in an app
+// does: its own dirty flag never clears.
+type uncached struct {
+	Base
+	child Widget
+}
+
+func (u *uncached) Measure(c Constraints) Size { return u.child.Measure(c) }
+func (u *uncached) Arrange(r render.Rect) {
+	u.ArrangeSelf(r)
+	u.child.Arrange(r)
+	SetParents(u, u.child)
+}
+func (u *uncached) Paint(cv *render.Canvas) { u.child.Paint(cv) }
+func (u *uncached) HitTest(p Point) Widget  { return u.child.HitTest(p) }
+func (u *uncached) Children() []Widget      { return []Widget{u.child} }
+
+func TestInvalidationClimbsPastAnUncachedWidget(t *testing.T) {
+	face := goldenFace(t)
+	label := NewLabel(face, 10, "a", render.RGBA(0, 0, 0, 255))
+	inner := NewBox(Column, 0, 0)
+	inner.Append(label, false)
+	root := NewBox(Column, 0, 0)
+	root.Append(&uncached{child: inner}, false)
+	con := Constraints{Max: Size{W: 400, H: 400}}
+	for range 3 {
+		root.Measure(con)
+		root.Arrange(render.Rect{W: 400, H: 400})
+	}
+	before := root.Measure(con)
+	label.SetText("a much longer label than before")
+	if !LayoutPending(root) {
+		t.Fatal("a label change below an uncached widget left the root clean")
+	}
+	if after := root.Measure(con); after.W <= before.W {
+		t.Errorf("root still measures %v after the label grew (was %v)", after, before)
+	}
+}
