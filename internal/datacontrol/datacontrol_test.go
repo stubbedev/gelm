@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"golang.org/x/sys/unix"
+
 	"github.com/stubbedev/gelm/internal/xfer"
 )
 
@@ -344,6 +346,16 @@ func TestSetSelectionRejectsInvalidSources(t *testing.T) {
 			Data:  func(string) []byte { return nil },
 			Send:  func(_ string, w io.WriteCloser) { _ = w.Close() },
 		},
+		"send and pass": {
+			Mimes: []string{"text/plain"},
+			Send:  func(_ string, w io.WriteCloser) { _ = w.Close() },
+			Pass:  func(_ string, f *os.File) { _ = f.Close() },
+		},
+		"data and pass": {
+			Mimes: []string{"text/plain"},
+			Data:  func(string) []byte { return nil },
+			Pass:  func(_ string, f *os.File) { _ = f.Close() },
+		},
 	}
 	for name, src := range cases {
 		if _, err := d.SetSelection(Clipboard, src); err == nil {
@@ -617,5 +629,36 @@ func TestASendSourceGetsTheReceiversPipe(t *testing.T) {
 	// An unoffered mime never reaches Send.
 	if got := sendSync(t, d, mgr.sources[0], "image/png"); got != "" || len(asked) != 1 {
 		t.Fatalf("unoffered mime served %q, Send asked %v", got, asked)
+	}
+}
+
+func TestAPassSourceGetsTheRawPipe(t *testing.T) {
+	d, mgr, _ := newTestDevice(true)
+	var asked []string
+	var blocking []bool
+	_, err := d.SetSelection(Clipboard, Source{
+		Mimes: []string{"text/plain"},
+		Pass: func(m string, pipe *os.File) {
+			asked = append(asked, m)
+			// Untouched: the descriptor another process gets is blocking,
+			// as the compositor made it, not the deadline writer's.
+			flags, err := unix.FcntlInt(pipe.Fd(), unix.F_GETFL, 0)
+			blocking = append(blocking, err == nil && flags&unix.O_NONBLOCK == 0)
+			_, _ = pipe.Write([]byte("passed"))
+			_ = pipe.Close()
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := sendSync(t, d, mgr.sources[0], "text/plain"); got != "passed" {
+		t.Fatalf("served %q", got)
+	}
+	if !slices.Equal(blocking, []bool{true}) {
+		t.Errorf("the passed pipe was made non-blocking: %v", blocking)
+	}
+	// An unoffered mime never reaches Pass.
+	if got := sendSync(t, d, mgr.sources[0], "image/png"); got != "" || len(asked) != 1 {
+		t.Fatalf("unoffered mime served %q, Pass asked %v", got, asked)
 	}
 }

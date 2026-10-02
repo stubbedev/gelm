@@ -92,8 +92,11 @@ type Application struct {
 	// sessionLock is the lock this application holds (sessionlock.go);
 	// while it exists the loop runs on with no window mapped.
 	sessionLock *SessionLock
-	rep         *keyRepeater
-	kicker      *loopKicker
+	// holds counts unreleased Holds; while any is held the loop runs on
+	// with no window mapped.
+	holds  int
+	rep    *keyRepeater
+	kicker *loopKicker
 	// queues is the Invoke/Every plumbing and wake the loop-kick call;
 	// wake is a field so tests can drive Invoke without a session.
 	queues loopQueues
@@ -217,11 +220,29 @@ func (a *Application) OnKey(fn func(r *widget.Router, keycode uint32, mods wlses
 func (a *Application) Quit() { a.quit = true }
 
 // done reports whether Run should return: Quit was called, or every
-// window closed and no session lock is held. A held lock keeps the
-// loop alive with nothing mapped — its last output may be unplugged,
-// and only this process can unlock the session.
+// window closed with no session lock and no Hold held. A held lock
+// keeps the loop alive with nothing mapped — its last output may be
+// unplugged, and only this process can unlock the session.
 func (a *Application) done() bool {
-	return a.quit || (len(a.windows) == 0 && a.sessionLock == nil)
+	return a.quit || (len(a.windows) == 0 && a.sessionLock == nil && a.holds == 0)
+}
+
+// Hold keeps Run going with no window mapped, for an application whose
+// work is not on screen: a portal serving the clipboard over the
+// data-control device, a daemon that maps surfaces only on request.
+// The returned release ends the hold (once; later calls do nothing),
+// and Run returns at its next check when nothing else keeps it alive.
+// Call both on the loop goroutine, or before Run.
+func (a *Application) Hold() (release func()) {
+	a.holds++
+	released := false
+	return func() {
+		if released {
+			return
+		}
+		released = true
+		a.holds--
+	}
 }
 
 // WindowConfig declares a toplevel window.
