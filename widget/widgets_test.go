@@ -495,3 +495,40 @@ func TestSpacer(t *testing.T) {
 		t.Errorf("spacer hit = %v, want nil", got)
 	}
 }
+
+// paintSpy is a stub that counts its paints.
+type paintSpy struct {
+	stub
+	paints int
+}
+
+func (p *paintSpy) Paint(*render.Canvas) { p.paints++ }
+
+func (p *paintSpy) HitTest(pt Point) Widget { return p.HitLeaf(p, pt) }
+
+// TestOverlayHiddenChildTakesNoPart pins Box semantics for a hidden
+// Overlay child: it neither sizes the overlay, paints over the others,
+// nor takes their hits — a hidden full-size layer used to paint its
+// background over the visible one beneath.
+func TestOverlayHiddenChildTakesNoPart(t *testing.T) {
+	bottom := &paintSpy{nat: Size{W: 20, H: 20}}
+	top := &paintSpy{nat: Size{W: 80, H: 80}}
+	ov := NewOverlay().Append(bottom).Append(top)
+	top.SetVisible(false)
+	if got := ov.Measure(Constraints{Max: Size{W: 100, H: 100}}); got != (Size{W: 20, H: 20}) {
+		t.Errorf("measure = %v, want the visible child's 20x20", got)
+	}
+	ov.Arrange(render.Rect{W: 30, H: 30})
+	ov.Paint(render.New(make([]uint8, 30*30*4), 30*4, 30, 30))
+	if bottom.paints != 1 || top.paints != 0 {
+		t.Errorf("paints bottom %d top %d, want 1 and 0", bottom.paints, top.paints)
+	}
+	if got := ov.HitTest(Point{X: 5, Y: 5}); got != bottom {
+		t.Errorf("hit = %v, want the visible bottom child", got)
+	}
+	top.SetVisible(true)
+	ov.Paint(render.New(make([]uint8, 30*30*4), 30*4, 30, 30))
+	if top.paints != 1 || ov.HitTest(Point{X: 5, Y: 5}) != top {
+		t.Error("a shown child did not paint and hit on top again")
+	}
+}
