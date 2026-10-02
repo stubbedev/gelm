@@ -313,7 +313,7 @@ func TestThemeDerivations(t *testing.T) {
 	})
 
 	t.Run("disabled accent fades accent like disabled text fades text", func(t *testing.T) {
-		want := Color(uint32(float64(dark.Accent) * 0.45))
+		want := Color(0x733E5171) // #89B4FA, every channel at 45%
 		if got := dark.DisabledAccent(); got != want {
 			t.Errorf("DisabledAccent = %v, want accent at 45%% alpha: %v", got, want)
 		}
@@ -357,7 +357,7 @@ func TestThemeDerivations(t *testing.T) {
 	})
 
 	t.Run("disabled text fades text when no muted role is set", func(t *testing.T) {
-		want := Color(uint32(float64(dark.Text) * 0.45))
+		want := Color(0x735C606E) // #CDD6F4, every channel at 45%
 		if got := dark.DisabledText(); got != want {
 			t.Errorf("DisabledText = %v, want text at 45%% alpha: %v", got, want)
 		}
@@ -473,5 +473,16 @@ func TestSetThemeComposedThemeRepaints(t *testing.T) {
 	}
 	if got := paintSwitchTrack(t); got == before {
 		t.Errorf("track unchanged after the composed theme: %v", got)
+	}
+}
+
+// Fading scales each premultiplied channel on its own.
+func TestScaleAlphaPerChannel(t *testing.T) {
+	c := render.Color(0xFFCDD6F4)
+	if got, want := scaleAlpha(c, 0.5), render.Color(0x80676B7A); got != want {
+		t.Errorf("scaleAlpha(%#08x, .5) = %#08x, want %#08x", uint32(c), uint32(got), uint32(want))
+	}
+	if scaleAlpha(c, 1) != c || scaleAlpha(c, 0) != 0 {
+		t.Error("the bounds changed")
 	}
 }
