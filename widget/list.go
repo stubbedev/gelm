@@ -70,6 +70,8 @@ type List struct {
 	// that row, parented below the list so the stylesheets reach it.
 	autoH bool
 	probe *listRow
+	// maxH caps the natural height (SetMaxHeight).
+	maxH int
 	// cellW is the grid mode's minimum cell width (0 is a plain
 	// list); cols is how many cells the arranged width fits.
 	cellW int
@@ -458,7 +460,21 @@ func (l *List) Measure(con Constraints) Size {
 		lines, w = (lines+c-1)/c, l.cellW
 	}
 	h := l.measureRowH() * lines
+	if l.maxH > 0 {
+		h = min(h, l.maxH)
+	}
 	return l.measureStore(con, clampSize(Size{W: w, H: h}, con))
+}
+
+// SetMaxHeight caps the list's natural height at h pixels (0 lifts the
+// cap): a longer model scrolls inside it, still virtualized - GTK's
+// list in a scrolled window with a max content height.
+func (l *List) SetMaxHeight(h int) {
+	if l.maxH == h {
+		return
+	}
+	l.maxH = max(h, 0)
+	l.InvalidateLayout()
 }
 
 // Arrange lays out the viewport.
