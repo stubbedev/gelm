@@ -10,6 +10,7 @@
   and unparsable text reverts. `OnValueChanged` hears user changes
   only; `SetValue`/`SetRange` are silent. Its CSS element is
   `spinbutton`.
+  `SetStep` and `SetDigits` change the step and the shown decimals.
 - `SetOnFocusChanged(fn)` on every widget hears it gain or lose
   keyboard focus, however focus moved.
 - `Overlay.AppendAligned(w, h, v)`: a GtkOverlay-style child at its
