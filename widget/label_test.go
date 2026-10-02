@@ -213,3 +213,21 @@ func TestRowGivesWayToAnEllipsizingLabel(t *testing.T) {
 		t.Errorf("a wrapping label offers %dpx of width", got)
 	}
 }
+
+// width-chars floors the natural width: a short text measures the
+// floored width; 0 restores the text's own.
+func TestLabelWidthChars(t *testing.T) {
+	face := testFace(t)
+	nat := func(text string, chars int) int {
+		l := NewLabel(face, 13, text, 0)
+		l.SetWidthChars(chars)
+		return l.Measure(Constraints{Max: Size{W: 300, H: 40}}).W
+	}
+	wide, plain, free := nat("100%", 6), nat("1%", 6), nat("1%", 0)
+	if wide != plain {
+		t.Errorf("widths %d vs %d: the floor must even them out", wide, plain)
+	}
+	if plain <= free {
+		t.Errorf("floored width %d, want above the free %d", plain, free)
+	}
+}

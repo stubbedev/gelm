@@ -51,6 +51,9 @@ type Label struct {
 	// maxChars caps the natural width at that many approximate
 	// character widths (GTK max-width-chars); 0 is uncapped.
 	maxChars int
+	// widthChars floors the natural width at that many approximate
+	// character widths (GTK width-chars); 0 is unset.
+	widthChars int
 	// maxLines caps a wrapping, ellipsizing label at that many rows
 	// (GTK lines); 0 is uncapped.
 	maxLines int
@@ -209,6 +212,23 @@ func (l *Label) SetMaxLines(n int) {
 // MaxLines returns the row limit, 0 when unlimited.
 func (l *Label) MaxLines() int { return l.maxLines }
 
+// SetWidthChars floors the label's natural width at n approximate
+// character widths (GTK's width-chars): a shorter text still measures
+// that wide, so labels of one row line up. n <= 0 restores the text's
+// own width.
+func (l *Label) SetWidthChars(n int) {
+	n = max(n, 0)
+	if l.widthChars == n {
+		return
+	}
+	l.widthChars = n
+	l.InvalidateLayout()
+}
+
+// WidthChars returns the natural-width floor in characters, 0 when
+// unset.
+func (l *Label) WidthChars() int { return l.widthChars }
+
 // approxCharSample stands in for pango's per-language sample text: the
 // approximate character width is its mean advance.
 const approxCharSample = "abcdefghijklmnopqrstuvwxyz0123456789"
@@ -323,6 +343,29 @@ func (l *Label) ShrinkableWidth() int {
 // (and wraps) against the raw advance, so a natural width rounded to
 // nearest would truncate a text laid out at exactly its natural size.
 func (l *Label) measureNatural(con Constraints) Size {
+	sz := l.textNatural(con)
+	if f := l.widthFloor(); f > sz.W {
+		sz.W = f
+	}
+	return clampSize(sz, con)
+}
+
+// widthFloor is the width-chars floor in pixels: n approximate
+// character widths, 0 when unset.
+func (l *Label) widthFloor() int {
+	if l.widthChars <= 0 {
+		return 0
+	}
+	face, px := l.effStyle()
+	avg := face.Shape(approxCharSample, px).Advance() / float64(len(approxCharSample))
+	return int(math.Ceil(avg * float64(l.widthChars)))
+}
+
+// textNatural is the text's own wanted size under con, the measure
+// label's current text and modes. Widths round up: Paint ellipsizes
+// (and wraps) against the raw advance, so a natural width rounded to
+// nearest would truncate a text laid out at exactly its natural size.
+func (l *Label) textNatural(con Constraints) Size {
 	con = l.capWidth(con)
 	face, px := l.effStyle()
 	lineH := l.shaped.LineHeight()
