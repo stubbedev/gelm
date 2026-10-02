@@ -150,3 +150,49 @@ func TestEmbeddingWrapperIsTheParent(t *testing.T) {
 		t.Errorf("a removed child reports index %d", c.Index())
 	}
 }
+
+// In a row short of room a flow box narrows to what is left and wraps,
+// the row growing taller (GtkBox height-for-width); a non-expanding
+// entry beside it narrows too, as GTK narrows any child to its minimum.
+func TestFlowBoxWrapsInATightRow(t *testing.T) {
+	f := NewFlowBox(4, 4)
+	for _, l := range flowLeaves(5) {
+		f.Append(l)
+	}
+	label := &solidLeaf{sz: Size{W: 50, H: 20}}
+	// The flow box sits in a frame, as an app's zone row holds it: the
+	// frame gives what its children can.
+	frame := NewBox(Row, 0, 0)
+	frame.Append(f, false)
+	row := NewBox(Row, 0, 0)
+	row.Append(label, false)
+	row.Append(frame, false)
+	wide := row.Measure(Constraints{Max: Size{W: 1000, H: 500}})
+	if wide.H != 20 {
+		t.Fatalf("with room: %v, want one line", wide)
+	}
+	// 150px: 50 for the label, 100 for the chips, two per line.
+	narrow := row.Measure(Constraints{Max: Size{W: 150, H: 500}})
+	if narrow.H != 3*20+2*4 || narrow.W > 150 {
+		t.Errorf("tight: %v, want three lines within 150", narrow)
+	}
+	row.Arrange(render.Rect{W: 150, H: narrow.H})
+	if b := f.Bounds(); b.X != 50 || b.W > 100 {
+		t.Errorf("flow box at %v, want the 100px beside the label", b)
+	}
+	// Never below its widest child.
+	f.Measure(Constraints{Max: Size{W: 1000, H: 500}})
+	if got := f.ShrinkableWidth(); got != 5*40+4*4-40 {
+		t.Errorf("shrinkable %d, want down to one 40px child", got)
+	}
+	face := entryFace(t)
+	e := NewEntry(face, 14, 0)
+	e.SetTextWidth(GTKTextWidth)
+	row2 := NewBox(Row, 0, 0)
+	row2.Append(e, false)
+	row2.Measure(Constraints{Max: Size{W: 100, H: 100}})
+	row2.Arrange(render.Rect{W: 100, H: 40})
+	if e.Bounds().W > 100 {
+		t.Errorf("a non-expanding entry kept %dpx in a 100px row", e.Bounds().W)
+	}
+}

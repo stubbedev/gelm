@@ -68,13 +68,13 @@ func shrinkableWidthOf(w Widget) int {
 }
 
 // ShrinkableWidth implements WidthShrinker: a row gives what its
-// expanding children can; a column is as narrow as its least
-// shrinkable child lets it be.
+// children can; a column is as narrow as its least shrinkable child
+// lets it be.
 func (b *Box) ShrinkableWidth() int {
 	if b.axis == Row {
 		total := 0
 		for _, c := range b.child {
-			if c.expand && IsVisible(c.w) {
+			if IsVisible(c.w) {
 				total += shrinkableWidthOf(c.w)
 			}
 		}
@@ -91,10 +91,10 @@ func (b *Box) ShrinkableWidth() int {
 	return widest - floor
 }
 
-// shrinkTakes splits a main-axis deficit across the box's expanding
-// children in proportion to what each can give, never more than that:
-// takes[i] is what child i gives up. A column takes height, a row
-// width.
+// shrinkTakes splits a main-axis deficit across the children that can
+// give in proportion to what each can give, never more than that:
+// takes[i] is what child i gives up. A column takes height from its
+// expanding children, a row width from any.
 func (b *Box) shrinkTakes(deficit int) []int {
 	if deficit <= 0 {
 		return nil
@@ -103,10 +103,13 @@ func (b *Box) shrinkTakes(deficit int) []int {
 	if b.axis == Row {
 		give = shrinkableWidthOf
 	}
+	// A row narrows any child that can give width, as GTK hands a box
+	// short of room each child's minimum plus a share of the rest; a
+	// column takes height from its expanding children alone.
 	caps := make([]int, len(b.child))
 	total := 0
 	for i, c := range b.child {
-		if c.expand && IsVisible(c.w) {
+		if (c.expand || b.axis == Row) && IsVisible(c.w) {
 			caps[i] = give(c.w)
 			total += caps[i]
 		}

@@ -20,6 +20,9 @@ type FlowBox struct {
 	kids                   []*FlowBoxChild
 	colSpacing, rowSpacing int
 	maxPerLine             int
+	// measuredW and floorW are the last Measure's width and the
+	// narrowest it lays out at (its widest child), for ShrinkableWidth.
+	measuredW, floorW int
 }
 
 // FlowBoxChild wraps one child of a FlowBox: a CSS box around it.
@@ -162,10 +165,17 @@ func (f *FlowBox) Measure(con Constraints) Size {
 		return sz
 	}
 	v := f.style(f)
-	return f.measureStore(con, measureBox(v, boxOf(v, render.Insets{}), con, func(inner Constraints) Size {
+	box := boxOf(v, render.Insets{})
+	o := box.outer()
+	sz := f.measureStore(con, measureBox(v, box, con, func(inner Constraints) Size {
+		widest := 0
 		for _, c := range f.kids {
 			c.nat = measureChild(f, c, Constraints{Max: inner.Max})
+			if IsVisible(c) {
+				widest = max(widest, c.nat.W)
+			}
 		}
+		f.floorW = widest + o.Left + o.Right
 		var sz Size
 		for k, line := range f.lines(inner.Max.W) {
 			w, h := f.lineSize(line)
@@ -177,7 +187,13 @@ func (f *FlowBox) Measure(con Constraints) Size {
 		}
 		return clampSize(sz, inner)
 	}))
+	f.measuredW = sz.W
+	return sz
 }
+
+// ShrinkableWidth implements WidthShrinker: a flow box narrows to its
+// widest child, wrapping (GtkFlowBox's minimum width).
+func (f *FlowBox) ShrinkableWidth() int { return max(0, f.measuredW-f.floorW) }
 
 // Arrange places each line under the last, its children at their
 // natural widths from the start edge, as tall as the line.
