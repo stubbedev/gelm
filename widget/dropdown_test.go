@@ -588,3 +588,47 @@ func TestDropdownRows(t *testing.T) {
 		t.Errorf("all-header dropdown selected %d", only.Selected())
 	}
 }
+
+func TestDropdownSetItemsReplacesTheList(t *testing.T) {
+	c := pinAnimClock(t)
+	dd := newDropdown(t, "Default")
+	fired := 0
+	dd.OnSelect = func(int) { fired++ }
+	dd.ClickAt(facePoint(dd))
+	c.drive()
+	dd.Measure(Constraints{Max: Size{W: 400, H: 100}}) // settle the layout cache
+	dd.SetItems([]string{"Default", "Headset", "Built-in microphone, wide"}, 2)
+	if dd.Opened() {
+		t.Error("replacing the items left the old list open")
+	}
+	if dd.Selected() != 2 || dd.Selection() != "Built-in microphone, wide" || fired != 0 {
+		t.Errorf("selected %d %q, OnSelect fired %d; want the new row, silently", dd.Selected(), dd.Selection(), fired)
+	}
+	if !LayoutPending(dd) || dd.Measure(Constraints{Max: Size{W: 400, H: 100}}).W <= newDropdown(t, "Default").Bounds().W {
+		t.Error("a wider item did not relayout and widen the face")
+	}
+	dd.Arrange(render.Rect{X: 10, Y: 20, W: 300, H: dd.Bounds().H})
+	dd.ClickAt(facePoint(dd))
+	c.drive()
+	if len(dd.menu.items) != 3 {
+		t.Errorf("the reopened list shows %d rows, want the 3 new ones", len(dd.menu.items))
+	}
+	dd.menu.ClickAt(rowPoint(dd, 1))
+	c.drive()
+	if dd.Selected() != 1 || fired != 1 {
+		t.Errorf("picking a new row: selected %d, fired %d", dd.Selected(), fired)
+	}
+	// Clamped like the constructor; empty is -1.
+	dd.SetItems([]string{"only"}, 5)
+	if dd.Selected() != 0 {
+		t.Errorf("out of range selected %d, want clamped to 0", dd.Selected())
+	}
+	dd.SetItems(nil, 0)
+	if dd.Selected() != -1 || dd.Selection() != "" {
+		t.Errorf("empty: selected %d %q", dd.Selected(), dd.Selection())
+	}
+	dd.SetRows([]DropdownRow{{Label: "Group", Header: true}, {Label: "a"}}, 0)
+	if dd.Selected() != 1 {
+		t.Errorf("a header selection moved to %d, want the row after it", dd.Selected())
+	}
+}

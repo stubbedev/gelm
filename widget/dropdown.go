@@ -134,6 +134,39 @@ func buildDropdown(ctor string, face render.Font, sizePx float64, entries []Drop
 	return d
 }
 
+// SetItems replaces the items (GTK's DropDown.set_model) and selects
+// selected, clamped as the constructor clamps it. It fires no
+// OnSelect: the caller is choosing what shows, not the user. An open
+// list closes at once.
+func (d *Dropdown) SetItems(items []string, selected int) {
+	rows := make([]DropdownRow, len(items))
+	for i, label := range items {
+		rows[i] = DropdownRow{Label: label}
+	}
+	d.SetRows(rows, selected)
+}
+
+// SetRows is SetItems over rich rows.
+func (d *Dropdown) SetRows(rows []DropdownRow, selected int) {
+	if d.open {
+		if d.cancelReveal != nil {
+			d.cancelReveal()
+		}
+		d.finishClose()
+	}
+	d.entries = rows
+	d.items = make([]string, len(rows))
+	for i, e := range rows {
+		d.items[i] = e.Label
+	}
+	d.menu, d.faceIcon, d.faceFor = nil, nil, -1
+	d.selected = -1
+	if len(rows) > 0 {
+		d.selected = d.selectableFrom(min(max(selected, 0), len(rows)-1))
+	}
+	d.InvalidateLayout()
+}
+
 // selectableFrom is the first non-header row at or after i, else the
 // last one before it; -1 when every row is a header.
 func (d *Dropdown) selectableFrom(i int) int {
