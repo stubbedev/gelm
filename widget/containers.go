@@ -166,18 +166,6 @@ func (s *Stack) SetHomogeneous(h bool) {
 // easing (GTK's interpolate-size); off, the size jumps.
 func (s *Stack) SetInterpolateSize(on bool) { s.interpolate = on }
 
-// PageExtent is the largest page at con: the homogeneous size, which a
-// holder that cannot grow (a mapped popup) reserves up front for a
-// stack sized to its visible page.
-func (s *Stack) PageExtent(con Constraints) Size {
-	best := Size{}
-	for _, name := range s.order {
-		nat := s.kids[name].Measure(con)
-		best.W, best.H = max(best.W, nat.W), max(best.H, nat.H)
-	}
-	return clampSize(best, con)
-}
-
 // Show makes the child under name the visible one through the stack's
 // transition; unknown names are ignored. A switch during a running one
 // starts from the page then showing.
@@ -236,11 +224,7 @@ func (s *Stack) Measure(con Constraints) Size {
 		best.H = max(best.H, nat.H)
 	}
 	if s.heterogeneous {
-		best = s.measured[s.visible]
-		if from, ok := s.measured[s.prev]; ok && s.interpolate && s.prev != "" {
-			lerp := func(a, b int) int { return a + int(math.Round(float64(b-a)*s.progress)) }
-			best = Size{W: lerp(from.W, best.W), H: lerp(from.H, best.H)}
-		}
+		best = s.visibleSize()
 	}
 	return s.measureStore(con, clampSize(best, con))
 }
@@ -859,3 +843,17 @@ func (s *Scroll) ClickAt(p Point) {
 		}
 	}
 }
+
+// visibleSize is the visible page's last measured size, tweened from
+// the page leaving while an interpolating switch runs.
+func (s *Stack) visibleSize() Size {
+	to := s.measured[s.visible]
+	from, ok := s.measured[s.prev]
+	if !ok || s.prev == "" || !s.interpolate {
+		return to
+	}
+	return Size{W: s.lerp(from.W, to.W), H: s.lerp(from.H, to.H)}
+}
+
+// lerp is a at the switch's start to b at its end.
+func (s *Stack) lerp(a, b int) int { return a + int(math.Round(float64(b-a)*s.progress)) }

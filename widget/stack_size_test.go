@@ -12,8 +12,8 @@ func sizedStack() *Stack {
 func measureH(s *Stack) int { return s.Measure(Constraints{Max: Size{W: 500, H: 500}}).H }
 
 // TestStackSizesToItsVisiblePage pins GTK's homogeneous off: the stack
-// measures its visible page, the default its largest, and PageExtent
-// the largest either way.
+// measures its visible page, the default its largest, and PageFloor
+// the most any page needs either way.
 func TestStackSizesToItsVisiblePage(t *testing.T) {
 	s := sizedStack()
 	if got := measureH(s); got != 150 {
@@ -27,8 +27,8 @@ func TestStackSizesToItsVisiblePage(t *testing.T) {
 	if got := measureH(s); got != 150 {
 		t.Errorf("after switching = %d, want 150 (a switch relayouts)", got)
 	}
-	if got := s.PageExtent(Constraints{Max: Size{W: 500, H: 500}}); got != (Size{W: 60, H: 150}) {
-		t.Errorf("PageExtent = %+v, want the largest page", got)
+	if got := s.PageFloor(Constraints{Max: Size{W: 500, H: 500}}); got != 150 {
+		t.Errorf("PageFloor = %d, want the tallest page's 150", got)
 	}
 	s.SetHomogeneous(true)
 	s.Show("short")
@@ -66,5 +66,34 @@ func TestStackInterpolatesItsSizeThroughASwitch(t *testing.T) {
 	c.step()
 	if got := measureH(jump); got != 150 {
 		t.Errorf("without interpolate-size = %d mid-switch, want the jump to 150", got)
+	}
+}
+
+// TestStackFloorsFollowWhatPagesGiveUp pins the floors: a page that
+// scrolls needs only the scroll's floor, the visible page's give
+// is the stack's (sized to it), and PageFloor is the most any page
+// needs.
+func TestStackFloorsFollowWhatPagesGiveUp(t *testing.T) {
+	s := NewStack().Add("list", NewScroll(newStub(60, 400))).Add("form", newStub(60, 150))
+	s.SetHomogeneous(false)
+	con := Constraints{Max: Size{W: 500, H: 1000}}
+	if got := s.Measure(con).H; got != 400 {
+		t.Fatalf("list page = %d, want its natural 400", got)
+	}
+	if got := s.Shrinkable(); got != 400-scrollFloor {
+		t.Errorf("list page gives %d, want down to the scroll floor (%d)", got, 400-scrollFloor)
+	}
+	if got := s.PageFloor(con); got != 150 {
+		t.Errorf("PageFloor = %d, want the form's 150 (the list scrolls)", got)
+	}
+	s.Show("form")
+	s.Measure(con)
+	if got := s.Shrinkable(); got != 0 {
+		t.Errorf("the form gives %d, want 0", got)
+	}
+	homog := NewStack().Add("list", NewScroll(newStub(60, 400))).Add("form", newStub(60, 150))
+	homog.Measure(con)
+	if got := homog.Shrinkable(); got != 400-150 {
+		t.Errorf("homogeneous gives %d, want down to the form's 150", got)
 	}
 }

@@ -136,15 +136,45 @@ func (b *Box) shrinkTakes(deficit int) []int {
 
 // Shrinkable implements Shrinker: every page is arranged in the same
 // rect, so the stack can shrink as far as its least shrinkable page
-// lets it.
+// lets it - or, sized to its visible page, as far as that page lets
+// it, tweened with the size through an interpolating switch.
 func (s *Stack) Shrinkable() int {
+	if s.heterogeneous {
+		floor := s.pageFloor(s.visible)
+		if s.prev != "" && s.interpolate {
+			floor = s.lerp(s.pageFloor(s.prev), floor)
+		}
+		return max(0, s.visibleSize().H-floor)
+	}
 	tallest, floor := 0, 0
 	for _, name := range s.order {
-		nat := s.measured[name]
-		tallest = max(tallest, nat.H)
-		floor = max(floor, nat.H-shrinkableOf(s.kids[name]))
+		tallest = max(tallest, s.measured[name].H)
+		floor = max(floor, s.pageFloor(name))
 	}
 	return tallest - floor
+}
+
+// pageFloor is the least height a page works at: its last measured
+// height less what it can give up.
+func (s *Stack) pageFloor(name string) int {
+	k, ok := s.kids[name]
+	if !ok {
+		return 0
+	}
+	return s.measured[name].H - shrinkableOf(k)
+}
+
+// PageFloor is the most any page needs at con: its natural height less
+// what it can give up (a scrolled list gives way). A holder that cannot
+// grow once mapped - a popup - reserves it up front for a stack sized
+// to its visible page.
+func (s *Stack) PageFloor(con Constraints) int {
+	floor := 0
+	for _, name := range s.order {
+		s.measured[name] = s.kids[name].Measure(con)
+		floor = max(floor, s.pageFloor(name))
+	}
+	return floor
 }
 
 // scrollFloor is the least height a Scroll gives way to: room for the
