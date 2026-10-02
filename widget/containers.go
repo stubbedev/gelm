@@ -294,6 +294,9 @@ func (s *Stack) HitTest(p Point) Widget {
 type Overlay struct {
 	node
 	kids []Widget
+	// aligns holds the per-axis alignment of each child (index-matched
+	// with kids); AlignFill on both axes is a plain Append.
+	aligns [][2]Align
 }
 
 // NewOverlay returns an empty overlay.
@@ -301,7 +304,17 @@ func NewOverlay() *Overlay { return &Overlay{} }
 
 // Append adds a child on top.
 func (o *Overlay) Append(w Widget) *Overlay {
+	return o.AppendAligned(w, AlignFill, AlignFill)
+}
+
+// AppendAligned adds a child on top, sized and placed per axis like a
+// GtkOverlay child: AlignFill takes the overlay's extent, the others
+// keep the child's natural size pinned to the start, center or end.
+// The child hits only inside its own rect, so a corner button leaves
+// the rest of the content clickable.
+func (o *Overlay) AppendAligned(w Widget, h, v Align) *Overlay {
 	o.kids = append(o.kids, w)
+	o.aligns = append(o.aligns, [2]Align{h, v})
 	o.InvalidateLayout()
 	return o
 }
@@ -323,11 +336,17 @@ func (o *Overlay) Measure(con Constraints) Size {
 	return o.measureStore(con, clampSize(best, con))
 }
 
-// Arrange assigns the whole rect to every child.
+// Arrange assigns the whole rect to every filling child and places the
+// aligned ones within it.
 func (o *Overlay) Arrange(r render.Rect) {
 	o.ArrangeRoot(r)
-	for _, k := range o.kids {
-		k.Arrange(r)
+	for i, k := range o.kids {
+		cell := r
+		if a := o.aligns[i]; a != [2]Align{} {
+			nat := k.Measure(Constraints{Max: Size{W: r.W, H: r.H}})
+			cell = alignRect(r, nat, a[0], a[1])
+		}
+		k.Arrange(cell)
 		setParents(o, k)
 	}
 }
