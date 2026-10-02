@@ -48,6 +48,8 @@ type Paned struct {
 	arrangedSet bool
 	hovered     bool
 	pressed     bool
+	// maxPos caps the position (SetMaxPosition); zero is no cap.
+	maxPos int
 
 	// OnPositionChanged fires after every applied position change —
 	// drag, keyboard, SetPosition, or a resize that re-normalized the
@@ -69,11 +71,22 @@ func (p *Paned) Position() int { return p.arranged }
 
 // SetPosition asks for a divider position in pixels from the start
 // edge; the next arrangement clamps it between the panes' minimums
-// (MinSizer floors) and fires OnPositionChanged when the arranged
-// position moved.
+// (MinSizer floors) and under SetMaxPosition, and fires
+// OnPositionChanged when the arranged position moved.
 func (p *Paned) SetPosition(pos int) {
 	p.position, p.positionSet = pos, true
 	p.Invalidate()
+}
+
+// SetMaxPosition caps the divider at pos pixels from the start edge
+// (the start pane's largest extent), above the start pane's floor;
+// zero removes the cap. Drags, keys and SetPosition all stop there.
+func (p *Paned) SetMaxPosition(pos int) {
+	if p.maxPos == pos {
+		return
+	}
+	p.maxPos = max(pos, 0)
+	p.InvalidateLayout()
 }
 
 // mainOf returns s's extent along the axis.
@@ -119,6 +132,9 @@ func (p *Paned) clampPos(pos int, r render.Rect) int {
 	hi := avail
 	if p.end != nil {
 		hi = max(lo, avail-min(p.mainOf(minSizeOf(p.end)), avail))
+	}
+	if p.maxPos > 0 {
+		hi = max(lo, min(hi, p.maxPos))
 	}
 	return min(max(pos, lo), hi)
 }
