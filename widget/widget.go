@@ -487,8 +487,22 @@ func (n *node) setParent(p, self Widget) {
 		n.csGen = 0
 		n.styleSeen = 0
 		n.styleDmg = 0
+		n.parent = p
+		// Measured before it had ancestors, the widget resolved no scoped
+		// stylesheet and inherited nothing: its cached size, and every
+		// container cache above it, may be wrong now.
+		n.InvalidateLayout()
+		return
 	}
 	n.parent = p
+}
+
+// LayoutPending reports whether w's cached measure is stale - a
+// descendant was parented, restyled or resized since - so a host that
+// just arranged it must measure and arrange again before painting.
+func LayoutPending(w Widget) bool {
+	n := nodeOf(w)
+	return n != nil && (n.measureDirty || n.styleDirty || n.styleSeen != styleGen)
 }
 
 // parentOf returns w's parent, or nil.
