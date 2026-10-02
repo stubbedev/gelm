@@ -48,7 +48,7 @@ headless:
     trap 'just test-env-stop "$dir"' EXIT INT TERM
     . "$dir/client.env"
     export WAYLAND_DISPLAY XDG_RUNTIME_DIR="$dir" GELM_HEADLESS=1
-    go test ./internal/headlesstest ./capture -count=1
+    go test ./internal/headlesstest ./capture ./vinput -count=1
 
 # `check` plus the headless input gate - what CI runs. The gate is
 # required there: GELM_HEADLESS=1 turns every skip into a failure.
