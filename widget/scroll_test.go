@@ -72,8 +72,8 @@ func TestHorizontalWheelScrolls(t *testing.T) {
 	s.Measure(Constraints{Max: Size{W: 60, H: 60}})
 	s.Arrange(render.Rect{X: 0, Y: 0, W: 60, H: 60})
 	s.ScrollBy(2, 0)
-	if offX, _ := s.Offset(); offX != 80 {
-		t.Errorf("horizontal offset = %d, want 80 (two steps)", offX)
+	if offX, _ := s.Offset(); offX != 2*wheelStep(s.viewW) {
+		t.Errorf("horizontal offset = %d, want two steps of %d", offX, wheelStep(s.viewW))
 	}
 	if _, handle := s.hBarGeometry(); handle.H == 0 {
 		t.Error("no horizontal bar for horizontally overflowing content")
