@@ -79,14 +79,19 @@ func TestBorderSpacing(t *testing.T) {
 	row := NewBox(Row, 1, 0)
 	row.Append(NewSpacer(10, 10), false)
 	row.Append(NewSpacer(10, 10), false)
-	if got := row.Measure(Constraints{Max: Size{W: 100, H: 100}}).W; got != 27 {
-		t.Errorf("row gap = %d total, want the horizontal spacing 7", got)
+	// The CSS spacing adds to the constructor's, as in GTK 4.
+	if got := row.Measure(Constraints{Max: Size{W: 100, H: 100}}).W; got != 28 {
+		t.Errorf("row = %d total, want the gap 1 + 7", got)
 	}
 	col := NewBox(Column, 1, 0)
 	col.Append(NewSpacer(10, 10), false)
 	col.Append(NewSpacer(10, 10), false)
-	if got := col.Measure(Constraints{Max: Size{W: 100, H: 100}}).H; got != 23 {
-		t.Errorf("column gap = %d total, want the vertical spacing 3", got)
+	if got := col.Measure(Constraints{Max: Size{W: 100, H: 100}}).H; got != 24 {
+		t.Errorf("column = %d total, want the gap 1 + 3", got)
+	}
+	loadCSS(t, `* { border-spacing: 0; }`)
+	if got := row.Measure(Constraints{Max: Size{W: 100, H: 100}}).W; got != 21 {
+		t.Errorf("a zero border-spacing erased the constructor spacing: %d", got)
 	}
 	LoadStylesheet("")
 	if got := row.Measure(Constraints{Max: Size{W: 100, H: 100}}).W; got != 21 {
