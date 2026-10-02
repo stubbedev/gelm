@@ -83,3 +83,28 @@ func TestLockHostCloser(t *testing.T) {
 		t.Error("lock hosts need a closer for the window teardown path")
 	}
 }
+
+// TestHoldKeepsLoopAlive pins Hold: a window-less loop runs while a
+// hold is unreleased, a release counts once, and Quit still wins.
+func TestHoldKeepsLoopAlive(t *testing.T) {
+	a := &Application{}
+	first, second := a.Hold(), a.Hold()
+	if a.done() {
+		t.Fatal("a held application with no window must keep the loop alive")
+	}
+	first()
+	first()
+	if a.done() {
+		t.Fatal("a repeated release dropped the other hold")
+	}
+	second()
+	if !a.done() {
+		t.Fatal("every hold released and no window: the loop must end")
+	}
+	release := a.Hold()
+	a.quit = true
+	if !a.done() {
+		t.Error("Quit must end the loop even while held")
+	}
+	release()
+}

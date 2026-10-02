@@ -170,7 +170,7 @@ func (d *Device) OnSelection(fn func(sel Selection, offer *Offer)) (remove func(
 
 // Source is what a claim offers: the mime types, in the order
 // receivers should prefer them, and how each request is answered —
-// exactly one of Data and Send.
+// exactly one of Data, Send and Pass.
 type Source struct {
 	Mimes []string
 	// Data returns the payload for mime. It runs on the loop goroutine
@@ -183,6 +183,12 @@ type Source struct {
 	// the transfer deadline, may be written from any goroutine, and
 	// must be closed — closing is what ends the receiver's read.
 	Send func(mime string, w io.WriteCloser)
+	// Pass hands the receiver's pipe over untouched (blocking, no
+	// deadline), for a bridge that passes the descriptor itself to
+	// another process (a portal handing it to the app that owns the
+	// selection). It runs on the loop goroutine and owns pipe: it must
+	// close it, after passing it on or not.
+	Pass func(mime string, pipe *os.File)
 }
 
 // validate rejects a source the protocol or its receivers cannot use:
@@ -193,8 +199,8 @@ func (s Source) validate() error {
 	if len(s.Mimes) == 0 {
 		return errors.New("datacontrol: a source must offer at least one mime type")
 	}
-	if (s.Data == nil) == (s.Send == nil) {
-		return errors.New("datacontrol: a source needs exactly one of Data and Send")
+	if ways := btoi(s.Data != nil) + btoi(s.Send != nil) + btoi(s.Pass != nil); ways != 1 {
+		return errors.New("datacontrol: a source needs exactly one of Data, Send and Pass")
 	}
 	seen := make(map[string]bool, len(s.Mimes))
 	for _, m := range s.Mimes {
@@ -377,6 +383,10 @@ func (d *Device) send(source wireSource, mime string, fd uintptr, fdErr error) {
 	c := d.sources[source]
 	if c == nil || !c.live || !slices.Contains(c.mimes, mime) {
 		closeFD(fd)
+		return
+	}
+	if c.src.Pass != nil {
+		c.src.Pass(mime, os.NewFile(fd, "data-control-send"))
 		return
 	}
 	w, err := xfer.DeadlineWriter(fd, transferTimeout)
@@ -572,4 +582,11 @@ func (c *Claim) end() {
 	for _, fn := range fns {
 		fn()
 	}
+}
+
+func btoi(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
 }
