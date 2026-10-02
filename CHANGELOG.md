@@ -20,6 +20,9 @@
   `Dialog.Respond`, Esc and Enter still mapping to its responses.
 - `Paned.SetMaxPosition(px)`: caps the divider (drags, keys,
   SetPosition) above the start pane's floor; zero lifts the cap.
+- The window's focus ring marks keyboard focus only (GTK's
+  `:focus-visible`): a click focuses without a ring.
+  `widget.FocusVisible(w)` reports it.
 - `Box.AppendAligned(w, expand, cross)`: GTK's valign (in a row) or
   halign (in a column) per child; AlignFill is the plain stretch.
 - `Switch` takes the stylesheet the GTK way: `switch` styles the track

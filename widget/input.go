@@ -906,3 +906,11 @@ func clickWithinOf(w Widget) func() {
 	}
 	return nil
 }
+
+// FocusVisible reports whether w holds a focus that should show
+// (:focus-visible): one that arrived by keyboard traversal, not by a
+// pointer press or SetFocus.
+func FocusVisible(w Widget) bool {
+	n := nodeOf(w)
+	return n != nil && n.focused && n.focusVisible
+}
