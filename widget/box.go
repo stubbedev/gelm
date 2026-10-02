@@ -23,11 +23,15 @@ type childEntry struct {
 	w      Widget
 	expand bool
 	nat    Size
+	// cross places the child across the box (AppendAligned);
+	// AlignFill stretches it.
+	cross Align
 }
 
 // Box is a container that lays its children along one axis with fixed
 // spacing and padding. The cross axis stretches children to the inner
-// height (Row) or width (Column) of the box.
+// height (Row) or width (Column) of the box, unless a child was added
+// with AppendAligned.
 //
 // Leftover main-axis space is distributed equally among expanding children
 // (the remainder is dropped). A column short of room takes the shortfall
@@ -148,6 +152,17 @@ func (b *Box) Clear() {
 	b.child = nil
 	clearParents(ws...)
 	b.InvalidateLayout()
+}
+
+// AppendAligned adds a child placed across the box by cross, GTK's
+// valign in a row and halign in a column: AlignFill stretches it
+// (Append), the others keep its natural cross size pinned to the
+// start, center or end.
+func (b *Box) AppendAligned(w Widget, expand bool, cross Align) *Box {
+	b.child = append(b.child, &childEntry{w: w, expand: expand, cross: cross})
+	b.InvalidateLayout()
+	restyleChildren(b)
+	return b
 }
 
 // InsertAt puts w at index i with Append's expand meaning, so dynamic
@@ -355,8 +370,14 @@ func (b *Box) Arrange(r render.Rect) {
 				x = inner.X + inner.W - pos - size // the row flows from the right edge
 			}
 			rect = render.Rect{X: x, Y: inner.Y, W: size, H: inner.H}
+			if c.cross != AlignFill {
+				rect = alignRect(rect, Size{W: size, H: min(c.nat.H, inner.H)}, AlignFill, c.cross)
+			}
 		} else {
 			rect = render.Rect{X: inner.X, Y: inner.Y + pos, W: inner.W, H: size}
+			if c.cross != AlignFill {
+				rect = alignRect(rect, Size{W: min(c.nat.W, inner.W), H: size}, c.cross, AlignFill)
+			}
 		}
 		c.w.Arrange(rect)
 		setParents(b, c.w)

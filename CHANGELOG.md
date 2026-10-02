@@ -20,6 +20,8 @@
   `Dialog.Respond`, Esc and Enter still mapping to its responses.
 - `Paned.SetMaxPosition(px)`: caps the divider (drags, keys,
   SetPosition) above the start pane's floor; zero lifts the cap.
+- `Box.AppendAligned(w, expand, cross)`: GTK's valign (in a row) or
+  halign (in a column) per child; AlignFill is the plain stretch.
 - `Switch` takes the stylesheet the GTK way: `switch` styles the track
   (background, radius, min size, box layers, `:checked` while on) and
   `switch slider` the knob (min size, margin, background, radius,

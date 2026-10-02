@@ -195,3 +195,33 @@ func TestBoxHitTest(t *testing.T) {
 		}
 	})
 }
+
+// An aligned child keeps its natural cross size, pinned where asked;
+// a plain one still stretches.
+func TestBoxAppendAligned(t *testing.T) {
+	row := NewBox(Row, 0, 0)
+	fill, mid, end := newStub(10, 6), newStub(10, 6), newStub(10, 6)
+	row.Append(fill, false).AppendAligned(mid, false, AlignCenter).AppendAligned(end, false, AlignEnd)
+	row.Measure(Constraints{Max: Size{W: 100, H: 100}})
+	row.Arrange(render.Rect{W: 30, H: 20})
+	for name, c := range map[string]struct {
+		w    Widget
+		want render.Rect
+	}{
+		"fill":   {fill, render.Rect{X: 0, Y: 0, W: 10, H: 20}},
+		"center": {mid, render.Rect{X: 10, Y: 7, W: 10, H: 6}},
+		"end":    {end, render.Rect{X: 20, Y: 14, W: 10, H: 6}},
+	} {
+		if got := c.w.(interface{ Bounds() render.Rect }).Bounds(); got != c.want {
+			t.Errorf("%s: %v, want %v", name, got, c.want)
+		}
+	}
+	col := NewBox(Column, 0, 0)
+	start := newStub(8, 5)
+	col.AppendAligned(start, true, AlignStart)
+	col.Measure(Constraints{Max: Size{W: 100, H: 100}})
+	col.Arrange(render.Rect{W: 40, H: 20})
+	if got := start.Bounds(); got != (render.Rect{X: 0, Y: 0, W: 8, H: 20}) {
+		t.Errorf("column start: %v, want natural width, expanded height", got)
+	}
+}
