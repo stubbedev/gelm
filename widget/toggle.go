@@ -13,20 +13,12 @@ import (
 type Switch struct {
 	node
 	on   bool
-	knob switchSlider
+	knob stylePart
 
 	// OnChanged fires after every state change, including programmatic
 	// ones.
 	OnChanged func(on bool)
 }
-
-// switchSlider is the knob's style node: the `slider` element under
-// the switch, matched and painted by it, never laid out on its own.
-type switchSlider struct{ node }
-
-func (*switchSlider) Measure(con Constraints) Size { return clampSize(Size{}, con) }
-func (*switchSlider) Paint(*render.Canvas)         {}
-func (*switchSlider) HitTest(Point) Widget         { return nil }
 
 // NewSwitch returns a switch in the given state.
 func NewSwitch(on bool) *Switch {
@@ -157,18 +149,37 @@ func (s *Switch) InsertRune(r rune) {
 	}
 }
 
-// ProgressBar paints a read-only fill over a trough.
+// ProgressBar paints a read-only fill over a trough, as GTK's node
+// tree: `progressbar > trough > progress` — the bar's box, the
+// trough's, and the fill's, each styled by the cascade.
 type ProgressBar struct {
 	node
 	value float64
 	// Fill and Trough color the bar; zero is the theme's accent and
-	// surface.
+	// surface, under the trough and progress rules.
 	Fill, Trough render.Color
+	trough       progressTrough
 }
+
+// progressTrough is the bar's trough node and its progress fill.
+type progressTrough struct {
+	stylePart
+	progress stylePart
+}
+
+func (t *progressTrough) styleChildren() []Widget { return []Widget{&t.progress} }
+
+// styleChildren is the trough (styleKids).
+func (p *ProgressBar) styleChildren() []Widget { return []Widget{&p.trough} }
 
 // NewProgressBar returns a progress bar at value clamped to [0, 1].
 func NewProgressBar(value float64) *ProgressBar {
-	return &ProgressBar{value: math01(value)}
+	p := &ProgressBar{value: math01(value)}
+	p.trough.SetElement("trough")
+	p.trough.progress.SetElement("progress")
+	setParents(p, &p.trough)
+	setParents(&p.trough, &p.trough.progress)
+	return p
 }
 
 func math01(v float64) float64 {
@@ -195,31 +206,64 @@ func (p *ProgressBar) SetValue(v float64) {
 	p.Invalidate()
 }
 
-// Measure wants a fixed 160x10 trough, clamped to con.
+// Measure wants a fixed 160x10 trough, floored by the trough's min
+// sizes, inside the bar's CSS box, clamped to con.
 func (p *ProgressBar) Measure(con Constraints) Size {
 	if sz, ok := p.measureHit(con); ok {
 		return sz
 	}
-	return p.measureStore(con, clampSize(Size{W: 160, H: 10}, con))
+	tv := p.trough.style(&p.trough)
+	w, h := picki(tv, style.PropMinWidth, 160), picki(tv, style.PropMinHeight, 10)
+	v := p.style(p)
+	return p.measureStore(con, measureBox(v, boxOf(v, render.Insets{}), con, func(inner Constraints) Size {
+		return clampSize(Size{W: w, H: h}, inner)
+	}))
 }
 
-// Paint draws the trough and the proportional fill. Zero colors fall back
-// to the theme.
+// Arrange records the bar's box; the trough's border box is it.
+func (p *ProgressBar) Arrange(r render.Rect) {
+	p.node.Arrange(r)
+	p.trough.Arrange(r)
+}
+
+// Paint draws the trough and the proportional fill through their
+// nodes. Zero colors fall back to the theme, under the cascade.
 func (p *ProgressBar) Paint(cv *render.Canvas) {
 	t := Current()
-	trough, fillColor := p.Trough, p.Fill
-	if trough == 0 {
-		trough = t.Surface
+	tv := p.trough.style(&p.trough)
+	fx := pushEffects(cv, tv)
+	defer fx.pop(cv)
+	radii := radiusOr(tv, p.bounds.H/2)
+	_, inner := boxRects(boxOf(tv, render.Insets{}), p.bounds)
+	paintBoxBehind(cv, tv, p.bounds, radii, borderOf(tv), pickc(0, tv, style.PropBackgroundColor, p.troughFill(t)))
+	fw := int(float64(inner.W) * p.value)
+	if fw > 0 {
+		fr := inner
+		fr.W = fw
+		p.trough.progress.Arrange(fr)
+		pv := p.trough.progress.style(&p.trough.progress)
+		fxp := pushEffects(cv, pv)
+		paintBoxBehind(cv, pv, fr, radiusOr(pv, inner.H/2), borderOf(pv), pickc(0, pv, style.PropBackgroundColor, p.progressFill(t)))
+		fxp.pop(cv)
 	}
-	if fillColor == 0 {
-		fillColor = t.Accent
+}
+
+// troughFill is the trough's color: the programmatic Trough, else the
+// theme's surface.
+func (p *ProgressBar) troughFill(t *Theme) render.Color {
+	if p.Trough != 0 {
+		return p.Trough
 	}
-	cv.RoundedRect(p.bounds, p.bounds.H/2, trough)
-	fill := p.bounds
-	fill.W = int(float64(p.bounds.W) * p.value)
-	if fill.W > 0 {
-		cv.RoundedRect(fill, p.bounds.H/2, fillColor)
+	return t.Surface
+}
+
+// progressFill is the fill's color: the programmatic Fill, else the
+// theme's accent.
+func (p *ProgressBar) progressFill(t *Theme) render.Color {
+	if p.Fill != 0 {
+		return p.Fill
 	}
+	return t.Accent
 }
 
 // Role implements Roleer.
@@ -234,6 +278,9 @@ func (p *ProgressBar) HitTest(pt Point) Widget {
 type CheckButton struct {
 	node
 	checked bool
+	// check is the `check` node under the checkbox (`checkbutton >
+	// check`): the drawn indicator, styled and painted through it.
+	check stylePart
 
 	// OnChanged fires after every state change, including programmatic
 	// ones.
@@ -242,8 +289,13 @@ type CheckButton struct {
 
 // NewCheckButton returns a checkbox in the given state.
 func NewCheckButton(checked bool) *CheckButton {
-	return &CheckButton{checked: checked}
+	c := &CheckButton{checked: checked}
+	c.check.SetElement("check")
+	return c
 }
+
+// styleChildren is the check (styleKids).
+func (c *CheckButton) styleChildren() []Widget { return []Widget{&c.check} }
 
 // Checked reports the state.
 func (c *CheckButton) Checked() bool { return c.checked }
@@ -254,6 +306,7 @@ func (c *CheckButton) SetChecked(checked bool) {
 		return
 	}
 	c.checked = checked
+	c.invalidateState(style.Checked)
 	c.Invalidate()
 	if c.OnChanged != nil {
 		c.OnChanged(checked)
@@ -265,24 +318,47 @@ func (c *CheckButton) Toggle() {
 	c.SetChecked(!c.checked)
 }
 
-// Measure wants a fixed 20x20 box, clamped to con.
+// SetInconsistent marks the check indeterminate (`:indeterminate`),
+// the neither-checked-nor-unchecked state a tri-state control shows.
+func (c *CheckButton) SetInconsistent(on bool) { c.SetState(StateIndeterminate, on) }
+
+// Inconsistent reports the indeterminate state.
+func (c *CheckButton) Inconsistent() bool { return c.HasState(StateIndeterminate) }
+
+// Measure sizes the indicator: the check's min-width/min-height (the
+// theme's 20x20 unstyled), inside the checkbox's CSS box.
 func (c *CheckButton) Measure(con Constraints) Size {
 	if sz, ok := c.measureHit(con); ok {
 		return sz
 	}
-	return c.measureStore(con, clampSize(Size{W: 20, H: 20}, con))
+	kv := c.check.style(&c.check)
+	w, h := picki(kv, style.PropMinWidth, 20), picki(kv, style.PropMinHeight, 20)
+	v := c.style(c)
+	return c.measureStore(con, measureBox(v, boxOf(v, render.Insets{}), con, func(inner Constraints) Size {
+		return clampSize(Size{W: w, H: h}, inner)
+	}))
 }
 
-// Paint draws the box; when checked, an accent fill and a check mark.
-// Colors fall back to the theme. Disabled, box and fill fade through
-// the derived disabled colors.
+// Arrange records the box and links the check below it, so the
+// cascade reaches `checkbutton > check`.
+func (c *CheckButton) Arrange(r render.Rect) {
+	c.node.Arrange(r)
+	setParents(c, &c.check)
+}
+
+// checkRing is the unstyled indicator's border width.
+const checkRing = 2
+
+// Paint draws the indicator through the check node: the box layers
+// (background, border, radius) it resolves, the tick or minus bar in
+// its color. Unstyled, a 2px theme-border ring around the theme
+// surface, accent-filled with a mark while checked or inconsistent.
+// Disabled, ring and mark fade through the derived disabled colors.
 func (c *CheckButton) Paint(cv *render.Canvas) {
 	t := Current()
-	boxCol, fillCol, tickCol := t.Border, t.Accent, t.OnAccent
-	if !IsEnabled(c) {
-		boxCol, fillCol = t.DisabledText(), t.DisabledAccent()
-		tickCol = scaleAlpha(t.OnAccent, disabledFade)
-	}
+	kv := c.check.style(&c.check)
+	fx := pushEffects(cv, kv)
+	defer fx.pop(cv)
 	box := c.bounds
 	if box.W > box.H {
 		box.W = box.H
@@ -290,27 +366,47 @@ func (c *CheckButton) Paint(cv *render.Canvas) {
 	if box.H > box.W {
 		box.H = box.W
 	}
-	cv.RoundedRect(box, 4, boxCol)
-	inner := box
-	inner.X += 2
-	inner.Y += 2
-	inner.W -= 4
-	inner.H -= 4
-	if c.checked {
-		cv.RoundedRect(inner, 3, fillCol)
-		bw, bh := float64(box.W), float64(box.H)
-		stroke := max(2, box.W/7)
-		x0 := box.X + int(0.24*bw)
-		y0 := box.Y + int(0.55*bh)
-		x1 := box.X + int(0.42*bw)
-		y1 := box.Y + int(0.73*bh)
-		x2 := box.X + int(0.78*bw)
-		y2 := box.Y + int(0.27*bh)
-		cv.Line(x0, y0, x1, y1, stroke, tickCol)
-		cv.Line(x1, y1, x2, y2, stroke, tickCol)
+	var fill, tick render.Color
+	if c.checked || c.Inconsistent() {
+		fill, tick = t.Accent, pickc(0, kv, style.PropColor, t.OnAccent)
+		if !IsEnabled(c) {
+			fill, tick = t.DisabledAccent(), scaleAlpha(tick, disabledFade)
+		}
+	} else {
+		fill = t.Bg
+	}
+	ring := borderOf(kv)
+	cols := borderColors(kv)
+	if !kv.HasAny(style.PropBorderTopWidth, style.PropBorderRightWidth, style.PropBorderBottomWidth, style.PropBorderLeftWidth) {
+		ring = render.UniformInsets(checkRing)
+		if !IsEnabled(c) {
+			cols = [4]render.Color{t.DisabledText(), t.DisabledText(), t.DisabledText(), t.DisabledText()}
+		}
+	}
+	radii := radiusOr(kv, 4)
+	c.check.Arrange(box)
+	paintBoxBehindCol(cv, kv, box, radii, ring, pickc(0, kv, style.PropBackgroundColor, fill), cols)
+	if c.checked || c.Inconsistent() {
+		drawCheckMark(cv, box, c.Inconsistent(), tick)
+	}
+	paintOutline(cv, kv, box, radii)
+}
+
+// drawCheckMark paints the mark inside an indicator box: the tick, or
+// the minus bar when indeterminate.
+func drawCheckMark(cv *render.Canvas, box render.Rect, minus bool, col render.Color) {
+	bw, bh := float64(box.W), float64(box.H)
+	stroke := max(2, box.W/7)
+	if minus {
+		y := box.Y + box.H/2
+		cv.Line(box.X+int(0.26*bw), y, box.X+int(0.74*bw), y, stroke, col)
 		return
 	}
-	cv.RoundedRect(inner, 3, t.Bg)
+	x0, y0 := box.X+int(0.24*bw), box.Y+int(0.55*bh)
+	x1, y1 := box.X+int(0.42*bw), box.Y+int(0.73*bh)
+	x2, y2 := box.X+int(0.78*bw), box.Y+int(0.27*bh)
+	cv.Line(x0, y0, x1, y1, stroke, col)
+	cv.Line(x1, y1, x2, y2, stroke, col)
 }
 
 // Role implements Roleer.

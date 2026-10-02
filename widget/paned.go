@@ -1,6 +1,7 @@
 package widget
 
 import (
+	"github.com/stubbedev/gelm/internal/style"
 	"github.com/stubbedev/gelm/render"
 )
 
@@ -50,6 +51,10 @@ type Paned struct {
 	pressed     bool
 	// maxPos caps the position (SetMaxPosition); zero is no cap.
 	maxPos int
+	// sep is the divider's `separator` node (`paned > separator`): its
+	// min size slots the divider and its margin shifts it inside the
+	// slot; its box layers paint it.
+	sep stylePart
 
 	// OnPositionChanged fires after every applied position change —
 	// drag, keyboard, SetPosition, or a resize that re-normalized the
@@ -61,7 +66,41 @@ type Paned struct {
 // may be nil, in which case the other takes the whole rect and no
 // divider is drawn.
 func NewPaned(axis Axis, start, end Widget) *Paned {
-	return &Paned{axis: axis, start: start, end: end}
+	p := &Paned{axis: axis, start: start, end: end}
+	p.sep.SetElement("separator")
+	setParents(p, &p.sep)
+	return p
+}
+
+// styleChildren is the separator and the two panes (styleKids).
+func (p *Paned) styleChildren() []Widget {
+	out := make([]Widget, 0, 3)
+	out = append(out, &p.sep)
+	for _, pane := range [2]Widget{p.start, p.end} {
+		if pane != nil {
+			out = append(out, pane)
+		}
+	}
+	return out
+}
+
+// sepSlot is the divider's slot along the axis: the separator's min
+// size plus its margins, at least 0 (negative margins can shrink the
+// slot to nothing — a divider painted over the pane edge).
+func (p *Paned) sepSlot() int {
+	sv := p.sep.style(&p.sep)
+	prop := style.PropMinWidth
+	if p.axis == Column {
+		prop = style.PropMinHeight
+	}
+	m := marginOf(sv)
+	slot := picki(sv, prop, panedHandleW)
+	if p.axis == Column {
+		slot += m.Top + m.Bottom
+	} else {
+		slot += m.Left + m.Right
+	}
+	return max(0, slot)
 }
 
 // Position returns the divider's arranged position in pixels from the
@@ -116,9 +155,9 @@ func (p *Paned) crossOf(s Size) int {
 }
 
 // availMain is the dividable extent inside r: the main size minus the
-// handle.
+// divider slot.
 func (p *Paned) availMain(r render.Rect) int {
-	return max(0, p.mainOf(Size{W: r.W, H: r.H})-panedHandleW)
+	return max(0, p.mainOf(Size{W: r.W, H: r.H})-p.sepSlot())
 }
 
 // clampPos clamps a requested position between the panes' MinSizer
@@ -169,7 +208,7 @@ func (p *Paned) Measure(con Constraints) Size {
 	if sz, ok := p.measureHit(con); ok {
 		return sz
 	}
-	main := panedHandleW
+	main := p.sepSlot()
 	cross := 0
 	if p.start != nil {
 		s := measureChild(p, p.start, con)
@@ -189,7 +228,7 @@ func (p *Paned) Measure(con Constraints) Size {
 // the axis, so a Paned nested in a squeezing container (a Grid) keeps
 // both panes alive.
 func (p *Paned) MinSize() Size {
-	main := panedHandleW
+	main := p.sepSlot()
 	cross := 0
 	if p.start != nil {
 		m := minSizeOf(p.start)
@@ -238,18 +277,21 @@ func (p *Paned) placePanes() {
 		return
 	}
 	if p.axis == Column {
+		slot := p.sepSlot()
 		p.start.Arrange(render.Rect{X: r.X, Y: r.Y, W: r.W, H: p.arranged})
-		p.end.Arrange(render.Rect{X: r.X, Y: r.Y + p.arranged + panedHandleW, W: r.W, H: max(0, r.H-p.arranged-panedHandleW)})
+		p.end.Arrange(render.Rect{X: r.X, Y: r.Y + p.arranged + slot, W: r.W, H: max(0, r.H-p.arranged-slot)})
 	} else {
+		slot := p.sepSlot()
 		p.start.Arrange(render.Rect{X: r.X, Y: r.Y, W: p.arranged, H: r.H})
-		p.end.Arrange(render.Rect{X: r.X + p.arranged + panedHandleW, Y: r.Y, W: max(0, r.W-p.arranged-panedHandleW), H: r.H})
+		p.end.Arrange(render.Rect{X: r.X + p.arranged + slot, Y: r.Y, W: max(0, r.W-p.arranged-slot), H: r.H})
 	}
 	setParents(p, p.start, p.end)
 }
 
-// Paint draws the panes, then the divider between them: a handle bar
-// whose rest, hover, and pressed looks come from the theme, and no
-// divider when a pane is missing (the other still paints).
+// Paint draws the panes, then the divider between them through its
+// `separator` node: the box layers it resolves, the theme's handle
+// looks as the fallback per state, and no divider when a pane is
+// missing (the other still paints).
 func (p *Paned) Paint(cv *render.Canvas) {
 	for _, pane := range [2]Widget{p.start, p.end} {
 		if pane != nil && IsVisible(pane) {
@@ -260,25 +302,43 @@ func (p *Paned) Paint(cv *render.Canvas) {
 		return
 	}
 	th := Current()
-	col := th.Border
+	bg := th.Border
 	switch {
 	case !IsEnabled(p):
-		col = th.DisabledText()
+		bg = th.DisabledText()
 	case p.pressed:
-		col = th.Accent
+		bg = th.Accent
 	case p.hovered:
-		col = th.TextMuted
+		bg = th.TextMuted
 	}
-	handle := p.handleRect()
-	cv.RoundedRect(handle, min(panedHandleW, p.crossOf(Size{W: handle.W, H: handle.H}))/2, col)
+	sv := p.sep.style(&p.sep)
+	fx := pushEffects(cv, sv)
+	defer fx.pop(cv)
+	rect := p.sepRect()
+	p.sep.Arrange(rect)
+	radii := radiusOr(sv, min(rect.W, rect.H)/2)
+	paintBoxBehind(cv, sv, rect, radii, borderOf(sv), pickc(0, sv, style.PropBackgroundColor, bg))
+	paintOutline(cv, sv, rect, radii)
 }
 
-// handleRect is the divider's rect in root coordinates.
-func (p *Paned) handleRect() render.Rect {
+// sepRect is the divider's painted box: the separator's min size
+// inside the slot, shifted by its start margin.
+func (p *Paned) sepRect() render.Rect {
+	sv := p.sep.style(&p.sep)
+	m := marginOf(sv)
 	if p.axis == Column {
-		return render.Rect{X: p.bounds.X, Y: p.bounds.Y + p.arranged, W: p.bounds.W, H: panedHandleW}
+		return render.Rect{X: p.bounds.X, Y: p.bounds.Y + p.arranged + m.Top, W: p.bounds.W, H: picki(sv, style.PropMinHeight, panedHandleW)}
 	}
-	return render.Rect{X: p.bounds.X + p.arranged, Y: p.bounds.Y, W: panedHandleW, H: p.bounds.H}
+	return render.Rect{X: p.bounds.X + p.arranged + m.Left, Y: p.bounds.Y, W: picki(sv, style.PropMinWidth, panedHandleW), H: p.bounds.H}
+}
+
+// handleRect is the divider's hit zone: the whole slot.
+func (p *Paned) handleRect() render.Rect {
+	slot := p.sepSlot()
+	if p.axis == Column {
+		return render.Rect{X: p.bounds.X, Y: p.bounds.Y + p.arranged, W: p.bounds.W, H: slot}
+	}
+	return render.Rect{X: p.bounds.X + p.arranged, Y: p.bounds.Y, W: slot, H: p.bounds.H}
 }
 
 // inHandle reports whether p sits inside the handle's hit zone: the

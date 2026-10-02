@@ -317,3 +317,39 @@ func TestButtonContentRestylesWithItsButton(t *testing.T) {
 		t.Errorf("label color %#08x after the button turned hot, want green", uint32(got))
 	}
 }
+
+// The divider styles as `paned > separator`: its min size slots it
+// between the panes, its start margin shifts it inside the slot, and
+// its background paints it.
+func TestPanedSeparatorNode(t *testing.T) {
+	loadCSS(t, `paned > separator { min-width: 3; margin-left: -3; background-color: #010203; }`)
+	p := NewPaned(Row, newStub(30, 20), newStub(30, 20))
+	host := NewBox(Row, 0, 0)
+	host.Append(p, true)
+	frame(t, host, 100, 40)
+
+	if got := p.Measure(Constraints{Max: Size{W: 100, H: 40}}); got.W != 60 {
+		t.Errorf("paned width %d, want the panes' 60 (the negative margin emptied the slot)", got.W)
+	}
+	sv := p.sep.style(&p.sep)
+	if got := sv.Background; got != render.RGB(0x01, 0x02, 0x03) {
+		t.Errorf("separator background %v, want the rule", got)
+	}
+	if r := p.sepRect(); r.X != 27 || r.W != 3 {
+		t.Errorf("separator rect %+v, want 3 wide at x 27 (60/2 - 3)", r)
+	}
+}
+
+// Unstyled, the divider is the 6px theme handle it always was.
+func TestPanedSeparatorDefaults(t *testing.T) {
+	p := NewPaned(Column, newStub(30, 20), newStub(30, 20))
+	host := NewBox(Column, 0, 0)
+	host.Append(p, true)
+	frame(t, host, 100, 100)
+	if got := p.sepSlot(); got != panedHandleW {
+		t.Errorf("slot %d, want the %dpx handle", got, panedHandleW)
+	}
+	if r := p.sepRect(); r.H != panedHandleW {
+		t.Errorf("separator rect %+v, want %d tall", r, panedHandleW)
+	}
+}

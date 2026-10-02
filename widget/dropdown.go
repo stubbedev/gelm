@@ -86,6 +86,11 @@ type Dropdown struct {
 	// idle timer that clears it.
 	typed      string
 	typeCancel anim.Cancel
+	// faceBtn and faceArrow are the closed face's style nodes
+	// (`dropdown > button > arrow`): the button's box paints the face,
+	// the arrow's color the chevron.
+	faceBtn   stylePart
+	faceArrow stylePart
 
 	// OnSelect fires exactly once per selection change, whatever
 	// produced it: a click, Enter, or SetSelected. Re-picking the
@@ -124,6 +129,10 @@ func NewDropdownRows(face render.Font, sizePx float64, items []DropdownRow, sele
 
 func buildDropdown(ctor string, face render.Font, sizePx float64, entries []DropdownRow, selected int) *Dropdown {
 	d := &Dropdown{face: requireFace(ctor, face), sizePx: sizePx, entries: entries, selected: -1, faceFor: -1}
+	d.faceBtn.SetElement("button")
+	d.faceArrow.SetElement("arrow")
+	setParents(d, &d.faceBtn)
+	setParents(&d.faceBtn, &d.faceArrow)
 	d.items = make([]string, len(entries))
 	for i, e := range entries {
 		d.items[i] = e.Label
@@ -417,7 +426,13 @@ func (d *Dropdown) Paint(cv *render.Canvas) {
 	case !d.Enabled():
 		bg = t.DisabledSurface()
 	}
-	cv.RoundedRect(d.bounds, t.Radius, bg)
+	bv := d.faceBtn.style(&d.faceBtn)
+	fx := pushEffects(cv, bv)
+	radii := radiusOr(bv, t.Radius)
+	d.faceBtn.Arrange(d.bounds)
+	paintBoxBehind(cv, bv, d.bounds, radii, borderOf(bv), pickc(0, bv, style.PropBackgroundColor, bg))
+	paintOutline(cv, bv, d.bounds, radii)
+	fx.pop(cv)
 
 	col := t.Text
 	if !d.Enabled() {
@@ -440,10 +455,13 @@ func (d *Dropdown) Paint(cv *render.Canvas) {
 		lx = d.bounds.X + d.bounds.W - 28 - int(sh.Advance()+0.5)
 	}
 	d.face.Draw(cv, sh, lx, baseline, col)
-	// The chevron: two strokes forming a v at the face's right edge.
+	// The chevron: two strokes forming a v at the face's right edge,
+	// in the arrow node's color.
+	av := d.faceArrow.style(&d.faceArrow)
+	chev := pickc(0, av, style.PropColor, col)
 	cx, cy := d.bounds.X+d.bounds.W-16, d.bounds.Y+d.bounds.H/2
-	cv.Line(cx-4, cy-2, cx, cy+2, 1, col)
-	cv.Line(cx, cy+2, cx+4, cy-2, 1, col)
+	cv.Line(cx-4, cy-2, cx, cy+2, 1, chev)
+	cv.Line(cx, cy+2, cx+4, cy-2, 1, chev)
 
 	if d.open {
 		// The list hangs below the face, over whatever follows it: it
@@ -719,9 +737,11 @@ func (d *Dropdown) iconSlot() int {
 	return w
 }
 
-// styleChildren is the face's icon (styleKids).
+// styleChildren is the button (its arrow below), the open item list,
+// and the face's icon (styleKids).
 func (d *Dropdown) styleChildren() []Widget {
-	kids := d.Children()
+	kids := []Widget{&d.faceBtn}
+	kids = append(kids, d.Children()...)
 	if d.faceIcon != nil {
 		kids = append(kids, d.faceIcon)
 	}
