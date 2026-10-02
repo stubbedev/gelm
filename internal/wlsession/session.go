@@ -189,6 +189,11 @@ type Session struct {
 	// horizontal) between pointer frames; the frame flushes them as
 	// whole-notch scroll deltas.
 	wheel120 [2]int32
+	// axisValue accumulates the frame's wl_pointer.axis values per
+	// axis; axisSource is its axis_source (axisSourced once one came).
+	axisValue   [2]float64
+	axisSource  uint32
+	axisSourced bool
 
 	// closed is set by Close, before the connection goes; WakeAfter
 	// timers still pending then stand down instead of writing to it.
@@ -257,6 +262,14 @@ type SurfacePointerHandler interface {
 	HandlePointerAxis(dx, dy float64)
 	// HandlePointerLeave reports the pointer leaving the surface.
 	HandlePointerLeave()
+}
+
+// SurfacePreciseScroller is a SurfacePointerHandler that takes finger
+// and continuous scrolling as exact surface pixels (positive
+// right/down) instead of axis motion: a touchpad scrolls by what the
+// fingers moved, not in wheel steps.
+type SurfacePreciseScroller interface {
+	HandlePointerScrollPixels(dx, dy float64)
 }
 
 // SurfaceDropHandler receives the wl_data_device drag-and-drop events
@@ -718,7 +731,7 @@ func (s *Session) pointerLost() {
 	s.stopCursorAnim()
 	grab := s.grabSurface
 	s.grabSurface = nil
-	s.wheel120[0], s.wheel120[1] = 0, 0
+	s.resetAxisFrame()
 	focus := s.pointerFocus
 	s.pointerFocus = nil
 	if focus != nil {
@@ -924,49 +937,87 @@ const (
 // the app treats as one scroll step (10): one wheel click is 120 units.
 const wheelPerStep = 12.0
 
-// HandlePointerAxis implements wl.PointerAxisHandler: smooth scroll
-// motion routed like motion, so scrolling follows the grab while
-// dragging. Discrete wheel clicks arrive separately through
-// axis_value120 and are flushed at the frame.
+// HandlePointerAxis implements wl.PointerAxisHandler: the axis value
+// of this frame accumulates per axis and the frame routes it (a seat
+// before version 5 has no frames, so it routes at once). Scrolling
+// follows the grab while dragging.
 func (s *Session) HandlePointerAxis(ev wl.PointerAxisEvent) {
-	dx, dy := 0.0, 0.0
-	if ev.Axis == axisVertical {
-		dy = float64(ev.Value)
-	} else {
-		dx = float64(ev.Value)
+	axis := 0
+	if ev.Axis != axisVertical {
+		axis = 1
 	}
-	if h := s.pointerTarget(); h != nil {
-		h.HandlePointerAxis(dx, dy)
-	}
-	debug.Log("input", "wire axis dx=%.1f dy=%.1f", dx, dy)
-}
-
-// HandlePointerFrame implements wl.PointerFrameHandler: flushes
-// accumulated axis_value120 wheel clicks to the pointer target as
-// whole-notch scroll deltas. Multiple clicks inside one frame batch
-// here, which is the wheel acceleration multiplicity.
-func (s *Session) HandlePointerFrame(wl.PointerFrameEvent) {
-	dv, dh := s.wheel120[0], s.wheel120[1]
-	s.wheel120[0], s.wheel120[1] = 0, 0
-	if dv == 0 && dh == 0 {
+	debug.Log("input", "wire axis %d value=%.2f", axis, float64(ev.Value))
+	if s.seatVersion < 5 {
+		dx, dy := 0.0, 0.0
+		if axis == 0 {
+			dy = float64(ev.Value)
+		} else {
+			dx = float64(ev.Value)
+		}
+		if h := s.pointerTarget(); h != nil {
+			h.HandlePointerAxis(dx, dy)
+		}
 		return
 	}
-	if h := s.pointerTarget(); h != nil {
-		h.HandlePointerAxis(float64(dh)/wheelPerStep, float64(-dv)/wheelPerStep)
+	s.axisValue[axis] += float64(ev.Value)
+}
+
+// HandlePointerFrame implements wl.PointerFrameHandler: routes the
+// frame's scroll. Wheel notches (axis_discrete, or axis_value120) go
+// out as whole steps, several in one frame being the wheel's
+// acceleration; finger and continuous scrolling goes out as exact
+// pixels to a handler that takes them (SurfacePreciseScroller), the
+// rest as plain axis motion.
+func (s *Session) HandlePointerFrame(wl.PointerFrameEvent) {
+	dv, dh := s.wheel120[0], s.wheel120[1]
+	vv, vh := s.axisValue[0], s.axisValue[1]
+	source, sourced := s.axisSource, s.axisSourced
+	s.resetAxisFrame()
+	h := s.pointerTarget()
+	if h == nil {
+		return
+	}
+	switch {
+	case dv != 0 || dh != 0:
+		h.HandlePointerAxis(float64(dh)/wheelPerStep, float64(dv)/wheelPerStep)
+	case vv == 0 && vh == 0:
+	case sourced && (source == wl.PointerAxisSourceFinger || source == wl.PointerAxisSourceContinuous):
+		if p, ok := h.(SurfacePreciseScroller); ok {
+			p.HandlePointerScrollPixels(vh, vv)
+			return
+		}
+		h.HandlePointerAxis(vh, vv)
+	default:
+		h.HandlePointerAxis(vh, vv)
 	}
 }
 
-// HandlePointerAxisSource implements wl.PointerAxisSourceHandler.
-func (s *Session) HandlePointerAxisSource(wl.PointerAxisSourceEvent) {}
+// resetAxisFrame drops the scroll gathered for a frame.
+func (s *Session) resetAxisFrame() {
+	s.wheel120 = [2]int32{}
+	s.axisValue = [2]float64{}
+	s.axisSource, s.axisSourced = 0, false
+}
+
+// HandlePointerAxisSource implements wl.PointerAxisSourceHandler: what
+// the frame's scroll comes from.
+func (s *Session) HandlePointerAxisSource(ev wl.PointerAxisSourceEvent) {
+	s.axisSource, s.axisSourced = ev.AxisSource, true
+}
 
 // HandlePointerAxisStop implements wl.PointerAxisStopHandler.
 func (s *Session) HandlePointerAxisStop(wl.PointerAxisStopEvent) {}
 
-// HandlePointerAxisDiscrete implements wl.PointerAxisDiscreteHandler.
-func (s *Session) HandlePointerAxisDiscrete(wl.PointerAxisDiscreteEvent) {}
+// HandlePointerAxisDiscrete implements wl.PointerAxisDiscreteHandler
+// (seats 5-7): wheel notches, counted as 120 units each like
+// axis_value120.
+func (s *Session) HandlePointerAxisDiscrete(ev wl.PointerAxisDiscreteEvent) {
+	s.wheel120[min(ev.Axis, 1)] += ev.Discrete * 120
+}
 
-// HandlePointerAxisValue120 implements wl.PointerAxisValue120Handler:
-// accumulates wheel click counts per axis; one click is 120 units.
+// HandlePointerAxisValue120 implements wl.PointerAxisValue120Handler
+// (seats 8+): wheel clicks per axis, one click 120 units, signed as
+// the axis is (positive down or right).
 func (s *Session) HandlePointerAxisValue120(ev wl.PointerAxisValue120Event) {
 	s.wheel120[min(ev.Axis, 1)] += ev.Value120
 }

@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+### Scrolling by frame: wheel steps, touchpad pixels
+
+- The session routes a pointer frame's scroll once: wheel notches
+  (axis_discrete on seats 5-7, axis_value120 on 8+) as steps, even with
+  the smooth value the compositor sends beside them; finger and
+  continuous scrolling as exact pixels to a `SurfacePreciseScroller`.
+  Touchpads used to round every small finger delta up to a 40px step.
+- `Router.AxisPixels` routes pixel scrolling; `Scroll` and `List`
+  implement `PixelScroller` (fractions carried), any other scroller
+  gets a step per 40 pixels.
+- Fix: axis_value120 is signed as the axis is (positive down), per the
+  protocol; it was negated.
+
 ### SpinButton and a focus hook
 
 - `widget.SpinButton`: a numeric entry over `[min, max]` with a step
