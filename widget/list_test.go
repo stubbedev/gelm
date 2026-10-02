@@ -298,3 +298,28 @@ func TestListAutoRowHeightIsStyled(t *testing.T) {
 		t.Errorf("fixed row height %d, want 12", l.rowH)
 	}
 }
+
+func TestListMaxHeight(t *testing.T) {
+	var rows staticRows
+	for range 50 {
+		rows = append(rows, newStub(20, 10))
+	}
+	l := NewList[Widget](rows, 10)
+	con := Constraints{Max: Size{W: 100, H: 1000}}
+	if h := l.Measure(con).H; h != 500 {
+		t.Fatalf("natural %d, want 500", h)
+	}
+	l.SetMaxHeight(120)
+	if h := l.Measure(con).H; h != 120 {
+		t.Errorf("capped %d, want 120", h)
+	}
+	l.Arrange(render.Rect{W: 100, H: 120})
+	l.ScrollBy(0, 1000)
+	if l.offY != 380 {
+		t.Errorf("scrolled to %d, want the 380 the cap leaves", l.offY)
+	}
+	l.SetMaxHeight(0)
+	if h := l.Measure(con).H; h != 500 {
+		t.Errorf("uncapped %d, want 500", h)
+	}
+}
