@@ -672,7 +672,7 @@ func (w *hostWindow) draw() bool {
 		bw, bh, w.frac120, len(rects), region.W, region.H)
 
 	cv := render.NewScaled(b.Data, b.Stride, b.Width, b.Height, w.devNum(), scale.Denom)
-	prev := cv.PushClip(region)
+	prev := cv.PushClipDevice(region)
 	cv.ClearDevice(region, w.cfg.background)
 	// The focus ring draws right after its widget, in tree order, so
 	// what paints later (a card over the list) covers it.

@@ -267,7 +267,7 @@ func (s *Stack) Paint(cv *render.Canvas) {
 			dir = -1
 		}
 		off := math.Round(float64(dev.W) * s.progress)
-		prev := cv.PushClip(dev)
+		prev := cv.PushClipDevice(dev)
 		cv.Composite(s.layers[0], dev, render.Translate(-dir*off, 0), 1)
 		cv.Composite(s.layers[1], dev, render.Translate(dir*(float64(dev.W)-off), 0), 1)
 		cv.PopClip(prev)

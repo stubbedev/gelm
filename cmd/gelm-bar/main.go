@@ -304,7 +304,7 @@ func dirtyRects(full bool, lastClock string, lastSecond int, clock string, secon
 // r. The left module only changes on resize, so its widget tree is laid
 // out here for every call that could paint it.
 func paintElements(cv *render.Canvas, r render.Rect, clock string, second, bufW, bufH, scale int, font render.Font, left *widget.Button) {
-	prev := cv.PushClip(r)
+	prev := cv.PushClipDevice(r)
 	defer cv.PopClip(prev)
 
 	layOutLeftModule(left, bufW, bufH, scale)
