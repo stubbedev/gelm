@@ -178,3 +178,7 @@ func (b *Button) InsertRune(r rune) {
 		b.click()
 	}
 }
+
+// styleChild is the content the button's style passes down to
+// (styleKids); a method so an embedding type keeps it.
+func (b *Button) styleChild() Widget { return b.child }
