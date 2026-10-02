@@ -1,6 +1,10 @@
 package app
 
 import (
+	"slices"
+	"strings"
+	"sync"
+
 	"github.com/stubbedev/gelm/internal/sysfont"
 	"github.com/stubbedev/gelm/render"
 )
@@ -29,4 +33,44 @@ func FontVariant(base *render.Typeface, bold, italic bool) (*render.Typeface, er
 // primary family lacks still render.
 func FontFallback(face *render.Typeface) *render.Chain {
 	return sysfont.Fallback(face)
+}
+
+// FontFamilies lists the installed font families by display name (the
+// name a family resolves back from through Font), sorted
+// case-insensitively and deduped: what a font picker offers. The list
+// resolves once per process (each display name is a face lookup); the
+// result is shared, so callers must not modify it.
+func FontFamilies() ([]string, error) {
+	familyNamesOnce.Do(func() { familyNames, familyNamesErr = fontFamilies() })
+	return familyNames, familyNamesErr
+}
+
+var (
+	familyNamesOnce sync.Once
+	familyNames     []string
+	familyNamesErr  error
+)
+
+func fontFamilies() ([]string, error) {
+	families, err := sysfont.Families()
+	if err != nil {
+		return nil, err
+	}
+	seen := make(map[string]bool, len(families))
+	out := make([]string, 0, len(families))
+	for _, f := range families {
+		name := sysfont.FamilyDisplay(f)
+		if name == "" || seen[name] {
+			continue
+		}
+		seen[name] = true
+		out = append(out, name)
+	}
+	slices.SortFunc(out, func(a, b string) int {
+		if c := strings.Compare(strings.ToLower(a), strings.ToLower(b)); c != 0 {
+			return c
+		}
+		return strings.Compare(a, b)
+	})
+	return out, nil
 }

@@ -83,3 +83,28 @@ func TestFontRowModelLaziness(t *testing.T) {
 		t.Error("Row(0) returned nil")
 	}
 }
+
+// FontFamilies lists display names that resolve back, sorted
+// case-insensitively, without duplicates.
+func TestFontFamilies(t *testing.T) {
+	names, err := FontFamilies()
+	if err != nil {
+		t.Skipf("no system font store: %v", err)
+	}
+	if len(names) == 0 {
+		t.Fatal("no families on a system with fonts")
+	}
+	if !slices.IsSortedFunc(names, func(a, b string) int { return strings.Compare(strings.ToLower(a), strings.ToLower(b)) }) {
+		t.Error("not sorted case-insensitively")
+	}
+	if len(slices.Compact(slices.Clone(names))) != len(names) {
+		t.Error("duplicates")
+	}
+	if _, err := Font(names[0], 13); err != nil {
+		t.Errorf("Font(%q): %v", names[0], err)
+	}
+	again, _ := FontFamilies()
+	if &again[0] != &names[0] {
+		t.Error("a second call resolved the list again")
+	}
+}
