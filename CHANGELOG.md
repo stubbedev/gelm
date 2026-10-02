@@ -22,6 +22,8 @@
 - `Paned.SetMaxPosition(px)`: caps the divider (drags, keys,
   SetPosition) above the start pane's floor; zero lifts the cap.
 - Entries and text areas paint their caret only while focused (GTK).
+- Fix: popovers open on toplevel windows (`OpenPopover` with an
+  `*app.Window` host was refused).
 - `app.FontFamilies()`: the installed families by display name, sorted
   and deduped (resolved once per process).
 - A dropdown's list claims no menu mnemonics (no underlines; type-ahead
