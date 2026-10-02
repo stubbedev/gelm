@@ -268,3 +268,33 @@ type staticRows []Widget
 
 func (s staticRows) Len() int         { return len(s) }
 func (s staticRows) Row(i int) Widget { return s[i] }
+
+// An auto row height is the styled row's: a stylesheet's padding
+// grows every row, and a fixed height ignores it.
+func TestListAutoRowHeightIsStyled(t *testing.T) {
+	loadCSS(t, `.host .r { padding: 10px 0; }`)
+	mk := func(fixed int) (*List, *Box) {
+		var rows staticRows
+		for range 3 {
+			b := NewBox(Row, 0, 0)
+			b.AddClass("r")
+			b.Append(newStub(20, 10), false)
+			rows = append(rows, b)
+		}
+		l := NewList[Widget](rows, fixed)
+		host := NewBox(Column, 0, 0)
+		host.AddClass("host")
+		host.Append(l, true)
+		for range 2 {
+			host.Measure(Constraints{Max: Size{W: 100, H: 200}})
+			host.Arrange(render.Rect{W: 100, H: 200})
+		}
+		return l, host
+	}
+	if l, _ := mk(0); l.rowH != 30 || l.Measure(Constraints{Max: Size{W: 100, H: 200}}).H != 90 {
+		t.Errorf("auto row height %d (list %v), want the styled 30", l.rowH, l.Measure(Constraints{Max: Size{W: 100, H: 200}}))
+	}
+	if l, _ := mk(12); l.rowH != 12 {
+		t.Errorf("fixed row height %d, want 12", l.rowH)
+	}
+}

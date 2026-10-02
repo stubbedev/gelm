@@ -66,6 +66,10 @@ type List struct {
 	node
 	model listModel
 	rowH  int
+	// autoH derives rowH from a styled row (a zero rowHeight): probe is
+	// that row, parented below the list so the stylesheets reach it.
+	autoH bool
+	probe *listRow
 	// cellW is the grid mode's minimum cell width (0 is a plain
 	// list); cols is how many cells the arranged width fits.
 	cellW int
@@ -131,6 +135,7 @@ func NewList[W Widget](model ListModel[W], rowHeight int) *List {
 	return &List{
 		model: modelAdapter[W]{m: model},
 		rowH:  rowHeight,
+		autoH: rowHeight <= 0,
 		sel:   -1,
 		hover: -1,
 		rows:  make(map[int]*listRow),
@@ -382,6 +387,7 @@ func (l *List) Changed() {
 // widgets.
 func (l *List) Refresh() {
 	clear(l.rows)
+	l.probe = nil
 	l.Changed()
 }
 
@@ -392,6 +398,7 @@ func (l *List) Refresh() {
 func (l *List) Reset() {
 	had := len(l.Selection()) > 0
 	clear(l.rows)
+	l.probe = nil
 	l.offY, l.sel, l.cursor, l.hover = 0, -1, -1, -1
 	if l.multi != nil {
 		l.multi = map[int]struct{}{}
@@ -413,15 +420,27 @@ func (l *List) scrollTo(i int) {
 	}
 }
 
-// measureRowH derives the row height from the first row once.
+// measureRowH is the row height: the fixed one, or the first row's as
+// styled - measured on a probe row parented below the list, so the
+// stylesheet's padding and fonts count (GTK sizes rows by their
+// styled natural height), and re-measured as they change.
 func (l *List) measureRowH() int {
-	if l.rowH > 0 {
-		return l.rowH
+	if !l.autoH {
+		return max(1, l.rowH)
 	}
 	if l.model.len() == 0 {
+		l.rowH = 1
 		return 1
 	}
-	s := l.model.row(0).Measure(Constraints{Max: Size{W: 1 << 20, H: 1 << 20}})
+	if l.probe == nil {
+		l.probe = l.newRow(0)
+	}
+	setParents(l, l.probe)
+	w := l.viewW
+	if w <= 0 {
+		w = 1 << 20 // not arranged yet: the natural width
+	}
+	s := l.probe.Measure(Constraints{Max: Size{W: w, H: 1 << 20}})
 	l.rowH = max(1, s.H)
 	return l.rowH
 }
@@ -943,8 +962,12 @@ type listRow struct {
 	check *CheckButton
 }
 
-// Measure delegates to the row widget.
-func (r *listRow) Measure(con Constraints) Size { return r.row.Measure(con) }
+// Measure delegates to the row widget, parented first so it measures
+// as styled.
+func (r *listRow) Measure(con Constraints) Size {
+	setParents(r, r.row)
+	return r.row.Measure(con)
+}
 
 // Arrange records the proxy's rect and lays the row widget out in the
 // same rect, linking it below the proxy for the ancestor walks. The
@@ -1036,9 +1059,13 @@ func (r *listRow) KeyAction(a KeyAction, mods Mods) { r.list.KeyAction(a, mods) 
 // SelectAll forwards the ctrl+a select-all route into the list.
 func (r *listRow) SelectAll() { r.list.SelectAll() }
 
-// styleChildren are the materialized rows (styleKids).
+// styleChildren are the materialized rows and the height probe
+// (styleKids).
 func (l *List) styleChildren() []Widget {
-	out := make([]Widget, 0, len(l.rows))
+	out := make([]Widget, 0, len(l.rows)+1)
+	if l.probe != nil {
+		out = append(out, l.probe)
+	}
 	for _, r := range l.rows {
 		out = append(out, r)
 	}
