@@ -107,3 +107,44 @@ func wlsessionShift() wlsession.Mods { return wlsession.ModShift }
 func wlsessionCtrl() wlsession.Mods { return wlsession.ModCtrl }
 
 func wlsessionAlt() wlsession.Mods { return wlsession.ModAlt }
+
+// Super+Tab is a chord, never traversal: the plain Tab trap (indent in
+// a tab-absorbing widget, focus movement everywhere else) takes plain,
+// ctrl, and shift Tab only, so a bound <Super>Tab accelerator fires
+// and an unbound one moves no focus.
+func TestSuperTabSkipsTheTabTrap(t *testing.T) {
+	face, err := render.LoadFont(goregular.TTF)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := widget.NewEntry(face, 13, render.RGB(255, 255, 255))
+	first.Arrange(render.Rect{X: 0, Y: 0, W: 200, H: 30})
+	second := widget.NewEntry(face, 13, render.RGB(255, 255, 255))
+	second.Arrange(render.Rect{X: 0, Y: 30, W: 200, H: 30})
+	root := widget.NewBox(widget.Column, 0, 0)
+	root.Append(first, false)
+	root.Append(second, false)
+	r := &widget.Router{Root: root}
+	r.Press(widget.BTNLeft, widget.Point{X: 5, Y: 5})
+	r.Release(widget.BTNLeft, widget.Point{X: 5, Y: 5})
+
+	tr := &fakeTranslator{syms: map[uint32]xkb.Keysym{24: xkb.KeyTab}}
+	routeKey(tr, r, 24, 0, nil, nil, nil)
+	if r.Focused() != second {
+		t.Fatal("plain Tab did not move focus")
+	}
+	routeKey(tr, r, 24, wlsession.ModSuper, nil, nil, nil)
+	if r.Focused() != second {
+		t.Error("Super+Tab moved focus; it must reach accelerators, not traversal")
+	}
+
+	app := accelApp()
+	fired := false
+	if err := app.accels.bindWidget(second, "<Super>Tab", func() { fired = true }); err != nil {
+		t.Fatal(err)
+	}
+	routeKey(tr, r, 24, wlsession.ModSuper, nil, app.accels, nil)
+	if !fired {
+		t.Error("the bound <Super>Tab accelerator did not fire")
+	}
+}
