@@ -284,3 +284,60 @@ func TestShortType(t *testing.T) {
 		}
 	}
 }
+
+// TestOverlayCarriesInvalidationsToTheWindow pins the overlay as a link
+// in the parent chain: a window is Fader -> Overlay -> root, and a
+// change deep in the root must leave the fader's cache stale, or the
+// window keeps the old layout.
+func TestOverlayCarriesInvalidationsToTheWindow(t *testing.T) {
+	face, err := render.LoadFont(goregular.TTF)
+	if err != nil {
+		t.Fatal(err)
+	}
+	label := widget.NewLabel(face, 12, "a", render.RGBA(0, 0, 0, 255))
+	root := widget.NewBox(widget.Column, 0, 0)
+	root.Append(label, false)
+	ov := NewOverlay(root)
+	fader := widget.NewFader(ov)
+	con := widget.Constraints{Max: widget.Size{W: 400, H: 400}}
+	for range 3 {
+		fader.Measure(con)
+		fader.Arrange(render.Rect{W: 400, H: 400})
+	}
+	if root.Parent() != ov {
+		t.Fatalf("root parent = %T, want the overlay", root.Parent())
+	}
+	if widget.LayoutPending(fader) {
+		t.Fatal("a settled window is pending")
+	}
+	label.SetText("a much longer label")
+	if !widget.LayoutPending(fader) {
+		t.Error("a label change inside the overlay never reached the window")
+	}
+}
+
+// TestStyleRootKeepsScopedRootVariables pins the style root: below the
+// fader and the overlay, a sheet scoped to the user root still sees
+// that root as :root, so its variables resolve.
+func TestStyleRootKeepsScopedRootVariables(t *testing.T) {
+	face, err := render.LoadFont(goregular.TTF)
+	if err != nil {
+		t.Fatal(err)
+	}
+	label := widget.NewLabel(face, 10, "Big", render.RGBA(0, 0, 0, 255))
+	root := widget.NewBox(widget.Column, 0, 0)
+	root.Append(label, false)
+	root.AttachStylesheet(widget.NewStylesheet(`:root { --big: 40px; } label { font-size: var(--big); }`, widget.StylePriorityUser))
+	widget.SetStyleRoot(root)
+	fader := widget.NewFader(NewOverlay(root))
+	con := widget.Constraints{Max: widget.Size{W: 400, H: 400}}
+	fader.Measure(con)
+	fader.Arrange(render.Rect{W: 400, H: 400})
+	for widget.LayoutPending(fader) {
+		fader.Measure(con)
+		fader.Arrange(render.Rect{W: 400, H: 400})
+	}
+	if h := label.Bounds().H; h < 40 {
+		t.Errorf("label height %d: the scoped :root variable did not resolve", h)
+	}
+}

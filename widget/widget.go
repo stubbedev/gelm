@@ -142,6 +142,10 @@ type node struct {
 	styleSeen  uint64
 	styleDmg   uint64
 	styleDirty bool
+	// styleRoot ends the style chain here: the node keeps its layout
+	// parent, but :root, inheritance and scoped-sheet lookup stop at it
+	// (SetStyleRoot).
+	styleRoot bool
 
 	// style identity: the element name (a constructor-set override and
 	// the type-derived default, resolved once), the `#id`, and the
@@ -377,7 +381,10 @@ func (n *node) InvalidateLayout() {
 
 // markSubLayout propagates the measure drop upward: every container
 // cache between here and the root depends on this widget's natural
-// size, whatever its child exposure.
+// size, whatever its child exposure. It climbs to the root even past an
+// ancestor already dirty: a custom widget that measures without the
+// cache (a Base embedder) stays dirty for good, and stopping there left
+// every cache above it stale.
 func (n *node) markSubLayout() {
 	p := n.parent
 	for p != nil {
@@ -385,9 +392,7 @@ func (n *node) markSubLayout() {
 		if !ok {
 			return
 		}
-		if s.markMeasureDirty() {
-			return
-		}
+		s.markMeasureDirty()
 		p = parentOf(p)
 	}
 }
@@ -501,8 +506,15 @@ func (n *node) setParent(p, self Widget) {
 // descendant was parented, restyled or resized since - so a host that
 // just arranged it must measure and arrange again before painting.
 func LayoutPending(w Widget) bool {
-	n := nodeOf(w)
-	return n != nil && (n.measureDirty || n.styleDirty || n.styleSeen != styleGen)
+	if n := nodeOf(w); n != nil {
+		return n.measureDirty || n.styleDirty || n.styleSeen != styleGen
+	}
+	// A pass-through wrapper (the inspector overlay) owns no cache:
+	// what it wraps decides.
+	if c, ok := w.(childser); ok {
+		return slices.ContainsFunc(c.Children(), LayoutPending)
+	}
+	return false
 }
 
 // parentOf returns w's parent, or nil.

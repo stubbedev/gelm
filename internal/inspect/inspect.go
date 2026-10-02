@@ -44,8 +44,11 @@ func Enabled() bool {
 // Arrange, HitTest, and the tree walks all pass straight through to
 // the wrapped root, so wrapping never changes layout, hit testing, or
 // damage. Painting annotations only reads state (widget.InspectTree);
-// it never invalidates or mutates a widget.
+// it never invalidates or mutates a widget. It is a node in the parent
+// chain, though: the root's invalidations climb through it to the
+// window's caches, which a parentless root would cut off.
 type Overlay struct {
+	widget.Base
 	root   widget.Widget
 	router *widget.Router
 	on     bool
@@ -89,12 +92,15 @@ func (o *Overlay) Measure(con widget.Constraints) widget.Size {
 	return o.root.Measure(con)
 }
 
-// Arrange implements widget.Widget, passing through to the root.
+// Arrange implements widget.Widget, passing through to the root and
+// parenting it.
 func (o *Overlay) Arrange(r render.Rect) {
+	o.ArrangeSelf(r)
 	if o.root == nil {
 		return
 	}
 	o.root.Arrange(r)
+	widget.SetParents(o, o.root)
 }
 
 // HitTest implements widget.Widget, passing through to the root so

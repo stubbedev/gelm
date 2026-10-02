@@ -193,7 +193,7 @@ func layersFor(n *node) []style.Layer {
 	}
 	layerBuf = append(layerBuf[:0], layersNow...)
 	mark := len(layerBuf)
-	for p := n; p != nil; p = parentNodeOf(p) {
+	for p := n; p != nil; p = styleParentNodeOf(p) {
 		for _, s := range slices.Backward(p.sheets) {
 			layerBuf = append(layerBuf, style.Layer{Sheet: s.sheet, Priority: s.priority})
 		}
@@ -599,7 +599,7 @@ func (s *styleTargeter) StyleTarget(t *style.Target) { s.n.fillTarget(t, s.w) }
 
 func (s *styleTargeter) StyleParent() style.Node {
 	p := s.n.parent
-	if p == nil {
+	if p == nil || s.n.styleRoot {
 		return nil
 	}
 	pn := nodeOf(p)
@@ -715,6 +715,26 @@ func (n *node) styleState(w Widget) style.State {
 	return s
 }
 
+// styleParentNodeOf is n's parent for styling: none past a style root.
+func styleParentNodeOf(n *node) *node {
+	if n.styleRoot {
+		return nil
+	}
+	return parentNodeOf(n)
+}
+
+// SetStyleRoot makes w the root of its tree for styling: :root matches
+// it, and nothing above it is inherited or contributes scoped sheets,
+// while it keeps its layout parent - the app wraps every window's tree
+// in plumbing (a fader, the inspector overlay) that invalidations must
+// climb through but stylesheets must not see.
+func SetStyleRoot(w Widget) {
+	if n := nodeOf(w); n != nil && !n.styleRoot {
+		n.styleRoot = true
+		n.styleDirty = true
+	}
+}
+
 // parentNodeOf returns the node behind n's recorded parent.
 func parentNodeOf(n *node) *node {
 	if n.parent == nil {
@@ -813,7 +833,7 @@ func (n *node) restyle(w Widget) *style.Values {
 	old := n.cs
 	var v style.Values
 	var parent *style.Values
-	if pw := n.parent; pw != nil {
+	if pw := n.parent; pw != nil && !n.styleRoot {
 		if pn := nodeOf(pw); pn != nil {
 			// The chain above must be fresh before it inherits: a stale
 			// ancestor recomputes first, recursively. It runs before the
