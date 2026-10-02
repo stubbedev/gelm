@@ -2,12 +2,11 @@ package widget
 
 // Shrinker is a widget that can be arranged shorter than its natural
 // height and still do its job: a Scroll scrolls what no longer fits.
-// A Column Box short of room takes the shortfall from its expanding
-// children that can give it — GTK's ScrolledWindow giving way inside a
-// fixed-size popover — never below each one's floor; whatever still
-// does not fit overflows as before. Boxes and stacks report what their
-// children can give, so the shrink reaches a Scroll nested inside
-// them.
+// A Box short of room takes the shortfall from every child that can
+// give it — GTK's distribution, each to its floor — and whatever
+// still does not fit overflows as before. Boxes and stacks report
+// what their children can give, so the shrink reaches a Scroll nested
+// inside them.
 type Shrinker interface {
 	// Shrinkable is how many pixels of its last measured height the
 	// widget can give up.
@@ -22,14 +21,13 @@ func shrinkableOf(w Widget) int {
 	return 0
 }
 
-// Shrinkable implements Shrinker: a column gives what its expanding
-// children can; a row is as short as its least shrinkable child lets
-// it be.
+// Shrinkable implements Shrinker: a column gives what its children
+// can; a row is as short as its least shrinkable child lets it be.
 func (b *Box) Shrinkable() int {
 	if b.axis == Column {
 		total := 0
 		for _, c := range b.child {
-			if c.expand && IsVisible(c.w) {
+			if IsVisible(c.w) {
 				total += shrinkableOf(c.w)
 			}
 		}
@@ -49,9 +47,9 @@ func (b *Box) Shrinkable() int {
 // WidthShrinker is Shrinker's horizontal counterpart: a widget that
 // can be arranged narrower than its natural width and still read — an
 // ellipsizing label truncates. A Row Box short of room takes the
-// shortfall from its expanding children that can give it, as GTK's
-// box gives way down to an ellipsized label's minimum, never below
-// each one's floor; whatever still does not fit overflows as before.
+// shortfall from every child that can give it, as GTK's box gives way
+// down to an ellipsized label's minimum, never below each one's
+// floor; whatever still does not fit overflows as before.
 type WidthShrinker interface {
 	// ShrinkableWidth is how many pixels of its last measured width the
 	// widget can give up.
@@ -93,8 +91,8 @@ func (b *Box) ShrinkableWidth() int {
 
 // shrinkTakes splits a main-axis deficit across the children that can
 // give in proportion to what each can give, never more than that:
-// takes[i] is what child i gives up. A column takes height from its
-// expanding children, a row width from any.
+// takes[i] is what child i gives up. GTK's distribution: every child
+// that can give participates, on either axis.
 func (b *Box) shrinkTakes(deficit int) []int {
 	if deficit <= 0 {
 		return nil
@@ -103,13 +101,10 @@ func (b *Box) shrinkTakes(deficit int) []int {
 	if b.axis == Row {
 		give = shrinkableWidthOf
 	}
-	// A row narrows any child that can give width, as GTK hands a box
-	// short of room each child's minimum plus a share of the rest; a
-	// column takes height from its expanding children alone.
 	caps := make([]int, len(b.child))
 	total := 0
 	for i, c := range b.child {
-		if (c.expand || b.axis == Row) && IsVisible(c.w) {
+		if IsVisible(c.w) {
 			caps[i] = give(c.w)
 			total += caps[i]
 		}

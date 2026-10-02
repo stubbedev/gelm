@@ -45,21 +45,21 @@ func TestColumnShrinksItsScroll(t *testing.T) {
 	}
 }
 
-// TestOnlyExpandingShrinkersGiveWay pins the scope: a non-expanding
-// scroll and an expanding plain widget keep their natural heights and
-// overflow.
-func TestOnlyExpandingShrinkersGiveWay(t *testing.T) {
+// TestEveryShrinkerGivesWay pins GTK's distribution: a column short
+// of room takes the shortfall from every child that can give it, not
+// only the expanding ones, each never below its floor.
+func TestEveryShrinkerGivesWay(t *testing.T) {
 	fixed := NewScroll(newStub(50, 100))
 	plain := newStub(50, 100)
 	col := NewBox(Column, 0, 0)
 	col.Append(fixed, false)
 	col.Append(plain, true)
 	layoutColumn(col, 60, 120)
-	if fixed.Bounds().H != 100 || plain.Bounds().H != 100 {
-		t.Errorf("heights %d, %d: want both natural", fixed.Bounds().H, plain.Bounds().H)
+	if fixed.Bounds().H >= 100 || plain.Bounds().H != 100 {
+		t.Errorf("heights %d, %d: want the scroll short of natural and the stub untouched", fixed.Bounds().H, plain.Bounds().H)
 	}
-	if col.Shrinkable() != 0 {
-		t.Errorf("shrinkable = %d, want 0", col.Shrinkable())
+	if col.Shrinkable() == 0 {
+		t.Error("shrinkable = 0, want the fixed scroll's capacity")
 	}
 }
 
