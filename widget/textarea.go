@@ -66,7 +66,24 @@ type TextArea struct {
 	// identity mapping (one row per logical line).
 	rows      []visualRow
 	rowsWidth int
+	rowsPx    float64
 	rowsValid bool
+
+	// text is GtkTextView's text node (`textview > text`), with its
+	// selection child.
+	text entryText
+
+	// The code view (codeview.go): the line-number gutter, Enter's
+	// indent copy, the highlighter with its scheme and styled faces,
+	// the per-line highlight cache, and the caret last revealed.
+	lineNumbers bool
+	autoIndent  bool
+	highlighter Highlighter
+	scheme      TextScheme
+	variants    VariantFunc
+	hl          []hlLine
+	revealed    pos
+	revealedOK  bool
 
 	// bands is the selection/underline scratch the paint reuses across
 	// frames, so the render path stays allocation-free in the steady
@@ -121,7 +138,7 @@ func (t *TextArea) Direction() Direction { return t.dir }
 // shapeLine shapes line rs under the area's base direction — the one
 // text path the caret, selection, and paint share.
 func (t *TextArea) shapeLine(rs []rune) *render.ShapedText {
-	return t.face.ShapeDir(string(rs), t.sizePx, t.dir)
+	return t.face.ShapeDir(string(rs), t.px(), t.dir)
 }
 
 // SetIndent sets how many spaces Tab inserts while focused; zero (the
@@ -152,13 +169,19 @@ func (t *TextArea) TrapTab(bool) bool {
 // may be a render.Chain for mixed-script fallback. A nil face panics
 // here (see requireFace) instead of failing later, in shaping.
 func NewTextArea(face render.Font, sizePx float64, color render.Color) *TextArea {
-	return &TextArea{
+	t := &TextArea{
 		face:   requireFace("widget.NewTextArea", face),
 		sizePx: sizePx,
 		color:  color,
 		lines:  [][]rune{{}},
 		wrap:   true,
 	}
+	t.text.SetElement("text")
+	t.text.placeholder.SetElement("placeholder")
+	t.text.selection.SetElement("selection")
+	setParents(t, &t.text)
+	setParents(&t.text, &t.text.placeholder, &t.text.selection)
+	return t
 }
 
 // Placeholder returns the text shown when the area is empty.
@@ -407,7 +430,7 @@ func (t *TextArea) TextLen() int { return len(t.lines) }
 // per-rune probes of the wrap walk allocation-free (one probe per rune
 // per rebuild, every one of which used to build a one-rune string).
 func (t *TextArea) runeWidth(r rune) float64 {
-	return t.face.ShapeRune(r, t.sizePx).Advance()
+	return t.face.ShapeRune(r, t.px()).Advance()
 }
 
 // visualStep moves column at one visual step along line — left for
@@ -434,7 +457,7 @@ func (t *TextArea) visualWordStep(line []rune, at, delta int) int {
 // rune, so an unbreakable token wider than the viewport wraps one rune
 // at a time instead of disappearing.
 func (t *TextArea) ensureRows(availW int) {
-	if t.rowsValid && availW == t.rowsWidth {
+	if t.rowsValid && availW == t.rowsWidth && t.px() == t.rowsPx {
 		return
 	}
 	t.rows = t.rows[:0]
@@ -457,7 +480,7 @@ func (t *TextArea) ensureRows(availW int) {
 		}
 		t.rows = append(t.rows, visualRow{l, start, len(line)})
 	}
-	t.rowsWidth = availW
+	t.rowsWidth, t.rowsPx = availW, t.px()
 	t.rowsValid = true
 }
 
@@ -804,10 +827,7 @@ func (t *TextArea) MoveWordExtending(delta int) { t.wordTo(delta, true) }
 // wrapWidth returns the pixel width available for wrapping inside the
 // current bounds.
 func (t *TextArea) wrapWidth() int {
-	if t.bounds.W < 16 {
-		return 0
-	}
-	return t.bounds.W - 16
+	return t.textRect().W
 }
 
 // linePan returns line l's horizontal pan, clamped to the line's
@@ -846,8 +866,8 @@ func (t *TextArea) caretX(l, col int) int {
 	rs := t.displayLine(l)[row.startCol:row.endCol]
 	// One conversion serves both the shape cache key and the RTL read.
 	s := string(rs)
-	sh := t.face.ShapeDir(s, t.sizePx, t.dir)
-	x := t.bounds.X + 8 - t.linePan(l)
+	sh := t.face.ShapeDir(s, t.px(), t.dir)
+	x := t.textRect().X - t.linePan(l)
 	if text.RTL(s, t.dir) {
 		x += t.wrapWidth() - int(sh.Advance()+0.5)
 	}
@@ -872,7 +892,7 @@ func (t *TextArea) panToCaret() {
 	}
 	// One conversion serves both the shape cache key and the RTL read.
 	line := string(t.displayLine(l))
-	sh := t.face.ShapeDir(line, t.sizePx, t.dir)
+	sh := t.face.ShapeDir(line, t.px(), t.dir)
 	cx := int(sh.CaretX(c.col) + 0.5)
 	if text.RTL(line, t.dir) {
 		cx = int(sh.Advance()+0.5) - cx // the caret's distance from the reading start edge
@@ -899,7 +919,7 @@ func (t *TextArea) setPan(l, x int) {
 // one visual row, returning a row-relative column.
 func (t *TextArea) caretIn(r visualRow, x float64) int {
 	line := t.lines[r.line]
-	k := t.face.Shape(string(line[r.startCol:r.endCol]), t.sizePx).CaretAt(x)
+	k := t.face.Shape(string(line[r.startCol:r.endCol]), t.px()).CaretAt(x)
 	return min(k, r.endCol-r.startCol)
 }
 
@@ -908,37 +928,74 @@ func (t *TextArea) colForX(l int, x float64) int {
 	if l < 0 || l >= len(t.lines) {
 		return 0
 	}
-	return t.face.Shape(string(t.lines[l]), t.sizePx).CaretAt(x)
+	return t.face.Shape(string(t.lines[l]), t.px()).CaretAt(x)
 }
 
 // Measure reports the natural widest-line size, or, when wrapping and
 // a width is offered, the offered width by the wrapped row count.
-// Composing text counts toward the widest line and the row count.
-// MaxWidth caps the reported width when not wrapping — a long line
-// then stops widening the layout at the cap and pans inside it.
+
+// Measure reports the natural widest-line size, or, when wrapping and
+// a width is offered, the offered width by the wrapped row count, the
+// text insets (CSS box, text node, gutter) around it. Composing text
+// counts toward the widest line and the row count. MaxWidth caps the
+// reported width when not wrapping — a long line then stops widening
+// the layout at the cap and pans inside it.
 func (t *TextArea) Measure(con Constraints) Size {
-	lineH := t.face.Shape("lg", t.sizePx).LineHeight()
+	lineH := t.lineHeight()
 	v := t.style(t)
-	if t.wrap && con.Max.W > 16 {
-		t.ensureRows(con.Max.W - 16)
-		h := lineH*len(t.rows) + 12
-		return clampSize(Size{W: con.Max.W, H: max(h, picki(v, style.PropMinHeight, 0))}, con)
+	in, m := t.textInsets(), marginOf(v)
+	hIn, vIn := in.Left+in.Right, in.Top+in.Bottom
+	if t.wrap && con.Max.W-m.Left-m.Right > hIn {
+		t.ensureRows(con.Max.W - m.Left - m.Right - hIn)
+		h := lineH*len(t.rows) + vIn
+		return clampSize(Size{W: con.Max.W, H: max(h, picki(v, style.PropMinHeight, 0)) + m.Top + m.Bottom}, con)
 	}
 	w := 16
 	for l := range t.lines {
-		if adv := int(t.face.Shape(string(t.displayLine(l)), t.sizePx).Advance() + 0.5); adv > w {
+		if adv := int(t.face.Shape(string(t.displayLine(l)), t.px()).Advance() + 0.5); adv > w {
 			w = adv
 		}
 	}
-	w += 16
+	w += hIn
 	if t.MaxWidth > 0 {
 		w = min(w, max(t.MaxWidth, 16))
 	}
-	h := lineH*len(t.lines) + 12
+	h := lineH*len(t.lines) + vIn
 	// The stylesheet's min-* floors hold before the constraints clamp.
 	w = max(w, picki(v, style.PropMinWidth, 0))
 	h = max(h, picki(v, style.PropMinHeight, 0))
-	return clampSize(Size{W: w, H: h}, con)
+	return clampSize(Size{W: w + m.Left + m.Right, H: h + m.Top + m.Bottom}, con)
+}
+
+// px is the effective text size: the stylesheet's font-size when
+// matched, else the constructor's.
+func (t *TextArea) px() float64 { return fontPx(t.style(t), t.sizePx) }
+
+// textPad is an unstyled area's padding.
+var textPad = render.Insets{Top: 6, Right: 8, Bottom: 6, Left: 8}
+
+// textInsets are the text's insets inside the area's bounds: the
+// border and padding (textPad where unstyled), the line-number gutter,
+// and the text node's margin, border and padding.
+func (t *TextArea) textInsets() render.Insets {
+	v := t.style(t)
+	b, p := borderOf(v), paddingOr(v, textPad)
+	tx := boxOf(t.text.style(&t.text), render.Insets{}).outer()
+	return render.Insets{
+		Top:    b.Top + p.Top + tx.Top,
+		Right:  b.Right + p.Right + tx.Right,
+		Bottom: b.Bottom + p.Bottom + tx.Bottom,
+		Left:   b.Left + p.Left + t.gutterWidth() + tx.Left,
+	}
+}
+
+// textRect is where the rows lay out: the bounds less textInsets.
+func (t *TextArea) textRect() render.Rect {
+	in := t.textInsets()
+	return render.Rect{
+		X: t.bounds.X + in.Left, Y: t.bounds.Y + in.Top,
+		W: max(t.bounds.W-in.Left-in.Right, 0), H: max(t.bounds.H-in.Top-in.Bottom, 0),
+	}
 }
 
 // MinSize implements MinSizer: the stylesheet's min-* floors when set,
@@ -953,7 +1010,7 @@ func (t *TextArea) MinSize() Size {
 
 // lineHeight returns the integer line height of the font.
 func (t *TextArea) lineHeight() int {
-	return t.face.Shape("lg", t.sizePx).LineHeight()
+	return t.face.Shape("lg", t.px()).LineHeight()
 }
 
 // Paint draws the wrapped rows, the selection highlight, the composing
@@ -973,28 +1030,52 @@ func (t *TextArea) Paint(cv *render.Canvas) {
 		bg = th.DisabledSurface()
 	}
 	bg = pickc(0, v, style.PropBackgroundColor, bg)
-	radius := radiusOr(v, th.Radius).TopLeft
-	textCol := pickc(t.color, v, style.PropColor, t.color)
+	radii := radiusOr(v, th.Radius)
+	// The text node's color, its own or the area's it inherits; a
+	// scheme's text and cursor styles color it over both.
+	textCol := pickc(t.color, t.text.style(&t.text), style.PropColor, pickc(0, v, style.PropColor, t.color))
+	if st, ok := t.scheme["text"]; ok && st.Color != 0 {
+		textCol = st.Color
+	}
 	caretCol := textCol
-	if !enabled {
-		textCol = scaleAlpha(textCol, disabledFade)
-		caretCol = textCol
-	} else if t.readOnly {
+	if st, ok := t.scheme["cursor"]; ok && st.Color != 0 {
+		caretCol = st.Color
+	}
+	fade := func(c render.Color) render.Color {
+		if !enabled {
+			return scaleAlpha(c, disabledFade)
+		}
+		return c
+	}
+	textCol = fade(textCol)
+	if !enabled || t.readOnly {
 		caretCol = scaleAlpha(caretCol, disabledFade)
 	}
-	cv.RoundedRect(t.bounds, radius, bg)
+	paintBoxBehind(cv, v, t.bounds, radii, borderOf(v), bg)
 	lineH := t.lineHeight()
 	start, end, active := t.Selection()
 	t.ensureRows(t.wrapWidth())
+	c := t.textRect()
+	t.paintGutter(cv, c, lineH, fade)
 
 	if len(t.lines) == 1 && len(t.lines[0]) == 0 && !t.composing() && t.placeholder != "" {
-		t.face.DrawAlignedDir(cv, t.placeholder, t.bounds, t.sizePx, th.Border, render.AlignStart, t.dir)
+		col := th.Border
+		if pv := t.text.placeholder.style(&t.text.placeholder); pv.Declares(style.PropColor) {
+			col = pv.Color
+		}
+		ph := t.face.ShapeDir(t.placeholder, t.px(), t.dir)
+		x := c.X
+		if text.RTL(t.placeholder, t.dir) {
+			x = c.X + c.W - int(ph.Advance()+0.5)
+		}
+		prev := cv.PushClip(render.Rect{X: c.X, Y: t.bounds.Y, W: c.W, H: t.bounds.H})
+		ph.Draw(cv, x, c.Y+int(math.Round((float64(lineH)-float64(ph.LineHeight()))/2+ph.Ascent())), fade(col))
+		cv.PopClip(prev)
 		return
 	}
-	prev := cv.PushClip(render.Rect{
-		X: t.bounds.X + 8, Y: t.bounds.Y,
-		W: max(t.bounds.W-16, 0), H: t.bounds.H,
-	})
+	selFill, selFg := t.selectionStyle()
+	t.updateHighlight()
+	prev := cv.PushClip(render.Rect{X: c.X, Y: t.bounds.Y, W: c.W, H: t.bounds.H})
 	// Rows of one line are contiguous in the row cache, so the line's
 	// string form — the RTL read below — converts once per line, not
 	// once per row.
@@ -1002,7 +1083,7 @@ func (t *TextArea) Paint(cv *render.Canvas) {
 	for i, r := range t.rows {
 		pan := t.linePan(r.line)
 		line := t.displayLine(r.line)
-		y := 6 + i*lineH
+		y := c.Y + i*lineH
 		if len(line) == 0 || r.startCol >= r.endCol {
 			continue
 		}
@@ -1010,17 +1091,19 @@ func (t *TextArea) Paint(cv *render.Canvas) {
 			lastLine, lineStr = r.line, string(line)
 		}
 		sh := t.shapeLine(line[r.startCol:r.endCol])
-		// The row's line origin: the inner rect's left for LTR, slid
-		// by the pan; flush right minus the pan for RTL, so short rows
-		// hug the edge their reading starts at.
-		rowX := t.bounds.X + 8 - pan
-		if text.RTL(lineStr, t.dir) {
+		// The row's line origin: the text rect's left for LTR, slid by
+		// the pan; flush right minus the pan for RTL, so short rows hug
+		// the edge their reading starts at.
+		rowX := c.X - pan
+		rtl := text.RTL(lineStr, t.dir)
+		if rtl {
 			rowX += t.wrapWidth() - int(sh.Advance()+0.5)
 		}
-		box := render.Rect{X: t.bounds.X + 8, Y: t.bounds.Y + y, W: t.bounds.W - 16, H: lineH}
+		box := render.Rect{X: c.X, Y: y, W: c.W, H: lineH}
 		// Selection band for the portion of this row inside the
 		// selection — one band per visual run, so a span crossing
 		// directions highlights disjoint pieces.
+		var bands [][2]float64
 		if active {
 			from, to := r.startCol, r.endCol
 			if r.line == start.line {
@@ -1030,19 +1113,22 @@ func (t *TextArea) Paint(cv *render.Canvas) {
 				to = min(to, end.col)
 			}
 			if from < to {
-				sel := th.Accent
-				hl := render.RGBA(sel.R(), sel.G(), sel.B(), 90)
-				for _, band := range sh.AppendCaretBands(t.bands[:0], from-r.startCol, to-r.startCol) {
-					cv.FillRect(render.Rect{
-						X: rowX + int(band[0]+0.5), Y: t.bounds.Y + y,
-						W: int(band[1]+0.5) - int(band[0]+0.5), H: lineH,
-					}, hl)
+				bands = sh.AppendCaretBands(t.bands[:0], from-r.startCol, to-r.startCol)
+				for _, band := range bands {
+					cv.FillRect(bandAt(rowX, band, y, lineH), selFill)
 				}
 			}
 		}
 		rowClip := cv.PushClip(box)
 		baseline := box.Y + int(math.Round((float64(box.H)-float64(sh.LineHeight()))/2+sh.Ascent()))
-		sh.Draw(cv, rowX, baseline, textCol)
+		t.drawRow(cv, r, line, sh, rowX, baseline, textCol, rtl, fade)
+		if selFg != 0 {
+			for _, band := range bands {
+				clip := cv.PushClip(bandAt(rowX, band, y, lineH))
+				sh.Draw(cv, rowX, baseline, fade(selFg))
+				cv.PopClip(clip)
+			}
+		}
 		cv.PopClip(rowClip)
 	}
 	if t.composing() {
@@ -1058,14 +1144,14 @@ func (t *TextArea) Paint(cv *render.Canvas) {
 			line := t.displayLine(r.line)
 			sh := t.shapeLine(line[r.startCol:r.endCol])
 			pan := t.linePan(r.line)
-			rowX := t.bounds.X + 8 - pan
+			rowX := c.X - pan
 			if text.RTL(string(line), t.dir) {
 				rowX += t.wrapWidth() - int(sh.Advance()+0.5)
 			}
 			for _, band := range sh.AppendCaretBands(t.bands[:0], max(r.startCol, pb)-r.startCol, min(r.endCol, pe)-r.startCol) {
-				y := 6 + i*lineH
+				y := c.Y + i*lineH
 				cv.FillRect(render.Rect{
-					X: rowX + int(band[0]+0.5), Y: t.bounds.Y + y + lineH - 4,
+					X: rowX + int(band[0]+0.5), Y: y + lineH - 4,
 					W: max(int(band[1]+0.5)-int(band[0]+0.5), 2), H: 2,
 				}, ul)
 			}
@@ -1078,21 +1164,51 @@ func (t *TextArea) Paint(cv *render.Canvas) {
 	caret := t.caretPos()
 	if t.focused && (!t.composing() || t.peCur >= 0) {
 		row := t.rowOf(caret)
-		y := 6 + row*lineH
 		cv.FillRect(render.Rect{
-			X: t.caretX(caret.line, caret.col), Y: t.bounds.Y + y + 2,
+			X: t.caretX(caret.line, caret.col), Y: c.Y + row*lineH + 2,
 			W: 2, H: lineH - 4,
 		}, caretCol)
 	}
 	cv.PopClip(prev)
 }
 
+// bandAt is a selection band's rect on the row at y.
+func bandAt(rowX int, band [2]float64, y, lineH int) render.Rect {
+	return render.Rect{X: rowX + int(band[0]+0.5), Y: y, W: int(band[1]+0.5) - int(band[0]+0.5), H: lineH}
+}
+
+// selectionStyle is the selection's fill and text color: the scheme's
+// selection style, else the text node's selection rules, else the
+// translucent accent over the text's own color (0).
+func (t *TextArea) selectionStyle() (fill, fg render.Color) {
+	a := Current().Accent
+	fill = render.RGBA(a.R(), a.G(), a.B(), 90)
+	if sv := t.text.selection.style(&t.text.selection); sv != nil {
+		if sv.Declares(style.PropBackgroundColor) {
+			fill = sv.Background
+		}
+		if sv.Declares(style.PropColor) {
+			fg = sv.Color
+		}
+	}
+	if st, ok := t.scheme["selection"]; ok {
+		if st.Background != 0 {
+			fill = st.Background
+		}
+		if st.Color != 0 {
+			fg = st.Color
+		}
+	}
+	return fill, fg
+}
+
 // Arrange pins the rect and re-pans the caret's line: a resize changes
 // the visible width, so the caret may need pulling back into view.
 // Stale pans on other lines re-clamp when read.
 func (t *TextArea) Arrange(r render.Rect) {
-	t.node.Arrange(r)
+	t.node.Arrange(marginOf(t.style(t)).Shrink(r))
 	t.panToCaret()
+	t.revealCaret()
 }
 
 // Role implements Roleer.
@@ -1108,9 +1224,10 @@ func (t *TextArea) HitTest(p Point) Widget { return t.HitLeaf(t, p) }
 func (t *TextArea) posAt(p Point) pos {
 	lineH := t.lineHeight()
 	t.ensureRows(t.wrapWidth())
-	row := max(min((p.Y-t.bounds.Y-6)/lineH, len(t.rows)-1), 0)
+	c := t.textRect()
+	row := max(min((p.Y-c.Y)/lineH, len(t.rows)-1), 0)
 	r := t.rows[row]
-	x := float64(p.X - t.bounds.X - 8 + t.linePan(r.line))
+	x := float64(p.X - c.X + t.linePan(r.line))
 	var col int
 	if !t.wrap {
 		col = t.colForX(r.line, x)
@@ -1324,7 +1441,7 @@ func (t *TextArea) KeyAction(a KeyAction, mods Mods) {
 		t.Invalidate()
 	case KeyEnter:
 		if t.editable() {
-			t.Insert("\n")
+			t.Insert("\n" + t.enterIndent())
 		}
 	}
 }
