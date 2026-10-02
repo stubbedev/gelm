@@ -12,6 +12,9 @@
   `spinbutton`.
 - `SetOnFocusChanged(fn)` on every widget hears it gain or lose
   keyboard focus, however focus moved.
+- `Overlay.AppendAligned(w, h, v)`: a GtkOverlay-style child at its
+  natural size pinned per axis (start, center, end, or fill), hitting
+  only inside its own rect.
 
 ### Data control: the clipboard-manager protocols
 

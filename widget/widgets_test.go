@@ -344,6 +344,31 @@ func TestOverlay(t *testing.T) {
 			t.Errorf("hit = %v, want top", got)
 		}
 	})
+
+	t.Run("an aligned child sits at its natural size and hits only there", func(t *testing.T) {
+		content, corner := newStub(20, 20), newStub(6, 4)
+		ov := NewOverlay().Append(content).AppendAligned(corner, AlignEnd, AlignStart)
+		ov.Measure(Constraints{Max: Size{W: 100, H: 100}})
+		ov.Arrange(render.Rect{X: 10, Y: 10, W: 50, H: 30})
+		if got := corner.Bounds(); got != (render.Rect{X: 54, Y: 10, W: 6, H: 4}) {
+			t.Errorf("corner arranged at %v, want the top-right 6x4", got)
+		}
+		if got := content.Bounds(); got != (render.Rect{X: 10, Y: 10, W: 50, H: 30}) {
+			t.Errorf("content arranged at %v, want the whole overlay", got)
+		}
+		if got := ov.HitTest(Point{X: 56, Y: 12}); got != corner {
+			t.Errorf("hit in the corner = %v, want the corner child", got)
+		}
+		if got := ov.HitTest(Point{X: 20, Y: 20}); got != content {
+			t.Errorf("hit beside the corner = %v, want the content beneath", got)
+		}
+		centered := newStub(10, 10)
+		ov2 := NewOverlay().AppendAligned(centered, AlignCenter, AlignFill)
+		ov2.Arrange(render.Rect{W: 30, H: 20})
+		if got := centered.Bounds(); got != (render.Rect{X: 10, Y: 0, W: 10, H: 20}) {
+			t.Errorf("centered child at %v, want centered across, filling down", got)
+		}
+	})
 }
 
 func TestScroll(t *testing.T) {
