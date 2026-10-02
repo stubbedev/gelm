@@ -193,3 +193,25 @@ type stepScroller struct {
 }
 
 func (s *stepScroller) ScrollBy(_, dy int) { s.steps += dy }
+
+// One wheel step is GTK's scroll amount: the visible extent raised to
+// 2/3, taller pages scrolling further per notch, at least a pixel.
+func TestWheelStepIsPageTwoThirds(t *testing.T) {
+	tall := NewBox(Column, 0, 0)
+	for range 20 {
+		tall.Append(newStub(50, 30), false)
+	}
+	s := NewScroll(tall)
+	s.Measure(Constraints{Max: Size{W: 60, H: 100}})
+	s.Arrange(render.Rect{W: 60, H: 100})
+	s.ScrollBy(0, 1)
+	if _, y := s.Offset(); y != wheelStep(s.viewH) {
+		t.Errorf("one step scrolled %d, want the page's 2/3 power %d", y, wheelStep(s.viewH))
+	}
+	short := NewScroll(NewBox(Column, 0, 0))
+	short.Measure(Constraints{Max: Size{W: 30, H: 30}})
+	short.Arrange(render.Rect{W: 30, H: 30})
+	if got := wheelStep(short.viewH); got < 1 {
+		t.Errorf("wheel step %d, want at least a pixel", got)
+	}
+}

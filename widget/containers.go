@@ -802,14 +802,24 @@ func (s *Scroll) hBarGeometry() (track, handle render.Rect) {
 	return track, handle
 }
 
-// ScrollBy shifts the offset by dx, dy scroll steps of 40px and shows
-// the bars. A disabled scroll does not scroll.
+// ScrollBy shifts the offset by dx, dy wheel steps and shows the bars.
+// A step is GTK's wheel scroll: the visible extent raised to 2/3 (a
+// taller page scrolls further per notch), at least one pixel. A
+// disabled scroll does not scroll.
 func (s *Scroll) ScrollBy(dx, dy int) {
 	if !IsEnabled(s) {
 		return
 	}
-	s.SetOffset(s.offX+dx*scrollStepPx, s.offY+dy*scrollStepPx)
+	s.SetOffset(s.offX+dx*wheelStep(s.viewW), s.offY+dy*wheelStep(s.viewH))
 	s.showBars()
+}
+
+// wheelStep is one wheel notch's distance along an axis.
+func wheelStep(extent int) int {
+	if extent <= 0 {
+		return scrollStepPx
+	}
+	return max(1, int(math.Pow(float64(extent), 2.0/3.0)))
 }
 
 // SetPressed implements PressSetter: ending the press ends any drag.
