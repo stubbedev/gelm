@@ -145,3 +145,63 @@ func TestListRowHit(t *testing.T) {
 		t.Errorf("hit widget is not the cached row %d", row)
 	}
 }
+
+// paintedList is a 10-row list painted once, so its visible rows are
+// cached.
+func paintedList(t *testing.T, mode SelectionMode) (*List, *countingModel) {
+	t.Helper()
+	model := newCountingModel(10)
+	l := NewList(model, 20)
+	l.SetSelectionMode(mode)
+	l.Measure(Constraints{Max: Size{W: 100, H: 1 << 20}})
+	l.Arrange(render.Rect{X: 0, Y: 0, W: 100, H: 60})
+	l.Paint(render.New(make([]uint8, 100*60*4), 100*4, 100, 60))
+	return l, model
+}
+
+// TestListRefreshRequeriesRowsKeepingState pins Refresh: every visible
+// row is asked for again, while the selection and scroll stay.
+func TestListRefreshRequeriesRowsKeepingState(t *testing.T) {
+	l, model := paintedList(t, SelectionSingle)
+	l.ScrollBy(0, 1)
+	l.Select(3)
+	before := model.called[3]
+	l.Refresh()
+	l.Paint(render.New(make([]uint8, 100*60*4), 100*4, 100, 60))
+	if model.called[3] != before+1 {
+		t.Errorf("row 3 asked %d times after Refresh, want %d", model.called[3], before+1)
+	}
+	if l.Selected() != 3 || l.offY != 40 {
+		t.Errorf("Refresh dropped state: selected %d, offset %d", l.Selected(), l.offY)
+	}
+}
+
+// TestListResetDropsEverything pins Reset: the rows, the selection
+// and the scroll go, and the dropped selection is reported once; a
+// Reset with nothing selected reports nothing.
+func TestListResetDropsEverything(t *testing.T) {
+	for _, mode := range []SelectionMode{SelectionSingle, SelectionMultiple} {
+		l, model := paintedList(t, mode)
+		l.ScrollBy(0, 1)
+		l.Select(4)
+		var reports [][]int
+		l.OnSelectionChanged = func(rows []int) { reports = append(reports, rows) }
+		before := model.called[2]
+		l.Reset()
+		if len(l.rows) != 0 || l.offY != 0 || len(l.Selection()) != 0 {
+			t.Errorf("mode %d: Reset kept rows %d, offset %d, selection %v", mode, len(l.rows), l.offY, l.Selection())
+		}
+		if len(reports) != 1 || len(reports[0]) != 0 {
+			t.Errorf("mode %d: reports = %v, want one empty selection", mode, reports)
+		}
+		l.Paint(render.New(make([]uint8, 100*60*4), 100*4, 100, 60))
+		if model.called[2] != before+1 {
+			t.Errorf("mode %d: row 2 not re-queried after Reset", mode)
+		}
+		reports = nil
+		l.Reset()
+		if len(reports) != 0 {
+			t.Errorf("mode %d: a Reset with nothing selected reported %v", mode, reports)
+		}
+	}
+}

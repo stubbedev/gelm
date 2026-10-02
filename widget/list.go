@@ -376,6 +376,32 @@ func (l *List) Changed() {
 	l.InvalidateLayout()
 }
 
+// Refresh re-queries every row widget, keeping the selection and the
+// scroll: the rows' data changed in place (a column resized, a
+// thumbnail arrived), where Changed would keep showing the cached
+// widgets.
+func (l *List) Refresh() {
+	clear(l.rows)
+	l.Changed()
+}
+
+// Reset is for a model whose rows were replaced wholesale (a folder
+// listing for another folder): every cached row widget, the selection
+// and the scroll go, and OnSelectionChanged fires when a selection was
+// dropped.
+func (l *List) Reset() {
+	had := len(l.Selection()) > 0
+	clear(l.rows)
+	l.offY, l.sel, l.cursor, l.hover = 0, -1, -1, -1
+	if l.multi != nil {
+		l.multi = map[int]struct{}{}
+	}
+	l.Changed()
+	if had {
+		l.notifySelection()
+	}
+}
+
 // scrollTo nudges the offset so row i is inside the viewport.
 func (l *List) scrollTo(i int) {
 	top, bottom := l.offY, l.offY+l.viewH
