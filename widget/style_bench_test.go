@@ -24,7 +24,7 @@ button:active { background-color: #090909; }
 button.destructive { background-color: #aa0000; }
 button.primary { background-color: #0055bb; border-color: #0077ee; }
 button:focus { border-width: 2; border-color: #55aaff; }
-entry, textarea { background-color: #0c0c0c; padding: 6; border-radius: 6; min-width: 120; }
+entry, textview { background-color: #0c0c0c; padding: 6; border-radius: 6; min-width: 120; }
 entry:focus { border-width: 2; border-color: #55aaff; }
 label { color: #cccccc; }
 label.status { color: #888888; }
@@ -38,7 +38,7 @@ slider { background-color: #333333; }
 progressbar { border-radius: 4; background-color: #004488; }
 switch { border-radius: 12; }
 checkbutton { border-radius: 4; }
-textarea { font-size: 13; }
+textview { font-size: 13; }
 menu { padding: 6; }
 menu:hover { background-color: #224466; }
 #sidebar { background-color: #101014; }

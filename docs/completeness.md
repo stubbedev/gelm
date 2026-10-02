@@ -23,16 +23,17 @@ closed and the map below reflects the tree as of that close.
 | --- | --- | --- |
 | Label, styled text | `widget.Label` with `SetWrap` (UAX #14 word wrap) and `SetEllipsize` (start/middle/end) keyed to the offered width; markup runs with optional links in `widget.RichLabel` | widget/label.go, widget/richlabel.go |
 | Button, toggle, check | `Button` (any child, Enter+Space), `Switch`, `CheckButton` | widget/button.go, widget/toggle.go |
-| Range, progress | `Slider` (drag/arrows/Home/End), `ProgressBar` | widget/slider.go, widget/toggle.go |
+| Range, progress | `Slider` (GtkScale's scale > trough > highlight/slider nodes, press warp, drag/arrows/Home/End), `ProgressBar`, `SpinButton` | widget/slider.go, widget/toggle.go, widget/spin.go |
 | Entry | `Entry`: selection, clipboard, IME preedit; masked echo `EchoPassword`/`EchoNone` with app-driven reveal (#29) | widget/entry.go, widget/echo.go |
 | Undo/redo | bounded coalescing stack behind `widget.Undoer`, shared by `Entry` and `TextArea`; ctrl+z / ctrl+shift+z / ctrl+y in `routeKey` (#29) | widget/undo.go, app/app.go |
-| TextView | `TextArea`: soft wrap, logical-line editing, Tab trap | widget/textarea.go |
+| TextView, SourceView | `TextArea`: soft wrap, logical-line editing, Tab trap; the code view (line numbers, `Highlighter` and `TextScheme`, auto-indent, `highlight.TOML`) | widget/textarea.go, widget/codeview.go, highlight/ |
 | ComboBox | `Dropdown` / `DropdownOf[T]` — face plus inline themed item list; prefix type-ahead on the open list, first-letter cycling on the closed face (#62) | widget/dropdown.go |
 | Toast | `widget.Toast` + `Application.ShowToast`: stacking, action, hover-pause (#30) | widget/toast.go, app/toast.go |
 | Expander | `Expander`: animated reveal, child visible only while open (#30) | widget/expander.go |
 | Spinner | `Spinner`: anim-driven rotating arc (#30) | widget/spinner.go |
 | Separator | `NewSeparator(orientation)` (#30) | widget/separator.go |
-| Box, Stack, Overlay, ScrolledWindow | `Box`/`Stack`/`Overlay`/`Scroll` | widget/containers.go, widget/scroll.go |
+| Box, Stack, Overlay, ScrolledWindow | `Box` (rows narrow shrinkable children, height for width)/`Stack`/`Overlay`/`Scroll` (a CSS box; keyboard focus and a TextArea's caret scroll into view, `RevealRect`) | widget/box.go, widget/containers.go, widget/reveal.go |
+| FlowBox | `FlowBox`: wrapping lines, per-line maximum, `flowboxchild` nodes, `IndexAt` for drop targets | widget/flowbox.go |
 | Paned | `Paned`: two panes, draggable themed divider clamped by MinSizer floors, keyboard nudges, GTK keep-child-one resize semantics (#71) | widget/paned.go |
 | Calendar | `widget.Calendar` + `app.CalendarDialog`: month grid, month/year navigation, today marker, single selection, pluggable locale names (#73) | widget/calendar.go, app/dialog.go |
 | Color picker | `widget.ColorChooser` + `app.ColorChooserDialog`: SV square (shader-less stacked gradients), hue/alpha strips, hex entry, theme presets + session palette (#72) | widget/colorchooser.go, app/dialog.go |
