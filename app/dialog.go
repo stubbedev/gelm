@@ -37,6 +37,13 @@ type DialogConfig struct {
 	DefaultResponse string
 	CancelResponse  string
 	OnResponse      func(response string)
+	// Bare makes Content the whole window: no button row, no card,
+	// Background as the window's clear color. The content carries its
+	// own buttons (styled by the application's stylesheet) and answers
+	// through Dialog.Respond; Esc and Enter still map to the cancel and
+	// default responses.
+	Bare       bool
+	Background render.Color
 }
 
 // Dialog is a modal child window with a response callback. While it
@@ -59,40 +66,16 @@ func (a *Application) NewDialog(parent *Window, cfg DialogConfig) (*Dialog, erro
 	if cfg.Content == nil {
 		return nil, errors.New("app: dialog needs content")
 	}
-	if len(cfg.Buttons) == 0 {
-		cfg.Buttons = []DialogButton{{Label: "OK", Response: "ok"}}
-	}
-	// The button row's labels need a face; under the toolkit-wide
-	// nil-face contract a nil face into a constructor panics, so a
-	// system without any usable font surfaces as an error here.
-	face := a.resolveFace(nil)
-	if face == nil {
-		return nil, errors.New("app: dialog text face unavailable: no configured tooltip face and the system has no sans font")
-	}
-
 	var d *Dialog
 	respond := func(response string) {
 		if d != nil {
 			d.Respond(response)
 		}
 	}
-
-	buttons := widget.NewBox(widget.Row, 8, 0)
-	buttons.Append(widget.NewSpacer(0, 0), true)
-	for _, b := range cfg.Buttons {
-		resp := b.Response
-		btn := widget.NewButton(
-			widget.NewBox(widget.Row, 6, 0).
-				Append(widget.NewLabel(face, 13, b.Label, widget.Current().Text), false),
-			10, 6)
-		btn.OnClick = func() { respond(resp) }
-		buttons.Append(btn, false)
+	root, background, err := a.dialogRoot(cfg, respond)
+	if err != nil {
+		return nil, err
 	}
-
-	content := widget.NewBox(widget.Column, 12, 12)
-	content.Append(cfg.Content, true)
-	content.Append(buttons, false)
-	root, background := dialogCard(content)
 
 	winCfg := WindowConfig{
 		Title: cfg.Title, Width: cfg.Width, Height: cfg.Height,
@@ -524,4 +507,38 @@ func cancelResponse(buttons []DialogButton) string {
 		return buttons[len(buttons)-1].Response
 	}
 	return ""
+}
+
+// dialogRoot builds the dialog window's root: the content in the
+// toolkit's card above a button row, or, Bare, the content alone.
+func (a *Application) dialogRoot(cfg DialogConfig, respond func(string)) (widget.Widget, render.Color, error) {
+	if cfg.Bare {
+		return cfg.Content, cfg.Background, nil
+	}
+	if len(cfg.Buttons) == 0 {
+		cfg.Buttons = []DialogButton{{Label: "OK", Response: "ok"}}
+	}
+	// The button row's labels need a face; under the toolkit-wide
+	// nil-face contract a nil face into a constructor panics, so a
+	// system without any usable font surfaces as an error here.
+	face := a.resolveFace(nil)
+	if face == nil {
+		return nil, 0, errors.New("app: dialog text face unavailable: no configured tooltip face and the system has no sans font")
+	}
+	buttons := widget.NewBox(widget.Row, 8, 0)
+	buttons.Append(widget.NewSpacer(0, 0), true)
+	for _, b := range cfg.Buttons {
+		resp := b.Response
+		btn := widget.NewButton(
+			widget.NewBox(widget.Row, 6, 0).
+				Append(widget.NewLabel(face, 13, b.Label, widget.Current().Text), false),
+			10, 6)
+		btn.OnClick = func() { respond(resp) }
+		buttons.Append(btn, false)
+	}
+	content := widget.NewBox(widget.Column, 12, 12)
+	content.Append(cfg.Content, true)
+	content.Append(buttons, false)
+	root, background := dialogCard(content)
+	return root, background, nil
 }

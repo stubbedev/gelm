@@ -3,6 +3,8 @@ package app
 import (
 	"testing"
 
+	"golang.org/x/image/font/gofont/goregular"
+
 	"github.com/unxed/xkb-go"
 
 	"github.com/stubbedev/gelm/render"
@@ -123,4 +125,45 @@ func (c *clickCountingBox) HitTest(p widget.Point) widget.Widget {
 func (c *clickCountingBox) ClickAt(p widget.Point) {
 	c.clicked = true
 	c.onClick()
+}
+
+// A bare dialog's window is its content alone, on the asked
+// background: no toolkit card or button row around it. The default
+// wraps the content and adds the buttons.
+func TestDialogRootBare(t *testing.T) {
+	face, err := render.LoadFont(goregular.TTF)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := &Application{tooltipFace: face}
+	content := widget.NewBox(widget.Column, 0, 0)
+	root, bg, err := a.dialogRoot(DialogConfig{Content: content, Bare: true, Background: render.RGB(1, 2, 3)}, func(string) {})
+	if err != nil || root != widget.Widget(content) || bg != render.RGB(1, 2, 3) {
+		t.Errorf("bare root %v bg %#x err %v, want the content on its background", root, uint32(bg), err)
+	}
+	var got []string
+	root, _, err = a.dialogRoot(DialogConfig{Content: content}, func(r string) { got = append(got, r) })
+	if err != nil || root == widget.Widget(content) {
+		t.Fatalf("default root %v err %v, want a card around the content", root, err)
+	}
+	var ok *widget.Button
+	var walk func(w widget.Widget)
+	walk = func(w widget.Widget) {
+		if b, isBtn := w.(*widget.Button); isBtn {
+			ok = b
+		}
+		if c, has := w.(interface{ Children() []widget.Widget }); has {
+			for _, k := range c.Children() {
+				walk(k)
+			}
+		}
+	}
+	walk(root)
+	if ok == nil {
+		t.Fatal("the default dialog has no button")
+	}
+	ok.ClickAt(widget.Point{})
+	if len(got) != 1 || got[0] != "ok" {
+		t.Errorf("the default button responded %v, want ok", got)
+	}
 }

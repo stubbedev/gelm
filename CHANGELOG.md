@@ -15,6 +15,9 @@
 - `Overlay.AppendAligned(w, h, v)`: a GtkOverlay-style child at its
   natural size pinned per axis (start, center, end, or fill), hitting
   only inside its own rect.
+- `DialogConfig.Bare` (with `Background`): the content is the whole
+  dialog window, no toolkit card or button row; it answers through
+  `Dialog.Respond`, Esc and Enter still mapping to its responses.
 
 ### Data control: the clipboard-manager protocols
 
