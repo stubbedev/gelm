@@ -533,3 +533,14 @@ func (m *Menu) dropMnemonics() {
 		m.mnemRunes[i] = -1
 	}
 }
+
+// styleChildren are the rows' icons (styleKids).
+func (m *Menu) styleChildren() []Widget {
+	var out []Widget
+	for _, it := range m.items {
+		if it.Icon != nil {
+			out = append(out, it.Icon)
+		}
+	}
+	return out
+}

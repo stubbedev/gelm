@@ -1035,3 +1035,15 @@ func (r *listRow) KeyAction(a KeyAction, mods Mods) { r.list.KeyAction(a, mods) 
 
 // SelectAll forwards the ctrl+a select-all route into the list.
 func (r *listRow) SelectAll() { r.list.SelectAll() }
+
+// styleChildren are the materialized rows (styleKids).
+func (l *List) styleChildren() []Widget {
+	out := make([]Widget, 0, len(l.rows))
+	for _, r := range l.rows {
+		out = append(out, r)
+	}
+	return out
+}
+
+// styleChildren is the row widget, inheriting through the proxy.
+func (r *listRow) styleChildren() []Widget { return []Widget{r.row} }
