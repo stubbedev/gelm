@@ -219,6 +219,59 @@ func (r *Router) Axis(dx, dy float64) {
 	}
 }
 
+// PixelScroller is a ScrollHandler that takes exact pixel deltas
+// (touchpads, continuous devices) as well as wheel steps.
+type PixelScroller interface {
+	ScrollPixels(dx, dy float64)
+}
+
+// scrollStepPx is one wheel step in pixels, the factor every built-in
+// ScrollHandler applies to ScrollBy's steps.
+const scrollStepPx = 40
+
+// AxisPixels routes exact scroll deltas like Axis routes steps: to the
+// nearest scrolling widget under the pointer, which takes the pixels
+// when it is a PixelScroller; any other gets whole steps as the pixels
+// add up to them.
+func (r *Router) AxisPixels(dx, dy float64) {
+	for target := r.hover; target != nil; target = parentOf(target) {
+		if si, ok := target.(ScrollInputHandler); ok {
+			if IsEnabled(target) {
+				if steps := r.pixelSteps(0, dy); steps[1] != 0 && si.ScrollInput(steps[1]) {
+					return
+				}
+			}
+			continue
+		}
+		if sc, ok := target.(ScrollHandler); ok {
+			if !IsEnabled(target) {
+				return
+			}
+			if p, ok := target.(PixelScroller); ok {
+				p.ScrollPixels(dx, dy)
+				return
+			}
+			if steps := r.pixelSteps(dx, dy); steps != [2]int{} {
+				sc.ScrollBy(steps[0], steps[1])
+			}
+			return
+		}
+	}
+}
+
+// pixelSteps adds pixel deltas to the router's remainder and takes the
+// whole wheel steps out of it.
+func (r *Router) pixelSteps(dx, dy float64) [2]int {
+	r.pxRemainder[0] += dx
+	r.pxRemainder[1] += dy
+	var out [2]int
+	for i := range out {
+		out[i] = int(r.pxRemainder[i] / scrollStepPx)
+		r.pxRemainder[i] -= float64(out[i] * scrollStepPx)
+	}
+	return out
+}
+
 // Mods is a bitmask of held keyboard modifiers.
 type Mods uint8
 
@@ -360,8 +413,11 @@ type Router struct {
 
 	hover, pressed, focus Widget
 	dragging              bool
-	lastClick             time.Time
-	lastClickWidget       Widget
+	// pxRemainder holds pixel scrolling not yet a whole step for a
+	// step-only scroller (AxisPixels).
+	pxRemainder     [2]float64
+	lastClick       time.Time
+	lastClickWidget Widget
 
 	// drop-target state during a wl_data_device drag: the widget the
 	// drag is over, the offered mimes, and the mime it accepted.

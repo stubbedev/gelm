@@ -72,6 +72,8 @@ type List struct {
 	probe *listRow
 	// maxH caps the natural height (SetMaxHeight).
 	maxH int
+	// pxFrac is pixel scrolling below a whole pixel (ScrollPixels).
+	pxFrac float64
 	// singleClick activates a row on a plain click (SetSingleClickActivate).
 	singleClick bool
 	// cellW is the grid mode's minimum cell width (0 is a plain
@@ -813,7 +815,7 @@ func (l *List) ScrollBy(dx, dy int) {
 	if !IsEnabled(l) {
 		return
 	}
-	l.offY = min(max(0, l.offY+dy*40), l.scrollMax())
+	l.offY = min(max(0, l.offY+dy*scrollStepPx), l.scrollMax())
 	l.Invalidate()
 }
 
@@ -1101,3 +1103,18 @@ func (r *listRow) styleChildren() []Widget { return []Widget{r.row} }
 // picker's rows act on one click. Multiple-selection lists keep
 // clicks for membership.
 func (l *List) SetSingleClickActivate(on bool) { l.singleClick = on }
+
+// ScrollPixels implements PixelScroller: exact vertical deltas, the
+// fraction kept for the next one.
+func (l *List) ScrollPixels(_, dy float64) {
+	if !IsEnabled(l) {
+		return
+	}
+	l.pxFrac += dy
+	w := int(l.pxFrac)
+	l.pxFrac -= float64(w)
+	if w != 0 {
+		l.offY = min(max(0, l.offY+w), l.scrollMax())
+		l.Invalidate()
+	}
+}

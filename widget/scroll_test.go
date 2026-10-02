@@ -145,3 +145,51 @@ func TestScrollVerticalOnly(t *testing.T) {
 		t.Error("a two-way scroll stopped scrolling sideways")
 	}
 }
+
+// Pixel scrolling moves a Scroll and a List by exactly the pixels,
+// fractions carried; a step-only scroller gets a step per 40 pixels.
+func TestAxisPixels(t *testing.T) {
+	tall := NewBox(Column, 0, 0)
+	for range 10 {
+		tall.Append(newStub(50, 20), false)
+	}
+	s := NewScroll(tall)
+	s.Measure(Constraints{Max: Size{W: 60, H: 60}})
+	s.Arrange(render.Rect{W: 60, H: 60})
+	r := &Router{Root: s}
+	r.Move(Point{X: 10, Y: 10})
+	r.AxisPixels(0, 2.6)
+	r.AxisPixels(0, 2.6)
+	if _, y := s.Offset(); y != 5 {
+		t.Errorf("scroll offset %d after 5.2px, want 5", y)
+	}
+	var rows staticRows
+	for range 20 {
+		rows = append(rows, newStub(20, 10))
+	}
+	l := NewList[Widget](rows, 10)
+	l.Measure(Constraints{Max: Size{W: 100, H: 50}})
+	l.Arrange(render.Rect{W: 100, H: 50})
+	l.ScrollPixels(0, 7.5)
+	l.ScrollPixels(0, 0.5)
+	if l.offY != 8 {
+		t.Errorf("list offset %d, want 8", l.offY)
+	}
+	stub := &stepScroller{}
+	r2 := &Router{Root: stub}
+	r2.hover = stub
+	for range 5 {
+		r2.AxisPixels(0, 10)
+	}
+	if stub.steps != 1 {
+		t.Errorf("a step-only scroller got %d steps for 50px, want 1", stub.steps)
+	}
+}
+
+// stepScroller scrolls in whole steps only.
+type stepScroller struct {
+	stub
+	steps int
+}
+
+func (s *stepScroller) ScrollBy(_, dy int) { s.steps += dy }

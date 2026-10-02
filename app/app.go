@@ -751,3 +751,13 @@ func (r *keyRepeater) nextDeadline() (time.Time, bool) {
 	}
 	return r.next, true
 }
+
+// HandlePointerScrollPixels implements wlsession.SurfacePreciseScroller:
+// touchpad scrolling by the pixels the fingers moved.
+func (in *surfaceInput) HandlePointerScrollPixels(dx, dy float64) {
+	if in.dropInput() {
+		return
+	}
+	in.router.AxisPixels(dx, dy)
+	in.request()
+}

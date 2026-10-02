@@ -607,3 +607,12 @@ func getPopup(s *xdg.Surface, parent *xdg.Surface, positioner *xdg.Positioner) (
 	pop := xdg.NewPopup(s.Context())
 	return pop, s.Context().SendRequest(s, 2, pop, wlnull.Null, positioner)
 }
+
+// HandlePointerScrollPixels implements wlsession.SurfacePreciseScroller.
+func (in *popupInput) HandlePointerScrollPixels(dx, dy float64) {
+	if in.dismissed() {
+		return
+	}
+	in.router.AxisPixels(dx, dy)
+	in.markDirty()
+}

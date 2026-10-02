@@ -396,6 +396,8 @@ type Scroll struct {
 
 	// ShowBars enables the auto-hiding scrollbar indicators.
 	ShowBars bool
+	// pxFrac is pixel scrolling below a whole pixel (ScrollPixels).
+	pxFrac [2]float64
 	// OnScrolled fires when a wheel, bar drag, or keyboard scroll lands
 	// at a NEW offset (same-offset scrolls stay silent). Nil means
 	// nobody listens.
@@ -787,7 +789,7 @@ func (s *Scroll) ScrollBy(dx, dy int) {
 	if !IsEnabled(s) {
 		return
 	}
-	s.SetOffset(s.offX+dx*40, s.offY+dy*40)
+	s.SetOffset(s.offX+dx*scrollStepPx, s.offY+dy*scrollStepPx)
 	s.showBars()
 }
 
@@ -876,3 +878,20 @@ func (s *Stack) visibleSize() Size {
 
 // lerp is a at the switch's start to b at its end.
 func (s *Stack) lerp(a, b int) int { return a + int(math.Round(float64(b-a)*s.progress)) }
+
+// ScrollPixels implements PixelScroller: exact deltas, the fraction
+// kept for the next one so slow finger motion still moves.
+func (s *Scroll) ScrollPixels(dx, dy float64) {
+	if !IsEnabled(s) {
+		return
+	}
+	s.pxFrac[0] += dx
+	s.pxFrac[1] += dy
+	wx, wy := int(s.pxFrac[0]), int(s.pxFrac[1])
+	s.pxFrac[0] -= float64(wx)
+	s.pxFrac[1] -= float64(wy)
+	if wx != 0 || wy != 0 {
+		s.SetOffset(s.offX+wx, s.offY+wy)
+	}
+	s.showBars()
+}
