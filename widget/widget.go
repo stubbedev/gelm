@@ -36,6 +36,7 @@ import (
 	"slices"
 	"sync/atomic"
 
+	"github.com/stubbedev/gelm/internal/anim"
 	"github.com/stubbedev/gelm/internal/style"
 	"github.com/stubbedev/gelm/render"
 )
@@ -184,6 +185,9 @@ type node struct {
 	// ink is how far the computed style paints outside the border box
 	// (outer shadows, the outline): damage grows by it.
 	ink render.Insets
+	// bgCancel runs while a background-color transition tween drives
+	// the cache's color (transition.go); nil when none is in flight.
+	bgCancel anim.Cancel
 	// self is the widget embedding this node, recorded by the first
 	// arranging container, so a state flip can walk its own subtree.
 	self Widget

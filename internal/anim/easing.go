@@ -57,6 +57,53 @@ func EaseOutBack(t float64) float64 {
 	return 1 + c3*u*u*u + c1*u*u
 }
 
+// CubicBezier returns the CSS cubic-bezier(x1, y1, x2, y2) timing
+// function: x is time, y progress, both solved on the parametric curve
+// (Newton where it converges, bisection where it does not). x1 and x2
+// are clamped to [0, 1] as CSS requires; the y controls are free.
+func CubicBezier(x1, y1, x2, y2 float64) Easing {
+	ax, ay, bx, by, cx, cy := 1-(3*x1), 1-(3*y1), 3*x1-2*(3*x1), 3*y1-2*(3*y1), 3*x1, 3*y1
+	sampleX := func(t float64) float64 { return ((ax*t+bx)*t+cx)*t }
+	sampleY := func(t float64) float64 { return ((ay*t+by)*t+cy)*t }
+	slopeX := func(t float64) float64 { return (3*ax*t+2*bx)*t + cx }
+	solveX := func(x float64) float64 {
+		t := x
+		for range 8 {
+			dx := sampleX(t) - x
+			if dx > -1e-6 && dx < 1e-6 {
+				return t
+			}
+			d := slopeX(t)
+			if d > 1e-6 || d < -1e-6 {
+				t -= dx / d
+			} else {
+				break
+			}
+		}
+		lo, hi := 0.0, 1.0
+		t = x
+		for range 24 {
+			xc := sampleX(t)
+			if xc < x {
+				lo = t
+			} else {
+				hi = t
+			}
+			t = (lo + hi) / 2
+		}
+		return t
+	}
+	return func(t float64) float64 {
+		switch {
+		case t <= 0:
+			return 0
+		case t >= 1:
+			return 1
+		}
+		return sampleY(solveX(t))
+	}
+}
+
 // Spring returns a damped-spring easing: the value leaves 0 with zero
 // velocity and settles at 1, oscillating on the way when underdamped.
 // zeta is the damping ratio - below 1 overshoots (0.3 to 0.6 give a
