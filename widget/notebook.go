@@ -132,7 +132,7 @@ func (n *Notebook) Measure(con Constraints) Size {
 	}
 	best := Size{}
 	for _, t := range n.tabs {
-		s := t.w.Measure(con)
+		s := measureChild(n, t.w, con)
 		best.W = max(best.W, s.W)
 		best.H = max(best.H, s.H)
 	}

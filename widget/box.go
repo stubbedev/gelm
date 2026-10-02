@@ -250,7 +250,7 @@ func (b *Box) Measure(con Constraints) Size {
 				b.child[i].nat = Size{}
 				continue
 			}
-			nat := c.w.Measure(Constraints{Max: b.withMain(Size{W: innerCross, H: innerCross}, availMain)})
+			nat := measureChild(b, c.w, Constraints{Max: b.withMain(Size{W: innerCross, H: innerCross}, availMain)})
 			b.child[i].nat = nat
 			total += b.main(nat) + spacing
 			cross = max(cross, b.crossOf(nat))

@@ -35,7 +35,7 @@ func (f *Fader) Measure(con Constraints) Size {
 	if sz, ok := f.measureHit(con); ok {
 		return sz
 	}
-	return f.measureStore(con, clampSize(f.child.Measure(con), con))
+	return f.measureStore(con, clampSize(measureChild(f, f.child, con), con))
 }
 
 // Arrange passes the rect straight through to the child.

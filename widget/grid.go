@@ -274,7 +274,7 @@ func (g *Grid) Measure(con Constraints) Size {
 	g.colMin = make([]int, cols)
 	g.rowMin = make([]int, rows)
 	for _, c := range g.child {
-		c.nat = c.w.Measure(Constraints{Max: con.Max})
+		c.nat = measureChild(g, c.w, Constraints{Max: con.Max})
 	}
 	for _, c := range g.child {
 		if c.colSpan == 1 {

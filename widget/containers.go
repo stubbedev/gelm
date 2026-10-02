@@ -218,7 +218,7 @@ func (s *Stack) Measure(con Constraints) Size {
 	}
 	best := Size{}
 	for _, name := range s.order {
-		nat := s.kids[name].Measure(con)
+		nat := measureChild(s, s.kids[name], con)
 		s.measured[name] = nat
 		best.W = max(best.W, nat.W)
 		best.H = max(best.H, nat.H)
@@ -329,7 +329,7 @@ func (o *Overlay) Measure(con Constraints) Size {
 		if !IsVisible(k) {
 			continue
 		}
-		nat := k.Measure(con)
+		nat := measureChild(o, k, con)
 		best.W = max(best.W, nat.W)
 		best.H = max(best.H, nat.H)
 	}
@@ -598,7 +598,7 @@ func (s *Scroll) Measure(con Constraints) Size {
 			w = max(0, con.Max.W-gutter)
 			s.measuredAt = w
 		}
-		s.nat = s.child.Measure(Constraints{Max: Size{W: w, H: math.MaxInt}})
+		s.nat = measureChild(s, s.child, Constraints{Max: Size{W: w, H: math.MaxInt}})
 	}
 	want := s.nat
 	if s.VerticalOnly && s.child != nil {
@@ -649,7 +649,7 @@ func (s *Scroll) Arrange(r render.Rect) {
 	if s.VerticalOnly {
 		gutterV, gutterH = gutter, 0
 		if w := max(0, r.W-gutter); w != s.measuredAt && s.child != nil {
-			s.nat = s.child.Measure(Constraints{Max: Size{W: w, H: math.MaxInt}})
+			s.nat = measureChild(s, s.child, Constraints{Max: Size{W: w, H: math.MaxInt}})
 			s.measuredAt = w
 		}
 	}

@@ -52,7 +52,7 @@ func (b *Button) Measure(con Constraints) Size {
 	}
 	v := b.style(b)
 	return b.measureStore(con, measureBox(v, b.box(v), con, func(inner Constraints) Size {
-		return b.child.Measure(Constraints{Max: inner.Max})
+		return measureChild(b, b.child, Constraints{Max: inner.Max})
 	}))
 }
 

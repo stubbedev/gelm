@@ -98,3 +98,41 @@ func TestStyleWalkReachesComposites(t *testing.T) {
 		t.Errorf("%T is %T's child but not in its style walk", w, p)
 	})
 }
+
+// A container's first measure, before any arrange, sees its children
+// styled from the sheet above (they are parented as they measure).
+func TestFirstMeasureIsStyled(t *testing.T) {
+	loadCSS(t, `.host .pad { padding: 10px; }`)
+	mk := func() Widget {
+		b := NewBox(Row, 0, 0)
+		b.AddClass("pad")
+		b.Append(newStub(10, 10), false)
+		return b
+	}
+	for name, wrap := range map[string]func(Widget) Widget{
+		"box":       func(w Widget) Widget { return NewBox(Column, 0, 0).Append(w, false) },
+		"overlay":   func(w Widget) Widget { return NewOverlay().Append(w) },
+		"scroll":    func(w Widget) Widget { s := NewScroll(w); s.VerticalOnly = true; return s },
+		"button":    func(w Widget) Widget { return NewButton(w, 0, 0) },
+		"paned":     func(w Widget) Widget { return NewPaned(Row, w, nil) },
+		"revealer":  func(w Widget) Widget { return NewRevealer(w) },
+		"fader":     func(w Widget) Widget { return NewFader(w) },
+		"elevation": func(w Widget) Widget { return NewElevation(w) },
+		"grid":      func(w Widget) Widget { return NewGrid(0, 0).Attach(w, 0, 0, 1, 1) },
+		"stack": func(w Widget) Widget {
+			s := NewStack()
+			s.Add("p", w)
+			s.Show("p")
+			return s
+		},
+	} {
+		inner := mk()
+		host := NewBox(Column, 0, 0)
+		host.AddClass("host")
+		host.Append(wrap(inner), false)
+		host.Measure(Constraints{Max: Size{W: 200, H: 200}})
+		if got := inner.Measure(Constraints{Max: Size{W: 200, H: 200}}); got.H != 30 {
+			t.Errorf("%s: first measure %v, want the styled 30 tall", name, got)
+		}
+	}
+}
