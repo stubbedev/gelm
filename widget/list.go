@@ -524,8 +524,10 @@ func (l *List) Paint(cv *render.Canvas) {
 	for i := first; i < last; i++ {
 		w := l.rows[i]
 		rect := l.cellRect(i)
-		w.Arrange(rect)
+		// Parent first: the row measures and styles inside Arrange, and
+		// its cascade must reach the stylesheets above the list.
 		setParents(l, w)
+		w.Arrange(rect)
 		switch {
 		case l.isSelected(i):
 			hl := th.Accent
@@ -956,7 +958,7 @@ func (r *listRow) Arrange(rect render.Rect) {
 }
 
 // Paint delegates to the row widget.
-func (r *listRow) Paint(cv *render.Canvas) { r.row.Paint(cv) }
+func (r *listRow) Paint(cv *render.Canvas) { PaintChild(cv, r.row) }
 
 // HitTest returns the proxy while p is inside its band.
 func (r *listRow) HitTest(p Point) Widget { return r.HitLeaf(r, p) }

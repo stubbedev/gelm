@@ -237,3 +237,34 @@ func TestListMeasuresEveryRowBeforeArranging(t *testing.T) {
 		}
 	}
 }
+
+// A row widget styles from the stylesheet above the list, as its
+// label inherits the color a rule sets there.
+func TestListRowsTakeTheStylesheetAbove(t *testing.T) {
+	loadCSS(t, `.host { color: #ff0000; } .host row { padding: 4px; }`)
+	label := NewLabel(testFace(t), 12, "x", 0)
+	row := NewBox(Row, 0, 0)
+	row.SetElement("row")
+	row.Append(label, false)
+	l := NewList[Widget](staticRows{row}, 0)
+	host := NewBox(Column, 0, 0)
+	host.AddClass("host")
+	host.Append(l, true)
+	for range 2 {
+		host.Measure(Constraints{Max: Size{W: 100, H: 100}})
+		host.Arrange(render.Rect{W: 100, H: 100})
+		data := make([]byte, render.Stride(100)*100)
+		host.Paint(render.New(data, render.Stride(100), 100, 100))
+	}
+	if got := label.style(label).Color; got != render.RGB(0xff, 0, 0) {
+		t.Errorf("row label color %#08x, want the inherited red", uint32(got))
+	}
+	if b := label.Bounds(); b.X != 4 {
+		t.Errorf("label at %v, want inside the row's 4px padding", b)
+	}
+}
+
+type staticRows []Widget
+
+func (s staticRows) Len() int         { return len(s) }
+func (s staticRows) Row(i int) Widget { return s[i] }
