@@ -35,7 +35,7 @@ func reveal(w Widget, r render.Rect, all bool) {
 
 // revealDelta is the offset change that brings r into the viewport.
 func (s *Scroll) revealDelta(r render.Rect) (dx, dy int) {
-	view := render.Rect{X: s.bounds.X, Y: s.bounds.Y, W: s.viewW, H: s.viewH}
+	view := render.Rect{X: s.view.X, Y: s.view.Y, W: s.viewW, H: s.viewH}
 	return revealAxis(r.X, r.W, view.X, view.W), revealAxis(r.Y, r.H, view.Y, view.H)
 }
 

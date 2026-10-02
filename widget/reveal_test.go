@@ -109,3 +109,62 @@ func TestFocusTraversalScrollsTheFocusedIntoView(t *testing.T) {
 		t.Errorf("SetFocus scrolled to %d", y)
 	}
 }
+
+// A Scroll is a CSS box like GtkScrolledWindow: its background and
+// border paint, its border and padding inset the viewport, and
+// min-height floors it; unstyled it paints nothing of its own.
+func TestScrollCSSBox(t *testing.T) {
+	loadCSS(t, `.ed { background-color: #ff0000; border: 2px solid #00ff00; padding: 5px; min-height: 80px; }`)
+	leaf := &solidLeaf{sz: Size{W: 40, H: 200}, col: render.RGB(0, 0, 0xff)}
+	s := NewScroll(leaf)
+	s.VerticalOnly = true
+	s.AddClass("ed")
+	if sz := s.Measure(Constraints{Max: Size{W: 100, H: 300}}); sz.H != 214 {
+		t.Errorf("height %d, want the content and its insets", sz.H)
+	}
+	s.SetMaxContentHeight(20)
+	if sz := s.Measure(Constraints{Max: Size{W: 100, H: 300}}); sz.H != 94 {
+		t.Errorf("capped height %d, want the 80px content min-height and the insets", sz.H)
+	}
+	s.Arrange(render.Rect{W: 100, H: 80})
+	if leaf.bounds.X != 7 || leaf.bounds.Y != 7 || leaf.bounds.W != 100-14-gutter {
+		t.Errorf("child at %v, want inset 7 by border and padding, as wide as the viewport less the gutter", leaf.bounds)
+	}
+	data := make([]byte, render.Stride(100)*80)
+	cv := render.New(data, render.Stride(100), 100, 80)
+	s.Paint(cv)
+	px := func(x, y int) render.Color { return render.ColorFromBytes(data[y*render.Stride(100)+x*4:]) }
+	if px(1, 40) != render.RGB(0, 0xff, 0) || px(4, 40) != render.RGB(0xff, 0, 0) || px(20, 40) != render.RGB(0, 0, 0xff) {
+		t.Errorf("border %v, padding %v, content %v", px(1, 40), px(4, 40), px(20, 40))
+	}
+	if px(20, 76) != render.RGB(0xff, 0, 0) {
+		t.Errorf("the child painted %v over the bottom padding: the viewport clips inside it", px(20, 76))
+	}
+	s.ScrollBy(0, 1)
+	s.Arrange(render.Rect{W: 100, H: 80})
+	if leaf.bounds.Y != 7-scrollStepPx {
+		t.Errorf("scrolled child at %d, want %d", leaf.bounds.Y, 7-scrollStepPx)
+	}
+	// A rect under the bottom padding is not in view.
+	s.SetOffset(0, 0)
+	s.Arrange(render.Rect{W: 100, H: 80})
+	RevealRect(leaf, render.Rect{X: 20, Y: 70, W: 4, H: 4})
+	if _, y := s.Offset(); y != 1 {
+		t.Errorf("revealing under the padding scrolled %d, want 1", y)
+	}
+	s.SetOffset(0, scrollStepPx)
+	s.Arrange(render.Rect{W: 100, H: 80})
+	track, _ := s.vBarGeometry()
+	if track.X+track.W != 100-7 || track.Y != 7 {
+		t.Errorf("bar track %v, want inside the padding", track)
+	}
+
+	plain := NewScroll(&solidLeaf{sz: Size{W: 10, H: 10}, col: render.RGB(0, 0, 0xff)})
+	plain.Measure(Constraints{Max: Size{W: 100, H: 80}})
+	plain.Arrange(render.Rect{W: 100, H: 80})
+	clear(data)
+	plain.Paint(cv)
+	if px(1, 1) != 0 {
+		t.Errorf("an unstyled scroll painted %v at its corner", px(1, 1))
+	}
+}
