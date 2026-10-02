@@ -247,10 +247,15 @@ func (p *Paned) placePanes() {
 	setParents(p, p.start, p.end)
 }
 
-// Paint draws the divider between the panes: a handle bar whose rest,
-// hover, and pressed looks come from the theme, and nothing at all
-// when a pane is missing.
+// Paint draws the panes, then the divider between them: a handle bar
+// whose rest, hover, and pressed looks come from the theme, and no
+// divider when a pane is missing (the other still paints).
 func (p *Paned) Paint(cv *render.Canvas) {
+	for _, pane := range [2]Widget{p.start, p.end} {
+		if pane != nil && IsVisible(pane) {
+			PaintChild(cv, pane)
+		}
+	}
 	if p.start == nil || p.end == nil {
 		return
 	}

@@ -20,6 +20,7 @@
   `Dialog.Respond`, Esc and Enter still mapping to its responses.
 - `Paned.SetMaxPosition(px)`: caps the divider (drags, keys,
   SetPosition) above the start pane's floor; zero lifts the cap.
+- Fix: Paned paints its panes (it drew only the divider).
 - Fix: a widget gaining its first parent restyles its subtree, so the
   panes under a Paned (arranged before the Paned is parented) take
   the stylesheets above it.

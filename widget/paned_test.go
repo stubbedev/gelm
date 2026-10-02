@@ -266,3 +266,25 @@ func TestPanedPanesTakeTheStylesheetAbove(t *testing.T) {
 		t.Errorf("styled pane child measures %v, want the 20px padding around 12x17", got)
 	}
 }
+
+// The panes paint, each in its own rect, and a lone pane still does.
+func TestPanedPaintsItsPanes(t *testing.T) {
+	loadCSS(t, `.a { background-color: #ff0000; } .b { background-color: #0000ff; }`)
+	a, b := NewBox(Row, 0, 0), NewBox(Row, 0, 0)
+	a.AddClass("a")
+	b.AddClass("b")
+	p := panedFrame(NewPaned(Row, a, b), 100, 20)
+	p.SetPosition(40)
+	panedFrame(p, 100, 20)
+	data := paintTree(p, 100, 20)
+	if got := render.ColorFromBytes(data[10*render.Stride(100)+10*4:]); got != render.RGB(0xff, 0, 0) {
+		t.Errorf("start pane pixel = %#08x, want red", uint32(got))
+	}
+	if got := render.ColorFromBytes(data[10*render.Stride(100)+90*4:]); got != render.RGB(0, 0, 0xff) {
+		t.Errorf("end pane pixel = %#08x, want blue", uint32(got))
+	}
+	lone := panedFrame(NewPaned(Row, a, nil), 100, 20)
+	if got := render.ColorFromBytes(paintTree(lone, 100, 20)[10*render.Stride(100)+90*4:]); got != render.RGB(0xff, 0, 0) {
+		t.Errorf("lone pane pixel = %#08x, want red across", uint32(got))
+	}
+}
