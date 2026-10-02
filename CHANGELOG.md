@@ -18,6 +18,8 @@
 - `DialogConfig.Bare` (with `Background`): the content is the whole
   dialog window, no toolkit card or button row; it answers through
   `Dialog.Respond`, Esc and Enter still mapping to its responses.
+- `Paned.SetMaxPosition(px)`: caps the divider (drags, keys,
+  SetPosition) above the start pane's floor; zero lifts the cap.
 
 ### Data control: the clipboard-manager protocols
 

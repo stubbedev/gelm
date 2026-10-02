@@ -202,3 +202,46 @@ func TestPanedChildrenKeepTheirInput(t *testing.T) {
 		t.Errorf("column cursor = %q, want row-resize", v)
 	}
 }
+
+// SetMaxPosition caps every way the divider moves, never under the
+// start pane's floor; zero lifts the cap.
+func TestPanedMaxPosition(t *testing.T) {
+	start := &flooredPane{floor: Size{W: 40}}
+	start.nat = Size{W: 120, H: 30}
+	end := &flooredPane{}
+	end.nat = Size{W: 120, H: 30}
+	p := NewPaned(Row, start, end)
+	p.SetMaxPosition(100)
+	panedFrame(p, 400, 60)
+	if got := p.Position(); got != 100 {
+		t.Fatalf("natural split = %d, want capped at 100", got)
+	}
+	p.SetPosition(300)
+	panedFrame(p, 400, 60)
+	if got := p.Position(); got != 100 {
+		t.Errorf("SetPosition past the cap = %d, want 100", got)
+	}
+	p.SetPressed(true)
+	p.DragMove(Point{X: 350, Y: 30})
+	if got := p.Position(); got != 100 {
+		t.Errorf("drag past the cap = %d, want 100", got)
+	}
+	p.SetPressed(false)
+	p.SetPosition(60)
+	panedFrame(p, 400, 60)
+	if got := p.Position(); got != 60 {
+		t.Errorf("under the cap = %d, want 60 kept", got)
+	}
+	p.SetMaxPosition(10) // under the floor: the floor wins
+	p.SetPosition(0)
+	panedFrame(p, 400, 60)
+	if got := p.Position(); got != 40 {
+		t.Errorf("cap under the floor = %d, want the floor 40", got)
+	}
+	p.SetMaxPosition(0)
+	p.SetPosition(300)
+	panedFrame(p, 400, 60)
+	if got := p.Position(); got != 300 {
+		t.Errorf("uncapped = %d, want 300", got)
+	}
+}
