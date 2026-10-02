@@ -54,6 +54,7 @@ deliberate non-goals and the honest, deferred gaps — lives in
 | Switch, CheckButton | done | keyboard toggles on Enter and Space |
 | ProgressBar | done | animated by the app through `anim` tweens |
 | Entry | done | single-line; selection (shift motion, drag, double-click word, select-all); clipboard; IME preedit display |
+| SpinButton | done | numeric Entry: range, step, decimals; arrows/PageUp/PageDown step; Enter or blur commits (clamped, rounded, garbage reverts) |
 | TextArea | done | multi-line; soft wrap on by default (logical-line editing model); plain Tab indents, ctrl/shift+Tab traverse |
 | Scroll | done | both axes; draggable bars, gutter paging, auto-hide fade, fill/center stretch |
 | List | done | virtualized model rows (a viewport's worth of widgets); single/browse/multiple selection modes with rubber-band drag, edge auto-scroll, and the shift/ctrl keyboard model |

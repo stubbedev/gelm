@@ -166,6 +166,9 @@ type node struct {
 	hoverChain   bool
 	// onHoverWithin hears hoverChain flip (SetOnHoverWithin).
 	onHoverWithin func(on bool)
+	// onFocus hears the widget gain or lose keyboard focus
+	// (SetOnFocusChanged).
+	onFocus func(focused bool)
 	// onClickWithin hears clicks on non-clicking descendants
 	// (SetOnClickWithin).
 	onClickWithin func()
@@ -208,6 +211,13 @@ func (n *node) SetOnHoverWithin(fn func(on bool)) { n.onHoverWithin = fn }
 // HoverWithin reports whether the pointer is over the widget or a
 // descendant.
 func (n *node) HoverWithin() bool { return n.hoverChain }
+
+// SetOnFocusChanged registers fn to hear the widget gain or lose
+// keyboard focus, however focus moved (a click elsewhere, Tab, a
+// programmatic SetFocus, the window losing the focused widget): an
+// entry that commits its text when the user leaves it. nil
+// unregisters.
+func (n *node) SetOnFocusChanged(fn func(focused bool)) { n.onFocus = fn }
 
 // SetOnClickWithin registers fn to hear a click (press and release on
 // the same widget) anywhere in the widget that nothing nearer takes:

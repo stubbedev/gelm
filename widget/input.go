@@ -443,11 +443,17 @@ func setFocusStyle(old, new Widget, visible bool) {
 		n.focused, n.focusVisible = false, false
 		n.invalidateState(style.Focus | style.FocusVisible)
 		shiftFocusWithin(old, -1)
+		if n.onFocus != nil {
+			n.onFocus(false)
+		}
 	}
 	if n := nodeOf(new); n != nil && !n.focused {
 		n.focused, n.focusVisible = true, visible
 		n.invalidateState(style.Focus | style.FocusVisible)
 		shiftFocusWithin(new, 1)
+		if n.onFocus != nil {
+			n.onFocus(true)
+		}
 	}
 }
 

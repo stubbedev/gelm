@@ -60,3 +60,54 @@ func TestSetFocus(t *testing.T) {
 		}
 	})
 }
+
+// The focus hook hears every way focus moves: a press elsewhere,
+// traversal, SetFocus, and the widget leaving the tree; a focus that
+// stays put says nothing.
+func TestFocusChangedHook(t *testing.T) {
+	a := newFocusTarget()
+	b := newFocusTarget()
+	root := NewBox(Column, 4, 0)
+	root.Append(a, false)
+	root.Append(b, false)
+	var got []bool
+	a.SetOnFocusChanged(func(focused bool) { got = append(got, focused) })
+	r := &Router{Root: root}
+
+	r.SetFocus(a)
+	r.SetFocus(a)
+	r.FocusNext()
+	r.FocusNext()
+	r.SetFocus(nil)
+	if want := []bool{true, false, true, false}; !equalBools(got, want) {
+		t.Fatalf("hook heard %v, want %v", got, want)
+	}
+
+	got = nil
+	r.SetFocus(a)
+	root.Remove(a)
+	r.Forget(a)
+	if want := []bool{true, false}; !equalBools(got, want) {
+		t.Errorf("removal: hook heard %v, want %v", got, want)
+	}
+
+	got = nil
+	a.SetOnFocusChanged(nil)
+	root.Append(a, false)
+	r.SetFocus(a)
+	if got != nil {
+		t.Errorf("an unregistered hook heard %v", got)
+	}
+}
+
+func equalBools(a, b []bool) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
