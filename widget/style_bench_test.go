@@ -28,8 +28,8 @@ entry, textview { background-color: #0c0c0c; padding: 6; border-radius: 6; min-w
 entry:focus { border-width: 2; border-color: #55aaff; }
 label { color: #cccccc; }
 label.status { color: #888888; }
-listrow { padding: 4; }
-listrow:hover { background-color: #1a1a1a; }
+row { padding: 4; }
+row:hover { background-color: #1a1a1a; }
 box.window { background-color: #161616; padding: 12; }
 box.column { padding: 8; }
 box.column > button { padding: 10; }

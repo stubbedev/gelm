@@ -1251,7 +1251,7 @@ func typeElementName(w Widget) string {
 	case *List:
 		return "listview"
 	case *listRow:
-		return "listrow"
+		return "row"
 	case *Menu:
 		return "menu"
 	case *Notebook:

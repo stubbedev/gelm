@@ -3,6 +3,7 @@ package widget
 import (
 	"testing"
 
+	"github.com/stubbedev/gelm/internal/style"
 	"github.com/stubbedev/gelm/render"
 )
 
@@ -244,7 +245,6 @@ func TestListRowsTakeTheStylesheetAbove(t *testing.T) {
 	loadCSS(t, `.host { color: #ff0000; } .host row { padding: 4px; }`)
 	label := NewLabel(testFace(t), 12, "x", 0)
 	row := NewBox(Row, 0, 0)
-	row.SetElement("row")
 	row.Append(label, false)
 	l := NewList[Widget](staticRows{row}, 0)
 	host := NewBox(Column, 0, 0)
@@ -268,6 +268,124 @@ type staticRows []Widget
 
 func (s staticRows) Len() int         { return len(s) }
 func (s staticRows) Row(i int) Widget { return s[i] }
+
+// frame measures, arranges, and paints host twice, so the list has
+// materialized and styled its row proxies.
+func frame(t *testing.T, host Widget, w, h int) {
+	t.Helper()
+	for range 2 {
+		host.Measure(Constraints{Max: Size{W: w, H: h}})
+		host.Arrange(render.Rect{W: w, H: h})
+		data := make([]byte, render.Stride(w)*h)
+		host.Paint(render.New(data, render.Stride(w), w, h))
+	}
+}
+
+// The row proxy is GTK's `row` node: a stylesheet written for GTK
+// addresses it directly — `listview > row` styles the box, the row
+// widget lands inside its padding, and the auto row height grows by
+// it.
+func TestListRowIsGtkRowBox(t *testing.T) {
+	face := testFace(t)
+	loadCSS(t, `listview > row { padding: 4 8; background-color: #010203; border-radius: 7; }`)
+	label := NewLabel(face, 12, "x", 0)
+	row := NewBox(Row, 0, 0)
+	row.Append(label, false)
+	l := NewList[Widget](staticRows{row}, 0)
+	host := NewBox(Column, 0, 0)
+	host.Append(l, true)
+	frame(t, host, 100, 100)
+
+	r := l.rows[0]
+	if el := r.Element(); el != "row" {
+		t.Fatalf("proxy element = %q, want row", el)
+	}
+	v := r.style(r)
+	if got := v.Background; got != render.RGB(0x01, 0x02, 0x03) {
+		t.Errorf("row background %#08x, want the `listview > row` rule", uint32(got))
+	}
+	if v.Radius.TopLeft != 7 {
+		t.Errorf("row radius %d, want 7", v.Radius.TopLeft)
+	}
+	if b := label.Bounds(); b.X != 8 || b.Y != 4 {
+		t.Errorf("label at (%d, %d), want inside the row's 4/8 padding", b.X, b.Y)
+	}
+	natural := NewLabel(face, 12, "x", 0).Measure(Constraints{Max: Size{W: 100, H: 100}})
+	if l.rowH != natural.H+8 {
+		t.Errorf("row height %d, want the label's %d plus the padding", l.rowH, natural.H)
+	}
+}
+
+// Selection rides the row proxy's :selected state; a row the selection
+// left behind drops it.
+func TestListRowSelectedState(t *testing.T) {
+	loadCSS(t, `row:selected { background-color: #0a0b0c; }`)
+	l := NewList[Widget](staticRows{newStub(20, 10), newStub(20, 10)}, 0)
+	host := NewBox(Column, 0, 0)
+	host.Append(l, true)
+	frame(t, host, 100, 100)
+
+	if l.rows[0].style(l.rows[0]).Has(style.PropBackgroundColor) {
+		t.Fatal("an unselected row matched :selected")
+	}
+	l.Select(0)
+	if got := l.rows[0].style(l.rows[0]).Background; got != render.RGB(0x0a, 0x0b, 0x0c) {
+		t.Errorf("selected row background %v, want the :selected rule", got)
+	}
+	if l.rows[1].style(l.rows[1]).Has(style.PropBackgroundColor) {
+		t.Error("row 1 matched :selected")
+	}
+	l.Select(1)
+	if l.rows[0].style(l.rows[0]).Has(style.PropBackgroundColor) {
+		t.Error("row 0 kept :selected after the move")
+	}
+	if got := l.rows[1].style(l.rows[1]).Background; got != render.RGB(0x0a, 0x0b, 0x0c) {
+		t.Errorf("newly selected row background %v, want the :selected rule", got)
+	}
+}
+
+// The hover chain the router moves over motion marks the row proxy
+// :hover, and clears it when the pointer leaves.
+func TestListRowHoverState(t *testing.T) {
+	loadCSS(t, `row:hover { background-color: #0d0e0f; }`)
+	l := NewList[Widget](staticRows{newStub(20, 10), newStub(20, 10)}, 0)
+	host := NewBox(Column, 0, 0)
+	host.Append(l, true)
+	frame(t, host, 100, 100)
+
+	setHoverChain(nil, l.rows[0])
+	if got := l.rows[0].style(l.rows[0]).Background; got != render.RGB(0x0d, 0x0e, 0x0f) {
+		t.Errorf("hovered row background %v, want the :hover rule", got)
+	}
+	setHoverChain(l.rows[0], nil)
+	if l.rows[0].style(l.rows[0]).Has(style.PropBackgroundColor) {
+		t.Error("row kept :hover after the pointer left")
+	}
+}
+
+// Without a stylesheet the theme still tints hover and selection — the
+// bands the List painted before rows styled themselves.
+func TestListRowThemeFallbackFills(t *testing.T) {
+	l := NewList[Widget](staticRows{newStub(20, 10), newStub(20, 10), newStub(20, 10)}, 0)
+	host := NewBox(Column, 0, 0)
+	host.Append(l, true)
+	frame(t, host, 100, 100)
+	th := Current()
+
+	if got := l.rowFill(0); got != 0 {
+		t.Errorf("resting row fill %v, want none", got)
+	}
+	l.Select(1)
+	want := render.RGBA(th.Accent.R(), th.Accent.G(), th.Accent.B(), 70)
+	if got := l.rowFill(1); got != want {
+		t.Errorf("selected row fill %v, want the theme's accent band %v", got, want)
+	}
+	l.HoverMove(Point{X: 1, Y: l.rowH*2 + 5})
+	want = render.RGBA(th.SurfaceHover.R(), th.SurfaceHover.G(), th.SurfaceHover.B(), 120)
+	if got := l.rowFill(2); got != want {
+		t.Errorf("hovered row fill %v, want the theme's hover band %v", got, want)
+	}
+}
 
 // An auto row height is the styled row's: a stylesheet's padding
 // grows every row, and a fixed height ignores it.
