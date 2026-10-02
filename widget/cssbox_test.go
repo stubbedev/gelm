@@ -516,3 +516,29 @@ func TestOnHoverWithinFollowsTheChain(t *testing.T) {
 		t.Error("an unregistered callback still fired")
 	}
 }
+
+// TestFirstLayoutResolvesScopedStyles pins the first-layout contract: a
+// tree measured before it was ever arranged had no parent links, so its
+// widgets saw no scoped stylesheet; arranging parents them and leaves
+// the layout pending, and the next pass measures the styled sizes.
+func TestFirstLayoutResolvesScopedStyles(t *testing.T) {
+	face := goldenFace(t)
+	root := NewBox(Column, 0, 0)
+	root.AttachStylesheet(NewStylesheet(`label { font-size: 40px; }`, StylePriorityUser))
+	label := NewLabel(face, 10, "Big", render.RGBA(0, 0, 0, 255))
+	root.Append(label, false)
+	con := Constraints{Max: Size{W: 400, H: 400}}
+	first := root.Measure(con)
+	root.Arrange(render.Rect{W: 400, H: 400})
+	if !LayoutPending(root) {
+		t.Fatal("parenting the tree left no layout pending")
+	}
+	settled := root.Measure(con)
+	root.Arrange(render.Rect{W: 400, H: 400})
+	if settled.H <= first.H || label.Bounds().H != settled.H {
+		t.Errorf("first %v, settled %v, label %v: the scoped font-size did not take", first, settled, label.Bounds())
+	}
+	if LayoutPending(root) {
+		t.Error("a settled tree still has layout pending")
+	}
+}

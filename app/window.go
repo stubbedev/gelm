@@ -529,6 +529,10 @@ func (s wireSurface) SetOpaqueRegion(w, h int) error {
 // keep an occluded tween moving.
 const frameStaleAfter = 3 * anim.FrameInterval / 2
 
+// maxLayoutPasses bounds the re-layouts one draw runs while the tree
+// settles (each level of newly parented widgets can take one).
+const maxLayoutPasses = 4
+
 // frameOwed reports whether a dirty window may commit a frame now:
 // normally the previous frame's callback must have returned, but a
 // running animation whose callback went unheard past frameStaleAfter
@@ -595,6 +599,16 @@ func (w *hostWindow) draw() bool {
 	// coordinates are logical pixels.
 	w.router.Root.Measure(widget.Constraints{Max: widget.Size{W: bw, H: bh}})
 	w.router.Root.Arrange(render.Rect{X: 0, Y: 0, W: bw, H: bh})
+	// Arranging a new subtree parents it, and a widget first measured
+	// without ancestors resolved no scoped stylesheet: settle the layout
+	// before painting rather than showing a frame of constructor styles.
+	for range maxLayoutPasses {
+		if !widget.LayoutPending(w.router.Root) {
+			break
+		}
+		w.router.Root.Measure(widget.Constraints{Max: widget.Size{W: bw, H: bh}})
+		w.router.Root.Arrange(render.Rect{X: 0, Y: 0, W: bw, H: bh})
+	}
 
 	// Drain invalidations into the pending region. The pending list
 	// survives busy retries (the flags are already drained) and is what

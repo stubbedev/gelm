@@ -394,8 +394,14 @@ func TestStaticTreeZeroMeasureRecursion(t *testing.T) {
 	con := Constraints{Max: Size{W: showW, H: showH}}
 
 	show.root.Measure(con)
-	// Layout pass on a static tree: bounds settle, nothing moves.
+	// Layout pass on a static tree: bounds settle, nothing moves. The
+	// first arrange parents the tree, which owes one more pass, as a
+	// window's draw runs before painting.
 	show.root.Arrange(render.Rect{X: 0, Y: 0, W: showW, H: showH})
+	for LayoutPending(show.root) {
+		show.root.Measure(con)
+		show.root.Arrange(render.Rect{X: 0, Y: 0, W: showW, H: showH})
+	}
 	CollectDamage(show.root)
 	baseline := measureEntries(show.widgets)
 
