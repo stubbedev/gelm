@@ -63,8 +63,8 @@ func EaseOutBack(t float64) float64 {
 // are clamped to [0, 1] as CSS requires; the y controls are free.
 func CubicBezier(x1, y1, x2, y2 float64) Easing {
 	ax, ay, bx, by, cx, cy := 1-(3*x1), 1-(3*y1), 3*x1-2*(3*x1), 3*y1-2*(3*y1), 3*x1, 3*y1
-	sampleX := func(t float64) float64 { return ((ax*t+bx)*t+cx)*t }
-	sampleY := func(t float64) float64 { return ((ay*t+by)*t+cy)*t }
+	sampleX := func(t float64) float64 { return ((ax*t+bx)*t + cx) * t }
+	sampleY := func(t float64) float64 { return ((ay*t+by)*t + cy) * t }
 	slopeX := func(t float64) float64 { return (3*ax*t+2*bx)*t + cx }
 	solveX := func(x float64) float64 {
 		t := x
