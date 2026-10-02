@@ -256,7 +256,8 @@ func (s *Stack) HitTest(p Point) Widget {
 }
 
 // Overlay stacks all children on the same rect and paints them in add
-// order. The last child paints on top and wins hit tests.
+// order. The last child paints on top and wins hit tests. A hidden
+// child takes no part: it neither sizes, paints, nor hits, as in a Box.
 type Overlay struct {
 	node
 	kids []Widget
@@ -279,6 +280,9 @@ func (o *Overlay) Measure(con Constraints) Size {
 	}
 	best := Size{}
 	for _, k := range o.kids {
+		if !IsVisible(k) {
+			continue
+		}
 		nat := k.Measure(con)
 		best.W = max(best.W, nat.W)
 		best.H = max(best.H, nat.H)
@@ -303,6 +307,9 @@ func (o *Overlay) ArrangeRoot(r render.Rect) {
 // Paint draws every child bottom to top.
 func (o *Overlay) Paint(cv *render.Canvas) {
 	for _, k := range o.kids {
+		if !IsVisible(k) {
+			continue
+		}
 		k.Paint(cv)
 	}
 }
@@ -311,6 +318,9 @@ func (o *Overlay) Paint(cv *render.Canvas) {
 // bounds.
 func (o *Overlay) HitTest(p Point) Widget {
 	for i := range slices.Backward(o.kids) {
+		if !IsVisible(o.kids[i]) {
+			continue
+		}
 		if hit := o.kids[i].HitTest(p); hit != nil {
 			return hit
 		}
