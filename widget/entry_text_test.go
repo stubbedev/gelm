@@ -155,3 +155,35 @@ func TestEntryTextMinHeightFloorsTheLine(t *testing.T) {
 		t.Errorf("height %d, want the line over a smaller floor", h)
 	}
 }
+
+// A row too narrow for its fields takes the shortfall from their text
+// widths (GtkText's minimum is no text), never below the insets and
+// min-width; a row with room keeps them whole.
+func TestEntriesShrinkInATightRow(t *testing.T) {
+	loadCSS(t, `entry.floor { min-width: 120px; }`)
+	face := entryFace(t)
+	a, b := NewEntry(face, 14, 0), NewEntry(face, 14, 0)
+	a.SetTextWidth(GTKTextWidth)
+	b.SetTextWidth(GTKTextWidth)
+	row := NewBox(Row, 0, 0)
+	row.Append(a, true)
+	row.Append(b, true)
+	nat := a.Measure(Constraints{Max: Size{W: 1000, H: 100}}).W
+	row.Measure(Constraints{Max: Size{W: 1000, H: 100}})
+	row.Arrange(render.Rect{W: 2 * nat, H: 40})
+	if a.bounds.W != nat || b.bounds.W != nat {
+		t.Errorf("with room: widths %d, %d, want %d each", a.bounds.W, b.bounds.W, nat)
+	}
+	row.Arrange(render.Rect{W: 200, H: 40})
+	if a.bounds.W != 100 || b.bounds.W != 100 || b.bounds.X != 100 {
+		t.Errorf("tight row: %v %v, want two 100px fields side by side", a.bounds, b.bounds)
+	}
+	if a.ShrinkableWidth() != nat-(entryPad.Left+entryPad.Right) {
+		t.Errorf("shrinkable %d, want the text width %d", a.ShrinkableWidth(), nat-(entryPad.Left+entryPad.Right))
+	}
+	b.AddClass("floor")
+	row.Measure(Constraints{Max: Size{W: 1000, H: 100}})
+	if got := b.ShrinkableWidth(); got != nat-120 {
+		t.Errorf("min-width floor: shrinkable %d, want %d", got, nat-120)
+	}
+}

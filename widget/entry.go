@@ -56,6 +56,9 @@ type Entry struct {
 
 	// text is GtkText's node under the field (`entry > text`).
 	text entryText
+	// measuredW is the last Measure's width, what ShrinkableWidth
+	// gives from.
+	measuredW int
 
 	// Echo masking: echo picks the display mode (dots, nothing) while
 	// the contents stay logical, and reveal is the app's temporary
@@ -788,7 +791,20 @@ func (e *Entry) Measure(con Constraints) Size {
 	h = max(h, picki(v, style.PropMinHeight, 0))
 	// The stylesheet's margin sits outside the field, as in every CSS box.
 	m := marginOf(v)
-	return e.measureStore(con, clampSize(Size{W: w + m.Left + m.Right, H: h + m.Top + m.Bottom}, con))
+	sz := e.measureStore(con, clampSize(Size{W: w + m.Left + m.Right, H: h + m.Top + m.Bottom}, con))
+	e.measuredW = sz.W
+	return sz
+}
+
+// ShrinkableWidth implements WidthShrinker: a field gives up its text
+// width down to its insets and the stylesheet's min-width (GtkText's
+// minimum without width-chars is no text at all), the text panning
+// inside what is left.
+func (e *Entry) ShrinkableWidth() int {
+	v := e.style(e)
+	in, m := e.textInsets(), marginOf(v)
+	floor := max(in.Left+in.Right, picki(v, style.PropMinWidth, 0)) + m.Left + m.Right
+	return max(0, e.measuredW-floor)
 }
 
 // MinSize implements MinSizer: the stylesheet's min-* floors when set,
