@@ -172,13 +172,13 @@ func (p *Paned) Measure(con Constraints) Size {
 	main := panedHandleW
 	cross := 0
 	if p.start != nil {
-		s := p.start.Measure(con)
+		s := measureChild(p, p.start, con)
 		p.startNat = s
 		main += p.mainOf(s)
 		cross = max(cross, p.crossOf(s))
 	}
 	if p.end != nil {
-		s := p.end.Measure(con)
+		s := measureChild(p, p.end, con)
 		main += p.mainOf(s)
 		cross = max(cross, p.crossOf(s))
 	}

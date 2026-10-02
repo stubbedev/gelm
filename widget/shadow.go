@@ -145,7 +145,7 @@ func (e *Elevation) WithPlate(c Color) *Elevation { e.plate = c; return e }
 func (e *Elevation) Child() Widget { return e.child }
 
 // Measure passes through to the child.
-func (e *Elevation) Measure(con Constraints) Size { return e.child.Measure(con) }
+func (e *Elevation) Measure(con Constraints) Size { return measureChild(e, e.child, con) }
 
 // Arrange records the rect, passes it to the child, and keeps the
 // shadow ring's damage in step with the effective (stylesheet-aware)

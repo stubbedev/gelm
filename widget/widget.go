@@ -637,3 +637,11 @@ func PaintChild(cv *render.Canvas, w Widget) {
 	w.Paint(cv)
 	cv.Painted(w)
 }
+
+// measureChild measures a container's child, parented first: the
+// child's cascade reaches the stylesheets above before its first
+// measure, so a measure ahead of the first arrange is already styled.
+func measureChild(parent, child Widget, con Constraints) Size {
+	setParents(parent, child)
+	return child.Measure(con)
+}

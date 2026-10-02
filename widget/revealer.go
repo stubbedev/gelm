@@ -207,7 +207,7 @@ func (r *Revealer) Measure(con Constraints) Size {
 	if r.child == nil || (r.transition == RevealNone && !r.reveal) {
 		return r.measureStore(con, clampSize(Size{}, con))
 	}
-	return r.measureStore(con, clampSize(r.child.Measure(con), con))
+	return r.measureStore(con, clampSize(measureChild(r, r.child, con), con))
 }
 
 // Arrange gives the child the whole rect.

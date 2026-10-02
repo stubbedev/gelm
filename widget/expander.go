@@ -206,7 +206,7 @@ func (e *Expander) bodyH(r render.Rect) int {
 	if e.child == nil || e.progress <= 0 {
 		return 0
 	}
-	nat := e.child.Measure(Constraints{Max: Size{W: max(0, r.W), H: max(0, r.H-e.headerH())}})
+	nat := measureChild(e, e.child, Constraints{Max: Size{W: max(0, r.W), H: max(0, r.H-e.headerH())}})
 	return min(max(0, r.H-e.headerH()), int(float64(nat.H)*e.progress+0.5))
 }
 
@@ -227,7 +227,7 @@ func (e *Expander) Measure(con Constraints) Size {
 	}
 	body := Size{}
 	if e.child != nil {
-		body = e.child.Measure(Constraints{
+		body = measureChild(e, e.child, Constraints{
 			Max: Size{W: max(0, con.Max.W), H: max(0, con.Max.H-headH)},
 		})
 		w = max(w, body.W+2*bodyPadX)

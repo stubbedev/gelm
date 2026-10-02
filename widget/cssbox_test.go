@@ -528,18 +528,16 @@ func TestFirstLayoutResolvesScopedStyles(t *testing.T) {
 	label := NewLabel(face, 10, "Big", render.RGBA(0, 0, 0, 255))
 	root.Append(label, false)
 	con := Constraints{Max: Size{W: 400, H: 400}}
+	// The label is parented as it measures: the first measure is
+	// already styled, and one arrange settles the tree.
 	first := root.Measure(con)
 	root.Arrange(render.Rect{W: 400, H: 400})
-	if !LayoutPending(root) {
-		t.Fatal("parenting the tree left no layout pending")
-	}
-	settled := root.Measure(con)
-	root.Arrange(render.Rect{W: 400, H: 400})
-	if settled.H <= first.H || label.Bounds().H != settled.H {
-		t.Errorf("first %v, settled %v, label %v: the scoped font-size did not take", first, settled, label.Bounds())
+	unstyled := NewLabel(face, 10, "Big", render.RGBA(0, 0, 0, 255)).Measure(con)
+	if first.H <= unstyled.H || label.Bounds().H != first.H {
+		t.Errorf("first %v (unstyled %v), label %v: the scoped font-size did not take on the first pass", first, unstyled, label.Bounds())
 	}
 	if LayoutPending(root) {
-		t.Error("a settled tree still has layout pending")
+		t.Error("the first layout left layout pending")
 	}
 }
 
@@ -558,6 +556,8 @@ func TestLayoutPendingSeesThroughWrappers(t *testing.T) {
 	wrapped := passthrough{root}
 	wrapped.Measure(Constraints{Max: Size{W: 100, H: 100}})
 	wrapped.Arrange(render.Rect{W: 100, H: 100})
+	// A style change inside makes layout pending.
+	root.AttachStylesheet(NewStylesheet(`box { padding: 3px; }`, StylePriorityUser))
 	if !LayoutPending(wrapped) {
 		t.Fatal("a wrapper hid its root's pending layout")
 	}
