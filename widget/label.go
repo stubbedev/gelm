@@ -280,7 +280,7 @@ func (l *Label) retext() {
 	face, px := l.effStyle()
 	l.shaped = face.ShapeDir(l.shown(), px, l.dir)
 	l.natural = Size{
-		W: int(l.shaped.Advance() + 0.5),
+		W: int(math.Ceil(l.shaped.Advance())),
 		H: l.shaped.LineHeight(),
 	}
 }
@@ -300,9 +300,9 @@ func (l *Label) Measure(con Constraints) Size {
 }
 
 // measureNatural computes the wanted content size for con from the
-// label's current text and modes. Fit checks compare the raw advance
-// against the offered width - the rounded natural size can lie by a
-// pixel.
+// label's current text and modes. Widths round up: Paint ellipsizes
+// (and wraps) against the raw advance, so a natural width rounded to
+// nearest would truncate a text laid out at exactly its natural size.
 func (l *Label) measureNatural(con Constraints) Size {
 	con = l.capWidth(con)
 	face, px := l.effStyle()
@@ -315,7 +315,7 @@ func (l *Label) measureNatural(con Constraints) Size {
 		}
 		truncated := render.EllipsizeText(face, l.shown(), l.ell, float64(con.Max.W), px)
 		return clampSize(Size{
-			W: int(face.Shape(truncated, px).Advance() + 0.5),
+			W: int(math.Ceil(face.Shape(truncated, px).Advance())),
 			H: lineH,
 		}, con)
 	}
@@ -324,7 +324,7 @@ func (l *Label) measureNatural(con Constraints) Size {
 	for _, ln := range rows {
 		w = math.Max(w, face.Shape(ln, px).Advance())
 	}
-	return clampSize(Size{W: int(w + 0.5), H: len(rows) * lineH}, con)
+	return clampSize(Size{W: int(math.Ceil(w)), H: len(rows) * lineH}, con)
 }
 
 // wrapped breaks the text at width, ellipsizing the final row when a
@@ -358,7 +358,7 @@ func (l *Label) MinSize() Size {
 		for _, tok := range render.WrapText(face, l.shown(), 1, px) {
 			w = math.Max(w, face.Shape(tok, px).Advance())
 		}
-		floor.W = int(w + 0.5)
+		floor.W = int(math.Ceil(w))
 	}
 	floor.W = max(floor.W, picki(v, style.PropMinWidth, 0)) + o.Left + o.Right
 	floor.H = max(floor.H, picki(v, style.PropMinHeight, 0)) + o.Top + o.Bottom
