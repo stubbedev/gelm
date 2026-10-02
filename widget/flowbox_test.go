@@ -287,3 +287,20 @@ func TestSliderWarpsOnPress(t *testing.T) {
 		t.Errorf("a disabled slider warped to %v", v)
 	}
 }
+
+// Element reports the type's GTK node name once the widget is laid out
+// in a tree, before any stylesheet asked for it.
+func TestElementReportsTheTypeName(t *testing.T) {
+	loadCSS(t, "")
+	icon := NewThemeIcon("x", 16)
+	box := NewBox(Row, 0, 0)
+	box.Append(icon, false)
+	box.Measure(Constraints{Max: Size{W: 100, H: 100}})
+	if icon.Element() != "image" {
+		t.Errorf("a parented icon reports %q", icon.Element())
+	}
+	icon.SetElement("custom")
+	if icon.Element() != "custom" {
+		t.Errorf("the override reports %q", icon.Element())
+	}
+}

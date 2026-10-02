@@ -568,6 +568,9 @@ func (n *node) Element() string {
 	if n.element != "" {
 		return n.element
 	}
+	if n.elemName == "" && n.self != nil {
+		n.elemName = typeElementName(n.self)
+	}
 	return n.elemName
 }
 
