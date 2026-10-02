@@ -202,8 +202,8 @@ func TestRouterScrollBubbles(t *testing.T) {
 		r := &Router{Root: root}
 		r.Move(Point{X: 5, Y: 5})
 		r.Axis(0, 2)
-		if _, offY := scroll.Offset(); offY != 80 {
-			t.Errorf("scroll offset = %d, want 80", offY)
+		if _, offY := scroll.Offset(); offY != 2*wheelStep(scroll.viewH) {
+			t.Errorf("scroll offset = %d, want two steps of %d", offY, wheelStep(scroll.viewH))
 		}
 	})
 }
