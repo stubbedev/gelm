@@ -39,8 +39,8 @@ progressbar { border-radius: 4; background-color: #004488; }
 switch { border-radius: 12; }
 checkbutton { border-radius: 4; }
 textview { font-size: 13; }
-menu { padding: 6; }
-menu:hover { background-color: #224466; }
+popover.menu { padding: 6; }
+popover.menu:hover { background-color: #224466; }
 #sidebar { background-color: #101014; }
 * { font-weight: 400; }
 `
