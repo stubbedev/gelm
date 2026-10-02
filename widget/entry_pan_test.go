@@ -296,3 +296,39 @@ func TestEntryMeasureCapsNaturalWidth(t *testing.T) {
 		}
 	})
 }
+
+func TestEntryTextWidthIsFixed(t *testing.T) {
+	face := entryFace(t)
+	con := Constraints{Max: Size{W: 5000, H: 100}}
+	e := NewEntry(face, 14, render.RGB(255, 255, 255))
+	pad := 2 * e.pad()
+	hug := e.Measure(con).W
+	if hug != pad {
+		t.Fatalf("empty content-hugging width = %d, want the padding %d", hug, pad)
+	}
+	e.SetTextWidth(GTKTextWidth)
+	if e.TextWidth() != GTKTextWidth {
+		t.Errorf("TextWidth = %d", e.TextWidth())
+	}
+	if got := e.Measure(con).W; got != GTKTextWidth+pad {
+		t.Errorf("empty fixed width = %d, want %d", got, GTKTextWidth+pad)
+	}
+	e.SetText(strings.Repeat("M", 200))
+	if got := e.Measure(con).W; got != GTKTextWidth+pad {
+		t.Errorf("a long text resized the fixed field to %d", got)
+	}
+	e.MaxWidth = 100
+	e.InvalidateLayout()
+	if got := e.Measure(con).W; got != 100 {
+		t.Errorf("MaxWidth no longer caps a fixed field: %d", got)
+	}
+	e.MaxWidth = 0
+	e.SetTextWidth(0)
+	if got := e.Measure(con).W; got < 1000 {
+		t.Errorf("SetTextWidth(0) kept the field fixed at %d, want it hugging the text again", got)
+	}
+	e.SetTextWidth(-5)
+	if e.TextWidth() != 0 {
+		t.Errorf("a negative width stored %d, want 0", e.TextWidth())
+	}
+}

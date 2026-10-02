@@ -50,6 +50,10 @@ type Entry struct {
 	// before the first Measure, or follow with InvalidateLayout.
 	MaxWidth int
 
+	// textWidth fixes the text area's natural width (SetTextWidth);
+	// zero hugs the content.
+	textWidth int
+
 	// Echo masking: echo picks the display mode (dots, nothing) while
 	// the contents stay logical, and reveal is the app's temporary
 	// show-the-real-text override.
@@ -673,11 +677,32 @@ func (e *Entry) clampPan() {
 // on-show pixel.
 func (e *Entry) ScrollX() int { return e.scrollX }
 
+// GTKTextWidth is a GtkEntry's text width without width-chars
+// (GtkText's MIN_TEXT_WIDTH): pass it to SetTextWidth for a field
+// sized the way GTK sizes one.
+const GTKTextWidth = 150
+
+// SetTextWidth fixes the text area's natural width at px, padding
+// aside, the way GtkEntry sizes a field: what is typed pans inside it
+// instead of resizing the layout, and an empty field keeps its width.
+// Zero (the default) hugs the content.
+func (e *Entry) SetTextWidth(px int) {
+	px = max(px, 0)
+	if e.textWidth != px {
+		e.textWidth = px
+		e.InvalidateLayout()
+	}
+}
+
+// TextWidth reports SetTextWidth.
+func (e *Entry) TextWidth() int { return e.textWidth }
+
 // Measure wants the text advance (or the placeholder's) plus padding; an
 // empty field keeps its padding so the box stays visible. Clamped to con.
-// Composing text counts toward the wanted width. MaxWidth caps the
-// reported width — a 500-character paste then stops widening the
-// layout at the cap and pans inside it instead.
+// Composing text counts toward the wanted width. SetTextWidth fixes the
+// text's share instead. MaxWidth caps the reported width — a
+// 500-character paste then stops widening the layout at the cap and
+// pans inside it instead.
 func (e *Entry) Measure(con Constraints) Size {
 	if sz, ok := e.measureHit(con); ok {
 		return sz
@@ -689,7 +714,10 @@ func (e *Entry) Measure(con Constraints) Size {
 	px := e.fontPx()
 	pad := e.pad()
 	w := 2 * pad
-	if text != "" {
+	switch {
+	case e.textWidth > 0:
+		w += e.textWidth
+	case text != "":
 		w += int(e.face.Shape(text, px).Advance() + 0.5)
 	}
 	h := int(e.face.Shape("lg", px).Ascent()+e.face.Shape("lg", px).Descent()+0.5) + 12
