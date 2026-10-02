@@ -22,6 +22,9 @@
 - `Paned.SetMaxPosition(px)`: caps the divider (drags, keys,
   SetPosition) above the start pane's floor; zero lifts the cap.
 - Entries and text areas paint their caret only while focused (GTK).
+- Fix: faded colors (disabled text, accents) scale each premultiplied
+  channel; scaling the packed value garbled them (a disabled entry's
+  text came out green).
 - The window's focus ring marks keyboard focus only (GTK's
   `:focus-visible`): a click focuses without a ring.
   `widget.FocusVisible(w)` reports it.

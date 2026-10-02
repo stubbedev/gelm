@@ -388,8 +388,9 @@ func mix(a, b Color, p float64) Color {
 }
 
 // scaleAlpha fades a premultiplied color toward transparent by p in
-// [0, 1]. Premultiplied channels scale linearly, so multiplying the
-// packed value fades alpha, red, green, and blue together.
+// [0, 1]. Premultiplied channels scale linearly: each of alpha, red,
+// green and blue is multiplied on its own (the packed value cannot be:
+// its channels would carry into each other).
 func scaleAlpha(c Color, p float64) Color {
 	if p >= 1 {
 		return c
@@ -397,5 +398,8 @@ func scaleAlpha(c Color, p float64) Color {
 	if p <= 0 {
 		return 0
 	}
-	return Color(uint32(float64(c) * p))
+	ch := func(shift uint) Color {
+		return Color(uint32(float64(uint8(c>>shift))*p+0.5)) << shift
+	}
+	return ch(24) | ch(16) | ch(8) | ch(0)
 }
