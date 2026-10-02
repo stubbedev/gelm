@@ -507,6 +507,11 @@ func (n *node) setParent(p, self Widget) {
 		// stylesheet and inherited nothing: its cached size, and every
 		// container cache above it, may be wrong now.
 		n.InvalidateLayout()
+		// So may every descendant styled meanwhile: its chain stopped
+		// here (a Paned arranges its panes before it is parented).
+		if n.self != nil {
+			restyleSubtree(n.self)
+		}
 		return
 	}
 	n.parent = p
