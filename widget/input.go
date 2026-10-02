@@ -887,6 +887,8 @@ func (r *Router) focusStep(dir int) {
 	}
 	setFocusStyle(r.focus, order[idx], true)
 	r.focus = order[idx]
+	// Keyboard focus scrolls into view (GtkViewport scroll-to-focus).
+	RevealRect(r.focus, boundsOf(r.focus))
 }
 
 // dropDisabledFocus moves focus off a widget that stopped accepting
