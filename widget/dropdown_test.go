@@ -505,3 +505,21 @@ func TestFocusRingIsCoveredByLaterSiblings(t *testing.T) {
 		t.Errorf("uncovered, the ring is missing (%v)", got)
 	}
 }
+
+// The open list claims no mnemonics: no underlines, and Alt-letters
+// activate nothing (type-ahead is the dropdown's keyboard model).
+func TestDropdownListHasNoMnemonics(t *testing.T) {
+	d := NewDropdown(testFace(t), 13, []string{"None", "Fade", "Zoom"}, 0)
+	m := d.list()
+	for i, r := range m.mnemRunes {
+		if r >= 0 {
+			t.Errorf("row %d claims mnemonic rune %d", i, r)
+		}
+	}
+	if m.ActivateMnemonic('f') {
+		t.Error("an Alt-letter activated a dropdown row")
+	}
+	if NewMenu(testFace(t), 13, MenuItem{Label: "Fade"}).mnemRunes[0] < 0 {
+		t.Error("test premise: a plain menu auto-assigns its mnemonic")
+	}
+}

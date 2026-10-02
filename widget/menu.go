@@ -525,3 +525,11 @@ func (m *Menu) DragMove(p Point) {
 	}
 	m.hovered = m.itemAt(p)
 }
+
+// dropMnemonics clears every row's Alt-letter and its underline.
+func (m *Menu) dropMnemonics() {
+	m.mnemonics = nil
+	for i := range m.mnemRunes {
+		m.mnemRunes[i] = -1
+	}
+}
