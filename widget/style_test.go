@@ -84,7 +84,7 @@ func TestCSSElementNames(t *testing.T) {
 	probe("richlabel", &RichLabel{})
 	probe("scroll", &Scroll{})
 	probe("separator", NewSeparator(Orientation(Row)))
-	probe("slider", NewSlider(0, 1, 1, 0))
+	probe("scale", NewSlider(0, 1, 1, 0))
 	probe("spinner", &Spinner{})
 	probe("stack", NewStack())
 	probe("switch", NewSwitch(false))

@@ -788,6 +788,9 @@ func hoverActiveOf(w Widget) style.State {
 			s |= style.Active
 		}
 	case *Slider:
+		if t.hovered {
+			s |= style.Hover
+		}
 		if t.Pressed {
 			s |= style.Active
 		}
@@ -1258,7 +1261,7 @@ func typeElementName(w Widget) string {
 	case *Separator:
 		return "separator"
 	case *Slider:
-		return "slider"
+		return "scale"
 	case *Spinner:
 		return "spinner"
 	case *Stack:

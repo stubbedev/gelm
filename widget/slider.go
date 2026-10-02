@@ -10,12 +10,21 @@ import (
 // Slider is a horizontal slider over [min, max] with an optional step.
 // Dragging is input's job (M4): it calls SetValue with values derived from
 // ValueFromX and flips Pressed around a drag.
+//
+// It is GtkScale's node tree: `scale` (its box, opacity, outline, and
+// :hover while the pointer is over it) holding `trough` (background,
+// radius, min-height, and min-width as the natural width) holding
+// `highlight` (the filled part) and `slider` (the knob: background,
+// radius, min size, opacity, box-shadow). Unstyled it keeps the theme's
+// 4px trough and 14px knob.
 type Slider struct {
 	node
 	min, max, step, value float64
 
 	// Pressed reports whether a drag is in progress.
 	Pressed bool
+	hovered bool
+	trough  sliderTrough
 
 	// OnChanged fires after every value change, including programmatic
 	// ones.
@@ -27,7 +36,56 @@ type Slider struct {
 func NewSlider(min, max, step, value float64) *Slider {
 	s := &Slider{min: min, max: max, step: step}
 	s.value = s.clamp(value)
+	s.trough.SetElement("trough")
+	s.trough.highlight.SetElement("highlight")
+	s.trough.knob.SetElement("slider")
+	setParents(s, &s.trough)
+	setParents(&s.trough, &s.trough.highlight, &s.trough.knob)
 	return s
+}
+
+// sliderTrough is the scale's trough node and its highlight and knob.
+type sliderTrough struct {
+	entryPart
+	highlight, knob entryPart
+}
+
+func (t *sliderTrough) styleChildren() []Widget { return []Widget{&t.highlight, &t.knob} }
+
+// styleChildren is the trough (styleKids).
+func (s *Slider) styleChildren() []Widget { return []Widget{&s.trough} }
+
+// SetHovered implements HoverSetter: `scale:hover` restyles the
+// trough and knob (a knob shown only on hover).
+func (s *Slider) SetHovered(on bool) {
+	if s.hovered != on {
+		s.hovered = on
+		s.invalidateState(style.Hover)
+	}
+}
+
+// sliderPad is an unstyled trough's inset each side, room for the
+// knob at the extremes.
+const sliderPad = 4
+
+// troughRect is the trough inside the content box: its min-height
+// tall (4px unstyled), centered, the content's width (less the
+// unstyled inset).
+func (s *Slider) troughRect() render.Rect {
+	_, c := boxRects(boxOf(s.style(s), render.Insets{}), s.bounds)
+	tv := s.trough.style(&s.trough)
+	h := picki(tv, style.PropMinHeight, 4)
+	pad := sliderPad
+	if tv.Has(style.PropMinHeight) || tv.Has(style.PropBackgroundColor) {
+		pad = 0
+	}
+	return render.Rect{X: c.X + pad, Y: c.Y + (c.H-h)/2, W: max(c.W-2*pad, 0), H: h}
+}
+
+// knobSize is the knob's min size (14px unstyled).
+func (s *Slider) knobSize() (w, h int) {
+	kv := s.trough.knob.style(&s.trough.knob)
+	return picki(kv, style.PropMinWidth, 14), picki(kv, style.PropMinHeight, 14)
 }
 
 // Value returns the current value.
@@ -56,46 +114,68 @@ func (s *Slider) clamp(v float64) float64 {
 	return math.Min(s.max, math.Max(s.min, v))
 }
 
-// ValueFromX maps a canvas x inside the trough to a value, with 4px of
-// handle padding on each side so the extremes are reachable.
+// ValueFromX maps a canvas x across the trough to a value (an unstyled
+// trough is inset 4px each side so the extremes are reachable).
 func (s *Slider) ValueFromX(x int) float64 {
-	span := float64(s.bounds.W - 8)
+	tr := s.troughRect()
+	span := float64(tr.W)
 	if span <= 0 {
 		return s.min
 	}
-	t := (float64(x-s.bounds.X) - 4) / span
+	t := float64(x-tr.X) / span
 	t = math.Min(1, math.Max(0, t))
 	return s.min + t*(s.max-s.min)
 }
 
-// Measure wants a fixed 200x18 trough, clamped to con.
+// Measure wants the trough's min-width (200px unstyled) by the taller
+// of the trough and the knob, at least 18px, inside the scale's box.
 func (s *Slider) Measure(con Constraints) Size {
 	if sz, ok := s.measureHit(con); ok {
 		return sz
 	}
-	return s.measureStore(con, clampSize(Size{W: 200, H: 18}, con))
+	v := s.style(s)
+	tv := s.trough.style(&s.trough)
+	_, kh := s.knobSize()
+	w := picki(tv, style.PropMinWidth, 200)
+	h := max(18, picki(tv, style.PropMinHeight, 4), kh)
+	return s.measureStore(con, measureBox(v, boxOf(v, render.Insets{}), con, func(inner Constraints) Size {
+		return clampSize(Size{W: w, H: h}, inner)
+	}))
 }
 
-// Paint draws the trough, fill, and handle. Disabled, they fade
-// through the derived disabled colors. Zero colors fall back to the
-// theme.
+// Paint draws the trough, its highlight, and the knob, each from its
+// node's style over the theme's colors. Disabled, the theme colors fade
+// through the derived disabled colors (a stylesheet fades with its own
+// :disabled rules).
 func (s *Slider) Paint(cv *render.Canvas) {
 	t := Current()
 	troughCol, fillCol, knobCol := t.Border, t.Accent, t.Text
 	if !IsEnabled(s) {
 		troughCol, fillCol, knobCol = t.DisabledText(), t.DisabledAccent(), t.DisabledText()
 	}
-	cy := s.bounds.Y + s.bounds.H/2
-	trough := render.Rect{X: s.bounds.X + 4, Y: cy - 2, W: s.bounds.W - 8, H: 4}
-	cv.RoundedRect(trough, 2, troughCol)
+	v := s.style(s)
+	fx := pushEffects(cv, v)
+	defer fx.pop(cv)
+	tr := s.troughRect()
+	tv := s.trough.style(&s.trough)
+	trRadii := radiusOr(tv, tr.H/2)
+	paintBoxBehind(cv, tv, tr, trRadii, borderOf(tv), pickc(0, tv, style.PropBackgroundColor, troughCol))
 
-	filled := trough
-	filled.W = int(float64(trough.W) * s.fraction())
-	cv.RoundedRect(filled, 2, fillCol)
+	hv := s.trough.highlight.style(&s.trough.highlight)
+	filled := tr
+	filled.W = int(float64(tr.W) * s.fraction())
+	if filled.W > 0 {
+		paintBoxBehind(cv, hv, filled, radiusOr(hv, trRadii.TopLeft), borderOf(hv), pickc(0, hv, style.PropBackgroundColor, fillCol))
+	}
 
-	knob := 14
-	kx := s.bounds.X + 4 + int(float64(s.bounds.W-8)*s.fraction()) - knob/2
-	cv.RoundedRect(render.Rect{X: kx, Y: cy - knob/2, W: knob, H: knob}, knob/2, knobCol)
+	kv := s.trough.knob.style(&s.trough.knob)
+	kw, kh := s.knobSize()
+	cx := tr.X + int(float64(tr.W)*s.fraction())
+	knob := render.Rect{X: cx - kw/2, Y: tr.Y + tr.H/2 - kh/2, W: kw, H: kh}
+	kfx := pushEffects(cv, kv)
+	paintBoxBehind(cv, kv, knob, radiusOr(kv, min(kw, kh)/2), borderOf(kv), pickc(0, kv, style.PropBackgroundColor, knobCol))
+	kfx.pop(cv)
+	paintOutline(cv, v, s.bounds, radiusOr(v, 0))
 }
 
 func (s *Slider) fraction() float64 {
