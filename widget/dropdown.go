@@ -180,6 +180,9 @@ func (d *Dropdown) list() *Menu {
 		items[i] = MenuItem{Label: label, OnClick: func() { d.selectIndex(i) }}
 	}
 	d.menu = NewMenu(d.face, d.sizePx, items...)
+	// A combobox list has no Alt-letters: type-ahead is its keyboard
+	// model, so no row claims (or underlines) a mnemonic.
+	d.menu.dropMnemonics()
 	d.menu.SetDirection(d.dir)
 	// Menu activation dismisses before the row fires, so the list is
 	// closed (and its pixels invalidated) by the time OnSelect runs.
