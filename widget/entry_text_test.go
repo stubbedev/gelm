@@ -2,6 +2,7 @@ package widget
 
 import (
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/stubbedev/gelm/render"
@@ -185,5 +186,40 @@ func TestEntriesShrinkInATightRow(t *testing.T) {
 	row.Measure(Constraints{Max: Size{W: 1000, H: 100}})
 	if got := b.ShrinkableWidth(); got != nat-120 {
 		t.Errorf("min-width floor: shrinkable %d, want %d", got, nat-120)
+	}
+}
+
+// Width in characters (GtkEntry width-chars, max-width-chars): the
+// natural text width is max characters, the floor a tight row stops
+// at is min characters, and the text typed changes neither.
+func TestEntryWidthChars(t *testing.T) {
+	face := entryFace(t)
+	con := Constraints{Max: Size{W: 1000, H: 100}}
+	e := NewEntry(face, 14, 0)
+	in := e.textInsets()
+	pad := in.Left + in.Right
+	cp := e.charPx()
+	e.SetWidthChars(6, 10)
+	if mn, mx := e.WidthChars(); mn != 6 || mx != 10 {
+		t.Errorf("WidthChars = %d, %d", mn, mx)
+	}
+	if w := e.Measure(con).W; w != pad+10*cp {
+		t.Errorf("natural %d, want ten characters (%d)", w, pad+10*cp)
+	}
+	e.SetText(strings.Repeat("W", 40))
+	if w := e.Measure(con).W; w != pad+10*cp {
+		t.Errorf("a long text resized the field to %d", w)
+	}
+	if got := e.ShrinkableWidth(); got != 4*cp {
+		t.Errorf("shrinkable %d, want down to six characters (%d)", got, 4*cp)
+	}
+	// Min alone: the GTK natural width, at least min.
+	e.SetWidthChars(30, 0)
+	if w := e.Measure(con).W; w != pad+max(GTKTextWidth, 30*cp) {
+		t.Errorf("min only: %d", w)
+	}
+	e.SetWidthChars(0, 0)
+	if w := e.Measure(con).W; w <= pad+10*cp {
+		t.Errorf("unset: %d, want the text's width back", w)
 	}
 }

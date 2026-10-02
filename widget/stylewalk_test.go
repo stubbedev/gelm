@@ -34,6 +34,8 @@ func TestStyleWalkReachesEveryParentedWidget(t *testing.T) {
 	sw := NewSwitch(true)
 	leaves["switch knob"] = &sw.knob
 	root := NewBox(Column, 0, 0)
+	flow := NewFlowBox(0, 0)
+	flow.Append(leaf("flowbox child"))
 	exp := NewExpander(face, "e", leaf("expander child"))
 	exp.SetOpen(true)
 	for _, w := range []Widget{
@@ -47,7 +49,7 @@ func TestStyleWalkReachesEveryParentedWidget(t *testing.T) {
 		exp,
 		NewList[Widget](staticRows{leaf("list row")}, 0),
 		NewMenu(face, 12, MenuItem{Label: "m", Icon: icon}),
-		nb, grid, stack, drop,
+		nb, grid, stack, drop, flow,
 		sw, NewCalendar(face, 12, time.Date(2026, 10, 2, 0, 0, 0, 0, time.UTC)),
 		NewColorChooser(face, 12, render.RGB(1, 2, 3)), NewMenuStack(face, 12, MenuItem{Label: "s"}),
 	} {

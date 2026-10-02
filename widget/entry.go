@@ -59,6 +59,9 @@ type Entry struct {
 	// measuredW is the last Measure's width, what ShrinkableWidth
 	// gives from.
 	measuredW int
+	// widthChars and maxWidthChars are GtkEntry's width-chars and
+	// max-width-chars (SetWidthChars); 0 is unset.
+	widthChars, maxWidthChars int
 
 	// Echo masking: echo picks the display mode (dots, nothing) while
 	// the contents stay logical, and reveal is the app's temporary
@@ -755,6 +758,43 @@ func (e *Entry) SetTextWidth(px int) {
 // TextWidth reports SetTextWidth.
 func (e *Entry) TextWidth() int { return e.textWidth }
 
+// SetWidthChars sizes the field in characters, GtkEntry's width-chars
+// and max-width-chars: the text never narrows below minChars, and
+// naturally takes maxChars (GTKTextWidth while maxChars is 0), at
+// least minChars. Both 0 restores SetTextWidth's sizing.
+func (e *Entry) SetWidthChars(minChars, maxChars int) {
+	minChars, maxChars = max(minChars, 0), max(maxChars, 0)
+	if e.widthChars != minChars || e.maxWidthChars != maxChars {
+		e.widthChars, e.maxWidthChars = minChars, maxChars
+		e.InvalidateLayout()
+	}
+}
+
+// WidthChars reports SetWidthChars.
+func (e *Entry) WidthChars() (minChars, maxChars int) { return e.widthChars, e.maxWidthChars }
+
+// charPx is one character's width for width-chars (pango's
+// approximate char and digit widths, the larger, rounded up).
+func (e *Entry) charPx() int {
+	px := e.fontPx()
+	return int(math.Ceil(max(e.face.ShapeRune('0', px).Advance(), e.face.ShapeRune('x', px).Advance())))
+}
+
+// charsText is the text width width-chars ask for, and its floor; ok
+// false when neither is set.
+func (e *Entry) charsText() (natural, floor int, ok bool) {
+	if e.widthChars == 0 && e.maxWidthChars == 0 {
+		return 0, 0, false
+	}
+	cp := e.charPx()
+	floor = e.widthChars * cp
+	natural = GTKTextWidth
+	if e.maxWidthChars > 0 {
+		natural = e.maxWidthChars * cp
+	}
+	return max(natural, floor), floor, true
+}
+
 // Measure wants the text advance (or the placeholder's) plus padding; an
 // empty field keeps its padding so the box stays visible. Clamped to con.
 // Composing text counts toward the wanted width. SetTextWidth fixes the
@@ -772,7 +812,10 @@ func (e *Entry) Measure(con Constraints) Size {
 	px := e.fontPx()
 	in := e.textInsets()
 	w := in.Left + in.Right
+	chars, _, byChars := e.charsText()
 	switch {
+	case byChars:
+		w += chars
 	case e.textWidth > 0:
 		w += e.textWidth
 	case text != "":
@@ -803,7 +846,8 @@ func (e *Entry) Measure(con Constraints) Size {
 func (e *Entry) ShrinkableWidth() int {
 	v := e.style(e)
 	in, m := e.textInsets(), marginOf(v)
-	floor := max(in.Left+in.Right, picki(v, style.PropMinWidth, 0)) + m.Left + m.Right
+	_, chars, _ := e.charsText()
+	floor := max(in.Left+in.Right+chars, picki(v, style.PropMinWidth, 0)) + m.Left + m.Right
 	return max(0, e.measuredW-floor)
 }
 
