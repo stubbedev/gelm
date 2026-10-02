@@ -1,22 +1,39 @@
 package widget
 
 import (
+	"github.com/stubbedev/gelm/internal/style"
 	"github.com/stubbedev/gelm/render"
 )
 
-// Switch is a boolean toggle painted as a pill with a sliding knob.
+// Switch is a boolean toggle painted as a pill with a sliding knob. A
+// stylesheet restyles it the GTK way: `switch` is the track (background,
+// border-radius, min-width/min-height, the box layers; `:checked` while
+// on) and `switch slider` the knob (min size, margin, background,
+// radius, shadow). Unstyled, it is the theme's 40x22 pill.
 type Switch struct {
 	node
-	on bool
+	on   bool
+	knob switchSlider
 
 	// OnChanged fires after every state change, including programmatic
 	// ones.
 	OnChanged func(on bool)
 }
 
+// switchSlider is the knob's style node: the `slider` element under
+// the switch, matched and painted by it, never laid out on its own.
+type switchSlider struct{ node }
+
+func (*switchSlider) Measure(con Constraints) Size { return clampSize(Size{}, con) }
+func (*switchSlider) Paint(*render.Canvas)         {}
+func (*switchSlider) HitTest(Point) Widget         { return nil }
+
 // NewSwitch returns a switch in the given state.
 func NewSwitch(on bool) *Switch {
-	return &Switch{on: on}
+	s := &Switch{on: on}
+	s.knob.SetElement("slider")
+	s.SetState(StateChecked, on)
+	return s
 }
 
 // On reports the switch state.
@@ -28,6 +45,7 @@ func (s *Switch) SetOn(on bool) {
 		return
 	}
 	s.on = on
+	s.SetState(StateChecked, on)
 	s.Invalidate()
 	if s.OnChanged != nil {
 		s.OnChanged(on)
@@ -39,17 +57,31 @@ func (s *Switch) Toggle() {
 	s.SetOn(!s.on)
 }
 
-// Measure wants a fixed 40x22 pill, clamped to con.
+// Measure wants the 40x22 pill, floored by the stylesheet's min size,
+// inside its CSS box, clamped to con.
 func (s *Switch) Measure(con Constraints) Size {
 	if sz, ok := s.measureHit(con); ok {
 		return sz
 	}
-	return s.measureStore(con, clampSize(Size{W: 40, H: 22}, con))
+	v := s.style(s)
+	return s.measureStore(con, measureBox(v, boxOf(v, render.Insets{}), con, func(inner Constraints) Size {
+		if v.HasAny(style.PropMinWidth, style.PropMinHeight) {
+			return clampSize(Size{}, inner)
+		}
+		return clampSize(Size{W: 40, H: 22}, inner)
+	}))
+}
+
+// Arrange keeps the border box inside the margins.
+func (s *Switch) Arrange(r render.Rect) {
+	border, _ := boxRects(boxOf(s.style(s), render.Insets{}), r)
+	s.node.Arrange(border)
+	setParents(s, &s.knob)
 }
 
 // Paint draws the track and knob. The knob sits at the right when on.
-// Disabled, the on-track and knob fade through the derived disabled
-// colors. Zero colors fall back to the theme.
+// Disabled, the theme's on-track and knob fade through the derived
+// disabled colors (a stylesheet fades with its own :disabled rules).
 func (s *Switch) Paint(cv *render.Canvas) {
 	t := Current()
 	track, knob := t.Surface, t.Text
@@ -62,14 +94,31 @@ func (s *Switch) Paint(cv *render.Canvas) {
 			track = t.DisabledAccent()
 		}
 	}
-	cv.RoundedRect(s.bounds, s.bounds.H/2, track)
+	v := s.style(s)
+	fx := pushEffects(cv, v)
+	defer fx.pop(cv)
+	radii := radiusOr(v, s.bounds.H/2)
+	bw := borderOf(v)
+	paintBoxBehind(cv, v, s.bounds, radii, bw, pickc(0, v, style.PropBackgroundColor, track))
+	defer paintOutline(cv, v, s.bounds, radii)
 
-	knobD := s.bounds.H - 6
-	kx := s.bounds.X + 3
-	if s.on {
-		kx = s.bounds.X + s.bounds.W - 3 - knobD
+	content := boxOf(v, render.Insets{}).padding.Shrink(bw.Shrink(s.bounds))
+	kv := s.knob.style(&s.knob)
+	m := render.Insets{Top: 3, Right: 3, Bottom: 3, Left: 3}
+	if kv.HasAny(style.PropMarginTop, style.PropMarginRight, style.PropMarginBottom, style.PropMarginLeft) {
+		m = marginOf(kv)
 	}
-	cv.RoundedRect(render.Rect{X: kx, Y: s.bounds.Y + 3, W: knobD, H: knobD}, knobD/2, knob)
+	d := max(0, content.H-m.Top-m.Bottom)
+	kw, kh := picki(kv, style.PropMinWidth, d), picki(kv, style.PropMinHeight, d)
+	kx := content.X + m.Left
+	if s.on {
+		kx = content.X + content.W - m.Right - kw
+	}
+	ky := content.Y + m.Top + (d-kh)/2
+	knobRect := render.Rect{X: kx, Y: ky, W: kw, H: kh}
+	s.knob.Arrange(knobRect)
+	kr := radiusOr(kv, min(kw, kh)/2)
+	paintBoxBehind(cv, kv, knobRect, kr, borderOf(kv), pickc(0, kv, style.PropBackgroundColor, knob))
 }
 
 // Role implements Roleer.

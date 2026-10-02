@@ -20,6 +20,10 @@
   `Dialog.Respond`, Esc and Enter still mapping to its responses.
 - `Paned.SetMaxPosition(px)`: caps the divider (drags, keys,
   SetPosition) above the start pane's floor; zero lifts the cap.
+- `Switch` takes the stylesheet the GTK way: `switch` styles the track
+  (background, radius, min size, box layers, `:checked` while on) and
+  `switch slider` the knob (min size, margin, background, radius,
+  shadow); unstyled it is the theme pill, unchanged.
 - Fix: Paned paints its panes (it drew only the divider).
 - Fix: SVG icons carrying GTK's symbolic markup (`gpa:fill='foreground'`)
   parse: attributes in foreign namespaces drop before oksvg reads them.
