@@ -723,10 +723,11 @@ func (w *hostWindow) draw() bool {
 }
 
 // focusRingRect returns the rect the keyboard focus ring occupies, or
-// an empty rect when nothing is focused.
+// an empty rect when nothing is focused or the focus came from the
+// pointer (GTK's :focus-visible rule: a click focuses without a ring).
 func (w *hostWindow) focusRingRect() render.Rect {
 	f := w.router.Focused()
-	if f == nil {
+	if f == nil || !widget.FocusVisible(f) {
 		return render.Rect{}
 	}
 	bs, ok := f.(widget.Boundser)
