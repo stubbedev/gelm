@@ -66,6 +66,10 @@ type List struct {
 	node
 	model listModel
 	rowH  int
+	// cellW is the grid mode's minimum cell width (0 is a plain
+	// list); cols is how many cells the arranged width fits.
+	cellW int
+	cols  int
 
 	viewW, viewH int
 	offY         int
@@ -131,6 +135,47 @@ func NewList[W Widget](model ListModel[W], rowHeight int) *List {
 		hover: -1,
 		rows:  make(map[int]*listRow),
 	}
+}
+
+// SetCellWidth switches the list into a grid: items flow left to
+// right in as many equal columns of at least w pixels as the width
+// fits, every line the row height tall, still virtualized by line. Up
+// and down move a line, left and right one item. Zero is a plain list.
+func (l *List) SetCellWidth(w int) {
+	if w == l.cellW {
+		return
+	}
+	l.cellW = max(0, w)
+	l.InvalidateLayout()
+}
+
+// columns is how many items share a line.
+func (l *List) columns() int { return max(1, l.cols) }
+
+// lines is how many lines n items take.
+func (l *List) lines(n int) int {
+	c := l.columns()
+	return (n + c - 1) / c
+}
+
+// fitColumns is how many cells of the grid's cell width fit in w.
+func (l *List) fitColumns(w int) int {
+	if l.cellW <= 0 {
+		return 1
+	}
+	return max(1, w/l.cellW)
+}
+
+// cellRect is item i's rect in root coordinates; the last column
+// takes the width's remainder.
+func (l *List) cellRect(i int) render.Rect {
+	c := l.columns()
+	w := l.viewW / c
+	x := l.bounds.X + (i%c)*w
+	if i%c == c-1 {
+		w = l.viewW - (c-1)*w
+	}
+	return render.Rect{X: x, Y: l.bounds.Y + (i/c)*l.rowH - l.offY, W: w, H: l.rowH}
 }
 
 // SetSelectionMode switches the selection model. Leaving multiple
@@ -315,7 +360,7 @@ func (l *List) Changed() {
 			delete(l.rows, i)
 		}
 	}
-	l.offY = min(l.offY, max(0, n*l.rowH-l.viewH))
+	l.offY = min(l.offY, l.scrollMax())
 	if l.sel >= n {
 		l.sel = n - 1
 	}
@@ -334,7 +379,7 @@ func (l *List) Changed() {
 // scrollTo nudges the offset so row i is inside the viewport.
 func (l *List) scrollTo(i int) {
 	top, bottom := l.offY, l.offY+l.viewH
-	y := i * l.rowH
+	y := (i / l.columns()) * l.rowH
 	if y < top {
 		l.offY = y
 	} else if y+l.rowH > bottom {
@@ -362,24 +407,31 @@ func (l *List) Measure(con Constraints) Size {
 	if sz, ok := l.measureHit(con); ok {
 		return sz
 	}
-	h := l.measureRowH() * l.model.len()
-	return l.measureStore(con, clampSize(Size{W: 120, H: h}, con))
+	lines, w := l.model.len(), 120
+	if l.cellW > 0 {
+		c := l.fitColumns(con.Max.W)
+		lines, w = (lines+c-1)/c, l.cellW
+	}
+	h := l.measureRowH() * lines
+	return l.measureStore(con, clampSize(Size{W: w, H: h}, con))
 }
 
 // Arrange lays out the viewport.
 func (l *List) Arrange(r render.Rect) {
 	l.node.Arrange(r)
 	l.viewW, l.viewH = r.W, r.H
+	l.cols = l.fitColumns(r.W)
 	l.measureRowH()
-	l.offY = min(l.offY, max(0, l.model.len()*l.rowH-l.viewH))
+	l.offY = min(l.offY, l.scrollMax())
 }
 
 // visible returns the half-open range of rows inside the viewport and
 // caches their proxy widgets, evicting everything off-screen.
 func (l *List) visible() (first, last int) {
-	n := l.model.len()
-	first = min(l.offY/l.rowH, max(0, n-1))
-	last = min(n, first+l.viewH/l.rowH+1)
+	n, c := l.model.len(), l.columns()
+	line := l.offY / l.rowH
+	first = min(line*c, max(0, n-1))
+	last = min(n, (line+l.viewH/l.rowH+1)*c)
 	for i := range l.rows {
 		if i < first || i >= last {
 			delete(l.rows, i)
@@ -445,8 +497,7 @@ func (l *List) Paint(cv *render.Canvas) {
 	first, last := l.visible()
 	for i := first; i < last; i++ {
 		w := l.rows[i]
-		y := l.bounds.Y + i*l.rowH - l.offY
-		rect := render.Rect{X: l.bounds.X, Y: y, W: l.viewW, H: l.rowH}
+		rect := l.cellRect(i)
 		w.Arrange(rect)
 		setParents(l, w)
 		switch {
@@ -482,16 +533,26 @@ func (l *List) HitTest(p Point) Widget {
 
 // rowAt maps a point to a row index, clamped into the model.
 func (l *List) rowAt(p Point) int {
-	return min(max((p.Y-l.bounds.Y+l.offY)/l.rowH, 0), l.model.len()-1)
+	line := max((p.Y-l.bounds.Y+l.offY)/l.rowH, 0)
+	return min(line*l.columns()+l.columnAt(p), l.model.len()-1)
+}
+
+// columnAt maps a point to its grid column, clamped.
+func (l *List) columnAt(p Point) int {
+	c := l.columns()
+	return min(max((p.X-l.bounds.X)/max(1, l.viewW/c), 0), c-1)
 }
 
 // rowAtExact maps a point to a row index only when one is under it:
 // the trailing band below the last row hits no row, where rowAt
 // clamps into the last one.
 func (l *List) rowAtExact(p Point) (int, bool) {
-	n := l.model.len()
-	i := (p.Y - l.bounds.Y + l.offY) / l.rowH
-	if i < 0 || i >= n {
+	y := p.Y - l.bounds.Y + l.offY
+	if y < 0 {
+		return 0, false
+	}
+	i := (y/l.rowH)*l.columns() + l.columnAt(p)
+	if i >= l.model.len() {
 		return 0, false
 	}
 	return i, true
@@ -613,7 +674,7 @@ func (l *List) stopAutoScroll() {
 
 // scrollMax is the largest viewport offset.
 func (l *List) scrollMax() int {
-	return max(0, l.model.len()*l.rowH-l.viewH)
+	return max(0, l.lines(l.model.len())*l.rowH-l.viewH)
 }
 
 // updateAutoScroll runs or stops the edge auto-scroll for the current
@@ -740,12 +801,17 @@ func (l *List) KeyAction(a KeyAction, mods Mods) {
 		l.keyActionMultiple(a, mods, n)
 		return
 	}
-	page := max(1, l.viewH/l.rowH)
+	line, item := l.steps()
+	page := max(1, l.viewH/l.rowH) * line
 	switch a {
 	case KeyUp:
-		l.Select(max(0, l.sel-1))
+		l.Select(max(0, l.sel-line))
 	case KeyDown:
-		l.Select(min(n-1, l.sel+1))
+		l.Select(min(n-1, l.sel+line))
+	case KeyLeft:
+		l.Select(max(0, l.sel-item))
+	case KeyRight:
+		l.Select(min(n-1, l.sel+item))
 	case KeyHome:
 		l.Select(0)
 	case KeyEnd:
@@ -764,7 +830,8 @@ func (l *List) KeyAction(a KeyAction, mods Mods) {
 // ctrl moves the cursor without selecting, ctrl+space toggles the
 // cursor row, and Enter activates every selected row once.
 func (l *List) keyActionMultiple(a KeyAction, mods Mods, n int) {
-	page := max(1, l.viewH/l.rowH)
+	line, item := l.steps()
+	page := max(1, l.viewH/l.rowH) * line
 	ctrl := mods&ModCtrl != 0
 	shift := mods&ModShift != 0
 	move := func(target int) {
@@ -790,9 +857,17 @@ func (l *List) keyActionMultiple(a KeyAction, mods Mods, n int) {
 	}
 	switch a {
 	case KeyUp:
-		move(l.cursor - 1)
+		move(l.cursor - line)
 	case KeyDown:
-		move(l.cursor + 1)
+		move(l.cursor + line)
+	case KeyLeft:
+		if item > 0 {
+			move(l.cursor - item)
+		}
+	case KeyRight:
+		if item > 0 {
+			move(l.cursor + item)
+		}
 	case KeyHome:
 		move(0)
 	case KeyEnd:
@@ -810,6 +885,15 @@ func (l *List) keyActionMultiple(a KeyAction, mods Mods, n int) {
 			l.activate(i)
 		}
 	}
+}
+
+// steps is how far up/down and left/right move: a line and nothing in
+// a list, a line of cells and one cell in a grid.
+func (l *List) steps() (line, item int) {
+	if l.cellW > 0 {
+		return l.columns(), 1
+	}
+	return 1, 0
 }
 
 // activate fires OnActivate for one row when it exists.
