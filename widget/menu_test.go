@@ -3,6 +3,7 @@ package widget
 import (
 	"testing"
 
+	"github.com/stubbedev/gelm/internal/style"
 	"github.com/stubbedev/gelm/render"
 )
 
@@ -79,4 +80,48 @@ func TestMenu(t *testing.T) {
 			}
 		}
 	})
+}
+
+// The menu styles as GTK's popup: the `popover.menu` card, a
+// `contents` inset, and one `modelbutton` per row — the hovered row
+// :hover, inert rows :disabled, check rows :checked while on, and the
+// label in the row's color.
+func TestMenuPopoverNodes(t *testing.T) {
+	loadCSS(t, `popover.menu { background-color: #010203; } popover.menu > contents { padding: 7; } popover.menu > contents modelbutton { color: #0a0b0c; } popover.menu > contents modelbutton:hover { background-color: #0d0e0f; } popover.menu > contents modelbutton:checked { color: #112233; } popover.menu > contents modelbutton:disabled { color: #445566; }`)
+	m := NewMenu(testFace(t), 13,
+		MenuItem{Label: "one", OnClick: func() {}},
+		MenuItem{Label: "two"},
+		MenuItem{Label: "check", Kind: ItemCheck, Checked: true, OnClick: func() {}},
+	)
+	host := NewBox(Column, 0, 0)
+	host.Append(m, false)
+	frame(t, host, 200, 120)
+
+	if got := m.style(m).Background; got != render.RGB(0x01, 0x02, 0x03) {
+		t.Errorf("card background %v, want the popover.menu rule", got)
+	}
+	if in := m.contentsInset(); in.Top != 7 || in.Left != 7 {
+		t.Errorf("contents inset %v, want the contents padding", in)
+	}
+	first := &m.rows[0]
+	if got := pickc(0, first.style(first), style.PropColor, 0); got != render.RGB(0x0a, 0x0b, 0x0c) {
+		t.Errorf("row color %v, want the modelbutton rule", got)
+	}
+	if !m.rows[1].disabled {
+		t.Error("a row with no action is not :disabled")
+	}
+	check := &m.rows[2]
+	if !check.HasState(StateChecked) {
+		t.Fatal("checked row missing :checked")
+	}
+	if got := pickc(0, check.style(check), style.PropColor, 0); got != render.RGB(0x11, 0x22, 0x33) {
+		t.Errorf("checked row color %v, want the :checked rule", got)
+	}
+	m.moveHover(0)
+	if got := first.style(first).Background; got != render.RGB(0x0d, 0x0e, 0x0f) {
+		t.Errorf("hovered row background %v, want the :hover rule", got)
+	}
+	if got := pickc(0, m.rows[1].style(&m.rows[1]), style.PropColor, 0); got != render.RGB(0x44, 0x55, 0x66) {
+		t.Errorf("disabled row color %v, want the :disabled rule", got)
+	}
 }

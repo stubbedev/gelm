@@ -772,6 +772,10 @@ func hoverActiveOf(w Widget) style.State {
 		if t.hovered >= 0 {
 			s |= style.Hover
 		}
+	case *menuRow:
+		if t.hovered {
+			s |= style.Hover
+		}
 	case *Paned:
 		if t.hovered {
 			s |= style.Hover
