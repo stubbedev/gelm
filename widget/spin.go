@@ -133,3 +133,18 @@ func (s *SpinButton) clamp(v float64) float64 {
 func (s *SpinButton) format(v float64) string {
 	return strconv.FormatFloat(v, 'f', s.digits, 64)
 }
+
+// SetStep changes how far a key steps (a step ≤ 0 is 1).
+func (s *SpinButton) SetStep(step float64) {
+	if step <= 0 {
+		step = 1
+	}
+	s.step = step
+}
+
+// SetDigits changes the shown decimals, re-rounding the value
+// (silently, like SetValue).
+func (s *SpinButton) SetDigits(digits int) {
+	s.digits = max0(digits)
+	s.SetValue(s.value)
+}

@@ -117,3 +117,25 @@ func equalFloats(a, b []float64) bool {
 	}
 	return true
 }
+
+func TestSpinButtonStepAndDigitsChange(t *testing.T) {
+	s, fired := testSpin(t, 0, 100, 0.05, 2)
+	s.SetValue(1.25)
+	s.SetDigits(0)
+	if s.Value() != 1 || s.Text() != "1" {
+		t.Errorf("digits 0: %v %q, want 1", s.Value(), s.Text())
+	}
+	s.SetStep(10)
+	s.KeyAction(KeyUp, 0)
+	if s.Value() != 11 {
+		t.Errorf("step 10 from 1 = %v, want 11", s.Value())
+	}
+	s.SetStep(0)
+	s.KeyAction(KeyUp, 0)
+	if s.Value() != 12 {
+		t.Errorf("a zero step = %v, want the step of 1", s.Value())
+	}
+	if len(*fired) != 2 {
+		t.Errorf("fired %v, want only the two steps", *fired)
+	}
+}
