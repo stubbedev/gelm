@@ -25,6 +25,10 @@
 - Containers parent their children as they measure, so the first
   layout is styled (it used to come out unstyled and settle a frame
   later).
+- `NewDropdownRows` with `DropdownRow{Label, Icon, Header}`: per-row
+  icons on the list and the face, group headers that are never
+  selected, stepped onto or typed to (GTK's DropDown with a row
+  factory). Menus gain `ItemHeader` caption rows.
 - `List.SetMaxHeight(px)`: caps the natural height; the rest scrolls,
   still virtualized.
 - A List with an auto row height (0) sizes rows by the styled first
