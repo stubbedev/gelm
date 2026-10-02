@@ -43,6 +43,12 @@ type PressSetter interface {
 	SetPressed(on bool)
 }
 
+// PressAter receives where a press landed, right after SetPressed(true):
+// a slider warps its value there (gtk-primary-button-warps-slider).
+type PressAter interface {
+	PressAt(p Point)
+}
+
 // Clicker is invoked when a press and release land on the same widget.
 // p is the release point in root coordinates.
 type Clicker interface {
@@ -479,6 +485,9 @@ func (r *Router) Press(button uint32, p Point) {
 	r.dragging = hit != nil
 	if pr, ok := hit.(PressSetter); ok {
 		pr.SetPressed(true)
+	}
+	if pa, ok := hit.(PressAter); ok {
+		pa.PressAt(p)
 	}
 }
 
