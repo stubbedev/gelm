@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/neurlang/wayland/wl"
+	"github.com/neurlang/wayland/xdg"
 	"github.com/unxed/xkb-go"
 
 	"github.com/stubbedev/gelm/internal/debug"
@@ -325,8 +326,6 @@ func (a *Application) OpenPopover(host Host, cfg PopoverConfig) (*Popover, error
 		Gravity: cfg.Gravity,
 		Serial:  cfg.Serial,
 	}
-	layer, onLayer := host.(LayerSurfacer)
-	tooltipHost, onWindow := host.(tooltipSurfacer)
 	switch {
 	case parent != nil:
 		// A nested popup grabs with the newest press anywhere on the
@@ -335,12 +334,11 @@ func (a *Application) OpenPopover(host Host, cfg PopoverConfig) (*Popover, error
 		if pcfg.Serial == 0 {
 			pcfg.Serial = max(parent.chainPressSerial(), a.LastPressSerial(host))
 		}
-	case onLayer:
-		pcfg.LayerParent = layer.LayerPopupSurface()
-	case onWindow:
-		pcfg.Parent = tooltipHost.TooltipSurface()
 	default:
-		return nil, errors.New("app: host cannot carry popups")
+		var ok bool
+		if pcfg.Parent, pcfg.LayerParent, ok = popupParentOf(host); !ok {
+			return nil, errors.New("app: host cannot carry popups")
+		}
 	}
 
 	// A bar-style layer declines the keyboard; the popover's grab needs
@@ -569,3 +567,19 @@ type keyboardModer interface {
 
 // popoverMaxH caps a popover's height when its content is measured.
 const popoverMaxH = 600
+
+// popupParentOf is the surface a popup on host hangs from: a layer's
+// layer surface, a toplevel's (Window or internal host) xdg surface.
+func popupParentOf(host Host) (xdgParent *xdg.Surface, layerParent *wlr.ZwlrLayerSurfaceV1, ok bool) {
+	switch h := host.(type) {
+	case LayerSurfacer:
+		return nil, h.LayerPopupSurface(), true
+	case *Window:
+		if h.win != nil && h.win.XdgSurface != nil {
+			return h.win.XdgSurface, nil, true
+		}
+	case tooltipSurfacer:
+		return h.TooltipSurface(), nil, true
+	}
+	return nil, nil, false
+}

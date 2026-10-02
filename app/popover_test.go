@@ -4,7 +4,9 @@ import (
 	"testing"
 
 	"github.com/neurlang/wayland/wl"
+	"github.com/neurlang/wayland/xdg"
 
+	"github.com/stubbedev/gelm/internal/window"
 	"github.com/stubbedev/gelm/render"
 	"github.com/stubbedev/gelm/widget"
 )
@@ -80,4 +82,19 @@ func (k *keySpy) Paint(*render.Canvas)                   {}
 func (k *keySpy) HitTest(widget.Point) widget.Widget     { return nil }
 func (k *keySpy) KeyAction(a widget.KeyAction, m widget.Mods) {
 	k.onAction(a, m)
+}
+
+// A toplevel Window carries popups from its xdg surface, a layer from
+// its layer surface; anything else cannot.
+func TestPopupParentOf(t *testing.T) {
+	surface := &xdg.Surface{}
+	if p, l, ok := popupParentOf(&Window{win: &window.Window{XdgSurface: surface}}); !ok || p != surface || l != nil {
+		t.Errorf("a Window: parent %v layer %v ok %v, want its xdg surface", p, l, ok)
+	}
+	if _, _, ok := popupParentOf(&Window{}); ok {
+		t.Error("a Window without a surface carried a popup")
+	}
+	if _, _, ok := popupParentOf(nil); ok {
+		t.Error("no host carried a popup")
+	}
 }
