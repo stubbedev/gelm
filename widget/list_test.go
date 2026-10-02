@@ -205,3 +205,35 @@ func TestListResetDropsEverything(t *testing.T) {
 		}
 	}
 }
+
+// boxModel serves Box rows holding a fixed 30px stub then an expanding
+// one, fresh per request.
+type boxModel struct{ n int }
+
+func (m boxModel) Len() int { return m.n }
+
+func (m boxModel) Row(int) *Box {
+	b := NewBox(Row, 0, 0)
+	b.Append(newStub(30, 10), false)
+	b.Append(newStub(0, 10), true)
+	return b
+}
+
+// TestListMeasuresEveryRowBeforeArranging pins that rows lay out from
+// a measure: a container row arranges its children from the sizes its
+// Measure recorded, and no Measure pass reaches a row except through
+// the list. Only row 0 used to be measured (to derive the row height),
+// so every later row laid its children out at zero width.
+func TestListMeasuresEveryRowBeforeArranging(t *testing.T) {
+	l := NewList[*Box](boxModel{5}, 20)
+	l.Measure(Constraints{Max: Size{W: 100, H: 1 << 20}})
+	l.Arrange(render.Rect{W: 100, H: 100})
+	l.Paint(render.New(make([]uint8, 100*100*4), 100*4, 100, 100))
+	for i := range 5 {
+		row := l.rows[i].row.(*Box)
+		first, rest := row.child[0].w.(*stub).rect, row.child[1].w.(*stub).rect
+		if first.W != 30 || first.Y != i*20 || rest.X != 30 || rest.W != 70 {
+			t.Errorf("row %d laid out %+v / %+v, want 30px at y=%d then 70px", i, first, rest, i*20)
+		}
+	}
+}
