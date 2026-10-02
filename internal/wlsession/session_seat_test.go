@@ -182,6 +182,15 @@ func TestSeatKeyboardCapabilityTransitions(t *testing.T) {
 		}
 	})
 
+	t.Run("super is held, the locks are not", func(t *testing.T) {
+		// Mod4 (super) with Num Lock (Mod2) and Caps Lock latched.
+		f.s.HandleKeyboardModifiers(wl.KeyboardModifiersEvent{ModsDepressed: 1<<6 | 1<<4 | 1<<1, Serial: 6})
+		if got := f.s.Mods(); got != ModSuper {
+			t.Errorf("mods = %v, want super alone", got)
+		}
+		f.s.HandleKeyboardModifiers(wl.KeyboardModifiersEvent{ModsDepressed: 0, Serial: 6})
+	})
+
 	t.Run("unplug clears device state and releases the proxy", func(t *testing.T) {
 		f.s.HandleKeyboardModifiers(wl.KeyboardModifiersEvent{ModsDepressed: 1, Serial: 7})
 		f.s.HandleSeatCapabilities(wl.SeatCapabilitiesEvent{Capabilities: capPointer})

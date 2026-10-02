@@ -79,12 +79,15 @@ type Output struct {
 // of the wayland ModsDepressed map.
 type Mods uint8
 
-// Modifier bits.
+// Modifier bits: xkb's core modifier indices (Shift, Lock, Control,
+// Mod1 for Alt, Mod4 for Super).
 const (
 	ModShift Mods = 1 << iota
 	ModCapsLock
 	ModCtrl
 	ModAlt
+	// ModSuper is Mod4, the logo key.
+	ModSuper Mods = 1 << 6
 )
 
 // Session is a connected display with the globals gelm needs bound.
@@ -1109,9 +1112,10 @@ func (s *Session) KeySym(code uint32) xkb.Keysym {
 	return s.xkbState.KeyGetOneSym(xkb.Keycode(code + 8))
 }
 
-// Mods returns the currently held modifiers (shift, ctrl, alt).
+// Mods returns the currently held modifiers (shift, ctrl, alt,
+// super); locks such as Caps and Num Lock are not held keys.
 func (s *Session) Mods() Mods {
-	return Mods(s.mods) & (ModShift | ModCtrl | ModAlt)
+	return Mods(s.mods) & (ModShift | ModCtrl | ModAlt | ModSuper)
 }
 
 // HandleKeyboardRepeatInfo implements wl.KeyboardRepeatInfoHandler: the

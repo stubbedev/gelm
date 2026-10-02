@@ -56,6 +56,9 @@ func (a Accel) String() string {
 	if a.Mods&wlsession.ModAlt != 0 {
 		parts = append(parts, "Alt")
 	}
+	if a.Mods&wlsession.ModSuper != 0 {
+		parts = append(parts, "Super")
+	}
 	name := xkb.KeysymGetName(a.Sym)
 	if name == "" {
 		name = "0x" + strconv.FormatUint(uint64(a.Sym), 16)
@@ -110,8 +113,10 @@ func accelMod(name string) (wlsession.Mods, error) {
 		return wlsession.ModShift, nil
 	case "alt", "mod1":
 		return wlsession.ModAlt, nil
+	case "super", "mod4", "logo":
+		return wlsession.ModSuper, nil
 	default:
-		return 0, fmt.Errorf("app: accel: unsupported modifier %q (shift, ctrl, alt)", name)
+		return 0, fmt.Errorf("app: accel: unsupported modifier %q (shift, ctrl, alt, super)", name)
 	}
 }
 
