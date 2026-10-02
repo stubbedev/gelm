@@ -238,10 +238,6 @@ func (l *RichLabel) shapeSpans(spans []MarkupRun) {
 	l.lineAsc, l.lineDesc, l.advance = asc, desc, adv
 }
 
-// richEllipsis is the mark a truncated line ends (or starts, or breaks)
-// with.
-const richEllipsis = "…"
-
 // SetEllipsize sets how a line wider than its box truncates: Start,
 // Middle, or End trade runes for an ellipsis, in the style of the run
 // it stands beside, until the line fits; None (the default) lets it
@@ -302,15 +298,15 @@ func (l *RichLabel) cutSpans(keep int) []MarkupRun {
 	switch l.ell {
 	case EllipsizeStart:
 		tail := sliceSpans(l.runs, n-keep, n)
-		return append([]MarkupRun{{Text: richEllipsis, Style: styleAt(l.runs, n-keep)}}, tail...)
+		return append([]MarkupRun{{Text: render.Ellipsis, Style: styleAt(l.runs, n-keep)}}, tail...)
 	case EllipsizeMiddle:
 		head, tail := (keep+1)/2, keep/2
 		out := sliceSpans(l.runs, 0, head)
-		out = append(out, MarkupRun{Text: richEllipsis, Style: styleAt(l.runs, max(head-1, 0))})
+		out = append(out, MarkupRun{Text: render.Ellipsis, Style: styleAt(l.runs, max(head-1, 0))})
 		return append(out, sliceSpans(l.runs, n-tail, n)...)
 	}
 	out := sliceSpans(l.runs, 0, keep)
-	return append(out, MarkupRun{Text: richEllipsis, Style: styleAt(l.runs, max(keep-1, 0))})
+	return append(out, MarkupRun{Text: render.Ellipsis, Style: styleAt(l.runs, max(keep-1, 0))})
 }
 
 // sliceSpans is the spans' runes [lo, hi), each piece keeping its
