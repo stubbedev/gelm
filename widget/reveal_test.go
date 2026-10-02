@@ -142,8 +142,8 @@ func TestScrollCSSBox(t *testing.T) {
 	}
 	s.ScrollBy(0, 1)
 	s.Arrange(render.Rect{W: 100, H: 80})
-	if leaf.bounds.Y != 7-scrollStepPx {
-		t.Errorf("scrolled child at %d, want %d", leaf.bounds.Y, 7-scrollStepPx)
+	if leaf.bounds.Y != 7-wheelStep(s.viewH) {
+		t.Errorf("scrolled child at %d, want %d", leaf.bounds.Y, 7-wheelStep(s.viewH))
 	}
 	// A rect under the bottom padding is not in view.
 	s.SetOffset(0, 0)
