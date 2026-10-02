@@ -631,3 +631,52 @@ func TestEntryHonorsItsMargin(t *testing.T) {
 		t.Error("the margin hit the field")
 	}
 }
+
+// A stylesheet styles a switch the GTK way: `switch` the track,
+// `:checked` while on, `switch slider` the knob.
+func TestSwitchTakesTheStylesheet(t *testing.T) {
+	loadCSS(t, `switch { background-color: #ff0000; min-width: 50px; min-height: 30px; border-radius: 0; }
+switch:checked { background-color: #00ff00; }
+switch slider { background-color: #0000ff; min-width: 10px; min-height: 10px; margin: 5px; border-radius: 0; }
+switch:checked slider { background-color: #ffffff; }
+switch.hot { --knob: #ffff00; }
+switch slider { background-color: var(--knob, #0000ff); }`)
+	s := NewSwitch(false)
+	if sz := s.Measure(Constraints{Max: Size{W: 200, H: 200}}); sz != (Size{W: 50, H: 30}) {
+		t.Fatalf("measure = %v, want the 50x30 min size", sz)
+	}
+	s.Arrange(render.Rect{W: 50, H: 30})
+	at := func(data []byte, x, y int) render.Color {
+		return render.ColorFromBytes(data[y*render.Stride(50)+x*4:])
+	}
+	off := paintTree(s, 50, 30)
+	if got := at(off, 45, 2); got != render.RGB(0xff, 0, 0) {
+		t.Errorf("off track = %#08x, want red", uint32(got))
+	}
+	if got := at(off, 10, 15); got != render.RGB(0, 0, 0xff) {
+		t.Errorf("off knob = %#08x, want blue at the left", uint32(got))
+	}
+	if got := at(off, 4, 15); got != render.RGB(0xff, 0, 0) {
+		t.Errorf("left of the knob = %#08x, want the track inside the 5px margin", uint32(got))
+	}
+	s.SetOn(true)
+	if !s.HasState(StateChecked) {
+		t.Fatal("an on switch is not :checked")
+	}
+	on := paintTree(s, 50, 30)
+	if got := at(on, 10, 15); got != render.RGB(0, 0xff, 0) {
+		t.Errorf("on track = %#08x, want green where the knob was", uint32(got))
+	}
+	if got := at(on, 40, 15); got != render.RGB(0xff, 0xff, 0xff) {
+		t.Errorf("on knob = %#08x, want the checked white at the right", uint32(got))
+	}
+	s.SetOn(false)
+	if s.HasState(StateChecked) {
+		t.Error("an off switch stayed :checked")
+	}
+	// A value the switch passes down reaches the knob.
+	s.AddClass("hot")
+	if got := at(paintTree(s, 50, 30), 10, 15); got != render.RGB(0xff, 0xff, 0) {
+		t.Errorf("knob = %#08x, want the inherited yellow", uint32(got))
+	}
+}
