@@ -1,6 +1,11 @@
 package widget
 
-import "testing"
+import (
+	"bytes"
+	"testing"
+
+	"github.com/stubbedev/gelm/render"
+)
 
 func TestSetFocus(t *testing.T) {
 	a := newFocusTarget()
@@ -110,4 +115,35 @@ func equalBools(a, b []bool) bool {
 		}
 	}
 	return true
+}
+
+// A text field paints its caret only while it holds keyboard focus.
+func TestCaretOnlyWhileFocused(t *testing.T) {
+	face := testFace(t)
+	e := NewEntry(face, 14, render.RGB(0xff, 0xff, 0xff))
+	ta := NewTextArea(face, 14, render.RGB(0xff, 0xff, 0xff))
+	other := newFocusTarget()
+	root := NewBox(Column, 0, 0)
+	root.Append(e, false).Append(ta, false).Append(other, false)
+	root.Measure(Constraints{Max: Size{W: 120, H: 120}})
+	root.Arrange(render.Rect{W: 120, H: 120})
+	r := &Router{Root: root}
+	shot := func(w Widget) []byte {
+		data := make([]byte, render.Stride(120)*120)
+		w.Paint(render.New(data, render.Stride(120), 120, 120))
+		return data
+	}
+	for name, w := range map[string]Widget{"entry": e, "textarea": ta} {
+		r.SetFocus(other)
+		blurred := shot(w)
+		r.SetFocus(w)
+		focused := shot(w)
+		r.SetFocus(other)
+		if bytes.Equal(blurred, focused) {
+			t.Errorf("%s: focus painted no caret", name)
+		}
+		if !bytes.Equal(blurred, shot(w)) {
+			t.Errorf("%s: the caret stayed after focus left", name)
+		}
+	}
 }

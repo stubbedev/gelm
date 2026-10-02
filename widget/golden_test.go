@@ -143,6 +143,9 @@ func NewGolden(t *testing.T, w Widget, name string, opts ...goldenOption) {
 		return buf
 	}
 
+	// Text fields paint their caret only while focused: a shot shows the
+	// caret, as the goldens always have.
+	defer caretsForShot(w)()
 	before := goldenStateHash(w)
 	first := paint()
 	warmHash := goldenStateHash(w)
@@ -512,4 +515,24 @@ func TestGoldenLightTheme(t *testing.T) {
 	card := NewBox(Row, 0, 8)
 	card.Append(NewLabel(face, 12, "Tooltips appear after a short dwell", th.Text), false)
 	NewGolden(t, card, "tooltip-card-light", light, goldenBackground(th.Surface))
+}
+
+// caretsForShot marks every entry and text area under w focused, so
+// the shot paints their carets; the returned func restores them.
+func caretsForShot(w Widget) (restore func()) {
+	var marked []*node
+	walkTree(w, 0, func(k Widget, _ int) {
+		switch k.(type) {
+		case *Entry, *TextArea:
+			if n := nodeOf(k); n != nil && !n.focused {
+				n.focused = true
+				marked = append(marked, n)
+			}
+		}
+	})
+	return func() {
+		for _, n := range marked {
+			n.focused = false
+		}
+	}
 }

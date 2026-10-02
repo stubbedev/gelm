@@ -1071,11 +1071,12 @@ func (t *TextArea) Paint(cv *render.Canvas) {
 			}
 		}
 	}
-	// Cursor bar on the caret's visual row; hidden while the input
-	// method hides its composing caret. Every frame reads the same
-	// pan, so a repaint (blink or otherwise) never jumps it.
+	// Cursor bar on the caret's visual row, while the area has keyboard
+	// focus; hidden while the input method hides its composing caret.
+	// Every frame reads the same pan, so a repaint (blink or otherwise)
+	// never jumps it.
 	caret := t.caretPos()
-	if !t.composing() || t.peCur >= 0 {
+	if t.focused && (!t.composing() || t.peCur >= 0) {
 		row := t.rowOf(caret)
 		y := 6 + row*lineH
 		cv.FillRect(render.Rect{
