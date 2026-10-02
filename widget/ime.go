@@ -302,7 +302,7 @@ func (t *TextArea) IMEDelete(before, after int) {
 		return
 	}
 	t.setDoc(string(doc[:start])+string(doc[end:]), start)
-	t.hist.record(snap, t.snapshot())
+	t.recordEdit(snap)
 }
 
 // IMECommit implements IMEClient.
