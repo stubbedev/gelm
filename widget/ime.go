@@ -375,7 +375,7 @@ func (t *TextArea) IMECursorRect() render.Rect {
 	row := t.rowOf(caret)
 	return render.Rect{
 		X: t.caretX(caret.line, caret.col),
-		Y: t.bounds.Y + 6 + row*t.lineHeight(),
+		Y: t.textRect().Y + row*t.lineHeight(),
 		W: 2,
 		H: t.lineHeight(),
 	}
