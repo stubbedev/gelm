@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### SpinButton and a focus hook
+
+- `widget.SpinButton`: a numeric entry over `[min, max]` with a step
+  and shown decimals. Up/Down step, PageUp/PageDown step ten times;
+  Enter or focus leaving commits the typed text, clamped and rounded,
+  and unparsable text reverts. `OnValueChanged` hears user changes
+  only; `SetValue`/`SetRange` are silent. Its CSS element is
+  `spinbutton`.
+- `SetOnFocusChanged(fn)` on every widget hears it gain or lose
+  keyboard focus, however focus moved.
+
 ### Data control: the clipboard-manager protocols
 
 - `Application.DataControl` binds the seat's data-control device over
