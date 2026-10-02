@@ -1,6 +1,7 @@
 package widget
 
 import (
+	"github.com/stubbedev/gelm/internal/style"
 	"github.com/stubbedev/gelm/render"
 )
 
@@ -14,10 +15,32 @@ type Notebook struct {
 	face     render.Font
 	tabs     []notebookTab
 	selected int
+	header   notebookHeader
 
 	OnSelect   func(name string)
 	OnTabClose func(name string)
 	Closable   bool
+}
+
+// notebookHeader is the tab bar's node tree (`notebook > header >
+// tabs > tab`): the header strip, the tab row, one tab part per page
+// (its :checked marks the selected one).
+type notebookHeader struct {
+	stylePart
+	tabs notebookTabs
+}
+
+type notebookTabs struct {
+	stylePart
+	tab []stylePart
+}
+
+func (t *notebookTabs) styleChildren() []Widget {
+	out := make([]Widget, len(t.tab))
+	for i := range t.tab {
+		out[i] = &t.tab[i]
+	}
+	return out
 }
 
 type notebookTab struct {
@@ -36,13 +59,47 @@ const tabWidth = 96
 // given face; a render.Chain adds mixed-script fallback. A nil face
 // panics here (see requireFace) instead of failing later, in shaping.
 func NewNotebook(face render.Font) *Notebook {
-	return &Notebook{face: requireFace("widget.NewNotebook", face)}
+	n := &Notebook{face: requireFace("widget.NewNotebook", face)}
+	n.header.SetElement("header")
+	n.header.tabs.SetElement("tabs")
+	n.syncTabs()
+	return n
+}
+
+// syncTabs rebuilds the tab parts over the current pages and links the
+// header chain below the notebook.
+func (n *Notebook) syncTabs() {
+	n.header.tabs.tab = make([]stylePart, len(n.tabs))
+	for i := range n.header.tabs.tab {
+		n.header.tabs.tab[i].SetElement("tab")
+	}
+	setParents(n, &n.header)
+	setParents(&n.header, &n.header.tabs)
+	setParents(&n.header.tabs, n.header.tabs.styleChildren()...)
+	n.syncSelectedTab()
+}
+
+// syncSelectedTab mirrors the selection into the tab parts' :checked.
+func (n *Notebook) syncSelectedTab() {
+	for i := range n.header.tabs.tab {
+		n.header.tabs.tab[i].SetState(StateChecked, i == n.selected)
+	}
+}
+
+// styleChildren is the header and the visible page (styleKids).
+func (n *Notebook) styleChildren() []Widget {
+	out := []Widget{&n.header}
+	if n.selected < len(n.tabs) {
+		out = append(out, n.tabs[n.selected].w)
+	}
+	return out
 }
 
 // AppendTab adds a page under name; the first page added becomes the
 // selected one.
 func (n *Notebook) AppendTab(name string, w Widget) {
 	n.tabs = append(n.tabs, notebookTab{name: name, w: w})
+	n.syncTabs()
 	n.InvalidateLayout()
 }
 
@@ -70,6 +127,7 @@ func (n *Notebook) selectIndex(i int) {
 		return
 	}
 	n.selected = i
+	n.syncSelectedTab()
 	n.Invalidate()
 	if n.OnSelect != nil {
 		n.OnSelect(n.tabs[i].name)
@@ -94,6 +152,7 @@ func (n *Notebook) CloseTab(name string) bool {
 			n.selected = 0
 		}
 		clearParents(t.w)
+		n.syncTabs()
 		n.InvalidateLayout()
 		return true
 	}
@@ -159,23 +218,51 @@ func (n *Notebook) tabRect(i int) render.Rect {
 	return render.Rect{X: x, Y: n.bounds.Y, W: tabWidth, H: tabBarHeight}
 }
 
-// Paint draws the tab bar - the selected tab is distinct through the
-// accent underline and full text color - and the visible page.
+// Paint draws the tab bar through its nodes — the notebook's box, the
+// header strip, and each tab (the selected one :checked: its own
+// background and label color, the accent underline as the theme's
+// fallback) — and the visible page.
 func (n *Notebook) Paint(cv *render.Canvas) {
 	th := Current()
-	cv.RoundedRect(n.bounds, th.Radius, th.Surface)
+	v := n.style(n)
+	fx := pushEffects(cv, v)
+	radii := radiusOr(v, th.Radius)
+	paintBoxBehind(cv, v, n.bounds, radii, borderOf(v), pickc(0, v, style.PropBackgroundColor, th.Surface))
+	paintOutline(cv, v, n.bounds, radii)
+	fx.pop(cv)
+
+	header := render.Rect{X: n.bounds.X, Y: n.bounds.Y, W: n.bounds.W, H: tabBarHeight}
+	hv := n.header.style(&n.header)
+	hfx := pushEffects(cv, hv)
+	n.header.Arrange(header)
+	n.header.tabs.Arrange(header)
+	hradii := radiusOr(hv, 0)
+	paintBoxBehind(cv, hv, header, hradii, borderOf(hv), pickc(0, hv, style.PropBackgroundColor, 0))
+	paintOutline(cv, hv, header, hradii)
+	hfx.pop(cv)
 
 	for i, t := range n.tabs {
 		rect := n.tabRect(i)
+		tp := &n.header.tabs.tab[i]
+		tp.Arrange(rect)
+		tv := tp.style(tp)
+		var fill, underline render.Color
 		if i == n.selected {
-			cv.FillRect(rect, th.SurfaceHover)
-			cv.FillRect(render.Rect{X: rect.X, Y: rect.Y + tabBarHeight - 3, W: rect.W, H: 3}, th.Accent)
+			fill, underline = th.SurfaceHover, th.Accent
 		}
+		tfx := pushEffects(cv, tv)
+		tradii := radiusOr(tv, 0)
+		paintBoxBehind(cv, tv, rect, tradii, borderOf(tv), pickc(0, tv, style.PropBackgroundColor, fill))
+		if i == n.selected && !tv.Has(style.PropBoxShadow) {
+			cv.FillRect(render.Rect{X: rect.X, Y: rect.Y + tabBarHeight - 3, W: rect.W, H: 3}, underline)
+		}
+		tfx.pop(cv)
 		if n.face != nil {
 			color := th.TextMuted
 			if i == n.selected {
 				color = th.Text
 			}
+			color = pickc(0, tv, style.PropColor, color)
 			n.face.DrawAligned(cv, t.name, rect, 12, color, render.AlignCenter)
 		}
 		if n.Closable {

@@ -809,6 +809,9 @@ func hoverActiveOf(w Widget) style.State {
 		if t.Checked() {
 			s |= style.Checked
 		}
+		if t.Inconsistent() {
+			s |= style.Indeterminate
+		}
 	}
 	return s
 }

@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/stubbedev/gelm/internal/anim"
+	"github.com/stubbedev/gelm/internal/style"
 	"github.com/stubbedev/gelm/render"
 )
 
@@ -248,4 +249,20 @@ func TestExpanderPaint(t *testing.T) {
 			t.Error("open expander did not paint its child")
 		}
 	})
+}
+
+// The header styles through `expander > title > arrow`: the title's
+// color paints the caption, the arrow's the chevron.
+func TestExpanderTitleAndArrowNodes(t *testing.T) {
+	loadCSS(t, `expander > title { color: #010203; } expander > title > arrow { color: #0a0b0c; }`)
+	e := NewExpander(testFace(t), "section", NewSpacer(1, 1))
+	host := NewBox(Column, 0, 0)
+	host.Append(e, false)
+	frame(t, host, 100, 60)
+	if got := pickc(0, e.titleNode.style(&e.titleNode), style.PropColor, 0); got != render.RGB(0x01, 0x02, 0x03) {
+		t.Errorf("title color %v, want the `expander > title` rule", got)
+	}
+	if got := pickc(0, e.arrow.style(&e.arrow), style.PropColor, 0); got != render.RGB(0x0a, 0x0b, 0x0c) {
+		t.Errorf("arrow color %v, want the arrow rule", got)
+	}
 }

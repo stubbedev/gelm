@@ -3,6 +3,7 @@ package widget
 import (
 	"testing"
 
+	"github.com/stubbedev/gelm/internal/style"
 	"github.com/stubbedev/gelm/render"
 )
 
@@ -113,5 +114,38 @@ func TestNotebookTraversal(t *testing.T) {
 	n.KeyAction(KeyNextPage, ModCtrl)
 	if got := n.SelectedTab(); got != "three" {
 		t.Errorf("after ctrl+PageDown x2 selected = %q, want three", got)
+	}
+}
+
+// The tab bar styles as `notebook > header > tabs > tab`: the header
+// and each tab take their own backgrounds, the selected tab is
+// :checked, and its label takes the tab's color.
+func TestNotebookTabNodes(t *testing.T) {
+	loadCSS(t, `notebook header { background-color: #010203; } notebook header tabs tab { color: #0a0b0c; } notebook header tabs tab:checked { background-color: #0d0e0f; color: #112233; }`)
+	n := NewNotebook(testFace(t))
+	n.AppendTab("one", NewSpacer(20, 20))
+	n.AppendTab("two", NewSpacer(20, 20))
+	host := NewBox(Column, 0, 0)
+	host.Append(n, true)
+	frame(t, host, 200, 60)
+	if got := n.header.style(&n.header).Background; got != render.RGB(0x01, 0x02, 0x03) {
+		t.Errorf("header background %v, want the header rule", got)
+	}
+	first, second := &n.header.tabs.tab[0], &n.header.tabs.tab[1]
+	if got := first.style(first).Background; got != render.RGB(0x0d, 0x0e, 0x0f) {
+		t.Errorf("selected tab background %v, want the :checked rule", got)
+	}
+	if got := pickc(0, first.style(first), style.PropColor, 0); got != render.RGB(0x11, 0x22, 0x33) {
+		t.Errorf("selected tab color %v, want the :checked rule", got)
+	}
+	if !first.HasState(StateChecked) || second.HasState(StateChecked) {
+		t.Errorf("checked states: first %v second %v", first.HasState(StateChecked), second.HasState(StateChecked))
+	}
+	if got := second.style(second).Background; got != 0 {
+		t.Errorf("unselected tab background %v, want none", got)
+	}
+	n.SelectTab("two")
+	if second.style(second).Background != render.RGB(0x0d, 0x0e, 0x0f) || first.style(first).Background != 0 {
+		t.Errorf("after the move: first %v second %v", first.style(first).Background, second.style(second).Background)
 	}
 }

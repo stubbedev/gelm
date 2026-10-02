@@ -46,8 +46,8 @@ func NewSlider(min, max, step, value float64) *Slider {
 
 // sliderTrough is the scale's trough node and its highlight and knob.
 type sliderTrough struct {
-	entryPart
-	highlight, knob entryPart
+	stylePart
+	highlight, knob stylePart
 }
 
 func (t *sliderTrough) styleChildren() []Widget { return []Widget{&t.highlight, &t.knob} }

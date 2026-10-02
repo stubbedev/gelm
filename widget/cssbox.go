@@ -82,6 +82,12 @@ func borderColors(v *style.Values) [4]render.Color {
 // caller from its programmatic, stylesheet, and theme origins), the
 // background image, inset shadows, and the border.
 func paintBoxBehind(cv *render.Canvas, v *style.Values, border render.Rect, radii render.Corners, bw render.Insets, bg render.Color) {
+	paintBoxBehindCol(cv, v, border, radii, bw, bg, borderColors(v))
+}
+
+// paintBoxBehindCol is paintBoxBehind with explicit border colors: a
+// widget's themed fallback where the cascade names none.
+func paintBoxBehindCol(cv *render.Canvas, v *style.Values, border render.Rect, radii render.Corners, bw render.Insets, bg render.Color, cols [4]render.Color) {
 	shadows := v.Shadow.List()
 	for _, sh := range slices.Backward(shadows) { // the first shadow is on top
 		if !sh.Inset {
@@ -107,7 +113,7 @@ func paintBoxBehind(cv *render.Canvas, v *style.Values, border render.Rect, radi
 		}
 	}
 	if !bw.Zero() {
-		cv.RoundedBorderSides(border, radii, bw, borderColors(v))
+		cv.RoundedBorderSides(border, radii, bw, cols)
 	}
 }
 

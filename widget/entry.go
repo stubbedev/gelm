@@ -110,18 +110,11 @@ func NewEntry(face render.Font, sizePx float64, color render.Color) *Entry {
 // placeholder`, `text > selection`) color those. The entry matches
 // and paints them; they are never laid out on their own.
 type entryText struct {
-	entryPart
-	placeholder, selection entryPart
+	stylePart
+	placeholder, selection stylePart
 }
 
 func (t *entryText) styleChildren() []Widget { return []Widget{&t.placeholder, &t.selection} }
-
-// entryPart is a style-only node of an entry.
-type entryPart struct{ node }
-
-func (*entryPart) Measure(con Constraints) Size { return clampSize(Size{}, con) }
-func (*entryPart) Paint(*render.Canvas)         {}
-func (*entryPart) HitTest(Point) Widget         { return nil }
 
 // styleChildren is the text node (styleKids).
 func (e *Entry) styleChildren() []Widget { return []Widget{&e.text} }

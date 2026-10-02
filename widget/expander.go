@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/stubbedev/gelm/internal/anim"
+	"github.com/stubbedev/gelm/internal/style"
 	"github.com/stubbedev/gelm/render"
 )
 
@@ -42,6 +43,11 @@ type Expander struct {
 	progress float64
 	cancel   anim.Cancel
 	hovered  bool
+	// titleNode and arrow are the header's style nodes (`expander >
+	// title`, `title > arrow`): the title's color paints the caption,
+	// the arrow's the chevron.
+	titleNode stylePart
+	arrow     stylePart
 	// childRect is where the last Arrange put the child, the clip the
 	// painter reveals through.
 	childRect render.Rect
@@ -56,7 +62,21 @@ type Expander struct {
 // render.Chain for mixed-script fallback. A nil face panics here (see
 // requireFace) instead of failing later, in shaping.
 func NewExpander(face render.Font, title string, child Widget) *Expander {
-	return &Expander{face: requireFace("widget.NewExpander", face), title: title, sizePx: Current().TextSize, child: child}
+	e := &Expander{face: requireFace("widget.NewExpander", face), title: title, sizePx: Current().TextSize, child: child}
+	e.titleNode.SetElement("title")
+	e.arrow.SetElement("arrow")
+	setParents(e, &e.titleNode)
+	setParents(&e.titleNode, &e.arrow)
+	return e
+}
+
+// styleChildren is the title and, while open, the child (styleKids).
+func (e *Expander) styleChildren() []Widget {
+	out := []Widget{&e.titleNode}
+	if e.open && e.child != nil {
+		out = append(out, e.child)
+	}
+	return out
 }
 
 // Open reports the toggle state (the settled layout, not the animated
@@ -247,9 +267,10 @@ func (e *Expander) Paint(cv *render.Canvas) {
 	if e.hovered {
 		cv.RoundedRect(head, th.Radius, th.SurfaceHover)
 	}
+	av := e.arrow.style(&e.arrow)
 	cx := head.X + headerPadX + chevronSize/2
 	cy := head.Y + head.H/2
-	paintChevron(cv, cx, cy, chevronSize, e.progress, th.TextMuted)
+	paintChevron(cv, cx, cy, chevronSize, e.progress, pickc(0, av, style.PropColor, th.TextMuted))
 	if e.face != nil {
 		sh := e.face.Shape(e.title, e.sizePx)
 		baseline := head.Y + (head.H-sh.LineHeight())/2 + int(sh.Ascent()+0.5)
@@ -257,6 +278,7 @@ func (e *Expander) Paint(cv *render.Canvas) {
 		if e.title == "" {
 			col = th.TextMuted
 		}
+		col = pickc(0, e.titleNode.style(&e.titleNode), style.PropColor, col)
 		e.face.Draw(cv, sh, head.X+headerPadX+chevronSize+headerGap, baseline, col)
 	}
 	if e.progress > 0 && e.child != nil && !e.childRect.Empty() {

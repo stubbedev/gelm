@@ -4,6 +4,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/stubbedev/gelm/internal/style"
 	"github.com/stubbedev/gelm/render"
 )
 
@@ -630,5 +631,25 @@ func TestDropdownSetItemsReplacesTheList(t *testing.T) {
 	dd.SetRows([]DropdownRow{{Label: "Group", Header: true}, {Label: "a"}}, 0)
 	if dd.Selected() != 1 {
 		t.Errorf("a header selection moved to %d, want the row after it", dd.Selected())
+	}
+}
+
+// The closed face styles as `dropdown > button > arrow`: the button's
+// box paints the face and the arrow's color the chevron strokes.
+func TestDropdownButtonAndArrowNodes(t *testing.T) {
+	loadCSS(t, `dropdown > button { background-color: #010203; border-radius: 5; } dropdown > button > arrow { color: #0a0b0c; }`)
+	d := NewDropdown(testFace(t), 13, []string{"a", "b"}, 0)
+	host := NewBox(Column, 0, 0)
+	host.Append(d, false)
+	frame(t, host, 100, 60)
+	bv := d.faceBtn.style(&d.faceBtn)
+	if got := bv.Background; got != render.RGB(0x01, 0x02, 0x03) {
+		t.Errorf("face background %v, want the button rule", got)
+	}
+	if bv.Radius.TopLeft != 5 {
+		t.Errorf("face radius %d, want 5", bv.Radius.TopLeft)
+	}
+	if got := pickc(0, d.faceArrow.style(&d.faceArrow), style.PropColor, 0); got != render.RGB(0x0a, 0x0b, 0x0c) {
+		t.Errorf("arrow color %v, want the arrow rule", got)
 	}
 }
