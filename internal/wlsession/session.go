@@ -131,6 +131,7 @@ type Session struct {
 	extDataControlMgr     *wlr.DataControlManagerV1
 	wlrDataControlMgr     *wlr.ZwlrDataControlManagerV1
 	wlrDataControlVersion uint32
+	globalShortcutsMgr    *wlr.GlobalShortcutsManagerV1
 	// comp is the seat's dead-key compose state (compose.go); nil
 	// without a compose file, which disables compose entirely.
 	comp *compose.State
@@ -440,6 +441,8 @@ func (s *Session) HandleRegistryGlobal(ev wl.RegistryGlobalEvent) {
 		s.bindExtDataControlManager(ev)
 	case "zwlr_data_control_manager_v1":
 		s.bindWlrDataControlManager(ev)
+	case "hyprland_global_shortcuts_manager_v1":
+		s.bindGlobalShortcutsManager(ev)
 	}
 }
 
