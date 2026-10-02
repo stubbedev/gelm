@@ -72,6 +72,8 @@ type List struct {
 	probe *listRow
 	// maxH caps the natural height (SetMaxHeight).
 	maxH int
+	// singleClick activates a row on a plain click (SetSingleClickActivate).
+	singleClick bool
 	// cellW is the grid mode's minimum cell width (0 is a plain
 	// list); cols is how many cells the arranged width fits.
 	cellW int
@@ -665,6 +667,9 @@ func (l *List) rowClick(r *listRow, p Point) {
 	case SelectionMultiple:
 		l.toggleRow(r.idx)
 	}
+	if l.singleClick && l.mode != SelectionMultiple {
+		l.activate(r.idx)
+	}
 	if r.check == nil || l.mode != SelectionMultiple {
 		if c, ok := r.row.(Clicker); ok {
 			c.ClickAt(p)
@@ -1090,3 +1095,9 @@ func (l *List) styleChildren() []Widget {
 
 // styleChildren is the row widget, inheriting through the proxy.
 func (r *listRow) styleChildren() []Widget { return []Widget{r.row} }
+
+// SetSingleClickActivate makes a plain click activate the row
+// (OnActivate) as well as select it, GTK's single-click-activate: a
+// picker's rows act on one click. Multiple-selection lists keep
+// clicks for membership.
+func (l *List) SetSingleClickActivate(on bool) { l.singleClick = on }

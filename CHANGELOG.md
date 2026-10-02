@@ -29,6 +29,8 @@
   icons on the list and the face, group headers that are never
   selected, stepped onto or typed to (GTK's DropDown with a row
   factory). Menus gain `ItemHeader` caption rows.
+- `List.SetSingleClickActivate`: a click activates the row too (GTK's
+  single-click-activate).
 - `List.SetMaxHeight(px)`: caps the natural height; the rest scrolls,
   still virtualized.
 - A List with an auto row height (0) sizes rows by the styled first

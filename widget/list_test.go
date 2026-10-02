@@ -323,3 +323,31 @@ func TestListMaxHeight(t *testing.T) {
 		t.Errorf("uncapped %d, want 500", h)
 	}
 }
+
+func TestListSingleClickActivate(t *testing.T) {
+	var rows staticRows
+	for range 3 {
+		rows = append(rows, newStub(20, 10))
+	}
+	l := NewList[Widget](rows, 10)
+	var acted []int
+	l.OnActivate = func(i int) { acted = append(acted, i) }
+	l.Measure(Constraints{Max: Size{W: 100, H: 100}})
+	l.Arrange(render.Rect{W: 100, H: 100})
+	click := func(y int) {
+		data := make([]byte, render.Stride(100)*100)
+		l.Paint(render.New(data, render.Stride(100), 100, 100))
+		if r, ok := l.HitTest(Point{X: 5, Y: y}).(*listRow); ok {
+			l.rowClick(r, Point{X: 5, Y: y})
+		}
+	}
+	click(15)
+	if len(acted) != 0 || l.Selected() != 1 {
+		t.Fatalf("a plain click activated %v (selected %d)", acted, l.Selected())
+	}
+	l.SetSingleClickActivate(true)
+	click(25)
+	if len(acted) != 1 || acted[0] != 2 || l.Selected() != 2 {
+		t.Errorf("single-click activate: %v selected %d", acted, l.Selected())
+	}
+}
