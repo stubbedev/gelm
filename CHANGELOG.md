@@ -22,6 +22,8 @@
 - `Paned.SetMaxPosition(px)`: caps the divider (drags, keys,
   SetPosition) above the start pane's floor; zero lifts the cap.
 - Entries and text areas paint their caret only while focused (GTK).
+- `app.FontFamilies()`: the installed families by display name, sorted
+  and deduped (resolved once per process).
 - A dropdown's list claims no menu mnemonics (no underlines; type-ahead
   is its keyboard model).
 - Fix: faded colors (disabled text, accents) scale each premultiplied
