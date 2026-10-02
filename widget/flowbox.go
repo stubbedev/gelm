@@ -25,6 +25,7 @@ type FlowBox struct {
 // FlowBoxChild wraps one child of a FlowBox: a CSS box around it.
 type FlowBoxChild struct {
 	node
+	box   *FlowBox
 	child Widget
 	nat   Size
 }
@@ -51,7 +52,7 @@ func (f *FlowBox) Append(w Widget) *FlowBoxChild { return f.Insert(len(f.kids), 
 
 // Insert adds w at index i (clamped), returning its FlowBoxChild.
 func (f *FlowBox) Insert(i int, w Widget) *FlowBoxChild {
-	c := &FlowBoxChild{child: w}
+	c := &FlowBoxChild{box: f, child: w}
 	c.SetElement("flowboxchild")
 	i = min(max(i, 0), len(f.kids))
 	f.kids = append(f.kids, nil)
@@ -225,8 +226,8 @@ func (c *FlowBoxChild) Child() Widget { return c.child }
 
 // Index is the child's position in its FlowBox, -1 when detached.
 func (c *FlowBoxChild) Index() int {
-	if f, ok := c.parent.(*FlowBox); ok {
-		for i, k := range f.kids {
+	if c.box != nil {
+		for i, k := range c.box.kids {
 			if k == c {
 				return i
 			}

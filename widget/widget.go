@@ -540,8 +540,21 @@ func parentOf(w Widget) Widget {
 	return nil
 }
 
+// outerOf is the widget the tree holds for w: a type embedding a
+// container (a drop zone around a FlowBox, a panel around a Box)
+// records itself as that node's self when it is parented, so the
+// children's parent links name the outer type, whose interfaces the
+// ancestor walks (drop targets, click hooks, scroll handlers) see.
+func outerOf(w Widget) Widget {
+	if n := nodeOf(w); n != nil && n.self != nil {
+		return n.self
+	}
+	return w
+}
+
 // setParents records parent as the arranging container of every child.
 func setParents(parent Widget, kids ...Widget) {
+	parent = outerOf(parent)
 	for _, k := range kids {
 		if k == nil {
 			continue
