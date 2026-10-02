@@ -3,9 +3,8 @@ package app
 import (
 	"testing"
 
-	"golang.org/x/image/font/gofont/goregular"
-
 	"github.com/unxed/xkb-go"
+	"golang.org/x/image/font/gofont/goregular"
 
 	"github.com/stubbedev/gelm/render"
 	"github.com/stubbedev/gelm/widget"
