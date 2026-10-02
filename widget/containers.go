@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/stubbedev/gelm/internal/anim"
+	"github.com/stubbedev/gelm/internal/style"
 	"github.com/stubbedev/gelm/render"
 )
 
@@ -411,7 +412,10 @@ type Scroll struct {
 	// The bar's gutter is always reserved beside it.
 	VerticalOnly bool
 
-	// viewW/viewH is the child area inside the reserved gutters.
+	// view is the viewport, the content box inside the stylesheet's
+	// border and padding; viewW/viewH is its child area inside the
+	// reserved gutters.
+	view           render.Rect
 	viewW, viewH   int
 	childX, childY int
 
@@ -593,6 +597,13 @@ func (s *Scroll) Measure(con Constraints) Size {
 	if sz, ok := s.measureHit(con); ok {
 		return sz
 	}
+	v := s.style(s)
+	s.measured = measureBox(v, boxOf(v, render.Insets{}), con, s.measureContent)
+	return s.measureStore(con, s.measured)
+}
+
+// measureContent is Measure inside the CSS box.
+func (s *Scroll) measureContent(con Constraints) Size {
 	s.nat = Size{}
 	if s.child != nil {
 		w := math.MaxInt
@@ -614,8 +625,7 @@ func (s *Scroll) Measure(con Constraints) Size {
 		}
 		want.H = s.maxH
 	}
-	s.measured = clampSize(want, con)
-	return s.measureStore(con, s.measured)
+	return clampSize(want, con)
 }
 
 // SetMaxContentHeight caps the height the scroll asks for (GTK's
@@ -640,7 +650,10 @@ func (s *Scroll) MaxContentHeight() int { return s.maxH }
 // smaller, centered when it is smaller without fill, otherwise at its
 // natural size shifted by the offset.
 func (s *Scroll) Arrange(r render.Rect) {
-	s.ArrangeRoot(r)
+	border, inner := boxRects(boxOf(s.style(s), render.Insets{}), r)
+	s.ArrangeRoot(border)
+	s.view = inner
+	r = inner
 	gutterV, gutterH := 0, 0
 	if s.nat.H > r.H && r.H > 40 {
 		gutterV = gutter
@@ -697,7 +710,13 @@ func (s *Scroll) ArrangeRoot(r render.Rect) {
 // Paint clips to the viewport, paints the shifted child, and draws
 // the auto-hiding bars in their gutters at the current fade alpha.
 func (s *Scroll) Paint(cv *render.Canvas) {
-	prev := cv.PushClip(s.bounds)
+	v := s.style(s)
+	radii := radiusOr(v, 0)
+	if bg := pickc(0, v, style.PropBackgroundColor, 0); bg != 0 || hasBoxLayers(v) {
+		paintBoxBehind(cv, v, s.bounds, radii, borderOf(v), bg)
+	}
+	defer paintOutline(cv, v, s.bounds, radii)
+	prev := cv.PushClip(s.view)
 	if s.child != nil {
 		PaintChild(cv, s.child)
 	}
@@ -762,7 +781,7 @@ func (s *Scroll) vBarGeometry() (track, handle render.Rect) {
 	if maxY <= 0 || s.viewH <= 0 || s.nat.H <= 0 {
 		return track, handle
 	}
-	track = render.Rect{X: s.bounds.X + s.bounds.W - gutter, Y: s.bounds.Y, W: gutter, H: s.viewH}
+	track = render.Rect{X: s.view.X + s.view.W - gutter, Y: s.view.Y, W: gutter, H: s.viewH}
 	h := max(24, s.viewH*s.viewH/s.nat.H)
 	y := track.Y + (track.H-h)*s.offY/max(1, maxY)
 	handle = render.Rect{X: track.X, Y: y, W: gutter, H: h}
@@ -776,7 +795,7 @@ func (s *Scroll) hBarGeometry() (track, handle render.Rect) {
 	if maxX <= 0 || s.viewW <= 0 || s.nat.W <= 0 {
 		return track, handle
 	}
-	track = render.Rect{X: s.bounds.X, Y: s.bounds.Y + s.bounds.H - gutter, W: s.viewW, H: gutter}
+	track = render.Rect{X: s.view.X, Y: s.view.Y + s.view.H - gutter, W: s.viewW, H: gutter}
 	w := max(24, s.viewW*s.viewW/s.nat.W)
 	x := track.X + (track.W-w)*s.offX/max(1, maxX)
 	handle = render.Rect{X: x, Y: track.Y, W: w, H: gutter}
