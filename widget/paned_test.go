@@ -245,3 +245,24 @@ func TestPanedMaxPosition(t *testing.T) {
 		t.Errorf("uncapped = %d, want 300", got)
 	}
 }
+
+// A pane's subtree styles from the stylesheet above the Paned: the
+// Paned arranges its panes before its own parent records it, and the
+// descendants styled meanwhile restyle once the chain completes.
+func TestPanedPanesTakeTheStylesheetAbove(t *testing.T) {
+	root := NewBox(Column, 0, 0)
+	hdr := NewBox(Row, 0, 0)
+	hdr.AddClass("x")
+	hdr.Append(newStub(12, 17), false)
+	side := NewBox(Column, 0, 0)
+	side.Append(hdr, false)
+	root.Append(NewPaned(Row, side, NewBox(Row, 0, 0)), true)
+	root.AttachStylesheet(NewStylesheet(".x { padding: 20px; }", StylePriorityUser))
+	for range 2 {
+		root.Measure(Constraints{Max: Size{W: 900, H: 650}})
+		root.Arrange(render.Rect{W: 900, H: 650})
+	}
+	if got := hdr.Measure(Constraints{Max: Size{W: 900, H: 650}}); got != (Size{W: 52, H: 57}) {
+		t.Errorf("styled pane child measures %v, want the 20px padding around 12x17", got)
+	}
+}
