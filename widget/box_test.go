@@ -225,3 +225,57 @@ func TestBoxAppendAligned(t *testing.T) {
 		t.Errorf("column start: %v, want natural width, expanded height", got)
 	}
 }
+
+// A transform scales the box's paint about its center: a 10x10 swatch
+// at scale(2) inks a 20x20 area, and the tween eases between states.
+func TestBoxTransform(t *testing.T) {
+	c := pinAnimClock(t)
+	face := goldenFace(t)
+	root := NewBox(Column, 0, 0)
+	root.AttachStylesheet(NewStylesheet(`
+		.swatch { background-color: #ff0000; padding: 5px; }
+		.swatch:hover { transform: scale(2); transition: transform 100ms; }
+	`, StylePriorityUser))
+	root.SetPadding(render.Insets{Left: 20, Top: 15})
+	sw := NewBox(Row, 0, 0)
+	sw.AddClass("swatch")
+	root.Append(NewLabel(face, 10, "pad", render.RGBA(0, 0, 0, 255)), false)
+	root.Append(sw, false)
+	sz := root.Measure(Constraints{Max: Size{W: 200, H: 200}})
+	root.Arrange(render.Rect{W: sz.W, H: sz.H})
+
+	data := make([]byte, render.Stride(200)*100)
+	cv := render.NewScaled(data, render.Stride(200), 200, 100, 1, 1)
+	cv.Clear(cv.Rect(), 0)
+	PaintChild(cv, root)
+	span := func() (minX, maxX int) {
+		minX, maxX = 1<<30, -1
+		for y := range 100 {
+			for x := range 200 {
+				if render.ColorFromBytes(data[(y*200+x)*4:]).A() == 255 && render.ColorFromBytes(data[(y*200+x)*4:]).R() == 255 {
+					minX = min(minX, x)
+					maxX = max(maxX, x)
+				}
+			}
+		}
+		return minX, maxX
+	}
+	a, b := span()
+	base := b - a
+	if base <= 0 {
+		t.Fatal("the unhovered swatch painted nothing")
+	}
+
+	// Hover: the tween runs; settled, the paint spans twice the box.
+	setHoverChain(nil, sw)
+	_ = sw.style(sw)
+	c.drive()
+	data = make([]byte, render.Stride(200)*100)
+	cv = render.NewScaled(data, render.Stride(200), 200, 100, 1, 1)
+	cv.Clear(cv.Rect(), 0)
+	PaintChild(cv, root)
+	a, b = span()
+	if width := b - a; width < base*9/5 || width > base*11/5 {
+		t.Errorf("hovered swatch inks %dpx, want twice the unhovered %d (bilinear edges within tolerance)", width, base)
+	}
+}

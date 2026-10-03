@@ -366,6 +366,12 @@ func copyProp(dst, src *Values, p Prop) {
 		dst.Italic = src.Italic
 	case PropLetterSpacing:
 		dst.LetterSpacing = src.LetterSpacing
+	case PropLineHeight:
+		dst.LineHeight = src.LineHeight
+	case PropFontFeatures:
+		dst.Features = src.Features
+	case PropTransform:
+		dst.ScaleX, dst.ScaleY, dst.TranslateX = src.ScaleX, src.ScaleY, src.TranslateX
 	case PropTextTransform:
 		dst.TextTransform = src.TextTransform
 	case PropIconSize:

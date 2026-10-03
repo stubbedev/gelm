@@ -21,6 +21,7 @@ package widget
 import (
 	"os"
 	"slices"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -876,6 +877,7 @@ func (n *node) restyle(w Widget) *style.Values {
 	n.styleDirty = false
 	n.ink = inkOf(&v)
 	n.transitionBackground(old, v)
+	n.transitionTransform(old, v)
 	n.syncAnimation(v)
 	if v != old {
 		if inv, ok := w.(interface{ Invalidate() }); ok {
@@ -1159,6 +1161,35 @@ func picki(v *style.Values, p style.Prop, def int) int {
 		}
 	}
 	return def
+}
+
+// pickf returns the stylesheet's float value for p, def when unset —
+// the same precedence picki gives ints.
+func pickf(v *style.Values, p style.Prop, def float64) float64 {
+	if v.Has(p) {
+		switch p {
+		case style.PropLineHeight:
+			return v.LineHeight
+		}
+	}
+	return def
+}
+
+// featureFace shapes f through its tabular twin when the cascade's
+// font-feature-settings asks for tnum; other tags wait for their
+// callers to care. The twin is memoized per face, so the shaping cache
+// keeps hitting.
+func featureFace(f render.Font, v *style.Values) render.Font {
+	if !v.Has(style.PropFontFeatures) || !strings.Contains(v.Features, "tnum") {
+		return f
+	}
+	switch t := f.(type) {
+	case *render.Typeface:
+		return t.Tabular()
+	case *render.Chain:
+		return t.Tabular()
+	}
+	return f
 }
 
 // radiusOr returns the stylesheet's corner radii when any corner is

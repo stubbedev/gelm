@@ -1,7 +1,9 @@
 package style
 
 import (
+	"fmt"
 	"math"
+	"slices"
 	"strings"
 
 	"github.com/stubbedev/gelm/render"
@@ -21,13 +23,13 @@ var ignoredProps = map[string]bool{
 	"animation-duration": true, "animation-timing-function": true,
 	"animation-iteration-count": true, "animation-direction": true,
 	"animation-delay": true, "animation-fill-mode": true,
-	"transform": true, "-gtk-icon-shadow": true, "-gtk-icon-style": true,
+	"-gtk-icon-shadow": true, "-gtk-icon-style": true,
 	"-gtk-icon-filter": true, "-gtk-dpi": true, "-gtk-secondary-caret-color": true,
 	"text-shadow": true, "text-decoration-line": true,
 	"text-decoration-color": true, "text-decoration-style": true,
-	"font-feature-settings": true, "font-variant-numeric": true, "font-variant": true,
+	"font-variant-numeric": true, "font-variant": true,
 	"font-stretch": true, "font-kerning": true,
-	"line-height": true, "background-size": true, "background-position": true,
+	"background-size": true, "background-position": true,
 	"background-repeat": true, "background-clip": true, "background-origin": true,
 	"background-blend-mode": true, "border-image": true, "border-image-source": true,
 	"border-image-slice": true, "border-image-width": true, "border-image-repeat": true,
@@ -96,14 +98,17 @@ func init() {
 		"min-height":     {setOf(PropMinHeight), lengthInto(func(v *Values) *int { return &v.MinHeight }, false)},
 		"border-spacing": {setOf(PropBorderSpacing), parseBorderSpacing},
 
-		"font-family":    {setOf(PropFontFamily), parseFontFamily},
-		"font-size":      {setOf(PropFontSize), parseFontSize},
-		"font-weight":    {setOf(PropFontWeight), parseFontWeight},
-		"font-style":     {setOf(PropFontStyle), parseFontStyle},
-		"font":           {setOf(PropFontFamily, PropFontSize, PropFontWeight, PropFontStyle), parseFont},
-		"letter-spacing": {setOf(PropLetterSpacing), parseLetterSpacing},
-		"text-transform": {setOf(PropTextTransform), parseTextTransform},
-		"-gtk-icon-size": {setOf(PropIconSize), lengthInto(func(v *Values) *int { return &v.IconSize }, false)},
+		"font-family":           {setOf(PropFontFamily), parseFontFamily},
+		"font-size":             {setOf(PropFontSize), parseFontSize},
+		"font-weight":           {setOf(PropFontWeight), parseFontWeight},
+		"font-style":            {setOf(PropFontStyle), parseFontStyle},
+		"font":                  {setOf(PropFontFamily, PropFontSize, PropFontWeight, PropFontStyle), parseFont},
+		"letter-spacing":        {setOf(PropLetterSpacing), parseLetterSpacing},
+		"text-transform":        {setOf(PropTextTransform), parseTextTransform},
+		"line-height":           {setOf(PropLineHeight), parseLineHeight},
+		"transform":             {setOf(PropTransform), parseTransform},
+		"font-feature-settings": {setOf(PropFontFeatures), parseFontFeatures},
+		"-gtk-icon-size":        {setOf(PropIconSize), lengthInto(func(v *Values) *int { return &v.IconSize }, false)},
 
 		"transition":                 {transitionProps, parseTransition},
 		"transition-property":        {setOf(PropTransitionProperty), parseTransitionProperty},
@@ -790,6 +795,138 @@ func parseFontSize(ts []token, cx *ctx, v *Values) bool {
 		return false
 	}
 	v.FontSize = n.v
+	return true
+}
+
+// parseLineHeight parses `normal` (0, the font's own line box) or a
+// length, percentage, or unitless number resolved against the computed
+// font-size into pixels.
+func parseLineHeight(ts []token, cx *ctx, v *Values) bool {
+	comps := components(ts)
+	if len(comps) != 1 {
+		return false
+	}
+	if comps[0][0].ident("normal") {
+		v.LineHeight = 0
+		return true
+	}
+	n, ok := evalNumeric(comps[0], cx)
+	if !ok {
+		return false
+	}
+	switch n.kind {
+	case numNumber:
+		n.v = cx.emPx() * n.v
+	case numPercent:
+		n.v = cx.emPx() * n.v / 100
+	case numLength:
+	default:
+		return false
+	}
+	if n.v < 0 || n.v > 1<<14 {
+		return false
+	}
+	v.LineHeight = n.v
+	return true
+}
+
+// parseTransform parses the transform list the stylesheet uses: none,
+// scale(x[, y]), translate(x, y), and the translateX/translateY
+// single-axis forms, lengths resolving vars against the computed font
+// size. A function the painter has no affine for (rotate on a box,
+// matrix, ...) fails the value: it warns and drops, instead of
+// rendering silently wrong.
+func parseTransform(ts []token, cx *ctx, v *Values) bool {
+	v.ScaleX, v.ScaleY, v.TranslateX = 1, 1, 0
+	comps := components(ts)
+	if len(comps) == 1 && comps[0][0].ident("none") {
+		return true
+	}
+	for _, comp := range comps {
+		if len(comp) == 0 || comp[0].kind != tkFunc {
+			return false
+		}
+		args := splitTop(funcArgs(comp), tkComma)
+		nums := make([]float64, len(args))
+		for i, a := range args {
+			n, ok := evalNumeric(components(a)[0], cx)
+			if !ok {
+				return false
+			}
+			switch n.kind {
+			case numLength, numNumber:
+			default:
+				return false
+			}
+			nums[i] = n.v
+		}
+		switch comp[0].s {
+		case "scale":
+			if len(nums) == 0 || len(nums) > 2 {
+				return false
+			}
+			v.ScaleX = nums[0]
+			v.ScaleY = nums[0]
+			if len(nums) == 2 {
+				v.ScaleY = nums[1]
+			}
+		case "translatex":
+			if len(nums) != 1 {
+				return false
+			}
+			v.TranslateX = nums[0]
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+// parseFontFeatures parses `normal` or the feature-tag list: each
+// "tag" (a quoted or bare four-character tag), with an optional value
+// (a number, or on/off) defaulting to 1. The list lands in canonical
+// sorted `tag=value` form so the comparable Values can hold it.
+func parseFontFeatures(ts []token, _ *ctx, v *Values) bool {
+	if first := components(ts)[0]; first[0].ident("normal") {
+		v.Features = ""
+		return true
+	}
+	type fv struct {
+		tag string
+		val int
+	}
+	var feats []fv
+	for _, comp := range splitTop(ts, tkComma) {
+		comps := components(comp)
+		if len(comps) == 0 {
+			return false
+		}
+		tag := strings.ToLower(strings.Trim(comps[0][0].s, "\"'"))
+		if len(comps[0][0].s) < 3 || len(tag) == 0 || len(tag) > 4 {
+			return false
+		}
+		val := 1
+		if len(comps) > 1 {
+			switch {
+			case comps[1][0].ident("on"):
+			case comps[1][0].ident("off"):
+				val = 0
+			default:
+				n, ok := evalNumeric(comps[1], &ctx{})
+				if !ok || n.kind != numNumber {
+					return false
+				}
+				val = int(math.Round(n.v))
+			}
+		}
+		feats = append(feats, fv{fmt.Sprintf("%-4s", tag), val})
+	}
+	slices.SortFunc(feats, func(a, b fv) int { return strings.Compare(a.tag, b.tag) })
+	parts := make([]string, len(feats))
+	for i, f := range feats {
+		parts[i] = fmt.Sprintf("%s=%d", f.tag, f.val)
+	}
+	v.Features = strings.Join(parts, ";")
 	return true
 }
 

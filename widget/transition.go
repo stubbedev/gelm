@@ -64,6 +64,52 @@ func cssTiming(tm style.Timing) anim.Easing {
 	return anim.CubicBezier(tm.X1, tm.Y1, tm.X2, tm.Y2)
 }
 
+// transitionTransform starts (or retargets) the transform tween a
+// restyle asks for, the same pattern as the background tween: the
+// tween's start is whatever the cache holds, so a hover mid-flight
+// reverses smoothly. The scale eases toward 1 when a rule drops the
+// declaration.
+func (n *node) transitionTransform(old, v style.Values) {
+	if n.trCancel != nil {
+		n.trCancel()
+		n.trCancel = nil
+	}
+	if !v.Transition.Covers(style.PropTransform) ||
+		(old.ScaleX == v.ScaleX && old.ScaleY == v.ScaleY && old.TranslateX == v.TranslateX) {
+		return
+	}
+	if n.styleSeen == 0 || anim.Instant() || n.bounds.Empty() {
+		return
+	}
+	dur := time.Duration(v.Transition.Duration * float64(time.Second))
+	delay := time.Duration(v.Transition.Delay * float64(time.Second))
+	ease := cssTiming(v.Transition.Timing)
+	fromS, toS := [2]float64{old.ScaleX, old.ScaleY}, [2]float64{v.ScaleX, v.ScaleY}
+	fromT, toT := old.TranslateX, v.TranslateX
+	if !v.Has(style.PropTransform) {
+		toS, toT = [2]float64{1, 1}, 0
+	}
+	n.trCancel = anim.Start(dur+delay, func(t float64) {
+		p := 1.0
+		if total := float64(dur + delay); total > 0 {
+			p = (t*total - float64(delay)) / float64(dur)
+		}
+		switch {
+		case p >= 1:
+			n.cs.ScaleX, n.cs.ScaleY, n.cs.TranslateX = toS[0], toS[1], toT
+			n.trCancel = nil
+		case p <= 0:
+			n.cs.ScaleX, n.cs.ScaleY, n.cs.TranslateX = fromS[0], fromS[1], fromT
+		default:
+			e := ease(p)
+			n.cs.ScaleX = fromS[0] + (toS[0]-fromS[0])*e
+			n.cs.ScaleY = fromS[1] + (toS[1]-fromS[1])*e
+			n.cs.TranslateX = fromT + (toT-fromT)*e
+		}
+		n.Invalidate()
+	})
+}
+
 // mixColor interpolates premultiplied colors.
 func mixColor(a, b render.Color, t float64) render.Color {
 	mix := func(x, y uint8) uint8 {

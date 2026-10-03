@@ -57,6 +57,9 @@ const (
 	PropFontStyle
 	PropLetterSpacing
 	PropTextTransform
+	PropLineHeight
+	PropFontFeatures
+	PropTransform
 	PropIconSize
 	PropTransitionProperty
 	PropTransitionDuration
@@ -91,10 +94,12 @@ func setOf(ps ...Prop) PropSet {
 const allProps = PropSet(1)<<numProps - 1
 
 // inheritedProps is the CSS (and GTK) inherited set: color, the font
-// group, letter-spacing, text-transform, and -gtk-icon-size. Custom
-// properties inherit too; they live outside the longhand table.
+// group, letter-spacing, text-transform, line-height, and
+// -gtk-icon-size. Custom properties inherit too; they live outside the
+// longhand table.
 var inheritedProps = setOf(PropColor, PropFontFamily, PropFontSize, PropFontWeight,
-	PropFontStyle, PropLetterSpacing, PropTextTransform, PropIconSize)
+	PropFontStyle, PropLetterSpacing, PropTextTransform, PropLineHeight,
+	PropFontFeatures, PropIconSize)
 
 // Sides is a per-side length set, in logical pixels, in CSS's
 // top-right-bottom-left order.
@@ -261,7 +266,20 @@ type Values struct {
 	Italic        bool
 	LetterSpacing float64
 	TextTransform TextTransform
-	IconSize      int
+	// LineHeight is the computed line-height in pixels; 0 is `normal`,
+	// the font's own line box.
+	LineHeight float64
+	// Features is the font-feature-settings tag list in canonical form
+	// (`on=1;ss01=0;tnum=1`, sorted); empty is `normal`. The text
+	// shaper honors the tags it knows (tnum today).
+	Features string
+	// Transform carries the transform functions the widget paints
+	// through: the scale (1 is identity) and the translation in
+	// pixels. All zero means unset; the parser always writes the full
+	// triple, so a declared `none` reads as the identity.
+	ScaleX, ScaleY float64
+	TranslateX     float64
+	IconSize       int
 
 	Transition Transition
 	// Animation is the computed animation-* group; not inherited.
