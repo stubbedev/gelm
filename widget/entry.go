@@ -89,6 +89,12 @@ type Entry struct {
 	// frames, so the render path stays allocation-free in the steady
 	// state.
 	bands [][2]float64
+
+	// trailing is the entry > image node (SetTrailingIcon): GtkEntry's
+	// secondary icon, cascade-painted; trailingClick fires on a press
+	// over it.
+	trailing      *Icon
+	trailingClick func()
 }
 
 // NewEntry returns an empty entry painted with face at sizePx. Face
@@ -116,25 +122,84 @@ type entryText struct {
 
 func (t *entryText) styleChildren() []Widget { return []Widget{&t.placeholder, &t.selection} }
 
+// SetTrailingIcon shows a themed icon at the entry's end — the
+// entry > image node, GtkEntry's secondary icon: a password field's
+// peek toggle, a search's clear button. The icon paints from the
+// cascade like any image (entry.network-password-input > image colors
+// the peek); onClick fires on a press over it, and nil keeps it
+// display-only. An empty name clears it.
+func (e *Entry) SetTrailingIcon(name string, px float64, onClick func()) {
+	checkLoop("SetTrailingIcon")
+	if name == "" {
+		e.trailing = nil
+		e.trailingClick = nil
+		setParents(e)
+		e.InvalidateLayout()
+		return
+	}
+	e.trailing = NewThemeIcon(name, int(px))
+	e.trailingClick = onClick
+	setParents(e, e.trailing)
+	e.InvalidateLayout()
+}
+
+// TrailingIcon returns the entry's trailing icon, nil when unset.
+func (e *Entry) TrailingIcon() *Icon { return e.trailing }
+
+// trailingRect is the icon's rect: the content height, at the end
+// edge inside the text insets.
+func (e *Entry) trailingRect() render.Rect {
+	if e.trailing == nil {
+		return render.Rect{}
+	}
+	sz := e.trailing.Measure(Constraints{Max: Size{W: e.bounds.W, H: e.bounds.H}})
+	in := e.textInsets()
+	return render.Rect{
+		X: e.bounds.X + e.bounds.W - in.Right,
+		Y: e.bounds.Y + (e.bounds.H-sz.H)/2,
+		W: sz.W, H: sz.H,
+	}
+}
+
+// trailingWidth is the text area the icon takes from the end.
+func (e *Entry) trailingWidth() int {
+	if e.trailing == nil {
+		return 0
+	}
+	sz := e.trailing.Measure(Constraints{Max: Size{W: e.bounds.W, H: e.bounds.H}})
+	return sz.W + entryTrailingGap
+}
+
+// entryTrailingGap is the space between the text and the trailing icon.
+const entryTrailingGap = 4
+
 // styleChildren is the text node (styleKids).
-func (e *Entry) styleChildren() []Widget { return []Widget{&e.text} }
+func (e *Entry) styleChildren() []Widget {
+	if e.trailing != nil {
+		return []Widget{&e.text, e.trailing}
+	}
+	return []Widget{&e.text}
+}
 
 // entryPad is an unstyled field's padding: lineheight plus 12 tall.
 var entryPad = render.Insets{Top: 6, Right: 8, Bottom: 6, Left: 8}
 
 // textInsets are the text area's insets inside the field's bounds:
 // the field's border and padding (entryPad where unstyled) and the
-// text node's margin, border and padding.
+// text node's margin, border and padding, plus the trailing icon's
+// width at the end.
 func (e *Entry) textInsets() render.Insets {
 	v := e.style(e)
 	b, p := borderOf(v), paddingOr(v, entryPad)
 	t := boxOf(e.text.style(&e.text), render.Insets{}).outer()
-	return render.Insets{
+	in := render.Insets{
 		Top:    b.Top + p.Top + t.Top,
 		Right:  b.Right + p.Right + t.Right,
 		Bottom: b.Bottom + p.Bottom + t.Bottom,
 		Left:   b.Left + p.Left + t.Left,
 	}
+	in.Right += e.trailingWidth()
+	return in
 }
 
 // contentRect is the text area: the bounds less textInsets.
@@ -911,6 +976,7 @@ func (e *Entry) Paint(cv *render.Canvas) {
 		prev := cv.PushClip(e.innerRect())
 		ph.Draw(cv, x, e.baseline(ph, c), col)
 		cv.PopClip(prev)
+		e.paintTrailing(cv)
 		return
 	}
 	// The highlight and the caret map through the display shape: in
@@ -965,6 +1031,19 @@ func (e *Entry) Paint(cv *render.Canvas) {
 		cv.FillRect(render.Rect{X: e.caretX(sh, caret), Y: c.Y, W: 2, H: c.H}, caretCol)
 	}
 	cv.PopClip(prev)
+	e.paintTrailing(cv)
+}
+
+// paintTrailing draws the entry > image node, the secondary icon,
+// from its own cascade.
+func (e *Entry) paintTrailing(cv *render.Canvas) {
+	if e.trailing == nil {
+		return
+	}
+	if r := e.trailingRect(); !r.Empty() {
+		e.trailing.Arrange(r)
+		PaintChild(cv, e.trailing)
+	}
 }
 
 // baseline centers sh's line in the text area c.
@@ -987,6 +1066,9 @@ func (e *Entry) bandRect(lx int, band [2]float64, c render.Rect) render.Rect {
 // Bounds records the field inside the stylesheet's margin.
 func (e *Entry) Arrange(r render.Rect) {
 	e.node.Arrange(marginOf(e.style(e)).Shrink(r))
+	if e.trailing != nil {
+		e.trailing.Arrange(e.trailingRect())
+	}
 	e.panToCaret()
 }
 
@@ -1003,8 +1085,15 @@ func (e *Entry) HitTest(p Point) Widget {
 // through the display shape's caret table — which follows the line
 // visually — and the pan, so a click on a half-visible rune lands on
 // that rune, snapped to the start of its grapheme cluster (#57).
-// Masked modes keep the cursor a logical index.
+// Masked modes keep the cursor a logical index. A press over the
+// trailing icon goes to the icon's handler instead.
 func (e *Entry) ClickAt(p Point) {
+	if e.trailing != nil && e.trailingClick != nil {
+		if r := e.trailingRect(); !r.Empty() && r.Contains(p.X, p.Y) {
+			e.trailingClick()
+			return
+		}
+	}
 	e.clearPreedit()
 	sh := e.shape(e.displayText())
 	e.cursor = text.SnapCluster(e.runes, sh.CaretAt(float64(p.X-e.lineX(sh))))
