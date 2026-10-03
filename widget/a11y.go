@@ -26,6 +26,7 @@ const (
 	RoleSwitch
 	RoleCheckBox
 	RoleProgressBar
+	RoleLevelBar
 	RoleScrollArea
 	RoleList
 	RoleMenu
@@ -55,6 +56,8 @@ func (r Role) String() string {
 		return "check-box"
 	case RoleProgressBar:
 		return "progress-bar"
+	case RoleLevelBar:
+		return "level-bar"
 	case RoleScrollArea:
 		return "scroll-area"
 	case RoleList:
