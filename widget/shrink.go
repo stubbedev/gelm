@@ -181,7 +181,15 @@ const scrollFloor = 4 * gutter
 
 // Shrinkable implements Shrinker: a scroll gives up everything above
 // its floor and scrolls the rest.
-func (s *Scroll) Shrinkable() int { return max(0, s.measured.H-scrollFloor) }
+func (s *Scroll) Shrinkable() int {
+	if s.PropagateNaturalHeight {
+		// Propagate-natural-height: the scroll asks for its content's
+		// height and gives nothing up — the panel grows to the content,
+		// capped by the measure constraints.
+		return 0
+	}
+	return max(0, s.measured.H-scrollFloor)
+}
 
 // Shrinkable implements Shrinker: a list scrolls the rows that no
 // longer fit, down to one row (a ListView's scrolled window giving
