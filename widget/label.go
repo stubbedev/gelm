@@ -455,9 +455,29 @@ func (l *Label) Paint(cv *render.Canvas) {
 			text = render.EllipsizeText(face, text, l.ell, float64(content.W), px)
 		}
 		face.DrawAlignedDir(cv, text, content, px, col, l.align, l.dir)
+		if v.Has(style.PropTextDecoration) && v.Underline {
+			l.paintUnderline(cv, face, px, text, content, col)
+		}
 	}
 	paintOutline(cv, v, l.bounds, radii)
 	fx.pop(cv)
+}
+
+// paintUnderline strokes the text run's baseline+2 underline, the
+// text-decoration ink, spanning the shaped advance.
+func (l *Label) paintUnderline(cv *render.Canvas, face render.Font, px float64, text string, content render.Rect, col render.Color) {
+	sh := face.ShapeDir(text, px, l.dir)
+	baseline := content.Y + (content.H-sh.LineHeight())/2 + int(sh.Ascent()+0.5)
+	y := baseline + 2
+	adv := int(sh.Advance() + 0.5)
+	x := content.X
+	switch l.align {
+	case render.AlignEnd:
+		x = content.X + content.W - adv
+	case render.AlignCenter:
+		x = content.X + (content.W-adv)/2
+	}
+	cv.FillRect(render.Rect{X: x, Y: y, W: adv, H: 1}, col)
 }
 
 // paintWrapped draws the wrapped rows, the stack vertically centered in
