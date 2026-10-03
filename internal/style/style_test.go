@@ -858,3 +858,91 @@ func ExampleParse() {
 	fmt.Println(v.Has(PropBackgroundColor), v.Background == render.RGB(0xaa, 0, 0))
 	// Output: true true
 }
+
+// line-height resolves lengths, unitless numbers, and percentages
+// against the computed font-size, inherits, and `normal` clears.
+func TestLineHeight(t *testing.T) {
+	s := parseOne(t, `
+		label { font-size: 20px; line-height: 2; }
+		label.wrap { line-height: 150%; }
+		label.px { line-height: 45px; }
+		label.none { line-height: normal; }
+		span { font-size: 12px; }
+	`)
+	if got := computeTree(s, el("label")).LineHeight; got != 40 {
+		t.Errorf("line-height: 2 at 20px = %v, want 40", got)
+	}
+	if got := computeTree(s, el("label", "wrap")).LineHeight; got != 30 {
+		t.Errorf("line-height: 150%% at 20px = %v, want 30", got)
+	}
+	if got := computeTree(s, el("label", "px")).LineHeight; got != 45 {
+		t.Errorf("line-height: 45px = %v, want 45", got)
+	}
+	if got := computeTree(s, el("label", "none")).LineHeight; got != 0 {
+		t.Errorf("line-height: normal = %v, want 0 (the font's own box)", got)
+	}
+	// Inherited: the span reads the parent label's line-height even with
+	// its own font-size; an explicit normal on the parent clears it.
+	root := el("label")
+	kid := root.add("span")
+	if got := computeTree(s, kid).LineHeight; got != 40 {
+		t.Errorf("inherited line-height = %v, want 40", got)
+	}
+	normal := parseOne(t, "label { line-height: normal; }")
+	if got := computeTree(normal, kid).LineHeight; got != 0 {
+		t.Errorf("inherited normal line-height = %v, want 0", got)
+	}
+}
+
+// font-feature-settings parses the tag list into the canonical sorted
+// form, defaulting values to 1, and `normal` clears it.
+func TestFontFeatureSettings(t *testing.T) {
+	s := parseOne(t, `
+		label { font-feature-settings: "tnum"; }
+		label.zero { font-feature-settings: "kern" 0, tnum off; }
+		label.none { font-feature-settings: normal; }
+	`)
+	if got := computeTree(s, el("label")).Features; got != "tnum=1" {
+		t.Errorf("quoted tag with default value = %q, want tnum=1", got)
+	}
+	if got := computeTree(s, el("label", "zero")).Features; got != "kern=0;tnum=0" {
+		t.Errorf("multiple tags sort canonically: %q, want kern=0;tnum=0", got)
+	}
+	if got := computeTree(s, el("label", "none")).Features; got != "" {
+		t.Errorf("normal = %q, want empty", got)
+	}
+	// Inherited into a child that declares nothing.
+	root := el("label")
+	if got := computeTree(s, root.add("span")).Features; got != "tnum=1" {
+		t.Errorf("inherited features = %q, want tnum=1", got)
+	}
+}
+
+// transform parses the scale and translate functions the stylesheet
+// uses; anything without an affine fails and warns, and `none` is the
+// identity.
+func TestTransform(t *testing.T) {
+	s := parseOne(t, `
+		label { transform: scale(1.5); }
+		label.xy { transform: scale(2, 0.5); }
+		label.tx { transform: translateX(var(--slide, 12px)); }
+		label.none { transform: none; }
+	`)
+	if v := computeTree(s, el("label")); v.ScaleX != 1.5 || v.ScaleY != 1.5 || v.TranslateX != 0 {
+		t.Errorf("scale(1.5) = %v,%v,%v", v.ScaleX, v.ScaleY, v.TranslateX)
+	}
+	if v := computeTree(s, el("label", "xy")); v.ScaleX != 2 || v.ScaleY != 0.5 {
+		t.Errorf("scale(2, 0.5) = %v,%v", v.ScaleX, v.ScaleY)
+	}
+	if v := computeTree(s, el("label", "tx")); v.TranslateX != 12 {
+		t.Errorf("translateX(var(--slide, 12px)) = %v, want 12", v.TranslateX)
+	}
+	if v := computeTree(s, el("label", "none")); v.ScaleX != 1 || v.ScaleY != 1 || v.TranslateX != 0 {
+		t.Errorf("none = %v,%v,%v, want the identity", v.ScaleX, v.ScaleY, v.TranslateX)
+	}
+	warns := capture(t)
+	Parse("label { transform: rotate(45deg); }")
+	if len(*warns) == 0 {
+		t.Error("rotate on a box parsed without a warning")
+	}
+}

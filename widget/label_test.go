@@ -231,3 +231,65 @@ func TestLabelWidthChars(t *testing.T) {
 		t.Errorf("floored width %d, want above the free %d", plain, free)
 	}
 }
+
+// A stylesheet line-height lays the label out at the given line box:
+// unitless numbers scale the font size, the row pitch of a wrapped
+// label follows it, and `normal` leaves the font's own box.
+func TestLabelLineHeight(t *testing.T) {
+	face := goldenFace(t)
+	const px = 14
+	natural := face.Shape("Hamburgefonstiv", px).LineHeight()
+	con := Constraints{Max: Size{W: 400, H: 400}}
+
+	root := NewBox(Column, 0, 0)
+	root.AttachStylesheet(NewStylesheet(`label { line-height: 2; }`, StylePriorityUser))
+	l := NewLabel(face, px, "Hamburgefonstiv", render.RGBA(0, 0, 0, 255))
+	root.Append(l, false)
+	got := root.Measure(con)
+	// The unitless number scales the cascade's font-size: the 16px
+	// root default here, not the label's constructor 14px.
+	if got.H != 32 {
+		t.Errorf("line-height: 2 at the 16px root size measured %v, want 32", got.H)
+	}
+
+	// The wrapped row pitch: two rows stand at one line box apart.
+	wrapped := NewLabel(face, px, "one two three four five six", render.RGBA(0, 0, 0, 255))
+	wrapped.SetWrap(true)
+	wrapped.AttachStylesheet(NewStylesheet(`label { line-height: 40px; }`, StylePriorityUser))
+	sz := wrapped.Measure(Constraints{Max: Size{W: 60, H: 400}})
+	rows := len(wrapped.wrapped(60))
+	if rows < 2 {
+		t.Fatalf("the sample did not wrap into rows (%d)", rows)
+	}
+	if want := rows * 40; sz.H != want {
+		t.Errorf("wrapped at 40px/row measured %v, want %v", sz.H, want)
+	}
+
+	// Unstyled labels keep the font's own box.
+	plain := NewLabel(face, px, "Hamburgefonstiv", render.RGBA(0, 0, 0, 255))
+	if got := plain.Measure(con); got.H != natural {
+		t.Errorf("unstyled measured %v, want the natural %v", got.H, natural)
+	}
+}
+
+// A font-feature-settings declaration with tnum shapes through the
+// face's tabular twin; without one the constructor face shapes plain.
+func TestLabelTabularFeature(t *testing.T) {
+	face := goldenFace(t)
+	root := NewBox(Column, 0, 0)
+	root.AttachStylesheet(NewStylesheet(`label { font-feature-settings: "tnum"; }`, StylePriorityUser))
+	l := NewLabel(face, 14, "0123456789", render.RGBA(0, 0, 0, 255))
+	root.Append(l, false)
+	root.Measure(Constraints{Max: Size{W: 400, H: 400}})
+	if got, _ := l.effStyle(); got == render.Font(face) {
+		t.Error("the tnum declaration did not switch the label to the tabular face")
+	}
+	if face.Tabular() == face {
+		t.Error("the tabular twin is not distinct")
+	}
+
+	plain := NewLabel(face, 14, "0123456789", render.RGBA(0, 0, 0, 255))
+	if got, _ := plain.effStyle(); got != render.Font(face) {
+		t.Error("an unstyled label does not shape with its own face")
+	}
+}

@@ -51,6 +51,9 @@ type Box struct {
 	spacing int
 	padding render.Insets
 	child   []*childEntry
+	// layer memoizes the offscreen the transform paints through, so a
+	// hovering swatch reuses its buffer instead of allocating per frame.
+	layer *render.Layer
 }
 
 // Children exposes the box's children in append order for focus
@@ -414,8 +417,15 @@ func (b *Box) ArrangeRoot(r render.Rect) {
 // Paint draws the box's CSS layers when the stylesheet gives it any (a
 // bare box paints nothing — theme-only boxes are transparent), then the
 // children in order, then the outline; opacity and filter wrap it all.
+// A transform declaration paints the whole subtree into an offscreen
+// layer and composites it back through the affine, so the scale and
+// translation apply to the children as one.
 func (b *Box) Paint(cv *render.Canvas) {
 	v := b.style(b)
+	if v.Has(style.PropTransform) && (v.ScaleX != 1 || v.ScaleY != 1 || v.TranslateX != 0) {
+		b.paintTransformed(cv, v)
+		return
+	}
 	fx := pushEffects(cv, v)
 	radii := radiusOr(v, 0)
 	bg := pickc(0, v, style.PropBackgroundColor, 0)
@@ -430,6 +440,36 @@ func (b *Box) Paint(cv *render.Canvas) {
 	}
 	paintOutline(cv, v, b.bounds, radii)
 	fx.pop(cv)
+}
+
+// paintTransformed paints the box's subtree offscreen and composites it
+// through the CSS transform: the translation, then the scale about the
+// box's center (the default transform-origin). The layer is the box's
+// scaled bounds, so a swatch grown past its box still lands.
+func (b *Box) paintTransformed(cv *render.Canvas, v *style.Values) {
+	cx := float64(b.bounds.X) + float64(b.bounds.W)/2
+	cy := float64(b.bounds.Y) + float64(b.bounds.H)/2
+	m := render.Translate(v.TranslateX, 0).Mul(render.Scale(v.ScaleX, v.ScaleY).About(cx, cy))
+	region := m.MapBounds(b.bounds)
+	region = region.Union(b.bounds)
+	l := cv.Layer(b.layer, region)
+	b.layer = l
+	lc := l.Canvas()
+	fx := pushEffects(lc, v)
+	radii := radiusOr(v, 0)
+	bg := pickc(0, v, style.PropBackgroundColor, 0)
+	if bg != 0 || hasBoxLayers(v) {
+		paintBoxBehind(lc, v, b.bounds, radii, borderOf(v), bg)
+	}
+	for _, c := range b.child {
+		if !IsVisible(c.w) {
+			continue
+		}
+		PaintChild(lc, c.w)
+	}
+	paintOutline(lc, v, b.bounds, radii)
+	fx.pop(lc)
+	cv.Composite(l, l.Canvas().Rect(), m, 1)
 }
 
 // HitTest returns the deepest child under p, or the box itself when p is

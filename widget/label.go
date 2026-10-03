@@ -250,11 +250,12 @@ func (l *Label) capWidth(con Constraints) Constraints {
 // effStyleIn resolves the paint parameters one cascade value implies:
 // the face (a font-family/font-weight declaration shaped through the
 // installed face resolver, else the constructor face) and the size
-// (font-size, else the constructor size).
+// (font-size, else the constructor size). A font-feature-settings
+// declaration with tnum shapes through the face's tabular twin.
 func (l *Label) effStyleIn(v *style.Values) (render.Font, float64) {
 	px := fontPx(v, l.sizePx)
 	if !v.Has(style.PropFontFamily) && !v.Has(style.PropFontWeight) {
-		return l.face, px
+		return featureFace(l.face, v), px
 	}
 	family, weight := "", 0
 	if v.Has(style.PropFontFamily) {
@@ -264,9 +265,9 @@ func (l *Label) effStyleIn(v *style.Values) (render.Font, float64) {
 		weight = v.FontWeight
 	}
 	if f, ok := resolveFace(family, weight); ok {
-		return f, px
+		return featureFace(f, v), px
 	}
-	return l.face, px
+	return featureFace(l.face, v), px
 }
 
 // effStyle is effStyleIn over the widget's current cascade.
@@ -304,8 +305,18 @@ func (l *Label) retext() {
 	l.shaped = face.ShapeDir(l.shown(), px, l.dir)
 	l.natural = Size{
 		W: int(math.Ceil(l.shaped.Advance())),
-		H: l.shaped.LineHeight(),
+		H: l.lineBox(l.style(l)),
 	}
+}
+
+// lineBox is the line height the label lays text out at: the CSS
+// line-height when the style sets one, else the shaped line's natural
+// ascent plus descent.
+func (l *Label) lineBox(v *style.Values) int {
+	if lh := pickf(v, style.PropLineHeight, 0); lh > 0 {
+		return int(math.Ceil(lh))
+	}
+	return l.shaped.LineHeight()
 }
 
 // Measure returns the text's advance and line height inside the CSS box
@@ -368,12 +379,15 @@ func (l *Label) widthFloor() int {
 func (l *Label) textNatural(con Constraints) Size {
 	con = l.capWidth(con)
 	face, px := l.effStyle()
-	lineH := l.shaped.LineHeight()
+	lineH := l.lineBox(l.style(l))
 	if !l.wrap {
 		if l.shaped.Advance() <= float64(con.Max.W) || l.ell == EllipsizeNone {
 			// The whole text fits the offered width, or it overflows and
-			// clips: no mode applies.
-			return clampSize(l.natural, con)
+			// clips: no mode applies. The height comes from the live line
+			// box — natural was cached before any stylesheet resolved.
+			sz := l.natural
+			sz.H = lineH
+			return clampSize(sz, con)
 		}
 		truncated := render.EllipsizeText(face, l.shown(), l.ell, float64(con.Max.W), px)
 		return clampSize(Size{
@@ -414,7 +428,7 @@ func (l *Label) MinSize() Size {
 	face, px := l.effStyle()
 	v := l.style(l)
 	o := boxOf(v, render.Insets{}).outer()
-	floor := Size{H: l.shaped.LineHeight()}
+	floor := Size{H: l.lineBox(v)}
 	if l.wrap && l.text != "" {
 		w := 0.0
 		for _, tok := range render.WrapText(face, l.shown(), 1, px) {
@@ -454,9 +468,22 @@ func (l *Label) Paint(cv *render.Canvas) {
 		if l.ell != EllipsizeNone && l.shaped.Advance() > float64(content.W) {
 			text = render.EllipsizeText(face, text, l.ell, float64(content.W), px)
 		}
-		face.DrawAlignedDir(cv, text, content, px, col, l.align, l.dir)
+		// A CSS line-height taller than the glyphs centers them in the
+		// taller box (half-leading); a smaller one lets them overflow
+		// the box, centered, rather than skipping the draw. Unstyled
+		// labels keep the plain centering draw.
+		line := content
+		if v.Has(style.PropLineHeight) {
+			if h := l.lineBox(v); h > line.H {
+				line.H = h
+			} else if h < line.H {
+				line.Y += (line.H - l.shaped.LineHeight()) / 2
+				line.H = l.shaped.LineHeight()
+			}
+		}
+		face.DrawAlignedDir(cv, text, line, px, col, l.align, l.dir)
 		if v.Has(style.PropTextDecoration) && v.Underline {
-			l.paintUnderline(cv, face, px, text, content, col)
+			l.paintUnderline(cv, face, px, text, line, col)
 		}
 	}
 	paintOutline(cv, v, l.bounds, radii)
@@ -484,7 +511,7 @@ func (l *Label) paintUnderline(cv *render.Canvas, face render.Font, px float64, 
 // a taller rect, each row aligned like a single line.
 func (l *Label) paintWrapped(cv *render.Canvas, face render.Font, px float64, col render.Color, box render.Rect) {
 	lines := l.wrapped(float64(box.W))
-	lineH := l.shaped.LineHeight()
+	lineH := l.lineBox(l.style(l))
 	y := box.Y
 	if extra := box.H - len(lines)*lineH; extra > 0 {
 		y += extra / 2

@@ -188,6 +188,9 @@ type node struct {
 	// bgCancel runs while a background-color transition tween drives
 	// the cache's color (transition.go); nil when none is in flight.
 	bgCancel anim.Cancel
+	// trCancel runs while a transform transition tween drives the
+	// cache's scale and translation; nil when none is in flight.
+	trCancel anim.Cancel
 	// CSS animation state (animations.go): the running keyframes name,
 	// the phase within a cycle, the completed cycle count, the tween's
 	// cancel, the cascade's animated channels to revert to, and whether
