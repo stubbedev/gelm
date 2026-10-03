@@ -20,9 +20,11 @@ type Switch struct {
 	OnChanged func(on bool)
 }
 
-// NewSwitch returns a switch in the given state.
+// NewSwitch returns a switch in the given state. The pointer turns to
+// the hand over it, the way wayle's switch primitive asks.
 func NewSwitch(on bool) *Switch {
 	s := &Switch{on: on}
+	s.cursorName = "pointer"
 	s.knob.SetElement("slider")
 	s.SetState(StateChecked, on)
 	return s
@@ -292,9 +294,11 @@ type CheckButton struct {
 	OnChanged func(checked bool)
 }
 
-// NewCheckButton returns a checkbox in the given state.
+// NewCheckButton returns a checkbox in the given state. The pointer
+// turns to the hand over it, the way wayle's checkbox primitive asks.
 func NewCheckButton(checked bool) *CheckButton {
 	c := &CheckButton{checked: checked}
+	c.cursorName = "pointer"
 	c.check.SetElement("check")
 	return c
 }
