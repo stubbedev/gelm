@@ -89,6 +89,7 @@ func Compute(layers []Layer, n Node, parent, old *Values, env Env, sc *Scratch, 
 			v.Set |= 1 << p
 		}
 	}
+	resolveKeyframes(&v.Animation, layers)
 }
 
 // computeProp computes one longhand from its winning declaration. It
@@ -377,6 +378,12 @@ func copyProp(dst, src *Values, p Prop) {
 		dst.Transition.Timing = src.Transition.Timing
 	case PropTransitionDelay:
 		dst.Transition.Delay = src.Transition.Delay
+	case PropAnimation:
+		dst.Animation = src.Animation
+	case PropAnimationPlayState:
+		dst.Animation.Running = src.Animation.Running
+	case PropIconTransform:
+		dst.Rotation = src.Rotation
 	}
 }
 

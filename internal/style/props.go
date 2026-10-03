@@ -18,11 +18,10 @@ type propDef struct {
 // drops without a warning: they parse in every GTK stylesheet but have
 // no painter here (animations, icon transforms, text decoration, ...).
 var ignoredProps = map[string]bool{
-	"animation": true, "animation-name": true, "animation-duration": true,
-	"animation-timing-function": true, "animation-iteration-count": true,
-	"animation-direction": true, "animation-play-state": true,
+	"animation-duration": true, "animation-timing-function": true,
+	"animation-iteration-count": true, "animation-direction": true,
 	"animation-delay": true, "animation-fill-mode": true,
-	"transform": true, "-gtk-icon-transform": true, "-gtk-icon-palette": true,
+	"transform": true, "-gtk-icon-palette": true,
 	"-gtk-icon-source": true, "-gtk-icon-shadow": true, "-gtk-icon-style": true,
 	"-gtk-icon-filter": true, "-gtk-dpi": true, "-gtk-secondary-caret-color": true,
 	"text-shadow": true, "text-decoration": true, "text-decoration-line": true,
@@ -112,6 +111,11 @@ func init() {
 		"transition-duration":        {setOf(PropTransitionDuration), timeInto(func(v *Values) *float64 { return &v.Transition.Duration })},
 		"transition-delay":           {setOf(PropTransitionDelay), timeInto(func(v *Values) *float64 { return &v.Transition.Delay })},
 		"transition-timing-function": {setOf(PropTransitionTiming), parseTransitionTiming},
+
+		"animation":            {setOf(PropAnimation, PropAnimationPlayState), parseAnimation},
+		"animation-name":       {setOf(PropAnimation), parseAnimationName},
+		"animation-play-state": {setOf(PropAnimationPlayState), parseAnimationPlayState},
+		"-gtk-icon-transform":  {setOf(PropIconTransform), parseIconTransform},
 	}
 }
 

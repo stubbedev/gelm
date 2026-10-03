@@ -224,6 +224,10 @@ func (i *Icon) Paint(cv *render.Canvas) {
 		}
 	}
 	content := b.padding.Shrink(b.border.Shrink(i.bounds))
+	if v.Has(style.PropIconTransform) && v.Rotation != 0 {
+		i.ic.DrawRotated(cv, content.X, content.Y, v.Rotation)
+		return
+	}
 	i.ic.Draw(cv, content.X, content.Y)
 }
 
