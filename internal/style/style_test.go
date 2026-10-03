@@ -2,6 +2,7 @@ package style
 
 import (
 	"fmt"
+	"math"
 	"slices"
 	"strings"
 	"testing"
@@ -621,7 +622,7 @@ func TestVarsPointerReuse(t *testing.T) {
 	}
 	Compute([]Layer{{Sheet: s}}, own, &rv, nil, Env{}, &sc, &ov)
 	Compute([]Layer{{Sheet: s}}, own, &rv, &ov, Env{}, &sc, &ov2)
-	if ov2.Vars != ov.Vars || ov != ov2 {
+	if ov2.Vars != ov.Vars || ov2.Background != ov.Background || ov2.Padding != ov.Padding || ov2.Set != ov.Set {
 		t.Error("an unchanged environment must keep its pointer across recomputes")
 	}
 }
@@ -918,32 +919,69 @@ func TestFontFeatureSettings(t *testing.T) {
 	}
 }
 
-// transform parses the scale and translate functions the stylesheet
-// uses; anything without an affine fails and warns, and `none` is the
-// identity.
+// transform parses the full 2-D set the stylesheet may use; junk
+// fails and warns, and `none` is the identity.
 func TestTransform(t *testing.T) {
 	s := parseOne(t, `
 		label { transform: scale(1.5); }
 		label.xy { transform: scale(2, 0.5); }
 		label.tx { transform: translateX(var(--slide, 12px)); }
 		label.none { transform: none; }
+		label.rot { transform: rotate(45deg); }
+		label.spin { transform: translate(4px, 6px) rotate(90deg) scale(2); }
+		label.mx { transform: matrix(1, 0, 0.5, 1, 10, 20); }
+		label.sk { transform: skew(45deg, 0deg); }
 	`)
-	if v := computeTree(s, el("label")); v.ScaleX != 1.5 || v.ScaleY != 1.5 || v.TranslateX != 0 {
-		t.Errorf("scale(1.5) = %v,%v,%v", v.ScaleX, v.ScaleY, v.TranslateX)
+	if v := computeTree(s, el("label")); !affineNear(v.Transform, Xform{M: render.Scale(1.5, 1.5)}, 1e-9) {
+		t.Errorf("scale(1.5) = %v", v.Transform)
 	}
-	if v := computeTree(s, el("label", "xy")); v.ScaleX != 2 || v.ScaleY != 0.5 {
-		t.Errorf("scale(2, 0.5) = %v,%v", v.ScaleX, v.ScaleY)
+	if v := computeTree(s, el("label", "xy")); !affineNear(v.Transform, Xform{M: render.Scale(2, 0.5)}, 1e-9) {
+		t.Errorf("scale(2, 0.5) = %v", v.Transform)
 	}
-	if v := computeTree(s, el("label", "tx")); v.TranslateX != 12 {
-		t.Errorf("translateX(var(--slide, 12px)) = %v, want 12", v.TranslateX)
+	if v := computeTree(s, el("label", "tx")); !affineNear(v.Transform, Xform{M: render.Translate(12, 0)}, 1e-9) {
+		t.Errorf("translateX(var(--slide, 12px)) = %v, want 12", v.Transform)
 	}
-	if v := computeTree(s, el("label", "none")); v.ScaleX != 1 || v.ScaleY != 1 || v.TranslateX != 0 {
-		t.Errorf("none = %v,%v,%v, want the identity", v.ScaleX, v.ScaleY, v.TranslateX)
+	if v := computeTree(s, el("label", "none")); v.Transform.M != render.Identity {
+		t.Errorf("none = %v, want the identity", v.Transform)
+	}
+	if v := computeTree(s, el("label", "rot")); !affineNear(v.Transform, Xform{M: render.Rotate(45)}, 1e-9) {
+		t.Errorf("rotate(45deg) = %v", v.Transform)
+	}
+	// Left-to-right composition: (4,6) shifted, turned, doubled.
+	m := computeTree(s, el("label", "spin")).Transform
+	px, py := m.M.Apply(1, 0)
+	if math.Abs(px-4) > 1e-9 || math.Abs(py-8) > 1e-9 {
+		t.Errorf("composed transform maps (1,0) to (%v,%v), want (4,8)", px, py)
+	}
+	if v := computeTree(s, el("label", "mx")); !affineNear(v.Transform, Xform{M: render.Affine{A: 1, C: 0.5, D: 1, E: 10, F: 20}}, 1e-9) {
+		t.Errorf("matrix = %v", v.Transform)
+	}
+	v := computeTree(s, el("label", "sk"))
+	px, py = v.Transform.M.Apply(0, 1)
+	if math.Abs(px-1) > 1e-9 || math.Abs(py-1) > 1e-9 {
+		t.Errorf("skew(45deg, 0deg) maps (0,1) to (%v,%v), want (1,1)", px, py)
 	}
 	warns := capture(t)
-	Parse("label { transform: rotate(45deg); }")
+	Parse("label { transform: nonsense(45deg); }")
 	if len(*warns) == 0 {
-		t.Error("rotate on a box parsed without a warning")
+		t.Error("an unknown transform function parsed without a warning")
+	}
+
+	// transform-origin: keywords, lengths, percentages, one value
+	// centering the other axis.
+	s = parseOne(t, `
+		label { transform-origin: left top; }
+		label.px { transform-origin: 4px 20%; }
+		label.one { transform-origin: 30%; }
+	`)
+	if v := computeTree(s, el("label")); v.OriginFrac != [2]float64{0, 0} {
+		t.Errorf("left top = %v", v.OriginFrac)
+	}
+	if v := computeTree(s, el("label", "px")); v.OriginPx[0] != 4 || v.OriginFrac[1] != 0.2 {
+		t.Errorf("4px 20%% = %v/%v", v.OriginPx, v.OriginFrac)
+	}
+	if v := computeTree(s, el("label", "one")); v.OriginFrac != [2]float64{0.3, 0.5} {
+		t.Errorf("one value = %v, want 0.3 and the centered 0.5", v.OriginFrac)
 	}
 }
 
@@ -956,8 +994,8 @@ func TestAllUnsetLeavesTheTransformIdentity(t *testing.T) {
 	if !v.Has(PropTransform) {
 		t.Fatal("all: unset did not compute the transform longhands")
 	}
-	if v.ScaleX != 1 || v.ScaleY != 1 || v.TranslateX != 0 {
-		t.Errorf("all: unset transform = %v,%v,%v, want the identity", v.ScaleX, v.ScaleY, v.TranslateX)
+	if v.Transform.M != render.Identity {
+		t.Errorf("all: unset transform = %v, want the identity", v.Transform)
 	}
 	if v.Opacity != 1 {
 		t.Errorf("all: unset opacity = %v, want 1", v.Opacity)

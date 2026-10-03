@@ -60,6 +60,7 @@ const (
 	PropLineHeight
 	PropFontFeatures
 	PropTransform
+	PropTransformOrigin
 	PropIconSize
 	PropTransitionProperty
 	PropTransitionDuration
@@ -67,6 +68,10 @@ const (
 	PropTransitionDelay
 	PropAnimation
 	PropAnimationPlayState
+	PropAnimDuration
+	PropAnimDelay
+	PropAnimDirection
+	PropAnimFill
 	PropIconTransform
 	PropIconSource
 	PropIconPalette
@@ -121,9 +126,48 @@ func (s Sides) Add(o Sides) Sides {
 	return Sides{s.Top + o.Top, s.Right + o.Right, s.Bottom + o.Bottom, s.Left + o.Left}
 }
 
+// At reads side i by the transition engine's index: 0 top, 1 right,
+// 2 bottom, 3 left.
+func (s Sides) At(i int) int {
+	return [4]int{s.Top, s.Right, s.Bottom, s.Left}[i]
+}
+
+// SetAt writes side i.
+func (s *Sides) SetAt(i int, v int) {
+	switch i {
+	case 0:
+		s.Top = v
+	case 1:
+		s.Right = v
+	case 2:
+		s.Bottom = v
+	case 3:
+		s.Left = v
+	}
+}
+
 // Corners is a per-corner radius set, clockwise from top-left.
 type Corners struct {
 	TopLeft, TopRight, BottomRight, BottomLeft int
+}
+
+// At reads corner i, the same clockwise order as Sides.
+func (c Corners) At(i int) int {
+	return [4]int{c.TopLeft, c.TopRight, c.BottomRight, c.BottomLeft}[i]
+}
+
+// SetAt writes corner i.
+func (c *Corners) SetAt(i, v int) {
+	switch i {
+	case 0:
+		c.TopLeft = v
+	case 1:
+		c.TopRight = v
+	case 2:
+		c.BottomRight = v
+	case 3:
+		c.BottomLeft = v
+	}
 }
 
 // BorderStyle is a border or outline line style. The subset draws solid
@@ -273,20 +317,29 @@ type Values struct {
 	// (`on=1;ss01=0;tnum=1`, sorted); empty is `normal`. The text
 	// shaper honors the tags it knows (tnum today).
 	Features string
-	// Transform carries the transform functions the widget paints
-	// through: the scale (1 is identity) and the translation in
-	// pixels. All zero means unset; the parser always writes the full
-	// triple, so a declared `none` reads as the identity.
-	ScaleX, ScaleY float64
-	TranslateX     float64
-	IconSize       int
+	// Transform carries the transform property: the composed affine
+	// the widget paints its subtree through, with the primitive list
+	// the tweens interpolate. The identity means unset; the parser
+	// always writes the full Xform, so a declared `none` reads as it.
+	Transform Xform
+	// TransformOrigin is the transform's pivot: fraction-of-box plus
+	// pixel offset per axis; the default is the box's center.
+	OriginFrac, OriginPx [2]float64
+	IconSize             int
 
 	Transition Transition
-	// Animation is the computed animation-* group; not inherited.
-	Animation Animation
-	// Rotation is -gtk-icon-transform's rotate() in degrees clockwise;
-	// icons draw turned by it.
-	Rotation float64
+	// Animation is the computed animation-* group; not inherited. A
+	// comma list runs every entry; one entry is the common case.
+	Animation []Animation
+	// The animation longhands' slots: the shorthand computes the group
+	// and each longhand's slot zips onto it at the end of Compute, so
+	// `animation: a 1s; animation-delay: -2s` keeps the name and the
+	// delay whoever is declared first.
+	AnimDuration, AnimDelay []float64
+	AnimDirection, AnimFill []uint8
+	// IconXform is -gtk-icon-transform's composed transform; icons
+	// draw through it.
+	IconXform Xform
 	// IconSource is -gtk-icon-source's -gtk-icontheme() name: a themed
 	// symbolic icon a widget draws instead of its painted mark (the
 	// checkbutton's tick).
@@ -358,16 +411,17 @@ func (v *Values) Var(name string) (string, bool) {
 
 // initialValues returns each longhand's initial value: what `initial`,
 // `unset` on a non-inherited property, and `all: unset` compute to.
-// Zero would be a visible value for opacity, brightness, and the
-// transform scale (a 0 scale paints nothing), so those carry their
-// identity.
+// Zero would be a visible value for opacity and brightness, and a zero
+// scale paints nothing, so those carry their identities; the transform
+// origin defaults to the box's center.
 func initialValues() Values {
 	return Values{
 		Opacity:    1,
 		Brightness: 1,
 		FontWeight: 400,
-		ScaleX:     1,
-		ScaleY:     1,
+		Transform:  XformIdentity,
+		IconXform:  XformIdentity,
+		OriginFrac: [2]float64{0.5, 0.5},
 	}
 }
 

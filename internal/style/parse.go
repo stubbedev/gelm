@@ -21,6 +21,7 @@ import (
 	"strings"
 
 	"github.com/stubbedev/gelm/internal/logutil"
+	"github.com/stubbedev/gelm/render"
 )
 
 // parseWarn is the parse-warning sink: warnings route to the injected
@@ -321,26 +322,72 @@ func keyframeOffsets(ts []token) []float64 {
 }
 
 // keyframe extracts the animatable channels of one stop's
-// declarations; the rest warn and drop.
+// declarations; the rest warn and drop. Each animatable name runs
+// through its real property parser, so a stop writes exactly what a
+// rule can: opacity, color, background-color, filter, transform, and
+// -gtk-icon-transform.
 func (p *parser) keyframe(decls []decl) Keyframe {
 	var k Keyframe
+	var op float64
+	var color, bg render.Color
+	var bright float64
+	var xform, iconX Xform
 	cx := ctx{rem: parseRem, em: parseRem}
 	for _, d := range decls {
+		var slot string
+		var ok bool
 		switch d.name {
 		case "opacity":
-			if n, ok := evalNumeric(d.val, &cx); ok && n.kind == numNumber && n.v >= 0 && n.v <= 1 {
-				k.Opacity = new(n.v)
-				continue
+			var v Values
+			ok = parseOpacity(d.val, &cx, &v)
+			if ok {
+				op, slot = v.Opacity, "opacity"
 			}
-			warnf("keyframe declaration skipped: opacity: %s", badText(rawText(p.src, d.val)))
+		case "color":
+			cv, pok := parseColor(d.val, &cx)
+			if pok {
+				color, ok = cx.resolve(cv), true
+			}
+			slot = "color"
+		case "background-color":
+			cv, pok := parseColor(d.val, &cx)
+			if pok {
+				bg, ok = cx.resolve(cv), true
+			}
+			slot = "background-color"
+		case "filter":
+			var v Values
+			ok = parseFilter(d.val, &cx, &v)
+			if ok {
+				bright, slot = v.Brightness, "filter"
+			}
+		case "transform":
+			xform, ok = composeTransform(d.val, &cx)
+			slot = "transform"
 		case "-gtk-icon-transform":
-			if deg, ok := rotateOf(d.val); ok {
-				k.Rotation = new(deg)
-				continue
-			}
-			warnf("keyframe declaration skipped: -gtk-icon-transform: %s", badText(rawText(p.src, d.val)))
+			iconX, ok = composeTransform(d.val, &cx)
+			slot = "-gtk-icon-transform"
 		default:
 			warnf("keyframe declaration skipped: %q does not interpolate", d.name)
+			continue
+		}
+		if !ok {
+			warnf("keyframe declaration skipped: %s: %s", slot, badText(rawText(p.src, d.val)))
+			continue
+		}
+		switch slot {
+		case "opacity":
+			k.Opacity = &op
+		case "color":
+			k.Color = &color
+		case "background-color":
+			k.Background = &bg
+		case "filter":
+			k.Brightness = &bright
+		case "transform":
+			k.Transform = &xform
+		case "-gtk-icon-transform":
+			k.IconXform = &iconX
 		}
 	}
 	return k

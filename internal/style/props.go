@@ -107,6 +107,7 @@ func init() {
 		"text-transform":        {setOf(PropTextTransform), parseTextTransform},
 		"line-height":           {setOf(PropLineHeight), parseLineHeight},
 		"transform":             {setOf(PropTransform), parseTransform},
+		"transform-origin":      {setOf(PropTransformOrigin), parseTransformOrigin},
 		"font-feature-settings": {setOf(PropFontFeatures), parseFontFeatures},
 		"-gtk-icon-size":        {setOf(PropIconSize), lengthInto(func(v *Values) *int { return &v.IconSize }, false)},
 
@@ -116,8 +117,12 @@ func init() {
 		"transition-delay":           {setOf(PropTransitionDelay), timeInto(func(v *Values) *float64 { return &v.Transition.Delay })},
 		"transition-timing-function": {setOf(PropTransitionTiming), parseTransitionTiming},
 
-		"animation":            {setOf(PropAnimation, PropAnimationPlayState), parseAnimation},
+		"animation":            {animationProps, parseAnimation},
 		"animation-name":       {setOf(PropAnimation), parseAnimationName},
+		"animation-duration":   {setOf(PropAnimDuration), animTimeInto(func(v *Values, secs float64) { v.AnimDuration = []float64{secs} })},
+		"animation-delay":      {setOf(PropAnimDelay), animTimeInto(func(v *Values, secs float64) { v.AnimDelay = []float64{secs} })},
+		"animation-direction":  {setOf(PropAnimDirection), parseAnimationDirection},
+		"animation-fill-mode":  {setOf(PropAnimFill), parseAnimationFillMode},
 		"animation-play-state": {setOf(PropAnimationPlayState), parseAnimationPlayState},
 		"-gtk-icon-transform":  {setOf(PropIconTransform), parseIconTransform},
 		"-gtk-icon-source":     {setOf(PropIconSource), parseIconSource},
@@ -134,7 +139,20 @@ var (
 	borderRadii  = setOf(PropBorderTopLeftRadius, PropBorderTopRightRadius, PropBorderBottomRightRadius,
 		PropBorderBottomLeftRadius)
 	transitionProps = setOf(PropTransitionProperty, PropTransitionDuration, PropTransitionTiming, PropTransitionDelay)
+	animationProps  = setOf(PropAnimation, PropAnimationPlayState)
 )
+
+// animTimeInto applies a time longhand across the computed animations.
+func animTimeInto(set func(v *Values, secs float64)) func([]token, *ctx, *Values) bool {
+	return func(ts []token, cx *ctx, v *Values) bool {
+		secs, ok := timeOf(components(splitTop(ts, tkComma)[0])[0], cx)
+		if !ok {
+			return false
+		}
+		set(v, secs)
+		return true
+	}
+}
 
 // colorInto parses a single color into the slot the getter returns.
 func colorInto(get func(v *Values) *render.Color) func([]token, *ctx, *Values) bool {
@@ -830,55 +848,299 @@ func parseLineHeight(ts []token, cx *ctx, v *Values) bool {
 	return true
 }
 
-// parseTransform parses the transform list the stylesheet uses: none,
-// scale(x[, y]), translate(x, y), and the translateX/translateY
-// single-axis forms, lengths resolving vars against the computed font
-// size. A function the painter has no affine for (rotate on a box,
-// matrix, ...) fails the value: it warns and drops, instead of
-// rendering silently wrong.
+// parseTransform parses the full 2-D transform list: none, matrix,
+// translate / translateX / translateY, scale / scaleX / scaleY,
+// rotate, and skew / skewX / skewY, lengths resolving vars against the
+// computed font size and angles taking deg, grad, rad, and turn. The
+// functions compose left to right into the affine the widget paints
+// through - exactly GTK's own set, lengths and all, since GTK CSS
+// accepts no percentages in transforms.
 func parseTransform(ts []token, cx *ctx, v *Values) bool {
-	v.ScaleX, v.ScaleY, v.TranslateX = 1, 1, 0
+	x, ok := composeTransform(ts, cx)
+	if !ok {
+		return false
+	}
+	v.Transform = x
+	return true
+}
+
+// composeTransform walks one transform property's function list into
+// an Xform: the composed affine plus the primitive list the tweens
+// interpolate function by function. Each function maps points through
+// the ones before it, the CSS order, so the composition is left
+// multiplication.
+func composeTransform(ts []token, cx *ctx) (Xform, bool) {
+	x := XformIdentity
 	comps := components(ts)
 	if len(comps) == 1 && comps[0][0].ident("none") {
-		return true
+		return x, true
 	}
 	for _, comp := range comps {
 		if len(comp) == 0 || comp[0].kind != tkFunc {
+			return Xform{}, false
+		}
+		affine, part, ok := transformPrim(comp[0].s, splitTop(funcArgs(comp), tkComma), cx)
+		if !ok {
+			return Xform{}, false
+		}
+		x.M = x.M.Mul(affine)
+		x.Parts = append(x.Parts, part)
+	}
+	return x, true
+}
+
+// transformPrim builds one transform function's affine: the name (the
+// tokenizer lowercases function names) over its comma-separated args.
+// Length and number args resolve per slot; angle args are the
+// functions' own.
+func transformPrim(name string, args [][]token, cx *ctx) (render.Affine, XformPart, bool) {
+	num := func(i int) (float64, bool) {
+		if i >= len(args) {
+			return 0, false
+		}
+		comps := components(args[i])
+		if len(comps) != 1 {
+			return 0, false
+		}
+		n, ok := evalNumeric(comps[0], cx)
+		if !ok {
+			return 0, false
+		}
+		switch n.kind {
+		case numLength, numNumber:
+		default:
+			return 0, false
+		}
+		return n.v, true
+	}
+	angle := func(i int) (float64, bool) {
+		if i >= len(args) {
+			return 0, false
+		}
+		comps := components(args[i])
+		if len(comps) != 1 {
+			return 0, false
+		}
+		return angleOf(comps[0][0])
+	}
+	switch name {
+	case "scale":
+		if len(args) == 0 || len(args) > 2 {
+			return render.Affine{}, XformPart{}, false
+		}
+		sx, ok := num(0)
+		if !ok {
+			return render.Affine{}, XformPart{}, false
+		}
+		sy := sx
+		if len(args) == 2 {
+			if sy, ok = num(1); !ok {
+				return render.Affine{}, XformPart{}, false
+			}
+		}
+		return render.Scale(sx, sy), XformPart{Op: XformScale, N: [6]float64{sx, sy}}, true
+	case "scalex":
+		if len(args) != 1 {
+			return render.Affine{}, XformPart{}, false
+		}
+		sx, ok := num(0)
+		if !ok {
+			return render.Affine{}, XformPart{}, false
+		}
+		return render.Scale(sx, 1), XformPart{Op: XformScale, N: [6]float64{sx, 1}}, true
+	case "scaley":
+		if len(args) != 1 {
+			return render.Affine{}, XformPart{}, false
+		}
+		sy, ok := num(0)
+		if !ok {
+			return render.Affine{}, XformPart{}, false
+		}
+		return render.Scale(1, sy), XformPart{Op: XformScale, N: [6]float64{1, sy}}, true
+	case "translate":
+		if len(args) == 0 || len(args) > 2 {
+			return render.Affine{}, XformPart{}, false
+		}
+		dx, ok := num(0)
+		if !ok {
+			return render.Affine{}, XformPart{}, false
+		}
+		dy := 0.0
+		if len(args) == 2 {
+			if dy, ok = num(1); !ok {
+				return render.Affine{}, XformPart{}, false
+			}
+		}
+		return render.Translate(dx, dy), XformPart{Op: XformTranslate, N: [6]float64{dx, dy}}, true
+	case "translatex":
+		if len(args) != 1 {
+			return render.Affine{}, XformPart{}, false
+		}
+		dx, ok := num(0)
+		if !ok {
+			return render.Affine{}, XformPart{}, false
+		}
+		return render.Translate(dx, 0), XformPart{Op: XformTranslate, N: [6]float64{dx, 0}}, true
+	case "translatey":
+		if len(args) != 1 {
+			return render.Affine{}, XformPart{}, false
+		}
+		dy, ok := num(0)
+		if !ok {
+			return render.Affine{}, XformPart{}, false
+		}
+		return render.Translate(0, dy), XformPart{Op: XformTranslate, N: [6]float64{0, dy}}, true
+	case "rotate":
+		if len(args) != 1 {
+			return render.Affine{}, XformPart{}, false
+		}
+		deg, ok := angle(0)
+		if !ok {
+			return render.Affine{}, XformPart{}, false
+		}
+		return render.Rotate(deg), XformPart{Op: XformRotate, N: [6]float64{deg}}, true
+	case "skew":
+		if len(args) == 0 || len(args) > 2 {
+			return render.Affine{}, XformPart{}, false
+		}
+		x, ok := angle(0)
+		if !ok {
+			return render.Affine{}, XformPart{}, false
+		}
+		y := 0.0
+		if len(args) == 2 {
+			if y, ok = angle(1); !ok {
+				return render.Affine{}, XformPart{}, false
+			}
+		}
+		return skewAffine(x, y), XformPart{Op: XformSkew, N: [6]float64{x, y}}, true
+	case "skewx":
+		if len(args) != 1 {
+			return render.Affine{}, XformPart{}, false
+		}
+		x, ok := angle(0)
+		if !ok {
+			return render.Affine{}, XformPart{}, false
+		}
+		return skewAffine(x, 0), XformPart{Op: XformSkew, N: [6]float64{x, 0}}, true
+	case "skewy":
+		if len(args) != 1 {
+			return render.Affine{}, XformPart{}, false
+		}
+		y, ok := angle(0)
+		if !ok {
+			return render.Affine{}, XformPart{}, false
+		}
+		return skewAffine(0, y), XformPart{Op: XformSkew, N: [6]float64{0, y}}, true
+	case "matrix":
+		if len(args) != 6 {
+			return render.Affine{}, XformPart{}, false
+		}
+		var nums [6]float64
+		for i := range nums {
+			var ok bool
+			if nums[i], ok = num(i); !ok {
+				return render.Affine{}, XformPart{}, false
+			}
+		}
+		return render.Affine{A: nums[0], B: nums[1], C: nums[2], D: nums[3], E: nums[4], F: nums[5]}, XformPart{Op: XformMatrix, N: nums}, true
+	}
+	return render.Affine{}, XformPart{}, false
+}
+
+// skewAffine is the shear by the two angles: x leans by tan(ax), y by
+// tan(ay).
+func skewAffine(ax, ay float64) render.Affine {
+	return render.Affine{
+		A: 1,
+		B: math.Tan(ay * math.Pi / 180),
+		C: math.Tan(ax * math.Pi / 180),
+		D: 1,
+	}
+}
+
+// parseTransformOrigin parses transform-origin: one or two of the
+// edge keywords, lengths, and percentages, lengths resolving against
+// the computed font size. One value centers the other axis; keywords
+// land in either order (left top == top left).
+func parseTransformOrigin(ts []token, cx *ctx, v *Values) bool {
+	comps := components(ts)
+	if len(comps) == 0 || len(comps) > 2 {
+		return false
+	}
+	var fx, fy, px, py float64
+	seenX, seenY := false, false
+	for _, comp := range comps {
+		t := comp[0]
+		if len(comp) != 1 {
 			return false
 		}
-		args := splitTop(funcArgs(comp), tkComma)
-		nums := make([]float64, len(args))
-		for i, a := range args {
-			n, ok := evalNumeric(components(a)[0], cx)
-			if !ok {
-				return false
+		if t.kind == tkIdent {
+			switch strings.ToLower(t.s) {
+			case "left", "right":
+				if seenX {
+					return false
+				}
+				seenX = true
+				if strings.EqualFold(t.s, "left") {
+					fx = 0
+				} else {
+					fx = 1
+				}
+				continue
+			case "top", "bottom":
+				if seenY {
+					return false
+				}
+				seenY = true
+				if strings.EqualFold(t.s, "top") {
+					fy = 0
+				} else {
+					fy = 1
+				}
+				continue
+			case "center":
+				if !seenX {
+					seenX, fx = true, 0.5
+				} else if !seenY {
+					seenY, fy = true, 0.5
+				} else {
+					return false
+				}
+				continue
 			}
-			switch n.kind {
-			case numLength, numNumber:
-			default:
-				return false
-			}
-			nums[i] = n.v
+			return false
 		}
-		switch comp[0].s {
-		case "scale":
-			if len(nums) == 0 || len(nums) > 2 {
+		n, ok := evalNumeric(comp, cx)
+		if !ok {
+			return false
+		}
+		switch n.kind {
+		case numLength:
+			if !seenX {
+				seenX, px = true, n.v
+			} else if !seenY {
+				seenY, py = true, n.v
+			} else {
 				return false
 			}
-			v.ScaleX = nums[0]
-			v.ScaleY = nums[0]
-			if len(nums) == 2 {
-				v.ScaleY = nums[1]
-			}
-		case "translatex":
-			if len(nums) != 1 {
+		case numPercent:
+			f := n.v / 100
+			if !seenX {
+				seenX, fx = true, f
+			} else if !seenY {
+				seenY, fy = true, f
+			} else {
 				return false
 			}
-			v.TranslateX = nums[0]
 		default:
 			return false
 		}
 	}
+	if !seenY {
+		fy = 0.5
+	}
+	v.OriginFrac, v.OriginPx = [2]float64{fx, fy}, [2]float64{px, py}
 	return true
 }
 

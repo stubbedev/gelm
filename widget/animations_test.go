@@ -103,8 +103,11 @@ func TestIconRotationAnimation(t *testing.T) {
 	host.Append(ic, false)
 	frame(t, host, 50, 50)
 	c.step()
-	if got := ic.style(ic).Rotation; got <= 0 || got >= 360 {
-		t.Fatalf("mid-flight rotation %v, want inside the turn", got)
+	// Mid-flight: the icon transform is neither the identity nor the
+	// settled full turn.
+	x := ic.style(ic).IconXform
+	if x.M == render.Identity || x.M == (render.Affine{}) {
+		t.Fatalf("mid-flight icon transform %v, want inside the turn", x)
 	}
 }
 

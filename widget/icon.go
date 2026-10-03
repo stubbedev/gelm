@@ -224,8 +224,8 @@ func (i *Icon) Paint(cv *render.Canvas) {
 		}
 	}
 	content := b.padding.Shrink(b.border.Shrink(i.bounds))
-	if v.Has(style.PropIconTransform) && v.Rotation != 0 {
-		i.ic.DrawRotated(cv, content.X, content.Y, v.Rotation)
+	if v.Has(style.PropIconTransform) && v.IconXform.M != render.Identity {
+		i.ic.DrawXformed(cv, content.X, content.Y, v.IconXform.M)
 		return
 	}
 	i.ic.Draw(cv, content.X, content.Y)

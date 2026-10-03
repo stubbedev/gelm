@@ -418,11 +418,11 @@ func (b *Box) ArrangeRoot(r render.Rect) {
 // bare box paints nothing — theme-only boxes are transparent), then the
 // children in order, then the outline; opacity and filter wrap it all.
 // A transform declaration paints the whole subtree into an offscreen
-// layer and composites it back through the affine, so the scale and
-// translation apply to the children as one.
+// layer and composites it back through the affine, so the transform
+// applies to the children as one.
 func (b *Box) Paint(cv *render.Canvas) {
 	v := b.style(b)
-	if v.Has(style.PropTransform) && (v.ScaleX != 1 || v.ScaleY != 1 || v.TranslateX != 0) {
+	if v.Has(style.PropTransform) && v.Transform.M != render.Identity {
 		b.paintTransformed(cv, v)
 		return
 	}
@@ -442,14 +442,15 @@ func (b *Box) Paint(cv *render.Canvas) {
 	fx.pop(cv)
 }
 
-// paintTransformed paints the box's subtree offscreen and composites it
-// through the CSS transform: the translation, then the scale about the
-// box's center (the default transform-origin). The layer is the box's
-// scaled bounds, so a swatch grown past its box still lands.
+// paintTransformed paints the box's subtree offscreen and composites
+// it through the CSS transform about the transform-origin: the pivot
+// the stylesheet's fractions and offsets name, the box's center by
+// default. The layer is the transformed bounds, so a swatch swung past
+// its box still lands.
 func (b *Box) paintTransformed(cv *render.Canvas, v *style.Values) {
-	cx := float64(b.bounds.X) + float64(b.bounds.W)/2
-	cy := float64(b.bounds.Y) + float64(b.bounds.H)/2
-	m := render.Translate(v.TranslateX, 0).Mul(render.Scale(v.ScaleX, v.ScaleY).About(cx, cy))
+	ox := float64(b.bounds.X) + v.OriginFrac[0]*float64(b.bounds.W) + v.OriginPx[0]
+	oy := float64(b.bounds.Y) + v.OriginFrac[1]*float64(b.bounds.H) + v.OriginPx[1]
+	m := v.Transform.M.About(ox, oy)
 	region := m.MapBounds(b.bounds)
 	region = region.Union(b.bounds)
 	l := cv.Layer(b.layer, region)
