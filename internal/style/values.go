@@ -358,11 +358,16 @@ func (v *Values) Var(name string) (string, bool) {
 
 // initialValues returns each longhand's initial value: what `initial`,
 // `unset` on a non-inherited property, and `all: unset` compute to.
+// Zero would be a visible value for opacity, brightness, and the
+// transform scale (a 0 scale paints nothing), so those carry their
+// identity.
 func initialValues() Values {
 	return Values{
 		Opacity:    1,
 		Brightness: 1,
 		FontWeight: 400,
+		ScaleX:     1,
+		ScaleY:     1,
 	}
 }
 
