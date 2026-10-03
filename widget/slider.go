@@ -32,9 +32,11 @@ type Slider struct {
 }
 
 // NewSlider returns a horizontal slider over [min, max] at value, with
-// changes snapped to step (0 disables snapping).
+// changes snapped to step (0 disables snapping). The pointer turns to
+// the hand over it, the way wayle's slider primitives ask.
 func NewSlider(min, max, step, value float64) *Slider {
 	s := &Slider{min: min, max: max, step: step}
+	s.cursorName = "pointer"
 	s.value = s.clamp(value)
 	s.trough.SetElement("trough")
 	s.trough.highlight.SetElement("highlight")

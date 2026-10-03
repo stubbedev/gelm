@@ -38,9 +38,12 @@ type Button struct {
 }
 
 // NewButton returns a button wrapping child with the given inner padding
-// and corner radius.
+// and corner radius. The pointer turns to the hand over it: every
+// button is clickable, the way wayle's button primitives ask.
 func NewButton(child Widget, padding, radius int) *Button {
-	return &Button{child: child, padding: padding, radius: radius}
+	b := &Button{child: child, padding: padding, radius: radius}
+	b.cursorName = "pointer"
+	return b
 }
 
 // Measure pads the child's natural size inside the CSS box: the
