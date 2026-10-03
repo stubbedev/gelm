@@ -92,9 +92,12 @@ type Entry struct {
 
 	// trailing is the entry > image node (SetTrailingIcon): GtkEntry's
 	// secondary icon, cascade-painted; trailingClick fires on a press
-	// over it.
+	// over it. leading is the primary icon (SetLeadingIcon), at the
+	// text area's start.
 	trailing      *Icon
 	trailingClick func()
+	leading       *Icon
+	leadingClick  func()
 }
 
 // NewEntry returns an empty entry painted with face at sizePx. Face
@@ -146,6 +149,37 @@ func (e *Entry) SetTrailingIcon(name string, px float64, onClick func()) {
 // TrailingIcon returns the entry's trailing icon, nil when unset.
 func (e *Entry) TrailingIcon() *Icon { return e.trailing }
 
+// SetLeadingIcon shows a themed icon at the entry's start — GtkEntry's
+// primary icon, cascade-painted like the secondary one; onClick fires
+// on a press over it, nil keeps it display-only. An empty name clears
+// it.
+func (e *Entry) SetLeadingIcon(name string, px float64, onClick func()) {
+	checkLoop("SetLeadingIcon")
+	if name == "" {
+		e.leading = nil
+		e.leadingClick = nil
+	} else {
+		e.leading = NewThemeIcon(name, int(px))
+		e.leadingClick = onClick
+	}
+	setParents(e, entryIconParents(e.trailing, e.leading)...)
+	e.InvalidateLayout()
+}
+
+// LeadingIcon returns the entry's leading icon, nil when unset.
+func (e *Entry) LeadingIcon() *Icon { return e.leading }
+
+// entryIconParents is the entry's icon children that exist.
+func entryIconParents(icons ...*Icon) []Widget {
+	out := make([]Widget, 0, len(icons))
+	for _, ic := range icons {
+		if ic != nil {
+			out = append(out, ic)
+		}
+	}
+	return out
+}
+
 // trailingRect is the icon's rect: the content height, at the end
 // edge inside the text insets.
 func (e *Entry) trailingRect() render.Rect {
@@ -170,15 +204,43 @@ func (e *Entry) trailingWidth() int {
 	return sz.W + entryTrailingGap
 }
 
+// leadingRect is the primary icon's rect: the content height, at the
+// text area's start.
+func (e *Entry) leadingRect() render.Rect {
+	if e.leading == nil {
+		return render.Rect{}
+	}
+	sz := e.leading.Measure(Constraints{Max: Size{W: e.bounds.W, H: e.bounds.H}})
+	in := e.textInsets()
+	return render.Rect{
+		X: e.bounds.X + in.Left,
+		Y: e.bounds.Y + (e.bounds.H-sz.H)/2,
+		W: sz.W, H: sz.H,
+	}
+}
+
 // entryTrailingGap is the space between the text and the trailing icon.
 const entryTrailingGap = 4
 
-// styleChildren is the text node (styleKids).
-func (e *Entry) styleChildren() []Widget {
-	if e.trailing != nil {
-		return []Widget{&e.text, e.trailing}
+// leadingWidth is the text area the leading icon takes from the start.
+func (e *Entry) leadingWidth() int {
+	if e.leading == nil {
+		return 0
 	}
-	return []Widget{&e.text}
+	sz := e.leading.Measure(Constraints{Max: Size{W: e.bounds.W, H: e.bounds.H}})
+	return sz.W + entryTrailingGap
+}
+
+// styleChildren is the text node and any icons (styleKids).
+func (e *Entry) styleChildren() []Widget {
+	kids := []Widget{&e.text}
+	if e.leading != nil {
+		kids = append(kids, e.leading)
+	}
+	if e.trailing != nil {
+		kids = append(kids, e.trailing)
+	}
+	return kids
 }
 
 // entryPad is an unstyled field's padding: lineheight plus 12 tall.
@@ -186,8 +248,8 @@ var entryPad = render.Insets{Top: 6, Right: 8, Bottom: 6, Left: 8}
 
 // textInsets are the text area's insets inside the field's bounds:
 // the field's border and padding (entryPad where unstyled) and the
-// text node's margin, border and padding, plus the trailing icon's
-// width at the end.
+// text node's margin, border and padding, plus the icons' widths at
+// the ends.
 func (e *Entry) textInsets() render.Insets {
 	v := e.style(e)
 	b, p := borderOf(v), paddingOr(v, entryPad)
@@ -199,6 +261,7 @@ func (e *Entry) textInsets() render.Insets {
 		Left:   b.Left + p.Left + t.Left,
 	}
 	in.Right += e.trailingWidth()
+	in.Left += e.leadingWidth()
 	return in
 }
 
@@ -976,7 +1039,7 @@ func (e *Entry) Paint(cv *render.Canvas) {
 		prev := cv.PushClip(e.innerRect())
 		ph.Draw(cv, x, e.baseline(ph, c), col)
 		cv.PopClip(prev)
-		e.paintTrailing(cv)
+		e.paintIcons(cv)
 		return
 	}
 	// The highlight and the caret map through the display shape: in
@@ -1031,18 +1094,23 @@ func (e *Entry) Paint(cv *render.Canvas) {
 		cv.FillRect(render.Rect{X: e.caretX(sh, caret), Y: c.Y, W: 2, H: c.H}, caretCol)
 	}
 	cv.PopClip(prev)
-	e.paintTrailing(cv)
+	e.paintIcons(cv)
 }
 
-// paintTrailing draws the entry > image node, the secondary icon,
-// from its own cascade.
-func (e *Entry) paintTrailing(cv *render.Canvas) {
-	if e.trailing == nil {
-		return
+// paintIcons draws the entry > image nodes, the primary and secondary
+// icons, each from its own cascade.
+func (e *Entry) paintIcons(cv *render.Canvas) {
+	if e.leading != nil {
+		if r := e.leadingRect(); !r.Empty() {
+			e.leading.Arrange(r)
+			PaintChild(cv, e.leading)
+		}
 	}
-	if r := e.trailingRect(); !r.Empty() {
-		e.trailing.Arrange(r)
-		PaintChild(cv, e.trailing)
+	if e.trailing != nil {
+		if r := e.trailingRect(); !r.Empty() {
+			e.trailing.Arrange(r)
+			PaintChild(cv, e.trailing)
+		}
 	}
 }
 
@@ -1066,6 +1134,9 @@ func (e *Entry) bandRect(lx int, band [2]float64, c render.Rect) render.Rect {
 // Bounds records the field inside the stylesheet's margin.
 func (e *Entry) Arrange(r render.Rect) {
 	e.node.Arrange(marginOf(e.style(e)).Shrink(r))
+	if e.leading != nil {
+		e.leading.Arrange(e.leadingRect())
+	}
 	if e.trailing != nil {
 		e.trailing.Arrange(e.trailingRect())
 	}
@@ -1088,6 +1159,12 @@ func (e *Entry) HitTest(p Point) Widget {
 // Masked modes keep the cursor a logical index. A press over the
 // trailing icon goes to the icon's handler instead.
 func (e *Entry) ClickAt(p Point) {
+	if e.leading != nil && e.leadingClick != nil {
+		if r := e.leadingRect(); !r.Empty() && r.Contains(p.X, p.Y) {
+			e.leadingClick()
+			return
+		}
+	}
 	if e.trailing != nil && e.trailingClick != nil {
 		if r := e.trailingRect(); !r.Empty() && r.Contains(p.X, p.Y) {
 			e.trailingClick()
