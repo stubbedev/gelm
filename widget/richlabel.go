@@ -842,12 +842,8 @@ func (l *RichLabel) runeAt(p Point) int {
 	if l.wrap && l.lines != nil {
 		lineH := l.natural.H
 		top := l.bounds.Y + max(0, (l.bounds.H-len(l.lines)*lineH)/2)
-		row := (p.Y - top) / lineH
-		if row < 0 {
-			row = 0
-		}
+		row := max(0, (p.Y-top)/lineH)
 		if row >= len(l.lines) {
-			row = len(l.lines) - 1
 			return l.runes
 		}
 		x, _ := l.rowGeom(row)
