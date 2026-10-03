@@ -53,4 +53,6 @@ type interceptBox struct {
 	hook func(target Widget, a KeyAction, mods Mods) bool
 }
 
-func (b *interceptBox) InterceptKey(target Widget, a KeyAction, mods Mods) bool { return b.hook(target, a, mods) }
+func (b *interceptBox) InterceptKey(target Widget, a KeyAction, mods Mods) bool {
+	return b.hook(target, a, mods)
+}
