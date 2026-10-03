@@ -280,6 +280,13 @@ func CursorNameOf(w Widget) string {
 	return ""
 }
 
+// SetAnimationsInstant collapses every transition and animation tween
+// to its end state (GTK's gtk-enable-animations off) and returns the
+// restore function. Already-running tweens keep their schedules; only
+// launches after the call are affected. Hosts that screenshot, test,
+// or honor reduced motion set it.
+func SetAnimationsInstant(on bool) (restore func()) { return anim.SetInstant(on) }
+
 // SetEnabled turns the widget's own interactivity on or off; every
 // node-embedding widget inherits it. The zero state is enabled.
 //
