@@ -31,6 +31,7 @@ func (b *LevelBar) styleChildren() []Widget { return []Widget{&b.trough} }
 // [0, 1].
 func NewLevelBar(value float64) *LevelBar {
 	b := &LevelBar{value: math01(value)}
+	b.SetElement("levelbar")
 	b.trough.SetElement("trough")
 	b.trough.block.SetElement("block")
 	b.trough.block.AddClass("filled")
@@ -101,3 +102,8 @@ func (b *LevelBar) Role() Role { return RoleLevelBar }
 func (b *LevelBar) HitTest(pt Point) Widget {
 	return b.HitLeaf(b, pt)
 }
+
+// Trough and Block expose the levelbar's parts (levelbar > trough >
+// block.filled), the nodes a paint test reads or a host needs.
+func (b *LevelBar) Trough() Widget { return &b.trough }
+func (b *LevelBar) Block() Widget  { return &b.trough.block }
