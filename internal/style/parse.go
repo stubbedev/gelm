@@ -329,13 +329,13 @@ func (p *parser) keyframe(decls []decl) Keyframe {
 		switch d.name {
 		case "opacity":
 			if n, ok := evalNumeric(d.val, &cx); ok && n.kind == numNumber && n.v >= 0 && n.v <= 1 {
-				k.Opacity = animFloat(n.v)
+				k.Opacity = new(n.v)
 				continue
 			}
 			warnf("keyframe declaration skipped: opacity: %s", badText(rawText(p.src, d.val)))
 		case "-gtk-icon-transform":
 			if deg, ok := rotateOf(d.val); ok {
-				k.Rotation = animFloat(deg)
+				k.Rotation = new(deg)
 				continue
 			}
 			warnf("keyframe declaration skipped: -gtk-icon-transform: %s", badText(rawText(p.src, d.val)))
