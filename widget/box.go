@@ -51,6 +51,10 @@ type Box struct {
 	spacing int
 	padding render.Insets
 	child   []*childEntry
+	// homogeneous gives every child the largest child's main-axis size
+	// (gtk_box_layout's homogeneous): a segmented control's buttons all
+	// measure as wide as the widest label.
+	homogeneous bool
 	// layer memoizes the offscreen the transform paints through, so a
 	// hovering swatch reuses its buffer instead of allocating per frame.
 	layer *render.Layer
@@ -86,6 +90,20 @@ func (b *Box) SetDirection(d Direction) {
 
 // Direction returns the base direction the main axis flows along.
 func (b *Box) Direction() Direction { return b.dir }
+
+// SetHomogeneous equalizes the children's main-axis sizes to the
+// largest child's (gtk_box_set_homogeneous). Changing it relayouts.
+func (b *Box) SetHomogeneous(on bool) {
+	if b.homogeneous == on {
+		return
+	}
+	b.homogeneous = on
+	b.InvalidateLayout()
+}
+
+// Homogeneous reports whether the children share the largest child's
+// main-axis size.
+func (b *Box) Homogeneous() bool { return b.homogeneous }
 
 // NewBox returns an empty box along axis with the given spacing between
 // children and padding on every side.
@@ -263,6 +281,23 @@ func (b *Box) Measure(con Constraints) Size {
 		}
 		if shown > 0 {
 			total -= spacing
+		}
+		// Homogeneous: every child carries the largest child's main size
+		// in its natural (gtk_box_layout's homogeneous), which Arrange
+		// lays out.
+		if b.homogeneous {
+			biggest := 0
+			for _, c := range b.child {
+				if IsVisible(c.w) {
+					biggest = max(biggest, b.main(c.nat))
+				}
+			}
+			for i, c := range b.child {
+				if IsVisible(c.w) {
+					b.child[i].nat = b.withMain(c.nat, biggest)
+				}
+			}
+			total = biggest*shown + spacing*max(shown-1, 0)
 		}
 		// Height for width: a row too narrow for its children narrows
 		// those that can give, and measures them again at the width
