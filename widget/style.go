@@ -88,6 +88,14 @@ func NewStylesheet(css string, priority int) *Stylesheet {
 	return &Stylesheet{sheet: style.Parse(css), priority: priority}
 }
 
+// SetParseWarn installs f as the CSS engine's parse-warning sink; nil
+// restores the library logger. One sink per process. Hosts that want
+// stylesheet problems visible — a settings app showing theme errors —
+// route the messages to their log or interface.
+func SetParseWarn(f func(msg string)) {
+	style.SetParseWarn(f)
+}
+
 // AddStylesheet parses css and installs it at priority, above or below
 // the other stylesheets by priority and, at equal priority, after every
 // earlier one. The next frame repaints with it; call it from the
