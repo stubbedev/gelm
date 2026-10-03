@@ -115,3 +115,19 @@ func TestSurfaceInputCursorPassThrough(t *testing.T) {
 		t.Errorf("applying no shape cached %q", in.lastCursor)
 	}
 }
+
+// SetCursorName asks for a shape from a plain box, and an explicit
+// CursorName implementation still outranks it.
+func TestSetCursorName(t *testing.T) {
+	b := widget.NewBox(widget.Row, 0, 0)
+	if got := cursorFor(b); got != "" {
+		t.Errorf("fresh box cursor = %q, want the arrow", got)
+	}
+	b.SetCursorName("pointer")
+	if got := cursorFor(b); got != "pointer" {
+		t.Errorf("SetCursorName cursor = %q, want pointer", got)
+	}
+	if got := widget.CursorNameOf(widget.NewSpacer(4, 4)); got != "" {
+		t.Errorf("spacer cursor = %q, want empty", got)
+	}
+}

@@ -182,6 +182,9 @@ type node struct {
 	inlinePrio int
 	// sheets are the stylesheets attached to this subtree.
 	sheets []*Stylesheet
+	// cursorName is the hover pointer shape (SetCursorName), empty for
+	// the widget default.
+	cursorName string
 	// ink is how far the computed style paints outside the border box
 	// (outer shadows, the outline): damage grows by it.
 	ink render.Insets
@@ -257,6 +260,25 @@ func (n *node) SetTooltip(s string) {
 
 // TooltipText returns the hover text, empty when none is set.
 func (n *node) TooltipText() string { return n.tooltip }
+
+// SetCursorName requests the pointer shape while hovered, an xcursor
+// name ("pointer", "text" — what set_cursor_from_name takes); empty
+// falls back to the widget default. A widget's own CursorName
+// implementation outranks it.
+func (n *node) SetCursorName(s string) {
+	checkLoop("SetCursorName")
+	n.cursorName = s
+}
+
+// CursorNameOf returns the hover pointer shape SetCursorName put on w,
+// empty when none — the fallback cursorFor reads after the widget's
+// own CursorName.
+func CursorNameOf(w Widget) string {
+	if n := nodeOf(w); n != nil {
+		return n.cursorName
+	}
+	return ""
+}
 
 // SetEnabled turns the widget's own interactivity on or off; every
 // node-embedding widget inherits it. The zero state is enabled.
