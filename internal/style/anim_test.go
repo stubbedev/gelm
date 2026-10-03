@@ -86,9 +86,9 @@ func TestAnimationShorthand(t *testing.T) {
 // hold the nearest declared value outside them.
 func TestKeyframesInterpolate(t *testing.T) {
 	kf := &Keyframes{Name: "k", Frames: []Keyframe{
-		{Offset: 0, Opacity: animFloat(1)},
-		{Offset: 0.5, Opacity: animFloat(0.4), Rotation: animFloat(0)},
-		{Offset: 1, Rotation: animFloat(360)},
+		{Offset: 0, Opacity: new(1.0)},
+		{Offset: 0.5, Opacity: new(0.4), Rotation: new(0.0)},
+		{Offset: 1, Rotation: new(360.0)},
 	}}
 	at := func(p float64) AnimValues { return kf.At(p) }
 	if v := at(0); v.Opacity != 1 {

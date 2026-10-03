@@ -10,6 +10,7 @@ package style
 
 import (
 	"math"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -267,8 +268,8 @@ func resolveKeyframes(a *Animation, layers []Layer) {
 		*a = Animation{}
 		return
 	}
-	for i := len(layers) - 1; i >= 0; i-- {
-		if kf := layers[i].Sheet.Keyframes(a.Name); kf != nil {
+	for _, layer := range slices.Backward(layers) {
+		if kf := layer.Sheet.Keyframes(a.Name); kf != nil {
 			a.Keyframes = kf
 			return
 		}
@@ -281,9 +282,6 @@ func resolveKeyframes(a *Animation, layers []Layer) {
 func sortFrames(kf *Keyframes) {
 	sort.SliceStable(kf.Frames, func(i, j int) bool { return kf.Frames[i].Offset < kf.Frames[j].Offset })
 }
-
-// animFloat allocates a keyframe channel value.
-func animFloat(v float64) *float64 { return &v }
 
 // rotateOf parses a transform rotate() angle: deg, grad, rad, or turn,
 // returned in degrees clockwise. A non-rotate transform (scale,
