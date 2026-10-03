@@ -946,3 +946,20 @@ func TestTransform(t *testing.T) {
 		t.Error("rotate on a box parsed without a warning")
 	}
 }
+
+// all: unset computes every non-inherited longhand to its initial —
+// and a transform initial of 0 would paint nothing. The scale's
+// initial is the identity, like opacity's is 1.
+func TestAllUnsetLeavesTheTransformIdentity(t *testing.T) {
+	s := parseOne(t, `* { all: unset; } label { color: red; }`)
+	v := computeTree(s, el("label"))
+	if !v.Has(PropTransform) {
+		t.Fatal("all: unset did not compute the transform longhands")
+	}
+	if v.ScaleX != 1 || v.ScaleY != 1 || v.TranslateX != 0 {
+		t.Errorf("all: unset transform = %v,%v,%v, want the identity", v.ScaleX, v.ScaleY, v.TranslateX)
+	}
+	if v.Opacity != 1 {
+		t.Errorf("all: unset opacity = %v, want 1", v.Opacity)
+	}
+}
