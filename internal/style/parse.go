@@ -114,6 +114,10 @@ type Sheet struct {
 	byID      map[string][]int32
 	universal []int32
 
+	// keyframes holds the sheet's @keyframes rules by (lowercased)
+	// name; a later rule of the same name replaces an earlier one.
+	keyframes map[string]*Keyframes
+
 	sens Sensitivity
 }
 
@@ -136,6 +140,24 @@ type Sensitivity struct {
 
 // Sensitivity returns the sheet's selector summary.
 func (s *Sheet) Sensitivity() *Sensitivity { return &s.sens }
+
+// Keyframes returns the sheet's @keyframes rule of that name, nil when
+// it declares none.
+func (s *Sheet) Keyframes(name string) *Keyframes {
+	if s.keyframes == nil {
+		return nil
+	}
+	return s.keyframes[name]
+}
+
+// addKeyframes files one @keyframes rule; a later rule of the same
+// name replaces an earlier one.
+func (s *Sheet) addKeyframes(kf *Keyframes) {
+	if s.keyframes == nil {
+		s.keyframes = make(map[string]*Keyframes)
+	}
+	s.keyframes[kf.Name] = kf
+}
 
 // rule is one selector of one stylesheet rule with its specificity and
 // declarations. A comma group compiles to one rule per selector, all
@@ -180,10 +202,14 @@ func (p *parser) stylesheet(ts []token) {
 }
 
 // atRule skips one at-rule: through its block, or to its semicolon.
-// None of them participates in the subset; @keyframes and @media are
-// common in GTK stylesheets and skip silently, the rest warn.
+// @keyframes compiles into the sheet; @media and the rest do not
+// participate — @media is common in GTK stylesheets and skips
+// silently, the rest warn.
 func (p *parser) atRule(ts []token, i int) int {
 	name := ts[i].s
+	if name == "keyframes" || name == "-gtk-keyframes" {
+		return p.keyframes(ts, i)
+	}
 	j := i + 1
 	for ; j < len(ts); j++ {
 		switch ts[j].kind {
@@ -201,6 +227,123 @@ func (p *parser) atRule(ts []token, i int) int {
 	}
 	p.warnAt(name)
 	return j
+}
+
+// keyframes parses one @keyframes rule into the sheet: the name, then
+// stops of selector list (`from`, `to`, percentages) over declaration
+// blocks. A stop keeps its phase even when it declares nothing the
+// engine animates; declarations that do not interpolate warn and drop.
+func (p *parser) keyframes(ts []token, i int) int {
+	j := i + 1
+	for ; j < len(ts); j++ {
+		if ts[j].kind == tkWS {
+			continue
+		}
+		if ts[j].kind == tkLBrace {
+			break
+		}
+		if ts[j].kind == tkSemi {
+			return j + 1 // `@keyframes name;`: dropped
+		}
+	}
+	if j >= len(ts) {
+		warnf("@keyframes skipped: want a block")
+		return j
+	}
+	name := ""
+	for k := i + 1; k < j; k++ {
+		if ts[k].kind == tkWS {
+			continue
+		}
+		name = strings.ToLower(ts[k].s)
+		break
+	}
+	end := blockEnd(ts, j)
+	if name == "" {
+		warnf("@keyframes skipped: want a name")
+		return min(end, len(ts))
+	}
+	kf := &Keyframes{Name: name}
+	body := ts[j+1 : end-1]
+	for x := 0; x < len(body); {
+		if body[x].kind == tkWS || body[x].kind == tkSemi || body[x].kind == tkRBrace {
+			x++
+			continue
+		}
+		start := x
+		for x < len(body) && body[x].kind != tkLBrace {
+			if closer(body[x].kind) != 0 {
+				x = blockEnd(body, x)
+				continue
+			}
+			x++
+		}
+		if x >= len(body) {
+			warnf("@keyframes stop skipped: want '{'")
+			break
+		}
+		prelude := trimWS(body[start:x])
+		stopEnd := blockEnd(body, x)
+		frame := p.keyframe(p.declarations(body[x+1 : stopEnd-1]))
+		for _, off := range keyframeOffsets(prelude) {
+			f := frame
+			f.Offset = off
+			kf.Frames = append(kf.Frames, f)
+		}
+		x = stopEnd
+	}
+	sortFrames(kf)
+	p.sheet.addKeyframes(kf)
+	return end
+}
+
+// keyframeOffsets maps a stop's selector list to offsets: `from` is 0,
+// `to` is 1, `N%` is N/100.
+func keyframeOffsets(ts []token) []float64 {
+	var out []float64
+	for _, part := range splitTop(ts, tkComma) {
+		part = trimWS(part)
+		if len(part) != 1 {
+			continue
+		}
+		switch {
+		case part[0].ident("from"):
+			out = append(out, 0)
+		case part[0].ident("to"):
+			out = append(out, 1)
+		case part[0].kind == tkPercent:
+			if v := part[0].num; v >= 0 && v <= 100 {
+				out = append(out, v/100)
+			}
+		}
+	}
+	return out
+}
+
+// keyframe extracts the animatable channels of one stop's
+// declarations; the rest warn and drop.
+func (p *parser) keyframe(decls []decl) Keyframe {
+	var k Keyframe
+	cx := ctx{rem: parseRem, em: parseRem}
+	for _, d := range decls {
+		switch d.name {
+		case "opacity":
+			if n, ok := evalNumeric(d.val, &cx); ok && n.kind == numNumber && n.v >= 0 && n.v <= 1 {
+				k.Opacity = animFloat(n.v)
+				continue
+			}
+			warnf("keyframe declaration skipped: opacity: %s", badText(rawText(p.src, d.val)))
+		case "-gtk-icon-transform":
+			if deg, ok := rotateOf(d.val); ok {
+				k.Rotation = animFloat(deg)
+				continue
+			}
+			warnf("keyframe declaration skipped: -gtk-icon-transform: %s", badText(rawText(p.src, d.val)))
+		default:
+			warnf("keyframe declaration skipped: %q does not interpolate", d.name)
+		}
+	}
+	return k
 }
 
 func (p *parser) warnAt(name string) {

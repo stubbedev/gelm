@@ -62,6 +62,9 @@ const (
 	PropTransitionDuration
 	PropTransitionTiming
 	PropTransitionDelay
+	PropAnimation
+	PropAnimationPlayState
+	PropIconTransform
 	numProps
 )
 
@@ -257,6 +260,11 @@ type Values struct {
 	IconSize      int
 
 	Transition Transition
+	// Animation is the computed animation-* group; not inherited.
+	Animation Animation
+	// Rotation is -gtk-icon-transform's rotate() in degrees clockwise;
+	// icons draw turned by it.
+	Rotation float64
 
 	// Vars is the node's custom-property environment: its own
 	// declarations over the inherited chain. Nodes that declare none

@@ -868,6 +868,7 @@ func (n *node) restyle(w Widget) *style.Values {
 	n.styleDirty = false
 	n.ink = inkOf(&v)
 	n.transitionBackground(old, v)
+	n.syncAnimation(v)
 	if v != old {
 		if inv, ok := w.(interface{ Invalidate() }); ok {
 			inv.Invalidate()

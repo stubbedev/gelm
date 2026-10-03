@@ -188,6 +188,17 @@ type node struct {
 	// bgCancel runs while a background-color transition tween drives
 	// the cache's color (transition.go); nil when none is in flight.
 	bgCancel anim.Cancel
+	// CSS animation state (animations.go): the running keyframes name,
+	// the phase within a cycle, the completed cycle count, the tween's
+	// cancel, the cascade's animated channels to revert to, and whether
+	// the cascade declared each.
+	animName        string
+	animPhase       float64
+	animCycle       int
+	animCancel      anim.Cancel
+	animCascade     style.AnimValues
+	animHadOpacity  bool
+	animHadRotation bool
 	// self is the widget embedding this node, recorded by the first
 	// arranging container, so a state flip can walk its own subtree.
 	self Widget
