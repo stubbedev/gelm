@@ -89,7 +89,8 @@ func Compute(layers []Layer, n Node, parent, old *Values, env Env, sc *Scratch, 
 			v.Set |= 1 << p
 		}
 	}
-	resolveKeyframes(&v.Animation, layers)
+	resolveKeyframes(v, layers)
+	mergeAnimSlots(v)
 }
 
 // computeProp computes one longhand from its winning declaration. It
@@ -371,7 +372,9 @@ func copyProp(dst, src *Values, p Prop) {
 	case PropFontFeatures:
 		dst.Features = src.Features
 	case PropTransform:
-		dst.ScaleX, dst.ScaleY, dst.TranslateX = src.ScaleX, src.ScaleY, src.TranslateX
+		dst.Transform = src.Transform
+	case PropTransformOrigin:
+		dst.OriginFrac, dst.OriginPx = src.OriginFrac, src.OriginPx
 	case PropTextTransform:
 		dst.TextTransform = src.TextTransform
 	case PropIconSize:
@@ -387,9 +390,19 @@ func copyProp(dst, src *Values, p Prop) {
 	case PropAnimation:
 		dst.Animation = src.Animation
 	case PropAnimationPlayState:
-		dst.Animation.Running = src.Animation.Running
+		for i := range dst.Animation {
+			dst.Animation[i].Running = src.Animation[i].Running
+		}
+	case PropAnimDuration:
+		dst.AnimDuration = src.AnimDuration
+	case PropAnimDelay:
+		dst.AnimDelay = src.AnimDelay
+	case PropAnimDirection:
+		dst.AnimDirection = src.AnimDirection
+	case PropAnimFill:
+		dst.AnimFill = src.AnimFill
 	case PropIconTransform:
-		dst.Rotation = src.Rotation
+		dst.IconXform = src.IconXform
 	case PropIconSource:
 		dst.IconSource = src.IconSource
 	case PropIconPalette:

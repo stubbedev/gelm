@@ -188,23 +188,14 @@ type node struct {
 	// ink is how far the computed style paints outside the border box
 	// (outer shadows, the outline): damage grows by it.
 	ink render.Insets
-	// bgCancel runs while a background-color transition tween drives
-	// the cache's color (transition.go); nil when none is in flight.
-	bgCancel anim.Cancel
-	// trCancel runs while a transform transition tween drives the
-	// cache's scale and translation; nil when none is in flight.
+	// trCancel runs while a transition tween drives the cache's
+	// animated channels (transition.go); nil when none is in flight.
 	trCancel anim.Cancel
-	// CSS animation state (animations.go): the running keyframes name,
-	// the phase within a cycle, the completed cycle count, the tween's
-	// cancel, the cascade's animated channels to revert to, and whether
-	// the cascade declared each.
-	animName        string
-	animPhase       float64
-	animCycle       int
-	animCancel      anim.Cancel
-	animCascade     style.AnimValues
-	animHadOpacity  bool
-	animHadRotation bool
+	// CSS animation state (animations.go): one runner per computed
+	// animation, each holding its name, phase within a cycle, completed
+	// cycle count, the tween's cancel, the cascade's channels to revert
+	// to, and which of them the cascade declared.
+	animRuns []animRunner
 	// self is the widget embedding this node, recorded by the first
 	// arranging container, so a state flip can walk its own subtree.
 	self Widget

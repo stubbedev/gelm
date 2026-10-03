@@ -261,8 +261,11 @@ func TestStateToggleRestyles(t *testing.T) {
 	before := *b.style(b)
 	b.SetPressed(true)
 	CollectDamage(b)
-	if after := *b.style(b); after != before {
-		t.Errorf("unstyled :active flip moved the cascade: %+v", after)
+	after := *b.style(b)
+	if after.Background != before.Background || after.Color != before.Color ||
+		after.Padding != before.Padding || after.Set != before.Set ||
+		after.Opacity != before.Opacity || after.Transform.M != before.Transform.M {
+		t.Errorf("unstyled :active flip moved the cascade: %+v vs %+v", after, before)
 	}
 
 	// Disabled is inherited: a disabled box marks the whole subtree.

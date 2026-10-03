@@ -930,10 +930,12 @@ func (n *node) restyle(w Widget) *style.Values {
 	n.styleSeen = styleGen
 	n.styleDirty = false
 	n.ink = inkOf(&v)
-	n.transitionBackground(old, v)
-	n.transitionTransform(old, v)
+	n.transitionValues(old, v)
 	n.syncAnimation(v)
-	if v != old {
+	// Values carries the animation group, a slice, and so is not
+	// comparable; the field-wise diff decides whether the widget's
+	// paint is stale and gives the hooks their old/new pair.
+	if styleChanged(&old, &v) {
 		if inv, ok := w.(interface{ Invalidate() }); ok {
 			inv.Invalidate()
 		}
@@ -956,6 +958,46 @@ func (n *node) restyle(w Widget) *style.Values {
 // cascade: Label reshapes when its effective face or size moved.
 type styleRestyler interface {
 	styleRestyled(old, new style.Values)
+}
+
+// styleChanged reports whether a recomputed cascade differs from the
+// cached one in anything a widget paints or lays out. Values carries
+// slices (the animation group and its longhand slots), so the diff is
+// field-wise; the animation entries themselves stay comparable.
+func styleChanged(a, b *style.Values) bool {
+	return a.Set != b.Set || a.Own != b.Own || a.Vars != b.Vars ||
+		a.Color != b.Color || a.Background != b.Background || a.Image != b.Image ||
+		a.Opacity != b.Opacity || a.Brightness != b.Brightness ||
+		a.Padding != b.Padding || a.Margin != b.Margin ||
+		a.BorderWidth != b.BorderWidth || a.BorderStyle != b.BorderStyle ||
+		a.BorderColor != b.BorderColor || a.Radius != b.Radius || a.Shadow != b.Shadow ||
+		a.OutlineWidth != b.OutlineWidth || a.OutlineStyle != b.OutlineStyle ||
+		a.OutlineColor != b.OutlineColor || a.OutlineOffset != b.OutlineOffset ||
+		a.MinWidth != b.MinWidth || a.MinHeight != b.MinHeight ||
+		a.BorderSpacingH != b.BorderSpacingH || a.BorderSpacingV != b.BorderSpacingV ||
+		a.FontFamily != b.FontFamily || a.FontSize != b.FontSize ||
+		a.FontWeight != b.FontWeight || a.Italic != b.Italic ||
+		a.LetterSpacing != b.LetterSpacing || a.TextTransform != b.TextTransform ||
+		a.LineHeight != b.LineHeight || a.Features != b.Features ||
+		a.Transform.M != b.Transform.M || a.OriginFrac != b.OriginFrac ||
+		a.OriginPx != b.OriginPx || a.IconSize != b.IconSize ||
+		a.IconSource != b.IconSource || a.IconXform.M != b.IconXform.M ||
+		a.PaletteTint != b.PaletteTint || a.CaretColor != b.CaretColor ||
+		a.Underline != b.Underline || a.Transition != b.Transition ||
+		!animsEqual(a.Animation, b.Animation)
+}
+
+// animsEqual compares the computed animation groups entrywise.
+func animsEqual(a, b []style.Animation) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // layoutKey projects the values that change what a widget wants to
