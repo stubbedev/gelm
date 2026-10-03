@@ -788,11 +788,24 @@ func (r *Router) applyDragTarget(w Widget, accepted bool) {
 
 // KeyAction delivers an editing or activation action to the focused
 // widget — never to one that went disabled since it took focus; see
-// keyboardTarget.
+// keyboardTarget. An ancestor KeyInterceptor sees the action first
+// (GTK's key controller on a parent).
 func (r *Router) KeyAction(a KeyAction, mods Mods) {
+	for w := r.keyboardTarget(); w != nil; w = parentOf(w) {
+		if ic, ok := w.(KeyInterceptor); ok && ic.InterceptKey(a, mods) {
+			return
+		}
+	}
 	if h, ok := r.keyboardTarget().(KeyActionHandler); ok {
 		h.KeyAction(a, mods)
 	}
+}
+
+// KeyInterceptor is an ancestor that pre-empts a focused widget's key
+// actions (GTK's KeyControllerKeyPressed on a parent). InterceptKey
+// returns true when it consumed the action.
+type KeyInterceptor interface {
+	InterceptKey(a KeyAction, mods Mods) bool
 }
 
 // SelectedTexter exposes the widget's active selection.
