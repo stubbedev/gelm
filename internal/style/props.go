@@ -542,11 +542,16 @@ func parseFilter(ts []token, cx *ctx, v *Values) bool {
 func parseBackground(ts []token, cx *ctx, v *Values) bool {
 	v.Background = 0
 	v.Image = Gradient{}
+	v.BgImageURL = ""
 	var haveC, haveI bool
 	for _, c := range components(ts) {
 		if !haveI {
 			if c[0].ident("none") {
 				haveI = true
+				continue
+			}
+			if u, ok := backgroundImageURL(c); ok {
+				v.BgImageURL, haveI = u, true
 				continue
 			}
 			if g, ok := gradientOf(c, cx); ok {
@@ -572,6 +577,12 @@ func parseBackgroundImage(ts []token, cx *ctx, v *Values) bool {
 	}
 	if comps[0][0].ident("none") {
 		v.Image = Gradient{}
+		v.BgImageURL = ""
+		return true
+	}
+	if u, ok := backgroundImageURL(comps[0]); ok {
+		v.Image = Gradient{}
+		v.BgImageURL = u
 		return true
 	}
 	g, ok := gradientOf(comps[0], cx)
@@ -579,7 +590,29 @@ func parseBackgroundImage(ts []token, cx *ctx, v *Values) bool {
 		return false
 	}
 	v.Image = g
+	v.BgImageURL = ""
 	return true
+}
+
+// backgroundImageURL parses url(...) — a quoted string — to a local
+// file path: a file:// URL strips the scheme, anything else is the
+// path itself. gelm loads no network images; a bare (unquoted) path
+// tokenizes piecemeal and is not accepted, the way producers write
+// quoted urls anyway.
+func backgroundImageURL(ts []token) (string, bool) {
+	if len(ts) == 0 || ts[0].kind != tkFunc || ts[0].s != "url" {
+		return "", false
+	}
+	args := funcArgs(ts)
+	if len(args) != 1 || args[0].kind != tkString {
+		return "", false
+	}
+	path := strings.Trim(strings.TrimSpace(args[0].s), "\"'")
+	path = strings.TrimPrefix(path, "file://")
+	if path == "" {
+		return "", false
+	}
+	return path, true
 }
 
 // gradientOf parses linear-gradient([<angle> | to <side-or-corner>,]

@@ -289,6 +289,7 @@ func copyProp(dst, src *Values, p Prop) {
 		dst.Background = src.Background
 	case PropBackgroundImage:
 		dst.Image = src.Image
+		dst.BgImageURL = src.BgImageURL
 	case PropOpacity:
 		dst.Opacity = src.Opacity
 	case PropFilter:

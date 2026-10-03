@@ -283,6 +283,12 @@ type Values struct {
 	Color      render.Color
 	Background render.Color
 	Image      Gradient
+	// BgImageURL is background-image's url(...): a file path whose
+	// image paints as the box's background, cover-fit inside the
+	// rounded border (CSS background-size: cover). Empty is none; a
+	// gradient and a URL are mutually exclusive, the last declaration
+	// wins.
+	BgImageURL string
 	Opacity    float64
 	Brightness float64
 
