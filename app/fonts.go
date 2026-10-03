@@ -45,6 +45,23 @@ func FontVariants(base *render.Typeface) widget.VariantFunc {
 	}
 }
 
+// FontVariantsOf is FontVariants for whatever face the app holds: a
+// fallback chain resolves from its primary face, a bare typeface from
+// itself. nil yields nil (a rich label without variants).
+func FontVariantsOf(face render.Font) widget.VariantFunc {
+	var base *render.Typeface
+	switch f := face.(type) {
+	case *render.Chain:
+		base = f.Primary()
+	case *render.Typeface:
+		base = f
+	}
+	if base == nil {
+		return nil
+	}
+	return FontVariants(base)
+}
+
 // FontFallback wraps a face in the glyph fallback chain, so glyphs the
 // primary family lacks still render.
 func FontFallback(face *render.Typeface) *render.Chain {
