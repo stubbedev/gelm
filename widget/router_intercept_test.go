@@ -11,6 +11,7 @@ import (
 // reaches the focused widget, an unconsumed one still does.
 func TestRouterKeyInterceptor(t *testing.T) {
 	intercepted := 0
+	box := NewEntry(entryFace(t), 14, render.RGB(255, 255, 255))
 	hook := &interceptBox{Box: NewBox(Column, 0, 0), hook: func(target Widget, a KeyAction, mods Mods) bool {
 		if a == KeyBackspace {
 			intercepted++
@@ -21,7 +22,6 @@ func TestRouterKeyInterceptor(t *testing.T) {
 		}
 		return false
 	}}
-	box := NewEntry(entryFace(t), 14, render.RGB(255, 255, 255))
 	hook.Append(box, false)
 	// The interceptor is an ancestor in a real tree, so the outer-type
 	// parent links resolve through it.
@@ -50,7 +50,7 @@ func TestRouterKeyInterceptor(t *testing.T) {
 // interceptBox is a Box implementing KeyInterceptor.
 type interceptBox struct {
 	*Box
-	hook func(KeyAction, Mods) bool
+	hook func(target Widget, a KeyAction, mods Mods) bool
 }
 
 func (b *interceptBox) InterceptKey(target Widget, a KeyAction, mods Mods) bool { return b.hook(target, a, mods) }
