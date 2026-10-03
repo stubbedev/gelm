@@ -70,6 +70,20 @@ type RichLabel struct {
 	// last fitted to, -1 while they hold the whole line.
 	ell  EllipsizeMode
 	fitW int
+
+	// wrap breaks the line at words to the arranged width; maxLines
+	// caps a wrapping, ellipsizing label at that many rows. lines holds
+	// the laid-out rows in wrap mode (nil: single-line, shaped above).
+	wrap     bool
+	maxLines int
+	lines    []*richLine
+}
+
+// richLine is one laid-out row: the shaped runs in visual order and
+// the row's advance.
+type richLine struct {
+	runs    []*richRun
+	advance float64
 }
 
 // richRun is one shaped markup run.
@@ -193,12 +207,22 @@ func spansText(spans []MarkupRun) (string, int) {
 	return sb.String(), utf8.RuneCountInString(sb.String())
 }
 
-// shapeSpans resolves the line's directional runs over the spans' whole
-// text and shapes every styled span the runs touch into l.shaped, with
-// the line's ascent, descent, and advance.
+// shapeSpans resolves the line's directional runs over the spans'
+// whole text and shapes every styled span the runs touch into l.shaped,
+// with the line's ascent, descent, and advance.
 func (l *RichLabel) shapeSpans(spans []MarkupRun) {
+	line, asc, desc := l.shapeOne(spans)
+	l.shaped = line.runs
+	l.lineAsc, l.lineDesc, l.advance = asc, desc, line.advance
+}
+
+// shapeOne shapes one row of spans: the directional runs intersect the
+// styled spans, each visual piece keeping its span's face and style.
+// The row's metrics ride along; an empty row still reserves the font's
+// line height, like Label.
+func (l *RichLabel) shapeOne(spans []MarkupRun) (*richLine, float64, float64) {
 	line, _ := spansText(spans)
-	l.shaped = make([]*richRun, 0, len(spans))
+	out := &richLine{runs: make([]*richRun, 0, len(spans))}
 	// Span rune spans, to intersect the styled spans with the
 	// directional runs.
 	spanStart := make([]int, len(spans)+1)
@@ -226,16 +250,17 @@ func (l *RichLabel) shapeSpans(spans []MarkupRun) {
 			asc = math.Max(asc, sh.Ascent())
 			desc = math.Max(desc, sh.Descent())
 			adv += sh.Advance()
-			l.shaped = append(l.shaped, &richRun{sh: sh, face: face, style: spans[k].Style, start: lo})
+			out.runs = append(out.runs, &richRun{sh: sh, face: face, style: spans[k].Style, start: lo})
 		}
 	}
-	if len(l.shaped) == 0 {
+	if len(out.runs) == 0 {
 		// Empty text still reserves the font's line height, like
 		// Label.
 		sh := l.faceFor(TextStyle{}).Shape("", l.sizePx)
 		asc, desc = sh.Ascent(), sh.Descent()
 	}
-	l.lineAsc, l.lineDesc, l.advance = asc, desc, adv
+	out.advance = adv
+	return out, asc, desc
 }
 
 // SetEllipsize sets how a line wider than its box truncates: Start,
@@ -254,10 +279,189 @@ func (l *RichLabel) SetEllipsize(mode EllipsizeMode) {
 // Ellipsize returns the truncation mode.
 func (l *RichLabel) Ellipsize() EllipsizeMode { return l.ell }
 
+// SetWrap toggles word wrapping at the arranged width: Measure reports
+// the widest wrapped row and one line height per row, and Paint lays
+// the rows out with the alignment. Changing it relayouts.
+func (l *RichLabel) SetWrap(on bool) {
+	if l.wrap == on {
+		return
+	}
+	l.wrap = on
+	l.fitW = -1
+	l.lines = nil
+	l.InvalidateLayout()
+}
+
+// Wrap reports whether the label wraps at the arranged width.
+func (l *RichLabel) Wrap() bool { return l.wrap }
+
+// SetMaxLines caps a wrapping, ellipsizing label at n rows: past that
+// the rows merge into the last and the truncation mode ellipsizes it.
+// 0, the default, is no cap.
+func (l *RichLabel) SetMaxLines(n int) {
+	n = max(n, 0)
+	if l.maxLines == n {
+		return
+	}
+	l.maxLines = n
+	l.fitW = -1
+	l.lines = nil
+	l.InvalidateLayout()
+}
+
+// MaxLines returns the row cap, 0 for none.
+func (l *RichLabel) MaxLines() int { return l.maxLines }
+
 // Arrange records the box and fits the line to its width.
 func (l *RichLabel) Arrange(r render.Rect) {
 	l.node.Arrange(r)
+	if l.wrap {
+		l.reflow(r.W)
+		return
+	}
 	l.fit(r.W)
+}
+
+// reflow lays the wrapped rows out to width w: the whole text on one
+// row when it fits, else word-wrapped rows, capped at maxLines with
+// the overflow merged into an ellipsized last row.
+func (l *RichLabel) reflow(w int) {
+	if l.fitW == w && l.lines != nil {
+		return
+	}
+	rows := l.wrapSpans(w)
+	if n := l.maxLines; n > 0 && l.ell != EllipsizeNone && len(rows) > n {
+		_, start := l.rowRange(rows, n-1)
+		merged := sliceSpans(l.runs, start, l.runes)
+		rows = append(rows[:n-1], merged)
+		rows[n-1] = l.fitLine(rows[n-1], w)
+	}
+	l.lines = make([]*richLine, 0, len(rows))
+	for _, row := range rows {
+		line, _, _ := l.shapeOne(row)
+		l.lines = append(l.lines, line)
+	}
+	l.fitW = w
+}
+
+// wrapSpans breaks the spans into rows of at most w pixels: greedy
+// word wrap, spaces riding with the word before them and dropped at a
+// break.
+func (l *RichLabel) wrapSpans(w int) [][]MarkupRun {
+	lineW := 0.0
+	var rows [][]MarkupRun
+	var row []MarkupRun
+	flush := func() {
+		rows = append(rows, row)
+		row, lineW = nil, 0
+	}
+	for _, span := range l.runs {
+		start := 0
+		for i, r := range span.Text {
+			if r != ' ' && r != '\t' {
+				continue
+			}
+			if i > start {
+				word := span.Text[start:i]
+				adv := l.faceFor(span.Style).Shape(word, l.sizePx).Advance()
+				if lineW+adv > float64(w) && len(row) > 0 {
+					flush()
+				}
+				row = append(row, MarkupRun{Text: word, Style: span.Style})
+				lineW += adv
+			}
+			start = i + 1
+			space := span.Text[i : i+1]
+			adv := l.faceFor(span.Style).Shape(space, l.sizePx).Advance()
+			if lineW+adv > float64(w) && len(row) > 0 {
+				flush()
+				continue
+			}
+			row = append(row, MarkupRun{Text: space, Style: span.Style})
+			lineW += adv
+		}
+		if start < len(span.Text) {
+			word := span.Text[start:]
+			adv := l.faceFor(span.Style).Shape(word, l.sizePx).Advance()
+			if lineW+adv > float64(w) && len(row) > 0 {
+				flush()
+			}
+			row = append(row, MarkupRun{Text: word, Style: span.Style})
+			lineW += adv
+		}
+	}
+	if len(row) > 0 {
+		rows = append(rows, row)
+	}
+	if rows == nil {
+		rows = [][]MarkupRun{l.runs}
+	}
+	return rows
+}
+
+// rowRange is the flat rune range [start, end) the first runes of row
+// i cover, counting the rows' tokens.
+func (l *RichLabel) rowRange(rows [][]MarkupRun, i int) (int, int) {
+	count := 0
+	start := 0
+	for r, row := range rows {
+		n := 0
+		for _, run := range row {
+			n += utf8.RuneCountInString(run.Text)
+		}
+		if r == i {
+			return count, count + n
+		}
+		count += n
+		start = count
+	}
+	return start, l.runes
+}
+
+// fitLine is one row ellipsized to w, the truncation mode placing the
+// marks; a row already inside w comes back untouched.
+func (l *RichLabel) fitLine(spans []MarkupRun, w int) []MarkupRun {
+	line, _, _ := l.shapeOne(spans)
+	if line.advance <= float64(w) || l.ell == EllipsizeNone {
+		return spans
+	}
+	n := 0
+	for _, run := range spans {
+		n += utf8.RuneCountInString(run.Text)
+	}
+	width := func(keep int) float64 {
+		cut, _, _ := l.shapeOne(cutWithin(spans, keep))
+		return cut.advance
+	}
+	lo, hi := 0, n-1
+	for lo < hi {
+		mid := (lo + hi + 1) / 2
+		if width(mid) <= float64(w) {
+			lo = mid
+		} else {
+			hi = mid - 1
+		}
+	}
+	return cutWithin(spans, lo)
+}
+
+// cutWithin is the spans with keep runes kept and the ellipsis after
+// them, in the last kept span's style (a wrapped last row always cuts
+// toward its end).
+func cutWithin(spans []MarkupRun, keep int) []MarkupRun {
+	n := 0
+	for _, run := range spans {
+		n += utf8.RuneCountInString(run.Text)
+	}
+	if keep >= n {
+		return spans
+	}
+	st := TextStyle{}
+	if len(spans) > 0 {
+		st = spans[len(spans)-1].Style
+	}
+	out := sliceSpans(spans, 0, keep)
+	return append(out, MarkupRun{Text: render.Ellipsis, Style: st})
 }
 
 // fit shapes the line for width w: the whole line when it fits or
@@ -341,12 +545,36 @@ func styleAt(spans []MarkupRun, i int) TextStyle {
 }
 
 // Measure returns the line's total advance and its line height - the
-// maximum over the runs - clamped to con.
+// maximum over the runs - clamped to con. Wrap mode reports the widest
+// wrapped row and one line height per row at the offered width.
 func (l *RichLabel) Measure(con Constraints) Size {
 	if s, ok := l.measureHit(con); ok {
 		return s
 	}
+	if l.wrap && l.markup != "" && con.Max.W < l.natural.W {
+		l.reflow(con.Max.W)
+		w := 0
+		for _, line := range l.lines {
+			w = max(w, int(math.Ceil(line.advance)))
+		}
+		return l.measureStore(con, clampSize(Size{W: w, H: len(l.lines) * l.natural.H}, con))
+	}
 	return l.measureStore(con, clampSize(l.natural, con))
+}
+
+// MinSize is a wrapping label's floor: the widest unbreakable token —
+// wrapping narrower than that clips tokens, the one thing wrapping
+// promised not to do — and one line height.
+func (l *RichLabel) MinSize() Size {
+	if !l.wrap || l.text == "" {
+		return Size{H: l.natural.H}
+	}
+	w := 0.0
+	for _, tok := range l.wrapSpans(1) {
+		line, _, _ := l.shapeOne(tok)
+		w = math.Max(w, line.advance)
+	}
+	return Size{W: int(math.Ceil(w)), H: l.natural.H}
 }
 
 // lineGeom resolves the aligned line origin and the runs' shared
@@ -379,9 +607,36 @@ func (l *RichLabel) lineGeom() (lineX float64, baseline int, ok bool) {
 	return lineX, baseline, true
 }
 
-// Paint draws the selection highlight, then each run on the shared
-// baseline: its variant face, its color (a span color wins over the
-// label color), and an underline for link runs.
+// rowGeom is row i's aligned origin and baseline in wrap mode: rows
+// align individually, the block centers in the bounds.
+func (l *RichLabel) rowGeom(i int) (float64, int) {
+	line := l.lines[i]
+	align := l.align
+	if text.RTL(l.text, l.dir) {
+		switch align {
+		case render.AlignStart:
+			align = render.AlignEnd
+		case render.AlignEnd:
+			align = render.AlignStart
+		}
+	}
+	var x float64
+	switch align {
+	case render.AlignCenter:
+		x = float64(l.bounds.X) + (float64(l.bounds.W)-line.advance)/2
+	case render.AlignEnd:
+		x = float64(l.bounds.X) + float64(l.bounds.W) - line.advance
+	default:
+		x = float64(l.bounds.X)
+	}
+	lineH := l.natural.H
+	top := l.bounds.Y + max(0, (l.bounds.H-len(l.lines)*lineH)/2)
+	return x, top + i*lineH + int(math.Round(l.lineAsc))
+}
+
+// Paint draws the selection highlight, then each run: its variant
+// face, its color (a span color wins over the label color), and an
+// underline for link runs. Wrap mode lays one row per baseline.
 func (l *RichLabel) Paint(cv *render.Canvas) {
 	if start, end, on := l.selection(); on {
 		a := Current().Accent
@@ -390,12 +645,25 @@ func (l *RichLabel) Paint(cv *render.Canvas) {
 			cv.FillRect(b, hl)
 		}
 	}
+	if l.wrap && l.lines != nil {
+		for i, line := range l.lines {
+			x, baseline := l.rowGeom(i)
+			l.paintLine(cv, line.runs, x, baseline)
+		}
+		return
+	}
 	lineX, baseline, ok := l.lineGeom()
 	if !ok {
 		return
 	}
+	l.paintLine(cv, l.shaped, lineX, baseline)
+}
+
+// paintLine draws the runs on one baseline: each its variant face, its
+// color, and an underline for link runs.
+func (l *RichLabel) paintLine(cv *render.Canvas, runs []*richRun, lineX float64, baseline int) {
 	x := lineX
-	for _, r := range l.shaped {
+	for _, r := range runs {
 		dx := int(math.Round(x))
 		col := l.color
 		if r.style.Color != 0 {
@@ -485,6 +753,23 @@ func (l *RichLabel) SelectionBands(start, end int) []render.Rect {
 // coordinates.
 func (l *RichLabel) linkAt(p Point) (string, bool) {
 	if !l.bounds.Contains(p.X, p.Y) {
+		return "", false
+	}
+	if l.wrap && l.lines != nil {
+		lineH := l.natural.H
+		top := l.bounds.Y + max(0, (l.bounds.H-len(l.lines)*lineH)/2)
+		row := (p.Y - top) / lineH
+		if row < 0 || row >= len(l.lines) {
+			return "", false
+		}
+		x, _ := l.rowGeom(row)
+		for _, r := range l.lines[row].runs {
+			w := r.sh.Advance()
+			if r.style.Href != "" && float64(p.X) >= x && float64(p.X) < x+w {
+				return r.style.Href, true
+			}
+			x += w
+		}
 		return "", false
 	}
 	lineX, _, ok := l.lineGeom()
