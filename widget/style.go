@@ -558,6 +558,51 @@ func (n *node) SetID(id string) {
 // ID returns the style id, empty when none is set.
 func (n *node) ID() string { return n.id }
 
+// CascadeColor resolves the widget's computed color: the CSS `color`,
+// inherited down the tree, which the canvas-drawn primitives take as
+// their ink (the progress ring's stroke). Zero paints nothing — the
+// no-stylesheet behavior, same as everywhere else.
+func CascadeColor(w Widget) render.Color {
+	n := nodeOf(w)
+	if n == nil {
+		return 0
+	}
+	return pickc(0, n.style(w), style.PropColor, 0)
+}
+
+// CascadeBorder resolves the widget's computed border widths: the
+// stroke a canvas-drawn primitive takes from the stylesheet (the
+// progress ring reads the top width as its stroke).
+func CascadeBorder(w Widget) render.Insets {
+	n := nodeOf(w)
+	if n == nil {
+		return render.Insets{}
+	}
+	return borderOf(n.style(w))
+}
+
+// PaintBoxLayers paints the widget's computed box layers — background,
+// image, borders, shadows, and the outline — at its bounds. A custom
+// widget's Paint calls it for its own chrome before drawing content,
+// so the container styling stays in the cascade (the hovered row's
+// background, the :hover rule, is this). The opacity and brightness
+// in force wrap the layers.
+func PaintBoxLayers(cv *render.Canvas, w Widget) {
+	n := nodeOf(w)
+	if n == nil {
+		return
+	}
+	v := n.style(w)
+	fx := pushEffects(cv, v)
+	defer fx.pop(cv)
+	radii := radiusOr(v, 0)
+	bg := pickc(0, v, style.PropBackgroundColor, 0)
+	if bg != 0 || hasBoxLayers(v) {
+		paintBoxBehind(cv, v, n.bounds, radii, borderOf(v), bg)
+	}
+	paintOutline(cv, v, n.bounds, radii)
+}
+
 // SetElement overrides the element name the widget matches in
 // stylesheets. The default is the widget's own type name lowercased;
 // the app-level surfaces (dialog, popover, tooltip, toast) name
@@ -1296,6 +1341,8 @@ func typeElementName(w Widget) string {
 		return "image"
 	case *Label:
 		return "label"
+	case *LevelBar:
+		return "levelbar"
 	case *List:
 		return "listview"
 	case *listRow:
