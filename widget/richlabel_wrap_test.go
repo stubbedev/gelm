@@ -93,3 +93,22 @@ func TestRichLabelWrapKeepsStyles(t *testing.T) {
 		t.Error("the bold span lost its style across the wrap")
 	}
 }
+
+// max-width-chars floors the natural width: a short text still takes
+// the room its card reserves, and 0 removes the floor again.
+func TestRichLabelMaxWidthChars(t *testing.T) {
+	l := NewRichLabel(entryFace(t), 14, "hi", 0)
+	bare := l.Measure(Constraints{Max: Size{W: 400, H: 40}}).W
+	l.SetMaxWidthChars(24)
+	floored := l.Measure(Constraints{Max: Size{W: 400, H: 40}}).W
+	if floored <= bare {
+		t.Errorf("floored width %d, want over the bare %d", floored, bare)
+	}
+	if l.MaxWidthChars() != 24 {
+		t.Error("MaxWidthChars did not stick")
+	}
+	l.SetMaxWidthChars(0)
+	if got := l.Measure(Constraints{Max: Size{W: 400, H: 40}}).W; got != bare {
+		t.Errorf("width %d after clearing, want the bare %d", got, bare)
+	}
+}
