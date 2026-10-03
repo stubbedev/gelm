@@ -411,6 +411,10 @@ type Scroll struct {
 	// width, so a wrapping label wraps there instead of at infinity.
 	// The bar's gutter is always reserved beside it.
 	VerticalOnly bool
+	// PropagateNaturalHeight (GTK's propagate-natural-height): the
+	// scroll asks for exactly its content's height — giving nothing up
+	// to a short parent — instead of scrolling whatever does not fit.
+	PropagateNaturalHeight bool
 
 	// view is the viewport, the content box inside the stylesheet's
 	// border and padding; viewW/viewH is its child area inside the
