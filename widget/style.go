@@ -558,6 +558,15 @@ func (n *node) SetID(id string) {
 // ID returns the style id, empty when none is set.
 func (n *node) ID() string { return n.id }
 
+// StyleBackground returns the widget's computed background color, the
+// diagnostic view a paint test reads.
+func StyleBackground(w Widget) render.Color {
+	if n := nodeOf(w); n != nil {
+		return pickc(0, n.style(w), style.PropBackgroundColor, 0)
+	}
+	return 0
+}
+
 // CascadeColor resolves the widget's computed color: the CSS `color`,
 // inherited down the tree, which the canvas-drawn primitives take as
 // their ink (the progress ring's stroke). Zero paints nothing — the
