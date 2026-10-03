@@ -33,9 +33,11 @@ const (
 // open the list is a real child (Children) arranged just below the
 // face, so hit testing, damage, and focus traversal all see it; hosts
 // that want true popup semantics can embed the dropdown in a popover
-// of their own. The trade-off: nothing closes it from outside its own
-// subtree — click-away dismissal needs the popover grab, so it closes
-// on a selection, Esc, or a second click on the face.
+// of their own. While open the dropdown holds a press-away with the
+// router: a click anywhere outside its subtree — another widget, empty
+// space, a disabled control — closes the list through the same
+// animated exit a selection uses, and it also closes on Esc or a
+// second click on the face.
 //
 // Keyboard: Enter, Space, or Down opens while focused, arrows move the
 // highlighted row (Home/End jump), Enter picks, Esc cancels without
@@ -520,7 +522,8 @@ func (d *Dropdown) appendChildren(buf []Widget) []Widget {
 }
 
 // ClickAt toggles the list; the Router invokes it when a press and
-// release land on the face. Presses on the list go to the list. A face
+// release land on the face. Presses on the list go to the list; a
+// press anywhere outside closes it through PressedOutside. A face
 // click mid-close-tween reverses the close: the reveal rises from its
 // current fraction, no blink to zero.
 func (d *Dropdown) ClickAt(Point) {
@@ -538,6 +541,15 @@ func (d *Dropdown) ClickAt(Point) {
 	}
 	d.Open()
 }
+
+// WantsPressAway holds while the list shows — open, or mid exit tween
+// (a press then still dismisses, restarting nothing).
+func (d *Dropdown) WantsPressAway() bool { return d.open }
+
+// PressedOutside is the router's click-away notice: the list closes
+// through the same animated exit a selection uses; if the exit is
+// already running it keeps falling.
+func (d *Dropdown) PressedOutside(Point) { d.Close() }
 
 // SetHovered implements HoverSetter; the face's hover shade repaints.
 func (d *Dropdown) SetHovered(on bool) {
