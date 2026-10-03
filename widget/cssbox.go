@@ -105,6 +105,9 @@ func paintBoxBehindCol(cv *render.Canvas, v *style.Values, border render.Rect, r
 		}
 		cv.FillGradient(border, radii, g.Angle, stops)
 	}
+	if img := bgImageFor(v.BgImageURL); img != nil {
+		cv.DrawImageCoverImage(img, border, radii)
+	}
 	inner := bw.Shrink(border)
 	innerRadii := insetCorners(radii, bw)
 	for _, sh := range slices.Backward(shadows) {

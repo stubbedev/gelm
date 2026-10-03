@@ -37,7 +37,15 @@ func DecodeImage(data []byte, fileName string, w, h int) (*render.Icon, error) {
 	if ext == ".png" || (ext != ".svg" && hasPNGMagic(data)) {
 		return render.LoadPNG(data, w, h)
 	}
+	if ext == ".jpg" || ext == ".jpeg" || hasJPEGMagic(data) {
+		return render.LoadJPEG(data, w, h)
+	}
 	return render.LoadSVG(data, w, h)
+}
+
+// hasJPEGMagic reports whether data starts with the JPEG SOI marker.
+func hasJPEGMagic(data []byte) bool {
+	return len(data) >= 3 && data[0] == 0xFF && data[1] == 0xD8 && data[2] == 0xFF
 }
 
 // IsSymbolic reports whether an icon is symbolic and should follow the
