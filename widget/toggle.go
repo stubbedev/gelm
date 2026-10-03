@@ -281,6 +281,11 @@ type CheckButton struct {
 	// check is the `check` node under the checkbox (`checkbutton >
 	// check`): the drawn indicator, styled and painted through it.
 	check stylePart
+	// mark is the themed icon the check node's -gtk-icon-source names,
+	// cached per name and tint.
+	mark     *Icon
+	markName string
+	markTint render.Color
 
 	// OnChanged fires after every state change, including programmatic
 	// ones.
@@ -386,10 +391,39 @@ func (c *CheckButton) Paint(cv *render.Canvas) {
 	radii := radiusOr(kv, 4)
 	c.check.Arrange(box)
 	paintBoxBehindCol(cv, kv, box, radii, ring, pickc(0, kv, style.PropBackgroundColor, fill), cols)
-	if c.checked || c.Inconsistent() {
+	if src := kv.IconSource; src != "" && (c.checked || c.Inconsistent()) {
+		// The stylesheet's themed mark (`-gtk-icon-source`) replaces the
+		// painted tick, recolored by its palette over the mark color.
+		tint := kv.PaletteTint
+		if tint == 0 {
+			tint = tick
+		}
+		if !IsEnabled(c) {
+			tint = scaleAlpha(tint, disabledFade)
+		}
+		c.drawThemedMark(cv, src, box, tint)
+	} else if c.checked || c.Inconsistent() {
 		drawCheckMark(cv, box, c.Inconsistent(), tick)
 	}
 	paintOutline(cv, kv, box, radii)
+}
+
+// drawThemedMark draws the check node's -gtk-icon-source icon centered
+// in the indicator, re-tinted when the color moved on.
+func (c *CheckButton) drawThemedMark(cv *render.Canvas, name string, box render.Rect, tint render.Color) {
+	if c.mark == nil || c.markName != name || c.markTint != tint {
+		size := max(8, min(box.W, box.H)-2*checkRing)
+		c.mark = NewThemeIcon(name, size)
+		c.mark.SetTint(tint)
+		c.markName, c.markTint = name, tint
+		setParents(c, c.mark)
+	}
+	c.mark.Arrange(render.Rect{
+		X: box.X + (box.W-c.mark.Bounds().W)/2, Y: box.Y + (box.H-c.mark.Bounds().H)/2,
+		W: c.mark.Bounds().W, H: c.mark.Bounds().H,
+	})
+	c.mark.Measure(Constraints{Max: Size{W: box.W, H: box.H}})
+	PaintChild(cv, c.mark)
 }
 
 // drawCheckMark paints the mark inside an indicator box: the tick, or

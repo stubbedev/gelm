@@ -880,6 +880,9 @@ func (e *Entry) Paint(cv *render.Canvas) {
 	// The text node's color, its own or the field's it inherits.
 	textCol := pickc(e.color, e.text.style(&e.text), style.PropColor, pickc(0, v, style.PropColor, e.color))
 	caretCol := textCol
+	if v.Has(style.PropCaretColor) {
+		caretCol = v.CaretColor
+	}
 	if !enabled {
 		textCol = scaleAlpha(textCol, disabledFade)
 		caretCol = textCol

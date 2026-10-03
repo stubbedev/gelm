@@ -65,6 +65,10 @@ const (
 	PropAnimation
 	PropAnimationPlayState
 	PropIconTransform
+	PropIconSource
+	PropIconPalette
+	PropCaretColor
+	PropTextDecoration
 	numProps
 )
 
@@ -265,6 +269,18 @@ type Values struct {
 	// Rotation is -gtk-icon-transform's rotate() in degrees clockwise;
 	// icons draw turned by it.
 	Rotation float64
+	// IconSource is -gtk-icon-source's -gtk-icontheme() name: a themed
+	// symbolic icon a widget draws instead of its painted mark (the
+	// checkbutton's tick).
+	IconSource string
+	// PaletteTint is -gtk-icon-palette's recolor: the color the source
+	// icon takes (the stylesheet writes `success <color>`).
+	PaletteTint render.Color
+	// CaretColor is caret-color: an entry's caret takes it over the
+	// text color.
+	CaretColor render.Color
+	// Underline is text-decoration's underline.
+	Underline bool
 
 	// Vars is the node's custom-property environment: its own
 	// declarations over the inherited chain. Nodes that declare none

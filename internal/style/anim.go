@@ -260,6 +260,85 @@ func parseIconTransform(ts []token, cx *ctx, v *Values) bool {
 	return true
 }
 
+// parseIconSource parses -gtk-icon-source: -gtk-icontheme("name") or
+// none.
+func parseIconSource(ts []token, cx *ctx, v *Values) bool {
+	first := splitTop(ts, tkComma)[0]
+	if len(first) == 1 && first[0].ident("none") {
+		v.IconSource = ""
+		return true
+	}
+	if len(first) == 0 || first[0].kind != tkFunc || first[0].s != "-gtk-icontheme" {
+		return false
+	}
+	args := splitTop(funcArgs(first), tkComma)
+	if len(args) != 1 || len(args[0]) != 1 || args[0][0].kind != tkString {
+		return false
+	}
+	v.IconSource = args[0][0].s
+	return true
+}
+
+// parseIconPalette parses -gtk-icon-palette's `success <color>` entry
+// into the palette tint; other channels' entries keep their defaults.
+func parseIconPalette(ts []token, cx *ctx, v *Values) bool {
+	sawChannel := false
+	for _, part := range splitTop(ts, tkComma) {
+		words := components(part)
+		if len(words) != 2 || words[0][0].kind != tkIdent {
+			return false
+		}
+		cv, ok := parseColor(words[1], cx)
+		if !ok {
+			return false
+		}
+		if strings.EqualFold(words[0][0].s, "success") {
+			v.PaletteTint = cx.resolve(cv)
+		}
+		sawChannel = true
+	}
+	return sawChannel
+}
+
+// parseCaretColor parses caret-color: a color or auto (the text
+// color).
+func parseCaretColor(ts []token, cx *ctx, v *Values) bool {
+	first := splitTop(ts, tkComma)[0]
+	if len(first) == 1 && first[0].ident("auto") {
+		v.CaretColor = 0
+		return true
+	}
+	cv, ok := parseColor(first, cx)
+	if !ok {
+		return false
+	}
+	v.CaretColor = cx.resolve(cv)
+	return true
+}
+
+// parseTextDecoration parses text-decoration's line keywords: the
+// subset takes underline and none (line-through and overline parse to
+// an error, no painter draws them).
+func parseTextDecoration(ts []token, cx *ctx, v *Values) bool {
+	saw := false
+	for _, part := range components(ts) {
+		if len(part) != 1 || part[0].kind != tkIdent {
+			return false
+		}
+		switch strings.ToLower(part[0].s) {
+		case "none":
+			v.Underline = false
+			saw = true
+		case "underline":
+			v.Underline = true
+			saw = true
+		default:
+			return false
+		}
+	}
+	return saw
+}
+
 // resolveKeyframes points the computed animation at the named
 // @keyframes rule, the highest-priority layer that declares it
 // winning. An unknown name runs nothing.

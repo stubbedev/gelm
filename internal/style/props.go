@@ -21,13 +21,12 @@ var ignoredProps = map[string]bool{
 	"animation-duration": true, "animation-timing-function": true,
 	"animation-iteration-count": true, "animation-direction": true,
 	"animation-delay": true, "animation-fill-mode": true,
-	"transform": true, "-gtk-icon-palette": true,
-	"-gtk-icon-source": true, "-gtk-icon-shadow": true, "-gtk-icon-style": true,
+	"transform": true, "-gtk-icon-shadow": true, "-gtk-icon-style": true,
 	"-gtk-icon-filter": true, "-gtk-dpi": true, "-gtk-secondary-caret-color": true,
-	"text-shadow": true, "text-decoration": true, "text-decoration-line": true,
+	"text-shadow": true, "text-decoration-line": true,
 	"text-decoration-color": true, "text-decoration-style": true,
 	"font-feature-settings": true, "font-variant-numeric": true, "font-variant": true,
-	"font-stretch": true, "font-kerning": true, "caret-color": true,
+	"font-stretch": true, "font-kerning": true,
 	"line-height": true, "background-size": true, "background-position": true,
 	"background-repeat": true, "background-clip": true, "background-origin": true,
 	"background-blend-mode": true, "border-image": true, "border-image-source": true,
@@ -116,6 +115,10 @@ func init() {
 		"animation-name":       {setOf(PropAnimation), parseAnimationName},
 		"animation-play-state": {setOf(PropAnimationPlayState), parseAnimationPlayState},
 		"-gtk-icon-transform":  {setOf(PropIconTransform), parseIconTransform},
+		"-gtk-icon-source":     {setOf(PropIconSource), parseIconSource},
+		"-gtk-icon-palette":    {setOf(PropIconPalette), parseIconPalette},
+		"caret-color":          {setOf(PropCaretColor), parseCaretColor},
+		"text-decoration":      {setOf(PropTextDecoration), parseTextDecoration},
 	}
 }
 

@@ -384,6 +384,14 @@ func copyProp(dst, src *Values, p Prop) {
 		dst.Animation.Running = src.Animation.Running
 	case PropIconTransform:
 		dst.Rotation = src.Rotation
+	case PropIconSource:
+		dst.IconSource = src.IconSource
+	case PropIconPalette:
+		dst.PaletteTint = src.PaletteTint
+	case PropCaretColor:
+		dst.CaretColor = src.CaretColor
+	case PropTextDecoration:
+		dst.Underline = src.Underline
 	}
 }
 
