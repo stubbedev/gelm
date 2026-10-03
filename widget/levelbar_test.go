@@ -12,7 +12,9 @@ import (
 // sizes the block.
 func TestLevelBarPaintsFromTheCascade(t *testing.T) {
 	loadCSS(t, `
-		levelbar.battery-gauge trough { all: unset; min-height: 10px; background: #101018; }
+		levelbar.battery-gauge { all: unset; min-height: 24px; border-radius: 6px; background: #101018; }
+		levelbar.battery-gauge trough { all: unset; min-height: 24px; border-radius: 6px; background: #101018; }
+		levelbar.battery-gauge block.filled { border-radius: 6px; }
 		levelbar.battery-gauge.good block.filled { background: #00ff00; }
 		levelbar.battery-gauge.crit block.filled { background: #ff0000; }
 	`)

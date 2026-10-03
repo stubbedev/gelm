@@ -103,7 +103,10 @@ func (b *LevelBar) HitTest(pt Point) Widget {
 	return b.HitLeaf(b, pt)
 }
 
-// Trough and Block expose the levelbar's parts (levelbar > trough >
-// block.filled), the nodes a paint test reads or a host needs.
+// Trough returns the bar's trough node (levelbar > trough), the
+// diagnostic view a paint test reads.
 func (b *LevelBar) Trough() Widget { return &b.trough }
-func (b *LevelBar) Block() Widget  { return &b.trough.block }
+
+// Block returns the filled block node (levelbar > trough >
+// block.filled), the diagnostic view a paint test reads.
+func (b *LevelBar) Block() Widget { return &b.trough.block }
