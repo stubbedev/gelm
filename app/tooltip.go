@@ -121,12 +121,13 @@ func (t *tooltipCtl) update(router *widget.Router, now time.Time, opener func(wi
 }
 
 // cursorFor resolves the pointer shape for the hovered widget: the
-// widget's own request (text fields ask for the caret), else the arrow.
+// widget's own CursorName (text fields ask for the caret), else the
+// node-level SetCursorName, else the arrow.
 func cursorFor(hover widget.Widget) string {
 	if cn, ok := hover.(widget.CursorNamer); ok {
 		return cn.CursorName()
 	}
-	return ""
+	return widget.CursorNameOf(hover)
 }
 
 // openTooltip maps a tooltip popup at the pointer. The popup surface
