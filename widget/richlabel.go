@@ -57,6 +57,12 @@ type RichLabel struct {
 	// selStart/selEnd bound the highlighted rune range while selOn.
 	selStart, selEnd int
 	selOn            bool
+	// selectable lets a press drag a selection across the text (a
+	// readout the user copies); selAnchor is the pressed rune, selDrag
+	// whether a drag extends it.
+	selectable bool
+	selAnchor  int
+	selDrag    bool
 
 	// hoverP is the last pointer position while hovered; hoverValid
 	// gates link cursor lookups.
@@ -787,10 +793,115 @@ func (l *RichLabel) linkAt(p Point) (string, bool) {
 	return "", false
 }
 
-// ClickAt fires OnLinkClick when the click lands on a link run.
+// SetSelectable lets a press drag a text selection across the label,
+// the readout a user copies; ctrl+c copies it through SelectedText.
+func (l *RichLabel) SetSelectable(on bool) {
+	if l.selectable == on {
+		return
+	}
+	l.selectable = on
+	if !on {
+		l.ClearSelection()
+	}
+}
+
+// Selectable reports whether the label takes drag selections.
+func (l *RichLabel) Selectable() bool { return l.selectable }
+
+// PressAt starts a drag selection at the pressed rune.
+func (l *RichLabel) PressAt(p Point) {
+	if !l.selectable {
+		return
+	}
+	l.selAnchor = l.runeAt(p)
+	l.selDrag = true
+	l.SetSelection(l.selAnchor, l.selAnchor)
+}
+
+// DragMove extends the drag selection to the pointer.
+func (l *RichLabel) DragMove(p Point) {
+	if !l.selDrag {
+		return
+	}
+	l.SetSelection(l.selAnchor, l.runeAt(p))
+}
+
+// SelectedText is the selected runes and whether any are selected, the
+// copy path's source.
+func (l *RichLabel) SelectedText() (string, bool) {
+	start, end, on := l.selection()
+	if !on {
+		return "", false
+	}
+	return string([]rune(l.text)[start:end]), true
+}
+
+// runeAt maps a point to its rune index: the row under it, then the
+// caret table of the run under its x.
+func (l *RichLabel) runeAt(p Point) int {
+	if l.wrap && l.lines != nil {
+		lineH := l.natural.H
+		top := l.bounds.Y + max(0, (l.bounds.H-len(l.lines)*lineH)/2)
+		row := (p.Y - top) / lineH
+		if row < 0 {
+			row = 0
+		}
+		if row >= len(l.lines) {
+			row = len(l.lines) - 1
+			return l.runes
+		}
+		x, _ := l.rowGeom(row)
+		off := 0
+		for i := range l.lines {
+			if i == row {
+				break
+			}
+			for _, r := range l.lines[i].runs {
+				off += utf8.RuneCountInString(r.sh.Text())
+			}
+		}
+		idx := caretIndex(l.lines[row].runs, x, p.X)
+		return min(off+idx, l.runes)
+	}
+	lineX, _, ok := l.lineGeom()
+	if !ok {
+		return 0
+	}
+	return caretIndex(l.shaped, lineX, p.X)
+}
+
+// caretIndex is the rune offset inside the run list a pointer sits at:
+// the nearest caret position of the run under x.
+func caretIndex(runs []*richRun, lineX float64, px int) int {
+	x := lineX
+	for _, r := range runs {
+		w := r.sh.Advance()
+		n := utf8.RuneCountInString(r.sh.Text())
+		if float64(px) < x+w || r == runs[len(runs)-1] {
+			cs := r.sh.CaretPositions()
+			best := 0
+			for i := 1; i <= n; i++ {
+				if math.Abs(cs[i]+x-float64(px)) < math.Abs(cs[best]+x-float64(px)) {
+					best = i
+				}
+			}
+			return r.start + best
+		}
+		x += w
+	}
+	return 0
+}
+
+// ClickAt fires OnLinkClick when the click lands on a link run; a
+// selectable label's plain click drops the selection.
 func (l *RichLabel) ClickAt(p Point) {
 	if href, ok := l.linkAt(p); ok && l.OnLinkClick != nil {
 		l.OnLinkClick(href)
+		return
+	}
+	if l.selectable {
+		l.selDrag = false
+		l.ClearSelection()
 	}
 }
 
