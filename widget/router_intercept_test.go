@@ -11,9 +11,12 @@ import (
 // reaches the focused widget, an unconsumed one still does.
 func TestRouterKeyInterceptor(t *testing.T) {
 	intercepted := 0
-	hook := &interceptBox{Box: NewBox(Column, 0, 0), hook: func(a KeyAction, mods Mods) bool {
+	hook := &interceptBox{Box: NewBox(Column, 0, 0), hook: func(target Widget, a KeyAction, mods Mods) bool {
 		if a == KeyBackspace {
 			intercepted++
+			if target != Widget(box) {
+				t.Error("the interceptor saw another target")
+			}
 			return true
 		}
 		return false
@@ -50,4 +53,4 @@ type interceptBox struct {
 	hook func(KeyAction, Mods) bool
 }
 
-func (b *interceptBox) InterceptKey(a KeyAction, mods Mods) bool { return b.hook(a, mods) }
+func (b *interceptBox) InterceptKey(target Widget, a KeyAction, mods Mods) bool { return b.hook(target, a, mods) }
