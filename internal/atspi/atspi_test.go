@@ -755,3 +755,25 @@ func TestBusDiscovery(t *testing.T) {
 		t.Errorf("discovered bridge ChildCount = %v, want 1", v.Value())
 	}
 }
+
+// TestServeDefaultNameIsValid pins the default bus name against the
+// D-Bus naming rule the reference daemon enforces: an element may not
+// start with a digit, so the raw pid (org.a11y.atspi.gelm.1234) is
+// rejected by a real bus and the bridge died on startup.
+func TestServeDefaultNameIsValid(t *testing.T) {
+	address := startA11yBus(t)
+	startFakeRegistry(t, address)
+	root := widget.NewBox(widget.Column, 0, 0)
+	scene := &testScene{roots: []widget.Widget{root}}
+	br, err := Serve(scene, Options{Address: address, Poll: -1})
+	if err != nil {
+		t.Fatalf("Serve with the default name: %v", err)
+	}
+	t.Cleanup(br.Stop)
+	if !strings.HasPrefix(br.name, "org.a11y.atspi.gelm.p") {
+		t.Fatalf("default name %q lacks the digit-safe prefix", br.name)
+	}
+	if _, err := br.conn.RequestName(br.name, dbus.NameFlagDoNotQueue); err != nil {
+		t.Fatalf("default name %q is not claimable: %v", br.name, err)
+	}
+}

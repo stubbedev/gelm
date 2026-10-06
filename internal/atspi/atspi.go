@@ -179,7 +179,8 @@ type Options struct {
 	// dbus-activates at-spi-bus-launcher on a real desktop).
 	Address string
 	// Name is the bus name to claim; empty picks
-	// org.a11y.atspi.gelm.<pid>, the atk-bridge convention.
+	// org.a11y.atspi.gelm.p<pid> (a bus element may not lead with a
+	// digit).
 	Name string
 	// Poll is the sampling interval. Zero means the default (100ms);
 	// negative means no ticker — the embedder drives Refresh itself.
@@ -272,7 +273,9 @@ func Serve(scene Scene, opts Options) (*Bridge, error) {
 	}
 	name := opts.Name
 	if name == "" {
-		name = fmt.Sprintf("org.a11y.atspi.gelm.%d", os.Getpid())
+		// A bus name element may not start with a digit, so the pid is
+		// prefixed; the registry tracks apps by unique name anyway.
+		name = fmt.Sprintf("org.a11y.atspi.gelm.p%d", os.Getpid())
 	}
 	if _, err := conn.RequestName(name, dbus.NameFlagDoNotQueue); err != nil {
 		_ = conn.Close()
