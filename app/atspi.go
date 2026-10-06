@@ -19,8 +19,9 @@ import (
 // the registry handshake runs. Idempotent. Call before Run (the same
 // window SetRoot et al. honor) or from the loop; the bridge stops with
 // Run. The first sample queues through Invoke and drains once Run
-// starts.
-func (a *Application) ServeAccessibility(opts atspi.Options) error {
+// starts. opts is A11YOptions (the untagged alias) so consumers
+// outside gelm can construct it.
+func (a *Application) ServeAccessibility(opts A11YOptions) error {
 	if a.stopA11y != nil {
 		return nil
 	}
