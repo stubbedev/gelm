@@ -112,7 +112,7 @@ pointers in [docs/architecture.md](docs/architecture.md).
 ## Quickstart
 
 ```sh
-nix develop   # pinned go 1.27, gopls, golangci-lint, gofumpt, delve, just, sway; CGO_ENABLED=0
+devenv shell  # pinned go 1.27, gopls, golangci-lint, gofumpt, delve, just, sway; CGO_ENABLED=0
 just demo     # the gelm-hello showcase: widgets, drag, tooltips, menu, Tab focus
 just panel    # the gelm-panel layer-shell demo
 ```

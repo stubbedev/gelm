@@ -3,10 +3,12 @@
 # any skip a failure - so a change that breaks live input/protocol
 # behavior breaks CI before it can break a real desktop.
 #
-# Everything runs through nix develop (flake.nix): the Go toolchain,
-# golangci-lint, gofumpt, just, and sway for the headless compositor.
-# The whole job needs no display server and no GPU: sway runs on
-# wlroots' headless backend with the software (pixman) renderer.
+# Everything runs through the devenv CLI (devenv.nix, pinned by
+# devenv.lock - the same environment developers enter with
+# `devenv shell`): the Go toolchain, golangci-lint, gofumpt, just, and
+# sway for the headless compositor. The whole job needs no display
+# server and no GPU: sway runs on wlroots' headless backend with the
+# software (pixman) renderer.
 #
 # Layout: `check` runs the full gate on every push; `lint` gives PRs a
 # fast, dedicated formatting + linting evidence check. Benchmarks run
@@ -31,8 +33,13 @@ jobs:
       - uses: cachix/install-nix-action@v31
         with:
           github_access_token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: cachix/cachix-action@v16
+        with:
+          name: devenv
+      - name: Install devenv
+        run: nix profile add github:cachix/devenv/v2.4.0
       - name: gofumpt + golangci-lint
-        run: nix develop -c just lint fmt-check
+        run: devenv shell -- just lint fmt-check
 
   check:
     runs-on: ubuntu-latest
@@ -41,19 +48,24 @@ jobs:
       - uses: cachix/install-nix-action@v31
         with:
           github_access_token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: cachix/cachix-action@v16
+        with:
+          name: devenv
+      - name: Install devenv
+        run: nix profile add github:cachix/devenv/v2.4.0
       - name: gofumpt formatting gate
-        run: nix develop -c just fmt-check
+        run: devenv shell -- just fmt-check
       - name: Release gates (vet, lint, test, build)
-        run: nix develop -c just check
+        run: devenv shell -- just check
       - name: Headless compositor input gate
-        run: nix develop -c just headless
+        run: devenv shell -- just headless
       - name: AT-SPI bridge (build tag)
-        run: nix develop -c just atspi
+        run: devenv shell -- just atspi
       # Benchmarks are tracked, not gated: the numbers land as workflow
       # artifacts so regressions can be compared run over run. Fixed
       # sizes and no time-dependent content keep them comparable.
       - name: Benchmarks (artifact, not a gate)
-        run: nix develop -c just bench 2>&1 | tee bench.txt
+        run: devenv shell -- just bench 2>&1 | tee bench.txt
         shell: bash
       - uses: actions/upload-artifact@v4
         with:
