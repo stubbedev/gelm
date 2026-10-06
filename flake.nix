@@ -4,20 +4,21 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     flake-utils.url = "github:numtide/flake-utils";
+    devenv.url = "github:cachix/devenv";
   };
 
-  outputs = { self, nixpkgs, flake-utils }:
+  outputs = { self, nixpkgs, flake-utils, devenv, ... } @ inputs:
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
         inherit (pkgs) lib;
 
-        # One Go toolchain for the dev shell and every package build.
-        # go.mod declares `go 1.27.1` and buildGoModule compiles with
-        # GOTOOLCHAIN=local, so the version is load-bearing: nixpkgs'
-        # default `go` (1.26) cannot compile this module, so the pin is
-        # go_1_27, shared by the dev shell and buildGoModule alike -
-        # no toolchain is ever downloaded at build or dev time.
+        # One Go toolchain for every package build. go.mod declares
+        # `go 1.27.1` and buildGoModule compiles with GOTOOLCHAIN=local,
+        # so the version is load-bearing: nixpkgs' default `go` (1.26)
+        # cannot compile this module, so the pin is go_1_27, shared with
+        # devenv.nix's dev-shell pin - no toolchain is ever downloaded
+        # at build or dev time.
         go = pkgs.go_1_27;
         buildGoModule = pkgs.buildGoModule.override { inherit go; };
 
@@ -80,31 +81,15 @@
           default = gelm;
         };
 
-        devShells.default = pkgs.mkShell {
-          packages = [
-            # The pinned Go toolchain (see `go` above); gopls and
-            # golangci-lint are nixpkgs builds, close enough to this Go
-            # that they parse what the compiler accepts.
-            go
-
-            # Development tools
-            pkgs.gofumpt # stricter gofmt; `just fmt`, CI's formatting gate
-            pkgs.gopls # Go language server
-            pkgs.golangci-lint # Linter behind `just lint`, config in .golangci.yml
-            pkgs.delve # Go debugger
-            pkgs.just # Task runner
-
-            # Headless test compositor: sway on WLR_BACKENDS=headless gives
-            # input integration tests a private, deterministic Wayland
-            # session (layer shell + virtual pointer protocol included)
-            # without touching the developer's real desktop.
-            pkgs.sway
-          ];
-
-          shellHook = ''
-            # gelm is pure Go by design; keep accidental cgo out.
-            export CGO_ENABLED=0
-          '';
+        # The whole dev environment lives in devenv.nix - one
+        # definition for the devenv CLI and this wrapper alike, so
+        # CI's `devenv shell -- just ...` and a flake user's
+        # `nix develop --no-pure-eval` evaluate the same toolchains and
+        # gates. The flag lets devenv read the working directory as the
+        # project root, which pure flake evaluation cannot see.
+        devShells.default = devenv.lib.mkShell {
+          inherit inputs pkgs;
+          modules = [ ./devenv.nix ];
         };
 
         checks = {

@@ -38,9 +38,9 @@ atspi:
 # the suite against it with GELM_HEADLESS=1 - the tests attach to the
 # running compositor, launch the showcase, and drive a synthetic seat
 # through pointer and keyboard while asserting on the client's trace
-# log. The env is always torn down, pass or fail. Runs under nix
-# develop so sway is on PATH; needs no display and never touches the
-# desktop session.
+# log. The env is always torn down, pass or fail. Runs under
+# devenv shell so sway is on PATH; needs no display and never touches
+# the desktop session.
 headless:
     #!/bin/sh
     dir="{{headless_test_dir}}"
@@ -173,15 +173,15 @@ test-env dir=test_dir:
         'for_window [app_id="dev.stubbe.gelm.multilist"] floating enable, move position 0 0, resize set 300 300' \
         'for_window [title="modal dialog"] floating enable, move position 340 0' \
         > "$dir/sway.cfg"
-    # The pid file must hold sway itself, not the nix develop wrapper:
-    # newer nix runs the -c command through a shell without exec'ing,
-    # so $! can name a wrapper that dies with the kill test's SIGKILL
-    # while sway lives on holding the display socket - the client never
-    # sees an EOF and parks forever. A shell that writes its own pid
-    # and then execs sway records the process that owns the socket,
-    # whatever the nix version's fork/exec choice is.
+    # The pid file must hold sway itself, not the devenv shell wrapper:
+    # a wrapper that runs the command through a shell without exec'ing
+    # can die with the kill test's SIGKILL while sway lives on holding
+    # the display socket - the client never sees an EOF and parks
+    # forever. A shell that writes its own pid and then execs sway
+    # records the process that owns the socket, whatever the wrapper's
+    # fork/exec choice is.
     XDG_RUNTIME_DIR="$dir" WLR_BACKENDS=headless WLR_LIBINPUT_NO_DEVICES=1 \
-        WLR_RENDERER=pixman nix develop -c sh -c "echo \$\$ > '$dir/sway.pid'; exec sway -c '$dir/sway.cfg'" \
+        WLR_RENDERER=pixman devenv shell -- sh -c "echo \$\$ > '$dir/sway.pid'; exec sway -c '$dir/sway.cfg'" \
         >"$dir/sway.log" 2>&1 &
     sock=""
     for i in $(seq 1 50); do
