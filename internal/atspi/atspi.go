@@ -311,8 +311,10 @@ func Serve(scene Scene, opts Options) (*Bridge, error) {
 	scene.Invoke(b.sample)
 
 	// Embed with the registry; an absent or older registry is not an
-	// error (it watches for names and probes the root itself).
-	registry := conn.Object("org.a11y.atspi.Registry", "/org/a11y/atspi/registry")
+	// error (it watches for names and probes the root itself). The
+	// socket lives at the desktop root path, where at-spi2-core's
+	// registryd and GTK's bridge both speak it.
+	registry := conn.Object("org.a11y.atspi.Registry", RootPath)
 	var socket struct {
 		Name string
 		Path dbus.ObjectPath

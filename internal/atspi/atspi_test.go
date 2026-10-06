@@ -136,7 +136,7 @@ func startFakeRegistry(t *testing.T, address string) *fakeRegistry {
 		t.Fatalf("registry name: %v", err)
 	}
 	r := &fakeRegistry{conn: conn, signal: make(chan *dbus.Signal, 256)}
-	if err := conn.ExportAll(r, "/org/a11y/atspi/registry", "org.a11y.atspi.Socket"); err != nil {
+	if err := conn.ExportAll(r, RootPath, "org.a11y.atspi.Socket"); err != nil {
 		t.Fatalf("registry socket export: %v", err)
 	}
 	for _, iface := range []string{"org.a11y.atspi.Event.Object", "org.a11y.atspi.Event.Focus"} {
