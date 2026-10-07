@@ -20,14 +20,15 @@ import (
 
 // loopQueues is the application's off-loop -> on-loop plumbing: the
 // invoke queue, the periodic timers, and the flag marking the loop
-// dead. One mutex covers it all; the structures are small and the
-// critical sections are append/swap only.
+// dead. The invoke queue is the untyped messenger - a mailbox[func()]
+// - so Invoke closures and the typed messengers of message.go share
+// one armed-wake queue shape; the timers and the dead flag ride the
+// same mutex the timer work already uses.
 type loopQueues struct {
 	mu     sync.Mutex
-	fns    []func()
-	armed  bool
 	timers []*loopTimer
 	dead   bool
+	box    mailbox[func()]
 }
 
 // enqueue appends fn and reports whether this call armed the wake. A
@@ -35,35 +36,18 @@ type loopQueues struct {
 // an invoke storm the queue grows but the wake count does not, and the
 // parked loop wakes once per pass at most.
 func (q *loopQueues) enqueue(fn func()) bool {
-	q.mu.Lock()
-	defer q.mu.Unlock()
-	if q.dead {
-		return false
-	}
-	q.fns = append(q.fns, fn)
-	if q.armed {
-		return false
-	}
-	q.armed = true
-	return true
+	return q.box.put(fn)
 }
 
 // drain takes the queued fns and disarms, so the next enqueue arms a
 // fresh wake. The caller runs the fns on the loop goroutine.
 func (q *loopQueues) drain() []func() {
-	q.mu.Lock()
-	defer q.mu.Unlock()
-	fns := q.fns
-	q.fns = nil
-	q.armed = false
-	return fns
+	return q.box.take()
 }
 
 // pending counts queued fns (tests).
 func (q *loopQueues) pending() int {
-	q.mu.Lock()
-	defer q.mu.Unlock()
-	return len(q.fns)
+	return q.box.pending()
 }
 
 // addTimer registers one periodic timer.
@@ -142,14 +126,13 @@ func (q *loopQueues) timerCount() int {
 // calls it on exit.
 func (q *loopQueues) shutdown() {
 	q.mu.Lock()
-	defer q.mu.Unlock()
 	q.dead = true
-	q.fns = nil
-	q.armed = false
 	for _, t := range q.timers {
 		t.stopped = true
 	}
 	q.timers = nil
+	q.mu.Unlock()
+	q.box.stop()
 }
 
 // loopTimer is one Every ticker: fn every d, first fire after d.

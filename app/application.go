@@ -102,9 +102,11 @@ type Application struct {
 	// wake is a field so tests can drive Invoke without a session.
 	queues loopQueues
 	wake   func(time.Duration)
-	// watchers are the WatchFD and WatchFiles pollers; ended closes when
-	// the loop ends, releasing a poller waiting on a dropped invoke.
-	watchers  watchSet
+	// watchers are the loop-owned stoppables: the WatchFD and WatchFiles
+	// pollers and the typed messengers of message.go, all stopped with
+	// the loop; ended closes when the loop ends, releasing a poller
+	// waiting on a dropped invoke.
+	watchers  stopSet
 	endedOnce sync.Once
 	ended     chan struct{}
 	endedMu   sync.Mutex
