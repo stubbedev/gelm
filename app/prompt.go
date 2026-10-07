@@ -56,8 +56,6 @@ func (a *Application) PromptDialog(parent *Window, title, message, initial strin
 type Progress struct {
 	bar     *widget.ProgressBar
 	spinner *widget.Spinner
-	row     *widget.Box
-	d       *Dialog
 }
 
 // SetFraction moves the determinate bar to f (clamped to [0, 1]);
@@ -114,6 +112,5 @@ func (a *Application) ProgressDialog(parent *Window, title, text string, pulsing
 	if err != nil {
 		return nil, nil, err
 	}
-	p.d = d
 	return d, p, nil
 }
