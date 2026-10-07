@@ -126,3 +126,42 @@ func TestAxisFrames(t *testing.T) {
 		t.Errorf("plain handler got %v", plain.dy)
 	}
 }
+
+// endingHandler takes pixel scrolling and hears the gesture end.
+type endingHandler struct {
+	preciseHandler
+	ends int
+}
+
+func (h *endingHandler) HandlePointerScrollEnd() { h.ends++ }
+
+// The finger lifting (axis_stop, in its own frame with the finger
+// source) ends the scroll once; a wheel frame never does.
+func TestAxisStopEndsFingerScroll(t *testing.T) {
+	s := newRoutingSession()
+	s.seatVersion = 7
+	surf := &wl.Surface{}
+	h := &endingHandler{}
+	s.SetSurfaceInput(surf, h)
+	s.HandlePointerEnter(wl.PointerEnterEvent{Surface: surf})
+
+	s.HandlePointerAxisSource(wl.PointerAxisSourceEvent{AxisSource: wl.PointerAxisSourceFinger})
+	s.HandlePointerAxis(wl.PointerAxisEvent{Axis: 0, Value: 4})
+	s.HandlePointerFrame(wl.PointerFrameEvent{})
+	if h.ends != 0 {
+		t.Fatal("a moving frame ended the scroll")
+	}
+	s.HandlePointerAxisSource(wl.PointerAxisSourceEvent{AxisSource: wl.PointerAxisSourceFinger})
+	s.HandlePointerAxisStop(wl.PointerAxisStopEvent{Axis: 0})
+	s.HandlePointerFrame(wl.PointerFrameEvent{})
+	if h.ends != 1 || len(h.px) != 1 {
+		t.Errorf("stop frame: ends=%d px=%v, want one end and no motion", h.ends, h.px)
+	}
+	s.HandlePointerFrame(wl.PointerFrameEvent{})
+	s.HandlePointerAxisSource(wl.PointerAxisSourceEvent{AxisSource: wl.PointerAxisSourceWheel})
+	s.HandlePointerAxisStop(wl.PointerAxisStopEvent{Axis: 0})
+	s.HandlePointerFrame(wl.PointerFrameEvent{})
+	if h.ends != 1 {
+		t.Errorf("ends = %d after an empty frame and a wheel stop, want still 1", h.ends)
+	}
+}

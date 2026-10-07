@@ -449,6 +449,13 @@ type Scroll struct {
 	// pair they last heard, so an unchanged relayout stays silent.
 	watchers []func()
 	ranges   [2]ScrollRange
+
+	// kin is the touchpad glide; overshoot is how far (0..1, signed:
+	// negative at the start edge) a finger scroll or glide pushed past
+	// each axis's end, shown as an edge glow that fades when released.
+	kin        kinetic
+	overshoot  [2]float64
+	cancelGlow anim.Cancel
 }
 
 // gutter is the scrollbar strip width reserved inside the viewport.
@@ -767,6 +774,7 @@ func (s *Scroll) Paint(cv *render.Canvas) {
 	if s.child != nil {
 		PaintChild(cv, s.child)
 	}
+	s.paintGlow(cv)
 	if s.ShowBars && s.alpha > 0 {
 		s.tickFade()
 		if track, handle := s.vBarGeometry(); track.W > 0 {
@@ -844,6 +852,7 @@ func (s *Scroll) ScrollBy(dx, dy int) {
 	if !IsEnabled(s) {
 		return
 	}
+	s.kin.stop()
 	s.SetOffset(s.offX+dx*wheelStep(s.viewW), s.offY+dy*wheelStep(s.viewH))
 	s.showBars()
 }
@@ -859,7 +868,8 @@ func wheelStep(extent int) int {
 // SetPressed implements PressSetter: ending the press ends any drag.
 func (s *Scroll) SetPressed(on bool) {
 	if on {
-		return // the grab geometry arrives with the first DragMove
+		s.kin.stop() // a press catches a glide
+		return       // the grab geometry arrives with the first DragMove
 	}
 	s.dragV, s.dragH = false, false
 	s.invalidateStyle()
@@ -931,18 +941,103 @@ func (s *Stack) visibleSize() Size {
 func (s *Stack) lerp(a, b int) int { return a + int(math.Round(float64(b-a)*s.progress)) }
 
 // ScrollPixels implements PixelScroller: exact deltas, the fraction
-// kept for the next one so slow finger motion still moves.
+// kept for the next one so slow finger motion still moves. The deltas
+// feed the kinetic glide, and pushing past an end builds the edge glow.
 func (s *Scroll) ScrollPixels(dx, dy float64) {
 	if !IsEnabled(s) {
 		return
 	}
+	s.kin.sample(dx, dy)
+	s.movePixels(dx, dy)
+	s.showBars()
+}
+
+// ScrollEnd implements ScrollEnder: the fingers lifted, so the content
+// glides on from the gesture's velocity, and the glow fades once the
+// motion is over.
+func (s *Scroll) ScrollEnd() {
+	s.kin.fling(func(dx, dy float64) bool {
+		s.showBars()
+		return s.movePixels(dx, dy)
+	}, s.releaseGlow)
+}
+
+// movePixels applies a pixel delta, keeping the sub-pixel remainder;
+// what a clamp swallowed pushes the edge glow. Reports whether any of
+// the motion moved the content.
+func (s *Scroll) movePixels(dx, dy float64) bool {
 	s.pxFrac[0] += dx
 	s.pxFrac[1] += dy
 	wx, wy := int(s.pxFrac[0]), int(s.pxFrac[1])
 	s.pxFrac[0] -= float64(wx)
 	s.pxFrac[1] -= float64(wy)
-	if wx != 0 || wy != 0 {
-		s.SetOffset(s.offX+wx, s.offY+wy)
+	if wx == 0 && wy == 0 {
+		return true
 	}
-	s.showBars()
+	x0, y0 := s.offX, s.offY
+	s.SetOffset(s.offX+wx, s.offY+wy)
+	lost := [2]int{x0 + wx - s.offX, y0 + wy - s.offY}
+	for axis, l := range lost {
+		if l != 0 {
+			s.pushGlow(axis, float64(l))
+		}
+	}
+	return s.offX != x0 || s.offY != y0
+}
+
+// glowSpan is the swallowed motion that fills the edge glow.
+const glowSpan = 160.0
+
+// pushGlow grows the glow at the edge the swallowed motion points at.
+func (s *Scroll) pushGlow(axis int, lost float64) {
+	if s.cancelGlow != nil {
+		s.cancelGlow()
+		s.cancelGlow = nil
+	}
+	o := s.overshoot[axis]
+	if (o < 0) != (lost < 0) {
+		o = 0 // the other edge: start over
+	}
+	s.overshoot[axis] = max(-1, min(1, o+lost/glowSpan))
+	s.Invalidate()
+}
+
+// releaseGlow fades the glow out.
+func (s *Scroll) releaseGlow() {
+	from := s.overshoot
+	if from == [2]float64{} {
+		return
+	}
+	s.cancelGlow = anim.Start(barFade, func(t float64) {
+		s.overshoot = [2]float64{from[0] * (1 - t), from[1] * (1 - t)}
+		s.Invalidate()
+	})
+}
+
+// paintGlow shades the viewport edge each axis overshot: an accent
+// band that thins and fades with the overshoot.
+func (s *Scroll) paintGlow(cv *render.Canvas) {
+	a := Current().Accent
+	for axis, o := range s.overshoot {
+		if o == 0 {
+			continue
+		}
+		mag := math.Abs(o)
+		depth := max(1, int(32*mag))
+		for k := range 4 {
+			alpha := uint8(110 * mag * float64(4-k) / 4)
+			band := depth * (k + 1) / 4
+			r := render.Rect{X: s.view.X, Y: s.view.Y, W: s.view.W, H: band}
+			switch {
+			case axis == 1 && o > 0:
+				r.Y = s.view.Y + s.view.H - band
+			case axis == 0:
+				r = render.Rect{X: s.view.X, Y: s.view.Y, W: band, H: s.view.H}
+				if o > 0 {
+					r.X = s.view.X + s.view.W - band
+				}
+			}
+			cv.FillRect(r, render.RGBA(a.R(), a.G(), a.B(), alpha/4))
+		}
+	}
 }

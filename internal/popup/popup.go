@@ -616,3 +616,12 @@ func (in *popupInput) HandlePointerScrollPixels(dx, dy float64) {
 	in.router.AxisPixels(dx, dy)
 	in.markDirty()
 }
+
+// HandlePointerScrollEnd implements wlsession.SurfaceScrollEnder.
+func (in *popupInput) HandlePointerScrollEnd() {
+	if in.dismissed() {
+		return
+	}
+	in.router.AxisEnd()
+	in.markDirty()
+}

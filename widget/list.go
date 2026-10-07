@@ -73,8 +73,10 @@ type List struct {
 	probe *listRow
 	// maxH caps the natural height (SetMaxHeight).
 	maxH int
-	// pxFrac is pixel scrolling below a whole pixel (ScrollPixels).
+	// pxFrac is pixel scrolling below a whole pixel (ScrollPixels);
+	// kin is the touchpad glide.
 	pxFrac float64
+	kin    kinetic
 	// singleClick activates a row on a plain click (SetSingleClickActivate).
 	singleClick bool
 	// cellW is the grid mode's minimum cell width (0 is a plain
@@ -219,7 +221,10 @@ func (l *List) selectionSingle(i int) {
 }
 
 // reveal implements selectionHost.
-func (l *List) reveal(i int) { l.scrollTo(i) }
+func (l *List) reveal(i int) {
+	l.kin.stop()
+	l.scrollTo(i)
+}
 
 // Changed re-queries the model after its data changed, keeping cached
 // row widgets whose indices still exist.
@@ -495,6 +500,7 @@ func (l *List) gestureStart(row int) {
 	l.dragging = true
 	l.dragMoved = false
 	l.gestureRow = row
+	l.kin.stop()
 	l.hold()
 }
 
@@ -657,6 +663,7 @@ func (l *List) ScrollBy(dx, dy int) {
 	if !IsEnabled(l) {
 		return
 	}
+	l.kin.stop()
 	l.offY = min(max(0, l.offY+dy*scrollStepPx), l.scrollMax())
 	l.Invalidate()
 }
@@ -900,11 +907,30 @@ func (l *List) ScrollPixels(_, dy float64) {
 	if !IsEnabled(l) {
 		return
 	}
+	l.kin.sample(0, dy)
+	l.movePixels(dy)
+}
+
+// ScrollEnd implements ScrollEnder: the list glides on from the
+// gesture's velocity.
+func (l *List) ScrollEnd() {
+	l.kin.fling(func(_, dy float64) bool { return l.movePixels(dy) }, func() {})
+}
+
+// movePixels scrolls by a pixel delta, keeping the sub-pixel remainder;
+// reports whether the offset moved (false pinned at an end).
+func (l *List) movePixels(dy float64) bool {
 	l.pxFrac += dy
 	w := int(l.pxFrac)
 	l.pxFrac -= float64(w)
-	if w != 0 {
-		l.offY = min(max(0, l.offY+w), l.scrollMax())
-		l.Invalidate()
+	if w == 0 {
+		return true
 	}
+	off := min(max(0, l.offY+w), l.scrollMax())
+	if off == l.offY {
+		return false
+	}
+	l.offY = off
+	l.Invalidate()
+	return true
 }
