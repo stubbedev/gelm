@@ -342,6 +342,13 @@ func (o *actionIface) DoAction(index int32) bool {
 		Y: n.st.Bounds.Y + n.st.Bounds.H/2,
 	}
 	o.b.scene.Invoke(func() {
+		// The router's full press-release: a widget may act on the
+		// press (wayle's bar toggle opens its dropdown there), the
+		// release belongs to the Clicker when there is one.
+		if p, ok := w.(widget.PressSetter); ok {
+			p.SetPressed(true)
+			p.SetPressed(false)
+		}
 		if c, ok := w.(widget.Clicker); ok {
 			c.ClickAt(center)
 		}
