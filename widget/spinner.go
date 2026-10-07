@@ -4,7 +4,6 @@ import (
 	"math"
 	"time"
 
-	"github.com/stubbedev/gelm/internal/anim"
 	"github.com/stubbedev/gelm/render"
 )
 
@@ -26,86 +25,35 @@ const (
 // wake, so an idle app with a parked spinner costs nothing.
 type Spinner struct {
 	node
-	size     int
-	spinning bool
+	size int
 	// angle is the arc's leading edge in radians, wrapped to [0, 2π).
-	angle  float64
-	cancel anim.Cancel
+	angle float64
+	spin  loop
 }
 
 // NewSpinner returns a spinner sized size×size pixels.
-func NewSpinner(size int) *Spinner { return &Spinner{size: size} }
+func NewSpinner(size int) *Spinner {
+	s := &Spinner{size: size}
+	s.spin = loop{period: spinnerPeriod, step: func(t float64) {
+		s.angle = 2 * math.Pi * t
+		s.Invalidate()
+	}}
+	return s
+}
 
 // Spinning reports whether the rotation is on.
-func (s *Spinner) Spinning() bool { return s.spinning }
+func (s *Spinner) Spinning() bool { return s.spin.on }
 
 // SetSpinning turns the rotation on or off. Stopping cancels the tween
 // at once — the frozen angle stays where it stopped and no wake
 // remains scheduled. Starting takes effect once the spinner is
 // arranged into a visible rect; until then nothing is scheduled.
-func (s *Spinner) SetSpinning(on bool) {
-	if on == s.spinning {
-		return
-	}
-	s.spinning = on
-	if on {
-		s.maybeStart()
-		return
-	}
-	s.stop()
-}
+func (s *Spinner) SetSpinning(on bool) { s.spin.set(on) }
 
-// start launches one revolution; the landing tick relaunches while
-// the spinner is still spinning and on screen (anim callbacks may
-// launch — Tick runs them with its lock released). A stopped or
-// hidden spinner relaunches nothing and holds no timer.
-func (s *Spinner) start() {
-	if s.cancel != nil {
-		s.cancel()
-	}
-	s.cancel = anim.Play(anim.Animate(spinnerPeriod, func(t float64) {
-		if t >= 1 {
-			s.angle = 0
-			if s.spinning && !s.bounds.Empty() {
-				s.start()
-			}
-			return
-		}
-		s.angle = 2 * math.Pi * t
-		s.Invalidate()
-	}).Easing(anim.Linear))
-}
-
-// stop cancels the rotation; a stopped spinner holds no timer.
-func (s *Spinner) stop() {
-	if s.cancel != nil {
-		s.cancel()
-		s.cancel = nil
-	}
-}
-
-// maybeStart starts the rotation only when a visible rect says the
-// spinner is on screen.
-func (s *Spinner) maybeStart() {
-	if s.bounds.Empty() {
-		return
-	}
-	s.start()
-}
-
-// Arrange records the rect and syncs the tween with visibility: going
-// off screen stops (nothing animates while hidden), coming back
-// resumes when spinning. The rect does not move frame to frame, so a
-// no-change Arrange never restarts the rotation — only the empty/
-// non-empty transition does.
+// Arrange records the rect and syncs the rotation with visibility.
 func (s *Spinner) Arrange(r render.Rect) {
 	s.node.Arrange(r)
-	switch {
-	case r.Empty():
-		s.stop()
-	case s.spinning && s.cancel == nil:
-		s.start()
-	}
+	s.spin.arranged(r)
 }
 
 // Measure wants a size×size square, clamped to con.
