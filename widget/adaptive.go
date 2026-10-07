@@ -158,28 +158,27 @@ func (b *BreakpointBin) Arrange(r render.Rect) {
 	b.composite.Arrange(r)
 }
 
-// ViewSwitcher is the pill strip bound to a Stack: one button per
-// page (title, and an icon when given), the visible page's button
-// :checked, a click switching pages - the adw pill for bottom bars
+// ViewSwitcher is a ToggleGroup bound to a Stack: one toggle per page
+// (title, and an icon when given), the visible page's toggle active,
+// activating a toggle showing its page - the adw pill for bottom bars
 // and headers alike.
 type ViewSwitcher struct {
-	composite
-	stack   *Stack
-	face    render.Font
-	sizePx  float64
-	titles  map[string]string
-	icons   map[string]string
-	row     *Box
-	buttons []*Button
-	policy  StackSwitcherPolicy
+	*ToggleGroup
+	stack  *Stack
+	face   render.Font
+	sizePx float64
+	titles map[string]string
+	icons  map[string]string
+	policy StackSwitcherPolicy
+	names  []string
 }
 
-// StackSwitcherPolicy decides which switcher buttons show.
+// StackSwitcherPolicy decides what switcher toggles show.
 type StackSwitcherPolicy uint8
 
 // Switcher policies.
 const (
-	// SwitcherAll shows every page's button.
+	// SwitcherAll shows icon and title where both exist.
 	SwitcherAll StackSwitcherPolicy = iota
 	// SwitcherText titles only (no icons), the narrow variant.
 	SwitcherText
@@ -192,86 +191,57 @@ const (
 // optional.
 func NewViewSwitcher(face render.Font, sizePx float64, stack *Stack, titles, icons map[string]string) *ViewSwitcher {
 	face = requireFace("widget.NewViewSwitcher", face)
-	v := &ViewSwitcher{stack: stack, face: face, sizePx: sizePx, titles: titles, icons: icons}
+	v := &ViewSwitcher{ToggleGroup: NewToggleGroup(), stack: stack, face: face, sizePx: sizePx, titles: titles, icons: icons}
+	v.self = v
 	v.SetElement("viewswitcher")
-	v.row = NewBox(Row, 4, 4)
-	v.initComposite(v, v.row)
 	v.fillWidth = true
-	v.surface, v.surfaceRadius = surfaceFill, 999
-	v.sync()
+	v.OnChanged = func(i int) { v.stack.Show(v.names[i]) }
+	v.Sync()
 	return v
 }
 
-// SetPolicy changes what the buttons show and rebuilds.
+// SetPolicy changes what the toggles show and rebuilds.
 func (v *ViewSwitcher) SetPolicy(p StackSwitcherPolicy) {
 	v.policy = p
-	v.sync()
+	v.Sync()
 }
 
-// sync rebuilds the strip over the stack's pages.
-func (v *ViewSwitcher) sync() {
-	v.row.Clear()
-	v.buttons = nil
-	th := Current()
-	for _, name := range v.stack.Order() {
+// Sync rebuilds the toggles over the stack's pages (the stack has no
+// signal: the app calls this after adding pages).
+func (v *ViewSwitcher) Sync() {
+	v.Clear()
+	v.names = v.stack.Order()
+	for _, name := range v.names {
 		title := name
 		if t, ok := v.titles[name]; ok {
 			title = t
 		}
 		icon := v.icons[name]
-		var child Widget
-		switch {
-		case v.policy == SwitcherIcons && icon != "":
-			child = NewThemeIcon(icon, int(v.sizePx))
-		case v.policy == SwitcherText || icon == "":
-			child = NewLabel(v.face, v.sizePx, title, th.Text)
-		default:
-			row := NewBox(Row, 6, 0)
-			row.Append(NewThemeIcon(icon, int(v.sizePx)), false)
-			row.Append(NewLabel(v.face, v.sizePx, title, th.Text), false)
-			child = row
+		switch v.policy {
+		case SwitcherIcons:
+			if icon != "" {
+				title = ""
+			}
+		case SwitcherText:
+			icon = ""
 		}
-		btn := NewButton(child, 6, 999)
-		which := name
-		btn.OnClick = func() { v.stack.Show(which) }
-		markChecked(btn, name == v.stack.Visible())
-		v.buttons = append(v.buttons, btn)
-		v.row.Append(btn, false)
+		v.Append(NewButtonContent(v.face, v.sizePx, icon, title))
 	}
-	v.InvalidateLayout()
+	v.ReflectVisible()
 }
 
-// Sync rebuilds after the stack's pages changed (public: the stack
-// has no signal, the app calls this after Add).
-func (v *ViewSwitcher) Sync() { v.sync() }
-
-// ReflectVisible repaints the checked states after a programmatic
-// stack.Show (same condition: the app drives, the switcher shows).
+// ReflectVisible activates the visible page's toggle after a
+// programmatic stack.Show (the app drives, the switcher shows).
 func (v *ViewSwitcher) ReflectVisible() {
-	for i, name := range v.stack.Order() {
-		if i < len(v.buttons) {
-			markChecked(v.buttons[i], name == v.stack.Visible())
+	for i, name := range v.names {
+		if name == v.stack.Visible() {
+			v.SetActive(i)
 		}
 	}
-	v.Invalidate()
 }
 
-// markChecked marks a switcher button as the visible page's: the
-// :checked state for stylesheets, and the theme's selected fill so an
-// unstyled strip shows which page is current.
-func markChecked(b *Button, on bool) {
-	b.SetState(StateChecked, on)
-	b.BgExplicit = on
-	b.Bg, b.BgHover, b.BgPressed = 0, 0, 0
-	if on {
-		th := Current()
-		b.Bg, b.BgHover, b.BgPressed = th.SurfaceHover, th.SurfaceHover, th.SurfacePressed
-	}
-	b.Invalidate()
-}
-
-// StackSwitcher is the tab strip bound to a Stack: underline-marked
-// text tabs, GTK's classic - the ViewSwitcher's sibling for windows.
+// StackSwitcher is GTK's classic stack switcher: a text-only
+// ViewSwitcher, the variant for windows that title pages in words.
 type StackSwitcher struct {
 	*ViewSwitcher
 }
@@ -279,6 +249,7 @@ type StackSwitcher struct {
 // NewStackSwitcher returns a tab strip driving stack.
 func NewStackSwitcher(face render.Font, sizePx float64, stack *Stack, titles map[string]string) *StackSwitcher {
 	s := &StackSwitcher{ViewSwitcher: NewViewSwitcher(face, sizePx, stack, titles, nil)}
+	s.self = s
 	s.SetPolicy(SwitcherText)
 	return s
 }
@@ -297,9 +268,8 @@ type Carousel struct {
 
 	// drag state: the press position and the page offset it started
 	// from.
-	pressX   int
+	drag     dragGesture
 	dragFrom float64
-	dragging bool
 
 	// OnPage fires when the settled page changes.
 	OnPage func(i int)
@@ -394,32 +364,31 @@ func (c *Carousel) HitTest(p Point) Widget {
 	return nil
 }
 
-// PressAt records the drag start.
+// PressAt begins a drag from the current page offset.
 func (c *Carousel) PressAt(p Point) {
-	c.pressX = p.X
+	c.drag.begin(p)
 	c.dragFrom = c.offset
-	c.dragging = true
 }
 
 // DragMove pans the pages with the pointer.
 func (c *Carousel) DragMove(p Point) {
-	if !c.dragging || c.bounds.W == 0 {
+	dx, _, ok := c.drag.travel(p)
+	if !ok || c.bounds.W == 0 {
 		return
 	}
 	if c.cancel != nil {
 		c.cancel()
 	}
-	c.offset = clamp01pages(c.dragFrom+float64(c.pressX-p.X)/float64(c.bounds.W), len(c.pages))
+	c.offset = clamp01pages(c.dragFrom-float64(dx)/float64(c.bounds.W), len(c.pages))
 	c.Invalidate()
 }
 
-// ReleaseAt snaps to the nearest page.
-func (c *Carousel) ReleaseAt(p Point) {
-	if !c.dragging {
-		return
+// PressEnd snaps to the nearest page when a drag ends - released,
+// cancelled, or lost alike.
+func (c *Carousel) PressEnd() {
+	if c.drag.end() {
+		c.snap()
 	}
-	c.dragging = false
-	c.snap()
 }
 
 // snap animates the offset to the nearest integer page.

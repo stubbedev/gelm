@@ -20,6 +20,8 @@ type FlowBox struct {
 	kids                   []*FlowBoxChild
 	colSpacing, rowSpacing int
 	maxPerLine             int
+	// justify distributes each line's leftover width (WrapBox).
+	justify Justify
 	// measuredW and floorW are the last Measure's width and the
 	// narrowest it lays out at (its widest child), for ShrinkableWidth.
 	measuredW, floorW int
@@ -203,12 +205,19 @@ func (f *FlowBox) Arrange(r render.Rect) {
 	y := inner.Y
 	for _, line := range f.lines(inner.W) {
 		_, h := f.lineSize(line)
-		x := inner.X
-		for _, i := range line {
+		w, _ := f.lineSize(line)
+		x, grow, gap := f.justify.distribute(inner.X, inner.W-w, len(line))
+		for k, i := range line {
 			c := f.kids[i]
-			c.Arrange(render.Rect{X: x, Y: y, W: c.nat.W, H: h})
+			cw := c.nat.W + grow
+			if last := k == len(line)-1; last && f.justify == JustifyFill {
+				cw = inner.X + inner.W - x // the fill's rounding remainder
+			} else if last && k > 0 && f.justify == JustifySpread {
+				x = inner.X + inner.W - cw // the spread's rounding remainder
+			}
+			c.Arrange(render.Rect{X: x, Y: y, W: cw, H: h})
 			setParents(f, c)
-			x += c.nat.W + f.colSpacing
+			x += cw + f.colSpacing + gap
 		}
 		y += h + f.rowSpacing
 	}
@@ -294,4 +303,56 @@ func paintCSSBox(cv *render.Canvas, v *style.Values, bounds render.Rect) {
 	if bg := pickc(0, v, style.PropBackgroundColor, 0); bg != 0 || hasBoxLayers(v) {
 		paintBoxBehind(cv, v, bounds, radiusOr(v, 0), borderOf(v), bg)
 	}
+}
+
+// SetJustify sets how each line's leftover width is used.
+func (f *FlowBox) SetJustify(j Justify) {
+	f.justify = j
+	f.InvalidateLayout()
+}
+
+// Justify is how a wrapping line uses the width its children leave
+// over (adw WrapBox's justify, plus the alignment of the rest).
+type Justify uint8
+
+// Justifications.
+const (
+	// JustifyStart packs children at the start edge (the default).
+	JustifyStart Justify = iota
+	// JustifyCenter centers each line.
+	JustifyCenter
+	// JustifyEnd packs children at the end edge.
+	JustifyEnd
+	// JustifyFill grows every child of a line by an equal share.
+	JustifyFill
+	// JustifySpread widens the gaps between a line's children.
+	JustifySpread
+)
+
+// distribute turns a line's leftover width into its start x, the
+// width each child grows by, and the extra gap between children.
+func (j Justify) distribute(x, leftover, n int) (start, grow, gap int) {
+	leftover = max(leftover, 0)
+	switch j {
+	case JustifyCenter:
+		return x + leftover/2, 0, 0
+	case JustifyEnd:
+		return x + leftover, 0, 0
+	case JustifyFill:
+		return x, leftover / max(n, 1), 0
+	case JustifySpread:
+		if n > 1 {
+			return x, 0, leftover / (n - 1)
+		}
+	}
+	return x, 0, 0
+}
+
+// NewWrapBox returns the adw WrapBox: a FlowBox wrapping at
+// childSpacing/lineSpacing with justify deciding each line's leftover
+// width - one wrapping layout, not two.
+func NewWrapBox(childSpacing, lineSpacing int, justify Justify) *FlowBox {
+	f := NewFlowBox(childSpacing, lineSpacing)
+	f.justify = justify
+	return f
 }

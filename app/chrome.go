@@ -71,17 +71,29 @@ func (a *Application) AttachHeader(win *Window, bar *widget.HeaderBar) {
 // popover machinery a menu button uses. F10 reaches the bar when the
 // app routes the key to it (an accelerator or OnKey handoff).
 func (a *Application) AttachMenuBar(host Host, bar *widget.MenuBar, menus [][]widget.MenuItem) {
-	face := a.resolveFace(nil)
 	bar.OnRoot = func(i int, anchor widget.Boundser) {
-		if i < 0 || i >= len(menus) {
-			return
+		if i >= 0 && i < len(menus) {
+			a.openMenuAt(host, anchor, menus[i])
 		}
-		_, _ = a.OpenMenuPopover(host, MenuPopoverConfig{
-			Anchor: anchor,
-			Face:   face,
-			Items:  menus[i],
-		})
 	}
+}
+
+// AttachSplitButton wires a SplitButton's arrow half to items: the
+// arrow opens the menu popover below itself, the same path a menu bar
+// root takes.
+func (a *Application) AttachSplitButton(host Host, b *widget.SplitButton, items []widget.MenuItem) {
+	b.OnMenu = func(anchor widget.Boundser) { a.openMenuAt(host, anchor, items) }
+}
+
+// openMenuAt opens items as a menu popover anchored below anchor - the
+// one popover path the anchored menu widgets (menu bar roots, split
+// buttons) share.
+func (a *Application) openMenuAt(host Host, anchor widget.Boundser, items []widget.MenuItem) {
+	_, _ = a.OpenMenuPopover(host, MenuPopoverConfig{
+		Anchor: anchor,
+		Face:   a.resolveFace(nil),
+		Items:  items,
+	})
 }
 
 // stateMaximized reports the confirmed maximized state for the
