@@ -24,14 +24,21 @@ check: vet lint test build
 hyprland-vm:
     nix build -L .#checks.{{ arch() }}-{{ os() }}.gelm-hyprland-vm
 
-# The tagged AT-SPI bridge (#65): build everything with the tag set
-# (default builds carry none of it) and run the bridge's bus-level
-# tests - a private dbus-daemon plays the accessibility bus, a second
-# connection plays the registry and the assistive technology. No
-# compositor, no at-spi2-core needed.
+# The AT-SPI bridge's bus-level tests (#65, #114): a private
+# dbus-daemon plays the accessibility bus, a second connection plays
+# the registry and the assistive technology. No compositor, no
+# at-spi2-core needed.
 atspi:
-    go build -tags atspi ./...
-    go test -tags atspi ./internal/atspi/
+    go test ./internal/atspi/
+
+# The bridge against real at-spi2-core (#114) - the scripted
+# accerciser pass: at-spi-bus-launcher on a private session bus, the
+# real registryd, and a client that finds the application under the
+# registry's desktop, reads the Cache, walks to an entry, and moves
+# its caret. ATSPI_LIBEXEC (set by the dev shell) points at
+# at-spi2-core's libexec.
+atspi-verify:
+    go test -count=1 -run 'TestRealAtSpi2Core' -v ./internal/atspi/
 
 # Run the compositor-in-the-loop input tests (internal/headlesstest):
 # boots a private headless sway with the test-env recipe, then runs

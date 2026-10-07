@@ -1,16 +1,12 @@
 package appearance
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"slices"
-	"strconv"
-	"strings"
 	"sync"
 	"syscall"
 	"testing"
@@ -18,6 +14,7 @@ import (
 
 	"github.com/godbus/dbus/v5"
 
+	"github.com/stubbedev/gelm/internal/dbustest"
 	"github.com/stubbedev/gelm/internal/icons"
 )
 
@@ -29,59 +26,10 @@ import (
 // path — marshalling, match rules, activation-free name lookup — with
 // zero session-bus contact.
 
-// startBus launches a private dbus-daemon session bus on a fresh unix
-// socket and returns its address and pid. Skips when no daemon is
-// installed.
-func startBus(t *testing.T) (string, int) {
-	t.Helper()
-	sock := filepath.Join(t.TempDir(), "bus")
-	if len(sock) > 88 {
-		t.Skipf("socket path %q too long for AF_UNIX", sock)
-	}
-	return startBusAt(t, sock)
-}
+// startBus and startBusAt launch a private session bus (dbustest).
+func startBus(t *testing.T) (string, int) { return dbustest.Start(t) }
 
-// startBusAt starts a daemon bound to the given (fresh) socket path.
-// Readiness means a real connection, not a socket file: a file can
-// outlive its daemon, and a daemon can outlive its sockets.
-func startBusAt(t *testing.T, sock string) (string, int) {
-	t.Helper()
-	daemon, err := exec.LookPath("dbus-daemon")
-	if err != nil {
-		t.Skip("dbus-daemon not installed; portal tests need a real bus")
-	}
-	cmd := exec.Command(daemon, "--session", "--fork", "--nopidfile",
-		"--print-address=1", "--print-pid=1",
-		"--address=unix:path="+sock)
-	var out, errOut bytes.Buffer
-	cmd.Stdout, cmd.Stderr = &out, &errOut
-	if err := cmd.Run(); err != nil {
-		t.Fatalf("dbus-daemon failed: %v; stderr: %s", err, errOut.String())
-	}
-	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
-	if len(lines) < 2 {
-		t.Fatalf("dbus-daemon printed %q, want address and pid", out.String())
-	}
-	address := strings.TrimSpace(lines[0])
-	pid, convErr := strconv.Atoi(strings.TrimSpace(lines[1]))
-	if convErr != nil {
-		t.Fatalf("dbus-daemon pid %q: %v", lines[1], convErr)
-	}
-	t.Cleanup(func() {
-		_ = syscall.Kill(pid, syscall.SIGTERM)
-	})
-	deadline := time.Now().Add(2 * time.Second)
-	for {
-		if probe, err := dbus.Connect(address); err == nil {
-			_ = probe.Close()
-			return address, pid
-		}
-		if time.Now().After(deadline) {
-			t.Fatal("private bus never accepted a connection")
-		}
-		time.Sleep(2 * time.Millisecond)
-	}
-}
+func startBusAt(t *testing.T, sock string) (string, int) { return dbustest.StartAt(t, sock) }
 
 // mockPortal is the scripted org.freedesktop.portal.Settings service.
 // Fields are mutex-guarded: ReadOne runs on godbus's handler goroutine

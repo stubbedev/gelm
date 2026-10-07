@@ -1,28 +1,26 @@
-//go:build atspi
-
 // Package atspi is the in-process AT-SPI bridge (#65): it serves the
 // widget tree's accessibility semantics (widget.Describe and the
 // semantic roles, the plain-Go model of widget/a11y.go) over D-Bus in
 // the AT-SPI2 shape, so screen readers and tools like accerciser can
-// walk a gelm application without gelm itself linking D-Bus in default
-// builds. The whole package sits behind the `atspi` build tag; without
-// it, the code costs nothing.
+// walk a gelm application. It ships in every build; the application
+// starts it when the desktop asks for assistive technologies
+// (org.a11y.Status, status.go), so without one it costs nothing.
 //
 // The bridge is snapshot-driven: a sampling pass runs on the
 // application's loop goroutine (Scene.Invoke), rebuilds the tree of
 // widget.A11yState snapshots keyed by stable widget identity, and
 // diffs it against the previous pass — every difference becomes the
-// AT-SPI events the minimal set names: focus (and state-changed
-// focused), state-changed (checked, enabled, sensitive, editable),
-// text-caret-moved, bounds-changed, and children-changed for tree
-// updates. Handlers answer D-Bus method calls from the published
+// AT-SPI events: focus (and state-changed focused), state-changed
+// (checked, enabled, sensitive, editable), text-changed,
+// text-selection-changed, text-caret-moved, property-change (name,
+// value), bounds-changed, children-changed for tree updates, and the
+// Cache's add/remove. Handlers answer D-Bus method calls from the published
 // snapshot only, never touching widgets off the loop goroutine.
 package atspi
 
 import (
 	"fmt"
 	"os"
-	"slices"
 	"strconv"
 	"sync"
 	"time"
@@ -175,6 +173,9 @@ type Scene interface {
 	Focused() widget.Widget
 	// Invoke runs fn on the application's loop goroutine, asynchronously.
 	Invoke(fn func())
+	// SetFocus moves keyboard focus to w through its window's router
+	// (AT-driven focus); called on the loop goroutine.
+	SetFocus(w widget.Widget)
 }
 
 // Options tune Serve. The zero value is the production default.
@@ -308,6 +309,7 @@ func Serve(scene Scene, opts Options) (*Bridge, error) {
 	// gain theirs as sampling first sees them.
 	b.cur.nodes[0] = b.cur.root
 	b.exportNode(0, false, false, false, true)
+	b.exportCache()
 
 	// The first sample queues through Invoke — before Run it drains
 	// once the loop starts, which is fine: the registry probes the
@@ -396,9 +398,13 @@ func (b *Bridge) sample() {
 	old := b.cur
 	b.cur = nt
 	export := b.exportNew(nt)
+	cache := b.cacheEvents(old, nt)
 	b.mu.Unlock()
 	for _, ex := range export {
 		b.exportNode(ex.id, ex.text, ex.action, ex.value, false)
+	}
+	for _, ev := range cache {
+		b.emit(ev)
 	}
 	for _, ev := range diff(old, nt, b.name) {
 		b.emit(ev)
@@ -521,12 +527,7 @@ func diff(old, cur *tree, busName string) []event {
 		}
 	}
 
-	ids := make([]int32, 0, len(cur.nodes))
-	for id := range cur.nodes {
-		ids = append(ids, id)
-	}
-	slices.Sort(ids)
-	for _, id := range ids {
+	for _, id := range sortedIDs(cur) {
 		now, ok := cur.nodes[id]
 		if !ok {
 			continue
@@ -547,6 +548,18 @@ func diff(old, cur *tree, busName string) []event {
 		}
 		if now.st.Editable != before.st.Editable {
 			out = append(out, stateEvent(now, "editable", now.st.Editable))
+		}
+		if now.st.Name != before.st.Name {
+			out = append(out, propertyEvent(now, "accessible-name", dbus.MakeVariant(now.st.Name)))
+		}
+		if now.value && now.st.Value != before.st.Value {
+			out = append(out, propertyEvent(now, "accessible-value", dbus.MakeVariant(now.st.Value)))
+		}
+		if now.text && now.st.Text != before.st.Text {
+			out = append(out, textChangedEvents(now, before.st.Text, now.st.Text)...)
+		}
+		if now.text && selectionOf(now.st) != selectionOf(before.st) {
+			out = append(out, event{path: pathOf(now), name: eventObject("TextSelectionChanged"), args: plainArgs()})
 		}
 		if now.text && now.st.Caret != before.st.Caret {
 			out = append(out, event{
@@ -589,6 +602,52 @@ func plainArgs() []any {
 // eventObject builds an Event.Object signal name.
 func eventObject(member string) string {
 	return "org.a11y.atspi.Event.Object." + member
+}
+
+// propertyEvent is one PropertyChange: the property's name and its new
+// value.
+func propertyEvent(n *anode, prop string, value dbus.Variant) event {
+	return event{
+		path: pathOf(n), name: eventObject("PropertyChange"),
+		args: []any{prop, int32(0), int32(0), value, map[string]dbus.Variant{}},
+	}
+}
+
+// textChangedEvents describes an edit as TextChanged events: the
+// differing middle between the common prefix and suffix, deleted then
+// inserted, at rune offsets.
+func textChangedEvents(n *anode, before, after string) []event {
+	b, a := []rune(before), []rune(after)
+	pre := 0
+	for pre < len(b) && pre < len(a) && b[pre] == a[pre] {
+		pre++
+	}
+	suf := 0
+	for suf < len(b)-pre && suf < len(a)-pre && b[len(b)-1-suf] == a[len(a)-1-suf] {
+		suf++
+	}
+	var out []event
+	change := func(op string, rs []rune) {
+		if len(rs) > 0 {
+			out = append(out, event{
+				path: pathOf(n), name: eventObject("TextChanged"),
+				args: []any{op, int32(pre), int32(len(rs)), dbus.MakeVariant(string(rs)), map[string]dbus.Variant{}},
+			})
+		}
+	}
+	change("delete", b[pre:len(b)-suf])
+	change("insert", a[pre:len(a)-suf])
+	return out
+}
+
+// selection is the part of a snapshot TextSelectionChanged watches.
+type selection struct {
+	start, end int
+	on         bool
+}
+
+func selectionOf(st widget.A11yState) selection {
+	return selection{st.SelStart, st.SelEnd, st.HasSelection}
 }
 
 // stateEvent is one StateChanged: the state's name, gained or lost.

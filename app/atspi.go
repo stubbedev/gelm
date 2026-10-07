@@ -1,17 +1,95 @@
-//go:build atspi
-
-// The application side of the AT-SPI bridge (#65): ServeAccessibility
-// turns the application into the bridge's Scene — window roots, the
-// focused widget of the topmost window, and the loop queue — and
-// starts serving the semantic model on the accessibility bus. The file
-// (like internal/atspi) is behind the build tag, so default builds
-// carry none of it.
+// The application side of the AT-SPI bridge (#65, #114): the
+// application is the bridge's Scene - window roots, the focused widget
+// of the topmost window, AT-driven focus, and the loop queue - and Run
+// starts serving the semantic model on the accessibility bus when the
+// desktop asks for assistive technologies (A11yAuto, the default).
 package app
 
 import (
+	"os"
+	"slices"
+
 	"github.com/stubbedev/gelm/internal/atspi"
+	"github.com/stubbedev/gelm/internal/debug"
 	"github.com/stubbedev/gelm/widget"
 )
+
+// A11YOptions configures the AT-SPI bridge (ServeAccessibility).
+type A11YOptions = atspi.Options
+
+// A11yMode chooses when the AT-SPI bridge serves.
+type A11yMode uint8
+
+// Accessibility modes. The GELM_A11Y environment variable overrides
+// the application's choice, like GTK_A11Y: "none" is A11yOff, "atspi"
+// A11yOn.
+const (
+	// A11yAuto serves while the desktop asks for assistive
+	// technologies (org.a11y.Status IsEnabled or ScreenReaderEnabled -
+	// a screen reader running, the accessibility setting on), starting
+	// and stopping with it.
+	A11yAuto A11yMode = iota
+	// A11yOn serves from Run on, whatever the desktop says.
+	A11yOn
+	// A11yOff never serves (unless ServeAccessibility is called).
+	A11yOff
+)
+
+// SetAccessibility chooses when Run serves the bridge; call before Run.
+func (a *Application) SetAccessibility(mode A11yMode) { a.a11yMode = mode }
+
+// effectiveA11yMode is the mode after GELM_A11Y.
+func (a *Application) effectiveA11yMode() A11yMode {
+	switch os.Getenv("GELM_A11Y") {
+	case "none", "off", "0":
+		return A11yOff
+	case "atspi", "on", "1":
+		return A11yOn
+	}
+	return a.a11yMode
+}
+
+// startAccessibility applies the mode at Run: serve now (A11yOn), or
+// follow the desktop's switch (A11yAuto), hopping onto the loop to
+// start and stop the bridge. A desktop without a session bus or
+// at-spi2 has no switch: nothing serves.
+func (a *Application) startAccessibility() {
+	switch a.effectiveA11yMode() {
+	case A11yOn:
+		if err := a.ServeAccessibility(A11YOptions{}); err != nil {
+			debug.Log("a11y", "serve: %v", err)
+		}
+	case A11yAuto:
+		stop, err := atspi.WatchStatus("", func(on bool) {
+			a.Invoke(func() { a.followA11yStatus(on) })
+		})
+		if err != nil {
+			debug.Log("a11y", "no accessibility switch: %v", err)
+			return
+		}
+		a.stopA11yWatch = stop
+	}
+}
+
+// followA11yStatus starts or stops the bridge with the desktop's
+// switch.
+func (a *Application) followA11yStatus(on bool) {
+	if !on {
+		a.stopAccessibility()
+		return
+	}
+	if err := a.ServeAccessibility(A11YOptions{}); err != nil {
+		debug.Log("a11y", "serve: %v", err)
+	}
+}
+
+// stopAccessibility stops the bridge if it serves.
+func (a *Application) stopAccessibility() {
+	if a.stopA11y != nil {
+		a.stopA11y()
+		a.stopA11y = nil
+	}
+}
 
 // ServeAccessibility starts the in-process AT-SPI bridge: the
 // accessibility bus is discovered through org.a11y.Bus (opts
@@ -19,8 +97,8 @@ import (
 // the registry handshake runs. Idempotent. Call before Run (the same
 // window SetRoot et al. honor) or from the loop; the bridge stops with
 // Run. The first sample queues through Invoke and drains once Run
-// starts. opts is A11YOptions (the untagged alias) so consumers
-// outside gelm can construct it.
+// starts. Run calls it itself under A11yOn, and under A11yAuto when
+// the desktop asks for assistive technologies.
 func (a *Application) ServeAccessibility(opts A11YOptions) error {
 	if a.stopA11y != nil {
 		return nil
@@ -48,10 +126,20 @@ func (a *Application) Roots() []widget.Widget {
 // window (the most recently created one holds input focus), nil when
 // nothing does.
 func (a *Application) Focused() widget.Widget {
-	for i := len(a.windows) - 1; i >= 0; i-- {
-		if f := a.windows[i].router.Focused(); f != nil {
+	for _, v := range slices.Backward(a.windows) {
+		if f := v.router.Focused(); f != nil {
 			return f
 		}
 	}
 	return nil
+}
+
+// SetFocus implements atspi.Scene: focus moves to w in the window
+// whose tree holds it, through that window's router (the path a click
+// takes), and the window repaints.
+func (a *Application) SetFocus(w widget.Widget) {
+	if hw := a.windowOf(w); hw != nil {
+		hw.router.SetFocus(w)
+		hw.dirty = true
+	}
 }

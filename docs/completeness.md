@@ -77,7 +77,7 @@ closed and the map below reflects the tree as of that close.
 | Window icons | xdg-toplevel-icon-v1: `Application.SetIcon`/`SetWindowIcon`, buffers at the compositor's preferred sizes, silent degrade without the global (#70) | internal/wlsession/toplevelicon.go, app/windowicon.go |
 | Lock screens | ext-session-lock-v1: `Application.LockSession` covers every output (hotplug included) with a hosted lock surface; the protocol's client rules (unlock only after locked, no destroy while locked, one surface per output, no commit before the first ack) enforced client-side; the loop outlives an unplugged last output while the lock holds | internal/sessionlock, app/sessionlock.go |
 | Wire bindings | generated pure-Go proxies for all of the above | wlr/ |
-| Accessibility | semantic roles + `DescribeTree`, keyboard-first guarantee; in-process AT-SPI bridge behind the `atspi` build tag (#65) | widget/a11y.go, internal/atspi, [a11y.md](a11y.md) |
+| Accessibility | semantic roles + `DescribeTree`, keyboard-first guarantee; in-process AT-SPI bridge in every build, auto-started with the desktop's accessibility switch (#65, #114) | widget/a11y.go, internal/atspi, [a11y.md](a11y.md) |
 | Icon themes | freedesktop icon-theme spec in pure Go; live icon-theme setting followed through the portal monitor (#64) | internal/icons, [icons.md](icons.md) |
 
 ## Deliberate non-goals

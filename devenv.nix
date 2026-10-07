@@ -37,6 +37,10 @@
     pkgs.dbus
   ];
 
+  # `just atspi-verify` runs the bridge against real at-spi2-core: its
+  # bus launcher and registry daemon live in libexec, off PATH.
+  env.ATSPI_LIBEXEC = "${pkgs.at-spi2-core}/libexec";
+
   # `devenv test` = the full CI gate (`just check-headless`): the
   # release gates, then the compositor-in-the-loop input suite where
   # GELM_HEADLESS=1 turns every skip into a failure.

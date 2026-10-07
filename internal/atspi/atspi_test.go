@@ -1,5 +1,3 @@
-//go:build atspi
-
 // The bridge's end-to-end tests: a private dbus-daemon plays the
 // accessibility bus, a second connection plays the registry (its
 // Socket.Embed) and the assistive technology (walking the tree, reading
@@ -9,21 +7,17 @@
 package atspi
 
 import (
-	"bytes"
 	"fmt"
 	"os"
-	"os/exec"
-	"path/filepath"
-	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 	"testing"
 	"time"
 
 	"github.com/godbus/dbus/v5"
 	"golang.org/x/image/font/gofont/goregular"
 
+	"github.com/stubbedev/gelm/internal/dbustest"
 	"github.com/stubbedev/gelm/render"
 	"github.com/stubbedev/gelm/widget"
 )
@@ -62,52 +56,18 @@ func (s *testScene) Focused() widget.Widget {
 
 func (s *testScene) Invoke(fn func()) { fn() }
 
-func (s *testScene) setFocus(w widget.Widget) {
+func (s *testScene) SetFocus(w widget.Widget) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.focus = w
 }
 
-// startA11yBus launches a private dbus-daemon standing in for the
-// accessibility bus (the appearance tests' pattern).
+// startA11yBus launches a private bus standing in for the
+// accessibility bus.
 func startA11yBus(t *testing.T) string {
 	t.Helper()
-	sock := filepath.Join(t.TempDir(), "a11y-bus")
-	if len(sock) > 88 {
-		t.Skipf("socket path %q too long for AF_UNIX", sock)
-	}
-	daemon, err := exec.LookPath("dbus-daemon")
-	if err != nil {
-		t.Skip("dbus-daemon not installed; atspi tests need a real bus")
-	}
-	cmd := exec.Command(daemon, "--session", "--fork", "--nopidfile",
-		"--print-address=1", "--print-pid=1", "--address=unix:path="+sock)
-	var out, errOut bytes.Buffer
-	cmd.Stdout, cmd.Stderr = &out, &errOut
-	if err := cmd.Run(); err != nil {
-		t.Fatalf("dbus-daemon failed: %v; stderr: %s", err, errOut.String())
-	}
-	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
-	if len(lines) < 2 {
-		t.Fatalf("dbus-daemon printed %q", out.String())
-	}
-	pid, err := strconv.Atoi(strings.TrimSpace(lines[1]))
-	if err != nil {
-		t.Fatalf("dbus-daemon pid %q: %v", lines[1], err)
-	}
-	t.Cleanup(func() { _ = syscall.Kill(pid, syscall.SIGTERM) })
-	address := strings.TrimSpace(lines[0])
-	deadline := time.Now().Add(2 * time.Second)
-	for {
-		if probe, err := dbus.Connect(address); err == nil {
-			_ = probe.Close()
-			return address
-		}
-		if time.Now().After(deadline) {
-			t.Fatal("private bus never accepted a connection")
-		}
-		time.Sleep(2 * time.Millisecond)
-	}
+	address, _ := dbustest.Start(t)
+	return address
 }
 
 // fakeRegistry plays the accessibility registry on the bus: it answers
@@ -139,7 +99,7 @@ func startFakeRegistry(t *testing.T, address string) *fakeRegistry {
 	if err := conn.ExportAll(r, RootPath, "org.a11y.atspi.Socket"); err != nil {
 		t.Fatalf("registry socket export: %v", err)
 	}
-	for _, iface := range []string{"org.a11y.atspi.Event.Object", "org.a11y.atspi.Event.Focus"} {
+	for _, iface := range []string{"org.a11y.atspi.Event.Object", "org.a11y.atspi.Event.Focus", "org.a11y.atspi.Cache"} {
 		if err := conn.AddMatchSignal(dbus.WithMatchInterface(iface)); err != nil {
 			t.Fatalf("match rule for %s: %v", iface, err)
 		}
@@ -427,14 +387,7 @@ func TestTreeWalk(t *testing.T) {
 	if err := f.obj(btnPath).Call("org.a11y.atspi.Accessible.GetState", 0).Store(&states); err != nil {
 		t.Fatalf("GetState on the button: %v", err)
 	}
-	has := func(s uint32) bool {
-		for _, v := range states {
-			if v == s {
-				return true
-			}
-		}
-		return false
-	}
+	has := func(s uint32) bool { return hasState(states, s) }
 	if !has(stateEnabled) || !has(stateFocusable) {
 		t.Errorf("button states = %v, want enabled and focusable", states)
 	}
@@ -516,20 +469,73 @@ func TestTextInterface(t *testing.T) {
 	if s != "hello" || start != 0 || end != 5 {
 		t.Errorf("word at 2 = (%q,%d,%d), want (hello,0,5)", s, start, end)
 	}
-	// A read-only Text is honest: the setters decline.
-	var ok bool
-	if err := obj.Call("org.a11y.atspi.Text.SetCaretOffset", 0, int32(2)).Store(&ok); err != nil {
-		t.Fatalf("SetCaretOffset: %v", err)
+	// The setters reach the widget: caret, selection, collapse.
+	call := func(method string, args ...any) bool {
+		t.Helper()
+		var ok bool
+		if err := obj.Call("org.a11y.atspi.Text."+method, 0, args...).Store(&ok); err != nil {
+			t.Fatalf("%s: %v", method, err)
+		}
+		return ok
 	}
-	if ok {
-		t.Error("SetCaretOffset claimed success with no caret API behind it")
+	if !call("SetCaretOffset", int32(2)) || f.entry.Cursor() != 2 {
+		t.Errorf("SetCaretOffset left the caret at %d, want 2", f.entry.Cursor())
 	}
+	if !call("SetSelection", int32(0), int32(1), int32(4)) {
+		t.Error("SetSelection declined")
+	}
+	if st, en, on := f.entry.Selection(); !on || st != 1 || en != 4 {
+		t.Errorf("selection = %d..%d %v, want 1..4", st, en, on)
+	}
+	f.br.Refresh()
 	var n int32
 	if err := obj.Call("org.a11y.atspi.Text.GetNSelections", 0).Store(&n); err != nil {
 		t.Fatalf("GetNSelections: %v", err)
 	}
-	if n != 0 {
-		t.Errorf("selections = %d, want 0", n)
+	if n != 1 {
+		t.Errorf("selections = %d, want 1", n)
+	}
+	if call("AddSelection", int32(0), int32(1)) {
+		t.Error("a second selection was accepted")
+	}
+	if !call("RemoveSelection", int32(0)) {
+		t.Error("RemoveSelection declined")
+	}
+	if _, _, on := f.entry.Selection(); on {
+		t.Error("RemoveSelection left a selection")
+	}
+
+	// Per-character geometry: a box inside the entry, and the point at
+	// its center maps back to the character.
+	var x, y, w, h int32
+	if err := obj.Call("org.a11y.atspi.Text.GetCharacterExtents", 0, int32(1), uint32(1)).Store(&x, &y, &w, &h); err != nil {
+		t.Fatalf("GetCharacterExtents: %v", err)
+	}
+	if b := f.entry.Bounds(); w <= 0 || h <= 0 || !b.Contains(int(x), int(y)) {
+		t.Errorf("extents of 1 = (%d,%d,%d,%d), want a box inside %+v", x, y, w, h, b)
+	}
+	var off int32
+	if err := obj.Call("org.a11y.atspi.Text.GetOffsetAtPoint", 0, x+w/2, y+h/2, uint32(1)).Store(&off); err != nil {
+		t.Fatalf("GetOffsetAtPoint: %v", err)
+	}
+	if off != 1 {
+		t.Errorf("offset at the box's center = %d, want 1", off)
+	}
+	var rw int32
+	if err := obj.Call("org.a11y.atspi.Text.GetRangeExtents", 0, int32(0), int32(5), uint32(1)).Store(&x, &y, &rw, &h); err != nil {
+		t.Fatalf("GetRangeExtents: %v", err)
+	}
+	if rw < 4*w {
+		t.Errorf("range width %d, want the five characters' (char width %d)", rw, w)
+	}
+
+	// AT-driven focus lands through the scene.
+	var ok bool
+	if err := f.obj(entryPath).Call("org.a11y.atspi.Component.GrabFocus", 0).Store(&ok); err != nil || !ok {
+		t.Fatalf("GrabFocus: %v %v", ok, err)
+	}
+	if f.scene.Focused() != widget.Widget(f.entry) {
+		t.Error("GrabFocus did not focus the entry")
 	}
 }
 
@@ -638,7 +644,7 @@ func TestEvents(t *testing.T) {
 	}
 
 	t.Run("focus moves fire Focus and focused", func(t *testing.T) {
-		f.scene.setFocus(f.btn)
+		f.scene.SetFocus(f.btn)
 		f.br.Refresh()
 		sig := f.bus.nextSignal(t, btnPath, "org.a11y.atspi.Event.Focus.Focus")
 		_ = sig
@@ -651,12 +657,9 @@ func TestEvents(t *testing.T) {
 		if err := f.obj(btnPath).Call("org.a11y.atspi.Accessible.GetState", 0).Store(&states); err != nil {
 			t.Fatalf("GetState: %v", err)
 		}
-		for _, s := range states {
-			if s == stateFocused {
-				return
-			}
+		if !hasState(states, stateFocused) {
+			t.Error("button not serving FOCUSED after the focus event")
 		}
-		t.Error("button not serving FOCUSED after the focus event")
 	})
 
 	t.Run("a check toggle fires checked", func(t *testing.T) {
@@ -677,6 +680,40 @@ func TestEvents(t *testing.T) {
 		}
 	})
 
+	t.Run("an edit fires TextChanged, a selection TextSelectionChanged", func(t *testing.T) {
+		time.Sleep(50 * time.Millisecond) // the caret test's insert event lands, then goes
+		f.bus.drainSignals()
+		f.entry.Select(0, 6)
+		f.entry.Insert("yo") // "hello!" replaced
+		f.br.Refresh()
+		del := f.bus.nextSignal(t, entryPath, "org.a11y.atspi.Event.Object.TextChanged")
+		if del.Body[0] != "delete" || del.Body[1] != int32(0) || del.Body[2] != int32(6) || del.Body[3].(dbus.Variant).Value() != "hello!" {
+			t.Errorf("delete event = %v", del.Body)
+		}
+		ins := f.bus.nextSignal(t, entryPath, "org.a11y.atspi.Event.Object.TextChanged")
+		if ins.Body[0] != "insert" || ins.Body[2] != int32(2) || ins.Body[3].(dbus.Variant).Value() != "yo" {
+			t.Errorf("insert event = %v", ins.Body)
+		}
+		f.entry.Select(0, 1)
+		f.br.Refresh()
+		f.bus.nextSignal(t, entryPath, "org.a11y.atspi.Event.Object.TextSelectionChanged")
+	})
+
+	t.Run("a value change fires PropertyChange", func(t *testing.T) {
+		f.slider.SetValue(70)
+		f.br.Refresh()
+		var sliderPath dbus.ObjectPath
+		for path, w := range paths {
+			if w == widget.Widget(f.slider) {
+				sliderPath = path
+			}
+		}
+		ev := f.bus.nextSignal(t, sliderPath, "org.a11y.atspi.Event.Object.PropertyChange")
+		if ev.Body[0] != "accessible-value" || ev.Body[3].(dbus.Variant).Value() != 70.0 {
+			t.Errorf("value event = %v", ev.Body)
+		}
+	})
+
 	t.Run("a relayout fires BoundsChanged", func(t *testing.T) {
 		arrange(t, f.root, 500, 600)
 		f.br.Refresh()
@@ -692,6 +729,10 @@ func TestEvents(t *testing.T) {
 		if ev.Body[0] != "add" {
 			t.Errorf("children event = %v, want add", ev.Body)
 		}
+		add := f.bus.nextSignal(t, CachePath, "org.a11y.atspi.Cache.AddAccessible")
+		if item, ok := add.Body[0].([]any); !ok || len(item) != 10 || item[6] != "added" {
+			t.Errorf("AddAccessible = %v, want the label's entry", add.Body)
+		}
 		f.box.Remove(added)
 		arrange(t, f.root, 300, 400)
 		f.br.Refresh()
@@ -699,6 +740,7 @@ func TestEvents(t *testing.T) {
 		if ev.Body[0] != "remove" {
 			t.Errorf("children event = %v, want remove", ev.Body)
 		}
+		f.bus.nextSignal(t, CachePath, "org.a11y.atspi.Cache.RemoveAccessible")
 	})
 
 	t.Run("disabling fires enabled and sensitive", func(t *testing.T) {
@@ -775,5 +817,40 @@ func TestServeDefaultNameIsValid(t *testing.T) {
 	}
 	if _, err := br.conn.RequestName(br.name, dbus.NameFlagDoNotQueue); err != nil {
 		t.Fatalf("default name %q is not claimable: %v", br.name, err)
+	}
+}
+
+// hasState reads one state out of an AT-SPI wire state set.
+func hasState(set []uint32, s uint32) bool {
+	return len(set) == 2 && set[s/32]&(1<<(s%32)) != 0
+}
+
+// TestCacheGetItems pins the Cache batch: every object once, root
+// first with the application role, entries agreeing with the
+// Accessible interface (name, role, child count, state set).
+func TestCacheGetItems(t *testing.T) {
+	f := newFixture(t)
+	var items []cacheItem
+	if err := f.bus.conn.Object(f.name, CachePath).Call("org.a11y.atspi.Cache.GetItems", 0).Store(&items); err != nil {
+		t.Fatalf("GetItems: %v", err)
+	}
+	walked := f.walk(t)
+	if len(items) != len(walked)+1 {
+		t.Fatalf("cache holds %d items, the tree %d objects plus the root", len(items), len(walked))
+	}
+	root := items[0]
+	if root.Path.Path != RootPath || root.Role != roleApplication || root.Parent != desktopRef {
+		t.Errorf("root item = %+v", root)
+	}
+	for _, it := range items[1:] {
+		w := walked[it.Path.Path]
+		if w == nil {
+			t.Errorf("cache item %s not in the tree", it.Path.Path)
+			continue
+		}
+		st := widget.Describe(w)
+		if it.Name != st.Name || it.Role != atspiRole(st.Role) || len(it.States) != 2 {
+			t.Errorf("item %s = %q role %d states %v, want %q role %d", it.Path.Path, it.Name, it.Role, it.States, st.Name, atspiRole(st.Role))
+		}
 	}
 }

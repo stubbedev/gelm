@@ -1,0 +1,152 @@
+package atspi
+
+import (
+	"os"
+	"os/exec"
+	"path/filepath"
+	"slices"
+	"testing"
+	"time"
+
+	"github.com/godbus/dbus/v5"
+
+	"github.com/stubbedev/gelm/internal/dbustest"
+	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/gelm/widget"
+)
+
+// TestRealAtSpi2Core verifies the bridge against real at-spi2-core
+// (`just atspi-verify`): at-spi-bus-launcher on a private session bus
+// starts the accessibility bus, the bridge discovers it through
+// org.a11y.Bus and embeds with the real registryd, and a client playing
+// the assistive technology finds the application under the registry's
+// desktop, walks to the entry, reads it, and moves its caret - what
+// accerciser does by hand. ATSPI_LIBEXEC names at-spi2-core's libexec
+// directory; without it the test skips.
+func TestRealAtSpi2Core(t *testing.T) {
+	libexec := os.Getenv("ATSPI_LIBEXEC")
+	if libexec == "" {
+		t.Skip("ATSPI_LIBEXEC unset; `just atspi-verify` runs this against real at-spi2-core")
+	}
+	session, _ := dbustest.Start(t)
+	runtime := t.TempDir()
+	t.Setenv("DBUS_SESSION_BUS_ADDRESS", session)
+	launcher := exec.Command(filepath.Join(libexec, "at-spi-bus-launcher"), "--launch-immediately")
+	launcher.Env = append(os.Environ(), "XDG_RUNTIME_DIR="+runtime)
+	if err := launcher.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = launcher.Process.Kill()
+		_ = launcher.Wait()
+	})
+
+	// The launcher owns org.a11y.Bus once the accessibility bus runs.
+	sess, err := dbus.Connect(session)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = sess.Close() })
+	var a11yAddr string
+	eventually(t, "org.a11y.Bus", func() bool {
+		return sess.Object(busName, busPath).Call("org.a11y.Bus.GetAddress", 0).Store(&a11yAddr) == nil
+	})
+
+	// The desktop switch: turning IsEnabled on reaches WatchStatus.
+	got := make(chan bool, 4)
+	stopWatch, err := WatchStatus("", func(on bool) { got <- on })
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stopWatch()
+	<-got
+	if err := sess.Object(busName, busPath).SetProperty(ifaceStatus+".IsEnabled", dbus.MakeVariant(true)); err != nil {
+		t.Fatalf("set IsEnabled: %v", err)
+	}
+	select {
+	case on := <-got:
+		if !on {
+			t.Error("IsEnabled on reported disabled")
+		}
+	case <-time.After(3 * time.Second):
+		t.Error("IsEnabled change never reached the watch")
+	}
+
+	// Serve a window holding an entry; discovery goes through the
+	// launcher like on a desktop.
+	face := faceOf(t)
+	entry := widget.NewEntry(face, 13, render.RGB(0, 0, 0))
+	entry.SetText("hello")
+	root := widget.NewBox(widget.Column, 0, 0)
+	root.Append(entry, false)
+	arrange(t, root, 300, 100)
+	scene := &testScene{roots: []widget.Widget{root}}
+	br, err := Serve(scene, Options{Poll: -1})
+	if err != nil {
+		t.Fatalf("Serve: %v", err)
+	}
+	defer br.Stop()
+	br.Refresh()
+
+	at, err := dbus.Connect(a11yAddr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = at.Close() })
+	var owner string
+	if err := at.BusObject().Call("org.freedesktop.DBus.GetNameOwner", 0, br.name).Store(&owner); err != nil {
+		t.Fatal(err)
+	}
+	// The real registry lists the application under its desktop.
+	desktop := at.Object("org.a11y.atspi.Registry", RootPath)
+	var apps []ref
+	eventually(t, "the application under the registry's desktop", func() bool {
+		apps = nil
+		if err := desktop.Call(ifaceAccessible+".GetChildren", 0).Store(&apps); err != nil {
+			return false
+		}
+		return slices.ContainsFunc(apps, func(r ref) bool { return r.Name == owner || r.Name == br.name })
+	})
+
+	app := at.Object(owner, RootPath)
+	var toolkit string
+	if v, err := app.GetProperty(ifaceApplication + ".ToolkitName"); err != nil {
+		t.Fatalf("ToolkitName: %v", err)
+	} else if toolkit, _ = v.Value().(string); toolkit != "gelm" {
+		t.Errorf("toolkit = %q, want gelm", toolkit)
+	}
+	var items []cacheItem
+	if err := at.Object(owner, CachePath).Call(ifaceCache+".GetItems", 0).Store(&items); err != nil {
+		t.Fatalf("Cache.GetItems: %v", err)
+	}
+	var entryPath dbus.ObjectPath
+	for _, it := range items {
+		if it.Role == roleEntry {
+			entryPath = it.Path.Path
+		}
+	}
+	if entryPath == "" {
+		t.Fatalf("no entry among %d cache items", len(items))
+	}
+	obj := at.Object(owner, entryPath)
+	var text string
+	if err := obj.Call(ifaceText+".GetText", 0, int32(0), int32(-1)).Store(&text); err != nil || text != "hello" {
+		t.Errorf("GetText = %q, %v", text, err)
+	}
+	var ok bool
+	if err := obj.Call(ifaceText+".SetCaretOffset", 0, int32(3)).Store(&ok); err != nil || !ok || entry.Cursor() != 3 {
+		t.Errorf("SetCaretOffset: ok %v err %v caret %d", ok, err, entry.Cursor())
+	}
+}
+
+// eventually polls cond for up to five seconds.
+func eventually(t *testing.T, what string, cond func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for !cond() {
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out waiting for %s", what)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}

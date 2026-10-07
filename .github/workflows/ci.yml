@@ -59,8 +59,10 @@ jobs:
         run: devenv shell -- just check
       - name: Headless compositor input gate
         run: devenv shell -- just headless
-      - name: AT-SPI bridge (build tag)
+      - name: AT-SPI bridge (bus-level)
         run: devenv shell -- just atspi
+      - name: AT-SPI bridge against real at-spi2-core
+        run: devenv shell -- just atspi-verify
       # Benchmarks are tracked, not gated: the numbers land as workflow
       # artifacts so regressions can be compared run over run. Fixed
       # sizes and no time-dependent content keep them comparable.

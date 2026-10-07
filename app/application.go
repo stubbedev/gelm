@@ -91,10 +91,13 @@ type Application struct {
 	windowIcons  map[*Window]*postedIcon
 	appliedIcons map[*hostWindow]*postedIcon
 	defaultIcon  *postedIcon
-	// stopA11y stops the tagged AT-SPI bridge (app/atspi.go,
-	// //go:build atspi); the untagged core only sees the stop hook.
-	stopA11y func()
-	quit     bool
+	// stopA11y stops the AT-SPI bridge while it serves; stopA11yWatch
+	// ends the A11yAuto watch on the desktop's switch; a11yMode is
+	// SetAccessibility's choice.
+	stopA11y      func()
+	stopA11yWatch func()
+	a11yMode      A11yMode
+	quit          bool
 	// recentFiles (filedialog.go) lazily owns the desktop's shared
 	// recently-used list; nil until a file dialog with Recents runs.
 	recentFiles *recentfiles.Manager
@@ -591,11 +594,12 @@ func (a *Application) Run() error {
 		a.queues.shutdown()
 		a.watchers.shutdown()
 		a.endLoop()
-		// The tagged AT-SPI bridge dies with the loop: its samplers hop
+		// The AT-SPI bridge dies with the loop: its samplers hop
 		// through Invoke, which shutdown just drained.
-		if a.stopA11y != nil {
-			a.stopA11y()
+		if a.stopA11yWatch != nil {
+			a.stopA11yWatch()
 		}
+		a.stopAccessibility()
 		// Unwind the NewApplication icon-follow wiring: stop the cache's
 		// subscription, then the monitor's goroutines and connection.
 		if a.stopIconFollow != nil {
@@ -607,6 +611,7 @@ func (a *Application) Run() error {
 		a.closeNotifier()
 		a.shortcuts.shutdown()
 	}()
+	a.startAccessibility()
 	a.sess.OnKey = a.routeKey
 	a.sess.OnKeyUp = a.rep.release
 	a.sess.OnIME = a.imeEvent
@@ -898,6 +903,18 @@ func (a *Application) focused() *hostWindow {
 	}
 	if len(a.windows) > 0 {
 		return a.windows[0]
+	}
+	return nil
+}
+
+// windowOf returns the window whose tree holds w, nil when none does
+// (a popover's content, a detached widget).
+func (a *Application) windowOf(w widget.Widget) *hostWindow {
+	root := widget.RootOf(w)
+	for _, hw := range a.windows {
+		if hw.router != nil && hw.router.Root == root {
+			return hw
+		}
 	}
 	return nil
 }

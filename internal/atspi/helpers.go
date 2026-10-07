@@ -1,5 +1,3 @@
-//go:build atspi
-
 // Snapshot lookups, properties, text boundaries, and introspection —
 // the read-side helpers behind the exported tables. Everything reads
 // the published tree under the bridge mutex and returns copies; no
@@ -8,6 +6,7 @@ package atspi
 
 import (
 	"runtime/debug"
+	"slices"
 	"strings"
 
 	"github.com/godbus/dbus/v5"
@@ -95,12 +94,29 @@ func (b *Bridge) roleNameOf(id int32) string {
 // every node answers, the checked state for toggles, and the text
 // shape for text roles. The application root is always enabled.
 func (b *Bridge) stateOf(id int32) []uint32 {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return stateSet(b.statesOf(b.cur, id))
+}
+
+// stateSet packs state enum values into AT-SPI's wire state set: a
+// 64-bit mask as two uint32 words, low word first (Accessible.GetState
+// and the Cache items carry it as "au").
+func stateSet(states []uint32) []uint32 {
+	var set [2]uint32
+	for _, s := range states {
+		set[s/32] |= 1 << (s % 32)
+	}
+	return set[:]
+}
+
+// statesOf lists node id's state enum values in tr; the root reads as
+// the active application. Callers hold the bridge mutex.
+func (b *Bridge) statesOf(tr *tree, id int32) []uint32 {
 	if id == 0 {
 		return []uint32{stateEnabled, stateActive, stateShowing, stateVisible}
 	}
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	n := b.cur.nodes[id]
+	n := tr.nodes[id]
 	if n == nil {
 		return nil
 	}
@@ -109,7 +125,7 @@ func (b *Bridge) stateOf(id int32) []uint32 {
 		if n.st.Focusable {
 			states = append(states, stateFocusable)
 		}
-		if n.id == b.cur.focus {
+		if n.id == tr.focus {
 			states = append(states, stateFocused)
 		}
 	} else {
@@ -135,22 +151,56 @@ func (b *Bridge) stateOf(id int32) []uint32 {
 // ones; the standard Properties/Introspectable ride along implicitly).
 // The Application interface rides the root only.
 func (b *Bridge) interfacesOf(id int32) []string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return ifacesOf(b.cur.nodes[id])
+}
+
+// ifacesOf is interfacesOf for a node in hand.
+func ifacesOf(n *anode) []string {
 	out := []string{ifaceAccessible, ifaceComponent}
-	if n := b.node(id); n != nil {
-		if n.text {
-			out = append(out, ifaceText)
-		}
-		if n.action {
-			out = append(out, ifaceAction)
-		}
-		if n.value {
-			out = append(out, ifaceValue)
-		}
+	if n == nil {
+		return out
 	}
-	if id == 0 {
+	if n.text {
+		out = append(out, ifaceText)
+	}
+	if n.action {
+		out = append(out, ifaceAction)
+	}
+	if n.value {
+		out = append(out, ifaceValue)
+	}
+	if n.id == 0 {
 		out = append(out, ifaceApplication)
 	}
 	return out
+}
+
+// nameOf is a node's accessible name; the application root's is the
+// toolkit's.
+func nameOf(n *anode) string {
+	switch {
+	case n == nil:
+		return ""
+	case n.id == 0:
+		return "gelm"
+	default:
+		return n.st.Name
+	}
+}
+
+// parentRef is a node's parent reference: the registry's desktop for
+// the application root, the null reference for a node with none.
+func (b *Bridge) parentRef(n *anode) objRef {
+	switch {
+	case n != nil && n.id == 0:
+		return desktopRef
+	case n == nil || n.parent == nil:
+		return objRef{Name: "", Path: nullPath}
+	default:
+		return objRef{Name: b.name, Path: pathOf(n.parent)}
+	}
 }
 
 // accessibleAtPoint finds the deepest node under id whose bounds
@@ -176,8 +226,8 @@ func deepestAt(n *anode, x, y int) *anode {
 		return nil
 	}
 	// Later children paint on top, so they get the first claim.
-	for i := len(n.children) - 1; i >= 0; i-- {
-		if hit := deepestAt(n.children[i], x, y); hit != nil {
+	for _, v := range slices.Backward(n.children) {
+		if hit := deepestAt(v, x, y); hit != nil {
 			return hit
 		}
 	}
@@ -199,24 +249,14 @@ func (b *Bridge) properties(id int32, iface string) map[string]dbus.Variant {
 		b.mu.Lock()
 		defer b.mu.Unlock()
 		n := b.cur.nodes[id]
-		name := ""
 		childCount := 0
-		parent := objRef{Name: "", Path: nullPath}
-		if id == 0 {
-			name = "gelm"
+		if n != nil {
 			childCount = len(n.children)
-			parent = desktopRef
-		} else if n != nil {
-			name = n.st.Name
-			childCount = len(n.children)
-			if n.parent != nil {
-				parent = objRef{Name: b.name, Path: pathOf(n.parent)}
-			}
 		}
 		return map[string]dbus.Variant{
-			"Name":         dbus.MakeVariant(name),
+			"Name":         dbus.MakeVariant(nameOf(n)),
 			"Description":  dbus.MakeVariant(""),
-			"Parent":       dbus.MakeVariant(parent),
+			"Parent":       dbus.MakeVariant(b.parentRef(n)),
 			"ChildCount":   dbus.MakeVariant(int32(childCount)),
 			"Locale":       dbus.MakeVariant(""),
 			"AccessibleId": dbus.MakeVariant(""),
@@ -424,26 +464,32 @@ func max32(a, b int32) int32 {
 // implement, so real AT tooling (which introspects before calling)
 // marshals correctly.
 func introspectionXML(text, action, value, app bool) string {
+	ifaces := []string{xmlAccessible, xmlComponent}
+	if text {
+		ifaces = append(ifaces, xmlText)
+	}
+	if action {
+		ifaces = append(ifaces, xmlAction)
+	}
+	if value {
+		ifaces = append(ifaces, xmlValue)
+	}
+	if app {
+		ifaces = append(ifaces, xmlApplication)
+	}
+	return introspectionDoc(ifaces...)
+}
+
+// introspectionDoc is a node document holding ifaces plus the standard
+// Properties and Introspectable.
+func introspectionDoc(ifaces ...string) string {
 	var sb strings.Builder
 	sb.WriteString(`<?xml version="1.0" encoding="UTF-8"?>
 <node>
 `)
-	writeIFace(&sb, xmlAccessible)
-	writeIFace(&sb, xmlComponent)
-	if text {
-		writeIFace(&sb, xmlText)
+	for _, x := range append(ifaces, xmlProperties, xmlIntrospectable) {
+		writeIFace(&sb, x)
 	}
-	if action {
-		writeIFace(&sb, xmlAction)
-	}
-	if value {
-		writeIFace(&sb, xmlValue)
-	}
-	if app {
-		writeIFace(&sb, xmlApplication)
-	}
-	writeIFace(&sb, xmlProperties)
-	writeIFace(&sb, xmlIntrospectable)
 	sb.WriteString("</node>\n")
 	return sb.String()
 }

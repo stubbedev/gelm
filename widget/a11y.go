@@ -241,13 +241,6 @@ func labelText(w Widget) string {
 // textAreaOffsets flattens a TextArea's cursor and selection into rune
 // offsets into Text: every line contributes its runes plus a newline.
 func textAreaOffsets(t *TextArea) (caret, selStart, selEnd int, active bool) {
-	flat := func(p pos) int {
-		off := 0
-		for l := 0; l < p.line && l < len(t.lines); l++ {
-			off += len(t.lines[l]) + 1
-		}
-		return off + p.col
-	}
 	start, end := t.ordered()
-	return flat(t.cursor), flat(start), flat(end), start != end
+	return t.offsetOf(t.cursor), t.offsetOf(start), t.offsetOf(end), start != end
 }
