@@ -97,6 +97,9 @@ type node struct {
 	bounds  render.Rect
 	parent  Widget
 	tooltip string
+	// tooltipMarkup holds the markup when the tooltip was set as
+	// markup; tooltip then holds its plain text.
+	tooltipMarkup string
 	// debugName labels the widget for the inspector's dump and
 	// overlay; plain data the toolkit itself never reads.
 	debugName string
@@ -246,11 +249,30 @@ func (n *node) clickWithin() func() { return n.onClickWithin }
 // SetTooltip sets hover text shown after a dwell; empty clears it.
 func (n *node) SetTooltip(s string) {
 	checkLoop("SetTooltip")
-	n.tooltip = s
+	n.tooltip, n.tooltipMarkup = s, ""
+}
+
+// SetTooltipMarkup sets a tooltip in RichLabel markup (bold, italic,
+// links' look): the card renders it rich, while TooltipText - the
+// accessible name - is its plain text. Markup ParseMarkup rejects
+// shows literally.
+func (n *node) SetTooltipMarkup(markup string) {
+	checkLoop("SetTooltipMarkup")
+	runs, ok := ParseMarkup(markup)
+	if !ok {
+		n.SetTooltip(markup)
+		return
+	}
+	n.tooltip, _ = spansText(runs)
+	n.tooltipMarkup = markup
 }
 
 // TooltipText returns the hover text, empty when none is set.
 func (n *node) TooltipText() string { return n.tooltip }
+
+// TooltipMarkup returns the tooltip's markup and whether it was set as
+// markup (TooltipMarkupper).
+func (n *node) TooltipMarkup() (string, bool) { return n.tooltipMarkup, n.tooltipMarkup != "" }
 
 // SetCursorName requests the pointer shape while hovered, an xcursor
 // name ("pointer", "text" — what set_cursor_from_name takes); empty

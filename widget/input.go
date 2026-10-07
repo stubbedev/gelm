@@ -35,6 +35,12 @@ type ContentPaster interface {
 	PasteContent(mime string, data []byte)
 }
 
+// TooltipMarkupper is a widget whose tooltip may be RichLabel markup;
+// every node is one (SetTooltipMarkup).
+type TooltipMarkupper interface {
+	TooltipMarkup() (markup string, ok bool)
+}
+
 // HoverSetter receives hover tracking from the Router.
 type HoverSetter interface {
 	SetHovered(on bool)

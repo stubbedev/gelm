@@ -268,3 +268,24 @@ func TestDescribeTree(t *testing.T) {
 		}
 	}
 }
+
+// A markup tooltip keeps its markup for the card and its plain text
+// as the accessible name; unparsable markup is plain text.
+func TestTooltipMarkup(t *testing.T) {
+	l := NewLabel(testFace(t), 13, "x", render.RGB(0, 0, 0))
+	l.SetTooltipMarkup("<b>Save</b> the file")
+	if m, ok := l.TooltipMarkup(); !ok || m != "<b>Save</b> the file" || l.TooltipText() != "Save the file" {
+		t.Errorf("markup %q %v, text %q", m, ok, l.TooltipText())
+	}
+	if Describe(l).Name != "Save the file" {
+		t.Errorf("accessible name = %q", Describe(l).Name)
+	}
+	l.SetTooltip("plain")
+	if _, ok := l.TooltipMarkup(); ok || l.TooltipText() != "plain" {
+		t.Error("SetTooltip did not clear the markup")
+	}
+	l.SetTooltipMarkup("<b>broken")
+	if _, ok := l.TooltipMarkup(); ok || l.TooltipText() != "<b>broken" {
+		t.Error("unparsable markup was not kept as plain text")
+	}
+}

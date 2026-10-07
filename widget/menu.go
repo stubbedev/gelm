@@ -101,6 +101,10 @@ type Menu struct {
 	// a sibling had open, on hover as GTK's does.
 	OnHover func(index int)
 
+	// AccelLabel, when set, formats each row's Accel for display (a
+	// symbol form, a localized one); the binding itself is untouched.
+	AccelLabel func(accel string) string
+
 	// contents pads the rows (`popover.menu > contents`); rows are the
 	// per-item nodes under it.
 	contents stylePart
@@ -141,6 +145,27 @@ func NewMenu(face render.Font, sizePx float64, items ...MenuItem) *Menu {
 	m.contents.SetElement("contents")
 	m.buildRows()
 	return m
+}
+
+// SetItems replaces the rows in place - a live model update that
+// keeps the menu (and its popover) open; the hovered row stays when it
+// still exists.
+func (m *Menu) SetItems(items ...MenuItem) {
+	m.items = items
+	m.mnemonics, m.mnemRunes = resolveMnemonics(items)
+	if m.hovered >= len(items) || m.hovered >= 0 && !m.selectable(m.hovered) {
+		m.hovered = -1
+	}
+	m.buildRows()
+	m.InvalidateLayout()
+}
+
+// accelText is a row's accelerator as displayed.
+func (m *Menu) accelText(it MenuItem) string {
+	if it.Accel == "" || m.AccelLabel == nil {
+		return it.Accel
+	}
+	return m.AccelLabel(it.Accel)
 }
 
 // buildRows creates the row nodes over the current items and links
@@ -264,8 +289,8 @@ func (m *Menu) Measure(con Constraints) Size {
 		if it.Kind == ItemCheck || it.Kind == ItemRadio {
 			row += 18
 		}
-		if it.Accel != "" {
-			row += m.face.Shape(it.Accel, m.sizePx).Advance() + 16
+		if acc := m.accelText(it); acc != "" {
+			row += m.face.Shape(acc, m.sizePx).Advance() + 16
 		}
 		if len(it.Items) > 0 {
 			row += 16
@@ -425,8 +450,8 @@ func (m *Menu) Paint(cv *render.Canvas) {
 			// A right-to-left label reads from the row's right edge;
 			// keep clear of the accelerator and submenu arrow.
 			x = rowContent.X + rowContent.W - 4 - int(sh.Advance()+0.5)
-			if it.Accel != "" {
-				x -= int(m.face.Shape(it.Accel, m.sizePx).Advance()+0.5) + 16
+			if acc := m.accelText(it); acc != "" {
+				x -= int(m.face.Shape(acc, m.sizePx).Advance()+0.5) + 16
 			}
 			if len(it.Items) > 0 {
 				x -= 16
@@ -441,9 +466,10 @@ func (m *Menu) Paint(cv *render.Canvas) {
 			x1 := x + int(sh.CaretX(ri+1)+0.5)
 			cv.FillRect(render.Rect{X: x0, Y: baseline + 2, W: max(x1-x0, 1), H: 2}, col)
 		}
-		if it.Accel != "" {
-			aw := int(m.face.Shape(it.Accel, m.sizePx).Advance() + 0.5)
-			m.face.Draw(cv, m.face.Shape(it.Accel, m.sizePx), rowContent.X+rowContent.W-4-aw, baseline, t.TextMuted)
+		if acc := m.accelText(it); acc != "" {
+			sh := m.face.Shape(acc, m.sizePx)
+			aw := int(sh.Advance() + 0.5)
+			m.face.Draw(cv, sh, rowContent.X+rowContent.W-4-aw, baseline, t.TextMuted)
 		}
 		if len(it.Items) > 0 {
 			m.face.Draw(cv, m.face.Shape(">", m.sizePx), rowContent.X+rowContent.W-12, baseline, t.TextMuted)

@@ -38,7 +38,11 @@ import (
 type Application struct {
 	sess        *wlsession.Session
 	tooltipFace *render.Typeface
-	onKey       func(r *widget.Router, keycode uint32, mods wlsession.Mods)
+	// tooltipOpts tunes tooltips (SetTooltipOptions).
+	tooltipOpts TooltipOptions
+	// toastHost is the default toast window (SetToastHost).
+	toastHost Host
+	onKey     func(r *widget.Router, keycode uint32, mods wlsession.Mods)
 	// onDisconnect is the compositor-disconnect policy hook; see
 	// app/disconnect.go. disconnectOnce makes it fire exactly once, and
 	// step is the dispatch seam (sess.Step in production) tests drive
@@ -452,8 +456,7 @@ func (a *Application) newWindowWindow(cfg WindowConfig, animKind surfx.Kind) (*W
 // bar/panel/launcher shape: anchors, margins, exclusive zone, and
 // keyboard interactivity declared up front.
 func (a *Application) NewLayer(cfg LayerConfig) (*LayerWindow, error) {
-	shell := a.sess.LayerShell()
-	if shell == nil {
+	if a.sess.LayerShell() == nil {
 		return nil, errors.New("app: compositor has no zwlr_layer_shell_v1")
 	}
 	surf, err := a.sess.Compositor().CreateSurface()
@@ -467,7 +470,7 @@ func (a *Application) NewLayer(cfg LayerConfig) (*LayerWindow, error) {
 	if scale == 0 {
 		scale = 1
 	}
-	ls, err := layersurface.New(shell, surf, outputWire(cfg.Output), layersurface.Config{
+	ls, err := layersurface.New(a.sess, surf, outputWire(cfg.Output), layersurface.Config{
 		Layer:         cfg.Layer,
 		Anchor:        cfg.Anchor,
 		Width:         cfg.Width,
@@ -680,6 +683,7 @@ func (a *Application) tick(step func() error, now time.Time) error {
 	a.updateTips(now)
 
 	kept := a.windows[:0]
+	var moved []movedToasts
 	for _, w := range a.windows {
 		// A tween-frame kick from another loop's tick (a popup's
 		// nested Run) marks the window for repaint.
@@ -687,9 +691,11 @@ func (a *Application) tick(step func() error, now time.Time) error {
 			w.dirty = true
 		}
 		if w.host.Closed() {
-			// Stop the window's toast timers before the surface
-			// they paint on disappears.
-			a.toasts.closeHost(w.host)
+			// Its live toasts move to the next toast window once the
+			// list is settled; the surface they painted on goes.
+			if m, ok := a.toasts.takeHost(w.host); ok {
+				moved = append(moved, m)
+			}
 			w.release()
 			if w.cfg.onClosed != nil {
 				w.cfg.onClosed()
@@ -699,6 +705,7 @@ func (a *Application) tick(step func() error, now time.Time) error {
 		kept = append(kept, w)
 	}
 	a.windows = kept
+	a.rehostToasts(moved)
 	a.reapWindowIcons()
 	if a.done() {
 		return ErrClosed
@@ -772,6 +779,7 @@ func (a *Application) tick(step func() error, now time.Time) error {
 // updateTips advances every window's tooltip state machine.
 func (a *Application) updateTips(now time.Time) {
 	for _, w := range a.windows {
+		w.tip.delay = a.tooltipOpts.Delay
 		w.tip.update(w.router, now, func(h widget.Widget, text string) (tooltipWindow, *popup.Painter) {
 			if a.tooltipFace == nil {
 				return nil, nil
@@ -779,11 +787,7 @@ func (a *Application) updateTips(now time.Time) {
 			// A nil *popup.Popup must not be wrapped: the interface
 			// would carry a typed nil that the nil checks below let
 			// through to a dereference.
-			tp, pc := openTooltip(w.sess, w.host, &Config{
-				Session:     w.sess,
-				Host:        w.host,
-				TooltipFace: a.tooltipFace,
-			}, w.frac120, int(w.input.x), int(w.input.y), text)
+			tp, pc := openTooltip(w.sess, w.host, a.tooltipFace, a.tooltipOpts, w.frac120, int(w.input.x), int(w.input.y), h, text)
 			if tp == nil {
 				return nil, nil
 			}
@@ -1096,12 +1100,33 @@ func (l *LayerWindow) SetFocus(w widget.Widget) {
 // before it reaches the wire. The size applies with the next commit,
 // and the compositor's configure answer resizes the buffers.
 func (l *LayerWindow) SetSize(width, height uint32) error {
-	if err := l.ls.SetSize(width, height); err != nil {
+	return l.commit(l.ls.SetSize(width, height))
+}
+
+// SetAnchor re-anchors the surface (a bar moving edges); the auto-axis
+// rule SetSize states applies. Lands with the next commit.
+func (l *LayerWindow) SetAnchor(a layersurface.Anchor) error { return l.commit(l.ls.SetAnchor(a)) }
+
+// SetMargin changes the distances from the anchored edges.
+func (l *LayerWindow) SetMargin(m layersurface.Margins) error { return l.commit(l.ls.SetMargin(m)) }
+
+// SetExclusiveZone changes the reserved space along the anchored edge
+// - an auto-hiding bar handing its zone back.
+func (l *LayerWindow) SetExclusiveZone(zone int32) error {
+	return l.commit(l.ls.SetExclusiveZone(zone))
+}
+
+// SetLayer moves the surface to another stack layer (a panel rising to
+// overlay while shown); needs layer shell v2.
+func (l *LayerWindow) SetLayer(layer layersurface.Layer) error { return l.commit(l.ls.SetLayer(layer)) }
+
+// commit marks the surface for the commit that applies an accepted
+// change; a refused one returns its error untouched.
+func (l *LayerWindow) commit(err error) error {
+	if err != nil {
 		return err
 	}
-	if hw := l.app.hostOfLayer(l); hw != nil {
-		hw.dirty = true
-	}
+	l.requestFrame()
 	return nil
 }
 

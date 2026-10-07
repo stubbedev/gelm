@@ -28,7 +28,7 @@ closed and the map below reflects the tree as of that close.
 | Undo/redo | bounded coalescing stack behind `widget.Undoer`, shared by `Entry` and `TextArea`; ctrl+z / ctrl+shift+z / ctrl+y in `routeKey` (#29) | widget/undo.go, app/app.go |
 | TextView, SourceView | `TextArea`: soft wrap, logical-line editing, Tab trap; the code view (line numbers, `Highlighter` and `TextScheme`, auto-indent; `highlight`: TOML, Go, JSON, YAML, Markdown with fenced-language nesting, a `Register`/`Lookup`/`ForFile` registry, Adwaita schemes) | widget/textarea.go, widget/codeview.go, highlight/ |
 | ComboBox | `Dropdown` / `DropdownOf[T]` — face plus inline themed item list; prefix type-ahead on the open list, first-letter cycling on the closed face (#62) | widget/dropdown.go |
-| Toast | `widget.Toast` + `Application.ShowToast`: stacking, action, hover-pause (#30) | widget/toast.go, app/toast.go |
+| Toast | `widget.Toast` + `Application.ShowToast`: stacking, action, hover-pause (#30); app-level host, toasts move off a closing window, drops report an error (#116) | widget/toast.go, app/toast.go |
 | Expander | `Expander`: animated reveal, child visible only while open (#30) | widget/expander.go |
 | Spinner | `Spinner`: anim-driven rotating arc (#30) | widget/spinner.go |
 | Separator | `NewSeparator(orientation)` (#30) | widget/separator.go |
@@ -45,7 +45,7 @@ closed and the map below reflects the tree as of that close.
 | ShortcutsWindow | `widget.ShortcutsView` + `app.ShortcutsDialog` from the accelerator registry (`Application.Accels`, `DescribeAction`); multi-key chords (#99) | widget/shortcuts.go, app/accel.go |
 | Popover | `app.Popover`, widget-anchored, works on layer surfaces | app/popover.go |
 | Dialog, MessageBox | `app.Dialog`, `app.MessageBox`; window-level modality through xdg-dialog-v1 with the application-level block as the floor (#61) | app/dialog.go, internal/wlsession/dialog.go |
-| Tooltip | `SetTooltip` on any widget, 500ms dwell | widget/widget.go, app/tooltip.go |
+| Tooltip | `SetTooltip` / `SetTooltipMarkup` on any widget, toplevel and layer hosts, `SetTooltipOptions` for dwell, offset, size (#116) | widget/widget.go, app/tooltip.go |
 | Drag and drop | `DragSource`/`DragEnterer` per widget, mime negotiation, cross-window | app/dragdrop.go, internal/dragdrop |
 | Icon | raster/theme/file/embedded-SVG constructors, symbolic recoloring; bundled Lucide fallback set (#98) | widget/icon.go, internal/icons, [icons.md](icons.md) |
 | Image | raster `Image`: `ImageFit`/`ImageCover`/`ImageNone`, async file/URL decode, LRU pixel cache (#35); PNG/JPEG/GIF/WebP decode and animated GIF/APNG played on the animation clock while visible (#102; animated WebP is not decoded — golang.org/x/image/webp reads stills only) | widget/image.go, widget/image_anim.go, render/animation.go, internal/imgcache |

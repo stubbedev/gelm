@@ -184,3 +184,35 @@ func TestConfigureAfterDestroyIsNotAcked(t *testing.T) {
 		t.Errorf("destroyed surface resized to %dx%d", w, h)
 	}
 }
+
+// The runtime setters keep the creation rules: an anchor that leaves
+// an auto axis half-anchored, a layer change on a v1 shell, and
+// on-demand keyboard below v4 are all refused before the wire (Layer
+// is nil: reaching it would panic), leaving the config as it was.
+func TestRuntimeSettersKeepTheRules(t *testing.T) {
+	s := &Surface{cfg: Config{Anchor: AnchorLeft | AnchorRight | AnchorTop, Height: 30}}
+	if err := s.SetAnchor(AnchorTop); err == nil {
+		t.Error("dropping a horizontal anchor under an auto width was accepted")
+	}
+	if err := s.SetLayer(LayerOverlay); !errors.Is(err, ErrShellTooOld) {
+		t.Errorf("set_layer on v1 = %v, want ErrShellTooOld", err)
+	}
+	if err := s.SetKeyboardMode(KeyboardOnDemand); !errors.Is(err, ErrShellTooOld) {
+		t.Errorf("on-demand on v1 = %v, want ErrShellTooOld", err)
+	}
+	if s.cfg.Anchor != AnchorLeft|AnchorRight|AnchorTop || s.cfg.Layer != 0 || s.cfg.Keyboard != KeyboardNone {
+		t.Errorf("a refused change touched the config: %+v", s.cfg)
+	}
+	if err := (Config{Width: 1, Height: 1, Keyboard: KeyboardOnDemand, shellVersion: 4}).validate(); err != nil {
+		t.Errorf("on-demand on v4: %v", err)
+	}
+	closed := &Surface{cfg: Config{Width: 10, Height: 10}, closed: true}
+	for name, err := range map[string]error{
+		"margin": closed.SetMargin(Margins{Top: 4}),
+		"zone":   closed.SetExclusiveZone(20),
+	} {
+		if !errors.Is(err, ErrClosed) {
+			t.Errorf("%s on a closed surface = %v, want ErrClosed", name, err)
+		}
+	}
+}

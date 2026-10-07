@@ -141,6 +141,7 @@ type Session struct {
 	bell                *wlr.XdgSystemBellV1
 	wmBase              *xdg.WmBase
 	wmBaseVersion       uint32
+	layerShellVersion   uint32
 	compositorVersion   uint32
 	outputs             []*Output
 	hasArgb             bool
@@ -436,7 +437,9 @@ func (s *Session) HandleRegistryGlobal(ev wl.RegistryGlobalEvent) {
 	case "zwlr_layer_shell_v1":
 		ctx, _ := wl.GetUserData[wl.Context](s.registry)
 		shell := wlr.NewZwlrLayerShellV1(ctx)
-		_ = s.registry.Bind(ev.Name, ev.Interface, 1, shell)
+		// v4: set_layer (v2), on-demand keyboard interactivity (v4).
+		s.layerShellVersion = bindVersion(ev.Version, 4)
+		_ = s.registry.Bind(ev.Name, ev.Interface, s.layerShellVersion, shell)
 		s.layerShell = shell
 	case "wp_viewporter":
 		ctx, _ := wl.GetUserData[wl.Context](s.registry)
@@ -1236,6 +1239,10 @@ func (s *Session) WmBase() *xdg.WmBase { return s.wmBase }
 // WmBaseVersion is the bound xdg_wm_base version (popup repositioning
 // needs 3); 0 without one.
 func (s *Session) WmBaseVersion() uint32 { return s.wmBaseVersion }
+
+// LayerShellVersion is the bound zwlr_layer_shell_v1 version, 0 when
+// the compositor has none.
+func (s *Session) LayerShellVersion() uint32 { return s.layerShellVersion }
 
 // Seat returns the bound wl_seat, or nil when the compositor has none.
 func (s *Session) Seat() *wl.Seat { return s.seat }
