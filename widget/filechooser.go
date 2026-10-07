@@ -24,7 +24,7 @@ import (
 // selection, an empty name, or a name carrying a path separator sets
 // the status line and applies nothing.
 type FileChooser struct {
-	node
+	composite
 	face   render.Font
 	sizePx float64
 
@@ -39,7 +39,7 @@ type FileChooser struct {
 	paths     []string
 	inRecents bool
 
-	root       *Box
+	column     *Box
 	places     *Box
 	path       *Label
 	list       *List
@@ -147,16 +147,16 @@ func NewFileChooser(face render.Font, sizePx float64, mode FileMode, startDir st
 	c.path = NewLabel(face, sizePx, "", th.TextMuted)
 	c.status = NewLabel(face, sizePx-2, "", th.Accent)
 	c.buildPlaces()
-	c.root = NewBox(Column, 10, 0)
-	c.root.Append(c.places, false)
-	c.root.Append(c.path, false)
-	c.root.Append(c.list, true)
+	c.column = NewBox(Column, 10, 0)
+	c.column.Append(c.places, false)
+	c.column.Append(c.path, false)
+	c.column.Append(c.list, true)
 	if mode == FileModeSave {
 		c.name = NewEntry(face, sizePx, th.Text)
 		nameRow := NewBox(Row, 8, 0)
 		nameRow.Append(NewLabel(face, sizePx, Tr("Name:"), th.Text), false)
 		nameRow.Append(c.name, true)
-		c.root.Append(nameRow, true)
+		c.column.Append(nameRow, true)
 	}
 	if len(filters) > 1 {
 		names := make([]string, len(filters))
@@ -168,9 +168,10 @@ func NewFileChooser(face render.Font, sizePx float64, mode FileMode, startDir st
 		filterRow := NewBox(Row, 8, 0)
 		filterRow.Append(NewLabel(face, sizePx, Tr("Filter:"), th.Text), false)
 		filterRow.Append(c.filterDrop, false)
-		c.root.Append(filterRow, false)
+		c.column.Append(filterRow, false)
 	}
-	c.root.Append(c.status, false)
+	c.column.Append(c.status, false)
+	c.initComposite(c, c.column)
 	c.navigate(startDir)
 	return c
 }
@@ -465,40 +466,4 @@ func (m *chooserModel) Row(i int) Widget {
 		m.rows[i] = NewLabel(m.face, m.sizePx, name, color)
 	}
 	return m.rows[i]
-}
-
-// Measure delegates to the composed column, cached like every widget.
-func (c *FileChooser) Measure(con Constraints) Size {
-	if sz, ok := c.measureHit(con); ok {
-		return sz
-	}
-	return c.measureStore(con, c.root.Measure(con))
-}
-
-// Arrange fills the chooser with the composed column.
-func (c *FileChooser) Arrange(r render.Rect) {
-	c.node.Arrange(r)
-	c.root.Arrange(r)
-	setParents(c, c.root)
-}
-
-// Paint draws the composed column.
-func (c *FileChooser) Paint(cv *render.Canvas) {
-	PaintChild(cv, c.root)
-}
-
-// HitTest resolves into the composed column.
-func (c *FileChooser) HitTest(p Point) Widget {
-	if !c.bounds.Contains(p.X, p.Y) {
-		return nil
-	}
-	if hit := c.root.HitTest(p); hit != nil {
-		return hit
-	}
-	return c
-}
-
-// styleChildren is the composed column (styleKids).
-func (c *FileChooser) styleChildren() []Widget {
-	return []Widget{c.root}
 }

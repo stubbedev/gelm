@@ -3,7 +3,6 @@ package widget
 import (
 	"time"
 
-	"github.com/stubbedev/gelm/internal/style"
 	"github.com/stubbedev/gelm/render"
 )
 
@@ -15,7 +14,7 @@ import (
 // element inside a PreferencesGroup's `rows` list; alone it paints
 // its surface too, so a bare row still reads.
 type ActionRow struct {
-	node
+	composite
 	face   render.Font
 	sizePx float64
 
@@ -62,6 +61,9 @@ func NewActionRow(face render.Font, sizePx float64, title, subtitle string) *Act
 	r.line.Append(r.end, false)
 	r.column = NewBox(Column, 0, 0)
 	r.column.Append(r.line, false)
+	r.initComposite(r, r.column)
+	r.fillWidth = true
+	r.surfaceRadius = 4
 	return r
 }
 
@@ -191,49 +193,16 @@ func (r *ActionRow) SetRevealed(on bool) {
 // Revealed reports the disclosure state (false without one).
 func (r *ActionRow) Revealed() bool { return r.reveal != nil && r.reveal.Revealed() }
 
-// Measure delegates to the composed column, cached like every
-// widget.
-func (r *ActionRow) Measure(con Constraints) Size {
-	if sz, ok := r.measureHit(con); ok {
-		return sz
-	}
-	inner := r.column.Measure(con)
-	return r.measureStore(con, clampSize(Size{W: con.Max.W, H: inner.H}, con))
-}
-
-// Arrange fills the row and lays its content out.
-func (r *ActionRow) Arrange(rect render.Rect) {
-	r.node.Arrange(rect)
-	r.column.Arrange(rect)
-	setParents(r, r.column)
-}
-
 // Paint draws the row surface (selected and press washes) then the
 // composed row.
 func (r *ActionRow) Paint(cv *render.Canvas) {
 	th := Current()
-	v := r.style(r)
 	fill := th.Surface
 	if r.selected {
 		fill = th.SurfaceHover
 	} else if r.pressed {
 		fill = th.SurfacePressed
 	}
-	paintBoxBehind(cv, v, r.line.Bounds(), radiusOr(v, 4), borderOf(v), pickc(0, v, style.PropBackgroundColor, fill))
-	PaintChild(cv, r.column)
+	r.paintSurface(cv, r.line.Bounds(), fill)
+	PaintChild(cv, r.root)
 }
-
-// HitTest resolves into the composed column - deeper controls first,
-// the row itself for its background and its disclosure.
-func (r *ActionRow) HitTest(p Point) Widget {
-	if !r.bounds.Contains(p.X, p.Y) {
-		return nil
-	}
-	if hit := r.column.HitTest(p); hit != nil {
-		return hit
-	}
-	return r
-}
-
-// styleChildren is the composed column (styleKids).
-func (r *ActionRow) styleChildren() []Widget { return []Widget{r.column} }

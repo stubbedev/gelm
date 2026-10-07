@@ -1,7 +1,6 @@
 package widget
 
 import (
-	"github.com/stubbedev/gelm/internal/style"
 	"github.com/stubbedev/gelm/render"
 )
 
@@ -52,11 +51,11 @@ func DescendsFrom(w, ancestor Widget) bool {
 // any host that honors it. Styled as the `headerbar` element, its
 // title as `headerbar title` (docs/css.md).
 type HeaderBar struct {
-	node
+	composite
 	face   render.Font
 	sizePx float64
 
-	root     *Box
+	row      *Box
 	start    *Box
 	center   *Box
 	end      *Box
@@ -67,14 +66,12 @@ type HeaderBar struct {
 	// OnDoubleClick fires on a second press inside the grab interval -
 	// the app wires it to maximize/restore.
 	OnDoubleClick func()
-
-	height int
 }
 
 // NewHeaderBar returns a bar sized for face/sizePx content.
 func NewHeaderBar(face render.Font, sizePx float64) *HeaderBar {
 	face = requireFace("widget.NewHeaderBar", face)
-	h := &HeaderBar{face: face, sizePx: sizePx, height: int(sizePx) + 22}
+	h := &HeaderBar{face: face, sizePx: sizePx}
 	th := Current()
 	h.SetElement("headerbar")
 	h.title = NewLabel(face, sizePx, "", th.Text)
@@ -86,12 +83,15 @@ func NewHeaderBar(face render.Font, sizePx float64) *HeaderBar {
 	h.center.Append(h.sub, false)
 	h.start = NewBox(Row, 6, 0)
 	h.end = NewBox(Row, 6, 0)
-	h.root = NewBox(Row, 8, 6)
-	h.root.Append(h.start, false)
-	h.root.Append(NewSpacer(0, 0), true)
-	h.root.AppendAligned(h.center, false, AlignCenter)
-	h.root.Append(NewSpacer(0, 0), true)
-	h.root.Append(h.end, false)
+	h.row = NewBox(Row, 8, 6)
+	h.row.Append(h.start, false)
+	h.row.Append(NewSpacer(0, 0), true)
+	h.row.AppendAligned(h.center, false, AlignCenter)
+	h.row.Append(NewSpacer(0, 0), true)
+	h.row.Append(h.end, false)
+	h.initComposite(h, h.row)
+	h.fillWidth, h.minHeight = true, int(sizePx)+22
+	h.surface = surfaceFill
 	return h
 }
 
@@ -133,33 +133,6 @@ func (h *HeaderBar) WindowDoubleClick() {
 	}
 }
 
-// Measure measures the packs and wants at least the chrome height,
-// the full width it is given.
-func (h *HeaderBar) Measure(con Constraints) Size {
-	if sz, ok := h.measureHit(con); ok {
-		return sz
-	}
-	inner := h.root.Measure(con)
-	height := max(h.height, inner.H)
-	return h.measureStore(con, clampSize(Size{W: con.Max.W, H: height}, con))
-}
-
-// Arrange fills the bar and lays its packs out: start left, center
-// centered, end right.
-func (h *HeaderBar) Arrange(r render.Rect) {
-	h.node.Arrange(r)
-	h.root.Arrange(r)
-	setParents(h, h.root)
-}
-
-// Paint draws the bar's box then its content.
-func (h *HeaderBar) Paint(cv *render.Canvas) {
-	th := Current()
-	v := h.style(h)
-	paintBoxBehind(cv, v, h.bounds, radiusOr(v, 0), borderOf(v), pickc(0, v, style.PropBackgroundColor, th.Surface))
-	PaintChild(cv, h.root)
-}
-
 // HitTest resolves into the composed row with the CSD rule applied:
 // a press that lands on a button stays a button press; anything else
 // on the bar - background, title, spacers - is the move surface and
@@ -168,12 +141,12 @@ func (h *HeaderBar) HitTest(p Point) Widget {
 	if !h.bounds.Contains(p.X, p.Y) {
 		return nil
 	}
-	if hit := h.root.HitTest(p); hit != nil {
+	if hit := h.row.HitTest(p); hit != nil {
 		for cur := hit; cur != nil; cur = parentOf(cur) {
 			if b, ok := cur.(*Button); ok {
 				return b
 			}
-			if cur == Widget(h.root) {
+			if cur == Widget(h.row) {
 				break
 			}
 		}
@@ -181,20 +154,14 @@ func (h *HeaderBar) HitTest(p Point) Widget {
 	return h
 }
 
-// styleChildren is the composed row and title parts (styleKids).
-func (h *HeaderBar) styleChildren() []Widget {
-	kids := []Widget{h.root}
-	return kids
-}
-
 // WindowControls are the CSD frame buttons: close, minimize, maximize.
 // Each is shown only when asked - the compositor's capabilities decide
 // which an app offers - and each fires its hook on click.
 type WindowControls struct {
-	node
+	composite
 	face   render.Font
 	sizePx float64
-	root   *Box
+	row    *Box
 
 	// OnClose, OnMinimize, and OnMaximize fire for the corresponding
 	// button; the app wires them to its window.
@@ -212,7 +179,8 @@ type WindowControls struct {
 func NewWindowControls(face render.Font, sizePx float64) *WindowControls {
 	face = requireFace("widget.NewWindowControls", face)
 	c := &WindowControls{face: face, sizePx: sizePx}
-	c.root = NewBox(Row, 4, 0)
+	c.row = NewBox(Row, 4, 0)
+	c.initComposite(c, c.row)
 	return c
 }
 
@@ -234,7 +202,7 @@ func (c *WindowControls) toggle(slot **Button, glyph string, hook *func(), on bo
 	}
 	if !on {
 		if i := c.rootChildIndex(*slot); i >= 0 {
-			c.root.RemoveAt(i)
+			c.row.RemoveAt(i)
 		}
 		*slot = nil
 		c.InvalidateLayout()
@@ -248,13 +216,13 @@ func (c *WindowControls) toggle(slot **Button, glyph string, hook *func(), on bo
 		}
 	}
 	*slot = btn
-	c.root.Append(btn, false)
+	c.row.Append(btn, false)
 	c.InvalidateLayout()
 }
 
 // childIndex finds a child's slot; buttons keep no other state.
 func (c *WindowControls) rootChildIndex(w Widget) int {
-	for i, child := range c.root.Children() {
+	for i, child := range c.row.Children() {
 		if child == w {
 			return i
 		}
@@ -262,43 +230,10 @@ func (c *WindowControls) rootChildIndex(w Widget) int {
 	return -1
 }
 
-// Measure wants the buttons' natural row.
-func (c *WindowControls) Measure(con Constraints) Size {
-	if sz, ok := c.measureHit(con); ok {
-		return sz
-	}
-	return c.measureStore(con, c.root.Measure(con))
-}
-
-// Arrange fills and lays the row.
-func (c *WindowControls) Arrange(r render.Rect) {
-	c.node.Arrange(r)
-	c.root.Arrange(r)
-	setParents(c, c.root)
-}
-
-// Paint draws the row.
-func (c *WindowControls) Paint(cv *render.Canvas) { PaintChild(cv, c.root) }
-
-// HitTest resolves into the row.
-func (c *WindowControls) HitTest(p Point) Widget {
-	if !c.bounds.Contains(p.X, p.Y) {
-		return nil
-	}
-	if hit := c.root.HitTest(p); hit != nil {
-		return hit
-	}
-	return c
-}
-
-// styleChildren is the row (styleKids).
-func (c *WindowControls) styleChildren() []Widget { return []Widget{c.root} }
-
 // ActionBar is the bottom bar: one pack, centered content optional -
 // the gtk ActionBar shape. PackStart/PackEnd as on HeaderBar.
 type ActionBar struct {
-	node
-	root  *Box
+	composite
 	start *Box
 	end   *Box
 }
@@ -309,10 +244,13 @@ func NewActionBar() *ActionBar {
 	a.SetElement("actionbar")
 	a.start = NewBox(Row, 6, 0)
 	a.end = NewBox(Row, 6, 0)
-	a.root = NewBox(Row, 8, 6)
-	a.root.Append(a.start, false)
-	a.root.Append(NewSpacer(0, 0), true)
-	a.root.Append(a.end, false)
+	row := NewBox(Row, 8, 6)
+	row.Append(a.start, false)
+	row.Append(NewSpacer(0, 0), true)
+	row.Append(a.end, false)
+	a.initComposite(a, row)
+	a.fillWidth = true
+	a.surface = surfaceFill
 	return a
 }
 
@@ -321,41 +259,3 @@ func (a *ActionBar) PackStart(w Widget) { a.start.Append(w, false); a.Invalidate
 
 // PackEnd adds w to the trailing pack.
 func (a *ActionBar) PackEnd(w Widget) { a.end.Append(w, false); a.InvalidateLayout() }
-
-// Measure wants its content's height, full width.
-func (a *ActionBar) Measure(con Constraints) Size {
-	if sz, ok := a.measureHit(con); ok {
-		return sz
-	}
-	inner := a.root.Measure(con)
-	return a.measureStore(con, clampSize(Size{W: con.Max.W, H: inner.H}, con))
-}
-
-// Arrange fills and lays the row.
-func (a *ActionBar) Arrange(r render.Rect) {
-	a.node.Arrange(r)
-	a.root.Arrange(r)
-	setParents(a, a.root)
-}
-
-// Paint draws the bar's surface then the row.
-func (a *ActionBar) Paint(cv *render.Canvas) {
-	th := Current()
-	v := a.style(a)
-	paintBoxBehind(cv, v, a.bounds, radiusOr(v, 0), borderOf(v), pickc(0, v, style.PropBackgroundColor, th.Surface))
-	PaintChild(cv, a.root)
-}
-
-// HitTest resolves into the row.
-func (a *ActionBar) HitTest(p Point) Widget {
-	if !a.bounds.Contains(p.X, p.Y) {
-		return nil
-	}
-	if hit := a.root.HitTest(p); hit != nil {
-		return hit
-	}
-	return a
-}
-
-// styleChildren is the row (styleKids).
-func (a *ActionBar) styleChildren() []Widget { return []Widget{a.root} }

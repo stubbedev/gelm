@@ -1,7 +1,6 @@
 package widget
 
 import (
-	"github.com/stubbedev/gelm/internal/style"
 	"github.com/stubbedev/gelm/render"
 )
 
@@ -14,10 +13,9 @@ import (
 // key to it - MenuBar implements KeyActionHandler for exactly that
 // handoff.
 type MenuBar struct {
-	node
+	composite
 	face   render.Font
 	sizePx float64
-	root   *Box
 
 	// OnRoot fires when root i activates (click or keyboard): the app
 	// opens the menu popover anchored at that root's button.
@@ -31,14 +29,17 @@ func NewMenuBar(face render.Font, sizePx float64, roots ...string) *MenuBar {
 	face = requireFace("widget.NewMenuBar", face)
 	m := &MenuBar{face: face, sizePx: sizePx}
 	m.SetElement("menubar")
-	m.root = NewBox(Row, 2, 4)
+	row := NewBox(Row, 2, 4)
 	for i, label := range roots {
 		which := i
 		btn := NewButton(NewLabel(face, sizePx, label, Current().Text), 10, 5)
 		btn.OnClick = func() { m.fire(which) }
 		m.buttons = append(m.buttons, btn)
-		m.root.Append(btn, false)
+		row.Append(btn, false)
 	}
+	m.initComposite(m, row)
+	m.fillWidth = true
+	m.surface = surfaceFill
 	return m
 }
 
@@ -73,41 +74,3 @@ func (m *MenuBar) KeyAction(a KeyAction, mods Mods) {
 	}
 	m.fire(0)
 }
-
-// Measure wants the buttons' row, full width.
-func (m *MenuBar) Measure(con Constraints) Size {
-	if sz, ok := m.measureHit(con); ok {
-		return sz
-	}
-	inner := m.root.Measure(con)
-	return m.measureStore(con, clampSize(Size{W: con.Max.W, H: inner.H}, con))
-}
-
-// Arrange fills and lays the row.
-func (m *MenuBar) Arrange(r render.Rect) {
-	m.node.Arrange(r)
-	m.root.Arrange(r)
-	setParents(m, m.root)
-}
-
-// Paint draws the bar's surface then the row.
-func (m *MenuBar) Paint(cv *render.Canvas) {
-	th := Current()
-	v := m.style(m)
-	paintBoxBehind(cv, v, m.bounds, radiusOr(v, 0), borderOf(v), pickc(0, v, style.PropBackgroundColor, th.Surface))
-	PaintChild(cv, m.root)
-}
-
-// HitTest resolves into the row.
-func (m *MenuBar) HitTest(p Point) Widget {
-	if !m.bounds.Contains(p.X, p.Y) {
-		return nil
-	}
-	if hit := m.root.HitTest(p); hit != nil {
-		return hit
-	}
-	return m
-}
-
-// styleChildren is the row (styleKids).
-func (m *MenuBar) styleChildren() []Widget { return []Widget{m.root} }

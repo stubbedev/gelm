@@ -26,13 +26,12 @@ type NavigationPage struct {
 // pages in from the right on push and back on pop - the Stack's own
 // transition doing the animating.
 type NavigationView struct {
-	node
+	composite
 	face   render.Font
 	sizePx float64
 
 	stack *Stack
 	pages []*NavigationPage
-	root  *Box
 	bar   *Box
 	back  *Button
 	title *Label
@@ -55,9 +54,10 @@ func NewNavigationView(face render.Font, sizePx float64, root *NavigationPage) *
 	v.bar = NewBox(Row, 6, 6)
 	v.bar.Append(v.back, false)
 	v.bar.Append(v.title, false)
-	v.root = NewBox(Column, 0, 0)
-	v.root.Append(v.bar, false)
-	v.root.Append(v.stack, true)
+	column := NewBox(Column, 0, 0)
+	column.Append(v.bar, false)
+	column.Append(v.stack, true)
+	v.initComposite(v, column)
 	v.stack.Add("page0", root.W)
 	v.pages = append(v.pages, root)
 	v.syncBar()
@@ -128,41 +128,11 @@ func (v *NavigationView) KeyAction(a KeyAction, mods Mods) {
 	}
 }
 
-// Measure delegates to the composed column, cached like every widget.
-func (v *NavigationView) Measure(con Constraints) Size {
-	if sz, ok := v.measureHit(con); ok {
-		return sz
-	}
-	return v.measureStore(con, v.root.Measure(con))
-}
-
-// Arrange fills the view.
-func (v *NavigationView) Arrange(r render.Rect) {
-	v.node.Arrange(r)
-	v.root.Arrange(r)
-	setParents(v, v.root)
-}
-
 // Paint draws the bar's surface then the column.
 func (v *NavigationView) Paint(cv *render.Canvas) {
-	th := Current()
-	cv.FillRect(v.bar.Bounds(), th.Surface)
+	v.paintSurface(cv, v.bar.Bounds(), Current().Surface)
 	PaintChild(cv, v.root)
 }
-
-// HitTest resolves into the column.
-func (v *NavigationView) HitTest(p Point) Widget {
-	if !v.bounds.Contains(p.X, p.Y) {
-		return nil
-	}
-	if hit := v.root.HitTest(p); hit != nil {
-		return hit
-	}
-	return v
-}
-
-// styleChildren is the column (styleKids).
-func (v *NavigationView) styleChildren() []Widget { return []Widget{v.root} }
 
 // collapsingSplit is the engine both split views share: a wide layout
 // and a narrow one over the same page widgets, a breakpoint choosing
@@ -173,8 +143,7 @@ func (v *NavigationView) styleChildren() []Widget { return []Widget{v.root} }
 // their subtrees - a plain re-link would keep the style resolved under
 // the hidden layout's ancestors.
 type collapsingSplit struct {
-	node
-	self      Widget
+	composite
 	wide      Widget
 	narrow    Widget
 	shared    []Widget
@@ -192,7 +161,8 @@ func (c *collapsingSplit) init(self, wide, narrow Widget, collapseWidth int, sha
 	if collapseWidth <= 0 {
 		collapseWidth = 420
 	}
-	c.self, c.wide, c.narrow, c.shared = self, wide, narrow, shared
+	c.initComposite(self, wide)
+	c.wide, c.narrow, c.shared = wide, narrow, shared
 	c.bps.add(Breakpoint{
 		Max:     collapseWidth,
 		Apply:   func() { c.setCollapsed(true) },
@@ -206,60 +176,28 @@ func (c *collapsingSplit) setCollapsed(on bool) {
 		return
 	}
 	c.collapsed = on
+	if on {
+		c.setRoot(c.narrow)
+	} else {
+		c.setRoot(c.wide)
+	}
 	clearParents(c.shared...)
 	if c.onCollapse != nil {
 		c.onCollapse(on)
 	}
-	c.InvalidateLayout()
 }
 
 // Collapsed reports which layout the last width chose.
 func (c *collapsingSplit) Collapsed() bool { return c.collapsed }
 
-// active is the layout the current mode shows.
-func (c *collapsingSplit) active() Widget {
-	if c.collapsed {
-		return c.narrow
-	}
-	return c.wide
-}
-
-// Measure measures the active layout.
-func (c *collapsingSplit) Measure(con Constraints) Size {
-	if sz, ok := c.measureHit(con); ok {
-		return sz
-	}
-	return c.measureStore(con, c.active().Measure(con))
-}
-
 // Arrange evaluates the breakpoint against the allocated width, then
 // lays out whichever layout it picked - in the same pass, so a
 // collapse never paints one frame of the old layout.
 func (c *collapsingSplit) Arrange(r render.Rect) {
-	c.node.Arrange(r)
 	c.bps.evaluate(r.W)
-	a := c.active()
-	a.Measure(Constraints{Max: Size{W: r.W, H: r.H}})
-	a.Arrange(r)
-	setParents(c.self, a)
+	c.root.Measure(Constraints{Max: Size{W: r.W, H: r.H}})
+	c.composite.Arrange(r)
 }
-
-// Paint draws the active layout.
-func (c *collapsingSplit) Paint(cv *render.Canvas) { PaintChild(cv, c.active()) }
-
-// HitTest resolves into the active layout.
-func (c *collapsingSplit) HitTest(p Point) Widget {
-	if !c.bounds.Contains(p.X, p.Y) {
-		return nil
-	}
-	if hit := c.active().HitTest(p); hit != nil {
-		return hit
-	}
-	return c.self
-}
-
-// styleChildren is the active layout (styleKids).
-func (c *collapsingSplit) styleChildren() []Widget { return []Widget{c.active()} }
 
 // NavigationSplitView puts a sidebar beside content above a
 // breakpoint and collapses to a NavigationView below it: the sidebar

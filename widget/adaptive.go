@@ -4,7 +4,6 @@ import (
 	"time"
 
 	"github.com/stubbedev/gelm/internal/anim"
-	"github.com/stubbedev/gelm/internal/style"
 	"github.com/stubbedev/gelm/render"
 )
 
@@ -17,14 +16,15 @@ import (
 // the sides, narrower ones pass through untouched (the adw Clamp, a
 // pure measure wrapper).
 type Clamp struct {
-	node
-	child Widget
-	max   int
+	composite
+	max int
 }
 
 // NewClamp returns a clamp over child capping its width at max.
 func NewClamp(max int, child Widget) *Clamp {
-	return &Clamp{child: child, max: max}
+	c := &Clamp{max: max}
+	c.initComposite(c, child)
+	return c
 }
 
 // SetMaximum changes the cap.
@@ -45,7 +45,7 @@ func (c *Clamp) Measure(con Constraints) Size {
 	if c.max > 0 {
 		inner.Max.W = min(inner.Max.W, c.max)
 	}
-	sz := c.child.Measure(inner)
+	sz := c.root.Measure(inner)
 	return c.measureStore(con, clampSize(Size{W: con.Max.W, H: sz.H}, con))
 }
 
@@ -56,26 +56,9 @@ func (c *Clamp) Arrange(r render.Rect) {
 	if c.max > 0 {
 		w = min(w, c.max)
 	}
-	c.child.Arrange(render.Rect{X: r.X + (r.W-w)/2, Y: r.Y, W: w, H: r.H})
-	setParents(c, c.child)
+	c.root.Arrange(render.Rect{X: r.X + (r.W-w)/2, Y: r.Y, W: w, H: r.H})
+	setParents(c, c.root)
 }
-
-// Paint draws the child.
-func (c *Clamp) Paint(cv *render.Canvas) { PaintChild(cv, c.child) }
-
-// HitTest resolves into the child.
-func (c *Clamp) HitTest(p Point) Widget {
-	if !c.bounds.Contains(p.X, p.Y) {
-		return nil
-	}
-	if hit := c.child.HitTest(p); hit != nil {
-		return hit
-	}
-	return c
-}
-
-// styleChildren is the child (styleKids).
-func (c *Clamp) styleChildren() []Widget { return []Widget{c.child} }
 
 // Breakpoint applies while the allocated width is at or below Max
 // (or at or above Min, when Max is zero) - the adw 1.4 condition
@@ -148,14 +131,15 @@ func (b *breakpoints) evaluate(width int) {
 // the same pass; a batch that changes what the child wants calls
 // InvalidateLayout and the engine re-measures on demand.
 type BreakpointBin struct {
-	node
-	child Widget
-	bps   breakpoints
+	composite
+	bps breakpoints
 }
 
 // NewBreakpointBin returns a bin over child with no breakpoints.
 func NewBreakpointBin(child Widget) *BreakpointBin {
-	return &BreakpointBin{child: child}
+	b := &BreakpointBin{}
+	b.initComposite(b, child)
+	return b
 }
 
 // Add appends a breakpoint; apply order is add order.
@@ -167,52 +151,25 @@ func (b *BreakpointBin) Add(bp Breakpoint) {
 // Width reports the last allocated width (the condition input).
 func (b *BreakpointBin) Width() int { return b.bps.width }
 
-// Measure measures the child.
-func (b *BreakpointBin) Measure(con Constraints) Size {
-	if sz, ok := b.measureHit(con); ok {
-		return sz
-	}
-	return b.measureStore(con, b.child.Measure(con))
-}
-
 // Arrange evaluates every breakpoint against the allocated width,
 // then lays the child out.
 func (b *BreakpointBin) Arrange(r render.Rect) {
-	b.node.Arrange(r)
 	b.bps.evaluate(r.W)
-	b.child.Arrange(r)
-	setParents(b, b.child)
+	b.composite.Arrange(r)
 }
-
-// Paint draws the child.
-func (b *BreakpointBin) Paint(cv *render.Canvas) { PaintChild(cv, b.child) }
-
-// HitTest resolves into the child.
-func (b *BreakpointBin) HitTest(p Point) Widget {
-	if !b.bounds.Contains(p.X, p.Y) {
-		return nil
-	}
-	if hit := b.child.HitTest(p); hit != nil {
-		return hit
-	}
-	return b
-}
-
-// styleChildren is the child (styleKids).
-func (b *BreakpointBin) styleChildren() []Widget { return []Widget{b.child} }
 
 // ViewSwitcher is the pill strip bound to a Stack: one button per
 // page (title, and an icon when given), the visible page's button
 // :checked, a click switching pages - the adw pill for bottom bars
 // and headers alike.
 type ViewSwitcher struct {
-	node
+	composite
 	stack   *Stack
 	face    render.Font
 	sizePx  float64
 	titles  map[string]string
 	icons   map[string]string
-	root    *Box
+	row     *Box
 	buttons []*Button
 	policy  StackSwitcherPolicy
 }
@@ -237,7 +194,10 @@ func NewViewSwitcher(face render.Font, sizePx float64, stack *Stack, titles, ico
 	face = requireFace("widget.NewViewSwitcher", face)
 	v := &ViewSwitcher{stack: stack, face: face, sizePx: sizePx, titles: titles, icons: icons}
 	v.SetElement("viewswitcher")
-	v.root = NewBox(Row, 4, 4)
+	v.row = NewBox(Row, 4, 4)
+	v.initComposite(v, v.row)
+	v.fillWidth = true
+	v.surface, v.surfaceRadius = surfaceFill, 999
 	v.sync()
 	return v
 }
@@ -250,7 +210,7 @@ func (v *ViewSwitcher) SetPolicy(p StackSwitcherPolicy) {
 
 // sync rebuilds the strip over the stack's pages.
 func (v *ViewSwitcher) sync() {
-	v.root.Clear()
+	v.row.Clear()
 	v.buttons = nil
 	th := Current()
 	for _, name := range v.stack.Order() {
@@ -276,7 +236,7 @@ func (v *ViewSwitcher) sync() {
 		btn.OnClick = func() { v.stack.Show(which) }
 		markChecked(btn, name == v.stack.Visible())
 		v.buttons = append(v.buttons, btn)
-		v.root.Append(btn, false)
+		v.row.Append(btn, false)
 	}
 	v.InvalidateLayout()
 }
@@ -309,44 +269,6 @@ func markChecked(b *Button, on bool) {
 	}
 	b.Invalidate()
 }
-
-// Measure delegates to the strip, cached like every widget.
-func (v *ViewSwitcher) Measure(con Constraints) Size {
-	if sz, ok := v.measureHit(con); ok {
-		return sz
-	}
-	inner := v.root.Measure(con)
-	return v.measureStore(con, clampSize(Size{W: con.Max.W, H: inner.H}, con))
-}
-
-// Arrange fills and lays the strip.
-func (v *ViewSwitcher) Arrange(r render.Rect) {
-	v.node.Arrange(r)
-	v.root.Arrange(r)
-	setParents(v, v.root)
-}
-
-// Paint draws the strip's background then content.
-func (v *ViewSwitcher) Paint(cv *render.Canvas) {
-	th := Current()
-	val := v.style(v)
-	paintBoxBehind(cv, val, v.bounds, radiusOr(val, 999), borderOf(val), pickc(0, val, style.PropBackgroundColor, th.Surface))
-	PaintChild(cv, v.root)
-}
-
-// HitTest resolves into the strip.
-func (v *ViewSwitcher) HitTest(p Point) Widget {
-	if !v.bounds.Contains(p.X, p.Y) {
-		return nil
-	}
-	if hit := v.root.HitTest(p); hit != nil {
-		return hit
-	}
-	return v
-}
-
-// styleChildren is the strip (styleKids).
-func (v *ViewSwitcher) styleChildren() []Widget { return []Widget{v.root} }
 
 // StackSwitcher is the tab strip bound to a Stack: underline-marked
 // text tabs, GTK's classic - the ViewSwitcher's sibling for windows.
