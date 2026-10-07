@@ -54,7 +54,7 @@ headless:
     just test-env "$dir" || exit 1
     trap 'just test-env-stop "$dir"' EXIT INT TERM
     . "$dir/client.env"
-    export WAYLAND_DISPLAY XDG_RUNTIME_DIR="$dir" GELM_HEADLESS=1
+    export WAYLAND_DISPLAY DBUS_SESSION_BUS_ADDRESS XDG_RUNTIME_DIR="$dir" GELM_HEADLESS=1
     go test ./internal/headlesstest ./capture ./vinput -count=1
 
 # `check` plus the headless input gate - what CI runs. The gate is
@@ -112,7 +112,7 @@ demo-headless GOELM_DEBUG="input,frame": test-env test-build
         echo "test compositor env missing; run just test-env"; exit 1
     fi
     . "$dir/client.env"
-    export WAYLAND_DISPLAY XDG_RUNTIME_DIR="$dir" GOELM_DEBUG="{{GOELM_DEBUG}}"
+    export WAYLAND_DISPLAY DBUS_SESSION_BUS_ADDRESS XDG_RUNTIME_DIR="$dir" GOELM_DEBUG="{{GOELM_DEBUG}}"
     "$dir/gelm-hello" >"$dir/demo.log" 2>&1 &
     echo $! >"$dir/demo.pid"
     sleep 1
@@ -135,7 +135,7 @@ multi-headless GOELM_DEBUG="input,frame": test-env test-build
         echo "test compositor env missing; run just test-env"; exit 1
     fi
     . "$dir/client.env"
-    export WAYLAND_DISPLAY XDG_RUNTIME_DIR="$dir" GOELM_DEBUG="{{GOELM_DEBUG}}"
+    export WAYLAND_DISPLAY DBUS_SESSION_BUS_ADDRESS XDG_RUNTIME_DIR="$dir" GOELM_DEBUG="{{GOELM_DEBUG}}"
     go build -tags gelmdebug -o "$dir/gelm-multi" ./cmd/gelm-multi || exit 1
     "$dir/gelm-multi" >"$dir/demo.log" 2>&1 &
     echo $! >"$dir/demo.pid"
@@ -171,6 +171,7 @@ test-env dir=test_dir:
     # still bound to this dir's config before booting a fresh sway, or
     # the new socket and the old one race for clients.
     pkill -9 -f "$dir/sway.cfg" 2>/dev/null
+    pkill -f "$dir/bus.conf" 2>/dev/null
     mkdir -p "$dir" && chmod 700 "$dir"
     printf '%s\n' 'output * mode 1280x800 scale 1' \
         'default_border none' \
@@ -187,6 +188,20 @@ test-env dir=test_dir:
     # forever. A shell that writes its own pid and then execs sway
     # records the process that owns the socket, whatever the wrapper's
     # fork/exec choice is.
+    # A private session bus from a config written here (the
+    # dbustest helper's shape): nixpkgs' sway wrapper runs
+    # dbus-run-session when no bus is set, which needs the host's
+    # /etc/dbus-1/session.conf - absent on CI runners - and the tests'
+    # D-Bus clients (single instance, portals) get a bus of their own
+    # instead of the developer's desktop one.
+    printf '%s\n' '<!DOCTYPE busconfig PUBLIC "-//freedesktop//DTD D-BUS Bus Configuration 1.0//EN" "http://www.freedesktop.org/standards/dbus/1.0/busconfig.dtd">' \
+        "<busconfig><type>session</type><listen>unix:path=$dir/bus</listen><auth>EXTERNAL</auth>" \
+        '<policy context="default"><allow send_destination="*" eavesdrop="true"/><allow eavesdrop="true"/><allow own="*"/></policy></busconfig>' \
+        > "$dir/bus.conf"
+    bus=$(dbus-daemon --config-file="$dir/bus.conf" --fork --nopidfile --print-address=1)
+    if [ -z "$bus" ]; then
+        echo "private session bus failed to start"; exit 1
+    fi
     # Inside the dev shell (CI runs `devenv shell -- just headless`)
     # sway is already on PATH: a nested devenv shell there fails to
     # start it, so the dev shell is only the fallback for a host shell.
@@ -194,7 +209,7 @@ test-env dir=test_dir:
     if ! command -v sway >/dev/null 2>&1; then
         boot="exec devenv shell -- sway -c '$dir/sway.cfg'"
     fi
-    XDG_RUNTIME_DIR="$dir" WLR_BACKENDS=headless WLR_LIBINPUT_NO_DEVICES=1 \
+    DBUS_SESSION_BUS_ADDRESS="$bus" XDG_RUNTIME_DIR="$dir" WLR_BACKENDS=headless WLR_LIBINPUT_NO_DEVICES=1 \
         WLR_RENDERER=pixman sh -c "echo \$\$ > '$dir/sway.pid'; $boot" \
         >"$dir/sway.log" 2>&1 &
     sock=""
@@ -208,7 +223,7 @@ test-env dir=test_dir:
         tail -n 40 "$dir/sway.log"
         exit 1
     fi
-    echo "WAYLAND_DISPLAY=${sock##*/}" >"$dir/client.env"
+    printf 'WAYLAND_DISPLAY=%s\nDBUS_SESSION_BUS_ADDRESS=%s\n' "${sock##*/}" "$bus" >"$dir/client.env"
     echo "test compositor up: $(cat "$dir/client.env") XDG_RUNTIME_DIR=$dir"
 
 # Stop the headless test compositor and wipe its runtime dir.
@@ -228,6 +243,7 @@ test-env-stop dir=test_dir:
     # compositor holding the display socket; sweep anything still bound
     # to this dir's config so no survivor outlives the teardown.
     pkill -9 -f "$dir/sway.cfg" 2>/dev/null
+    pkill -f "$dir/bus.conf" 2>/dev/null
     pkill -f "$dir/gelm-hello" 2>/dev/null
     pkill -f "$dir/gelm-multi" 2>/dev/null
     pkill -f "$dir/gelm-states" 2>/dev/null
