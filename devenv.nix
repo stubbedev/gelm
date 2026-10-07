@@ -41,6 +41,12 @@
   # bus launcher and registry daemon live in libexec, off PATH.
   env.ATSPI_LIBEXEC = "${pkgs.at-spi2-core}/libexec";
 
+  # `just headless` points the suite's clients at a known xcursor theme:
+  # the client-side cursor path (GELM_NO_CURSOR_SHAPE) needs one, and a
+  # CI runner has none. Only the recipe exports it - a developer's own
+  # cursor setup inside the shell is untouched.
+  env.GELM_TEST_XCURSOR_PATH = "${pkgs.vanilla-dmz}/share/icons";
+
   # `devenv test` = the full CI gate (`just check-headless`): the
   # release gates, then the compositor-in-the-loop input suite where
   # GELM_HEADLESS=1 turns every skip into a failure.
