@@ -261,6 +261,44 @@ Composing over a selection removes the selection, as the protocol's
 done ordering prescribes. TextArea builds its visual-row cache from
 the composed display, so soft wrap stays consistent while composing.
 
+## Touch and gestures
+
+gelm binds wl_touch (this overturns the earlier recorded non-goal of
+no touch pipeline, #105). Every contact routes to the surface it went
+down on and holds its own implicit grab there, independent of the
+pointer's; a wl_touch.cancel ends every surface's contacts.
+
+`widget.TouchTracker` turns contacts into input the toolkit already
+speaks:
+
+- One contact emulates the pointer through `TouchPointer`: down is a
+  left press, motion a drag, the lift a release (a tap clicks), then the
+  emulated pointer leaves (a finger does not hover). App windows emulate
+  through their real pointer path, so a finger drags a CSD header or
+  starts a drag source; popups emulate straight onto their router.
+- A contact held still (within 8 px) for 500 ms offers
+  `GestureLongPress` up the tree; a claimer cancels the press, so no
+  click follows.
+- A second contact cancels the emulated press and makes the pair a
+  gesture: `GesturePinch` (scale and rotation from the start) for a
+  widget that claims it, otherwise a two-finger scroll down the
+  precise-axis path (content follows the fingers), ending in the
+  kinetic glide.
+
+Touchpads speak wp_pointer_gestures v1-v3: swipe, pinch and hold arrive
+at the pointer's surface (staying with the surface they began on) and
+route as `Gesture` events. `Router.Gesture` delivers a Begin to the
+widget under the point and up its ancestors until one claims it, then
+keeps the rest of that gesture on the claimer; `GestureHandler` is the
+widget side. The carousel claims swipes; BottomSheet and every
+drag-driven widget work under a finger through the pointer emulation.
+
+Testing: there is no standard virtual-touch protocol for the headless
+compositor to accept, so touch is tested where it enters - synthetic
+wl_touch and gesture events driven into the session handlers
+(internal/wlsession) and contact sequences driven into the tracker
+(widget) - rather than injected from the harness side.
+
 ## Seat capability churn
 
 Capabilities are state, not a one-shot: when the compositor reports a

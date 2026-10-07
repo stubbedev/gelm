@@ -21,6 +21,7 @@ import (
 	"github.com/stubbedev/gelm/internal/compose"
 	"github.com/stubbedev/gelm/internal/debug"
 	"github.com/stubbedev/gelm/internal/surfx"
+	"github.com/stubbedev/gelm/internal/touchinput"
 	"github.com/stubbedev/gelm/internal/wlsession"
 	"github.com/stubbedev/gelm/render"
 	"github.com/stubbedev/gelm/widget"
@@ -111,6 +112,9 @@ type Config struct {
 // widget tree unchanged - the device scale lives entirely in the paint
 // pipeline.
 type surfaceInput struct {
+	// Input routes touch and touchpad gestures (internal/touchinput);
+	// the surface itself is its TouchPointer.
+	touchinput.Input
 	sess    *wlsession.Session
 	surf    *wl.Surface
 	router  *widget.Router
@@ -181,6 +185,34 @@ func (in *surfaceInput) HandlePointerMotion(x, y float64) {
 		return
 	}
 	in.move(x, y)
+}
+
+// TouchMove implements widget.TouchPointer: an emulating contact
+// moves the pointer through the same path as a real one.
+func (in *surfaceInput) TouchMove(p widget.Point) { in.move(float64(p.X), float64(p.Y)) }
+
+// TouchPress implements widget.TouchPointer: the contact's down is a
+// left press - window-frame grabs and drag sources included - with the
+// touch-down serial.
+func (in *surfaceInput) TouchPress(p widget.Point) {
+	in.move(float64(p.X), float64(p.Y))
+	in.HandlePointerButton(widget.BTNLeft, 1, in.Serial)
+}
+
+// TouchRelease implements widget.TouchPointer: the lift releases, and
+// the finger leaves - it does not hover.
+func (in *surfaceInput) TouchRelease(p widget.Point) {
+	in.HandlePointerButton(widget.BTNLeft, 0, in.Serial)
+	in.router.Leave()
+	in.request()
+}
+
+// TouchCancel implements widget.TouchPointer: a gesture took the
+// contact; the press ends without a click.
+func (in *surfaceInput) TouchCancel() {
+	in.router.CancelPress()
+	in.router.Leave()
+	in.request()
 }
 
 // move feeds one pointer position to the router and updates the
