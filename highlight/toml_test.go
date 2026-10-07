@@ -8,8 +8,8 @@ import (
 	"github.com/stubbedev/gelm/widget"
 )
 
-// render shows a line's spans as class:text pairs.
-func render(line string, spans []widget.TextSpan) string {
+// show shows a line's spans as class:text pairs.
+func show(line string, spans []widget.TextSpan) string {
 	rs := []rune(line)
 	parts := make([]string, len(spans))
 	for i, s := range spans {
@@ -41,7 +41,7 @@ func TestTOMLLines(t *testing.T) {
 		{`inline = { x = 1, "y" = 'z' }`, `type:inline type:x decimal:1 type:"y" string:'z'`},
 	} {
 		spans, end := TOML{}.Highlight([]rune(tc.line), 0)
-		if got := render(tc.line, spans); got != tc.want {
+		if got := show(tc.line, spans); got != tc.want {
 			t.Errorf("%s\n got %s\nwant %s", tc.line, got, tc.want)
 		}
 		if end != 0 {
@@ -78,7 +78,7 @@ func TestTOMLStateCarries(t *testing.T) {
 	for i, line := range doc {
 		var spans []widget.TextSpan
 		spans, state = TOML{}.Highlight([]rune(line), state)
-		if got := render(line, spans); got != want[i] {
+		if got := show(line, spans); got != want[i] {
 			t.Errorf("line %d %q\n got %s\nwant %s", i, line, got, want[i])
 		}
 	}
