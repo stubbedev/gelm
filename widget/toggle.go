@@ -393,13 +393,10 @@ func (c *CheckButton) Paint(cv *render.Canvas) {
 	} else {
 		fill = t.Bg
 	}
-	ring := borderOf(kv)
+	ring := ringOr(kv, checkRing)
 	cols := borderColors(kv)
-	if !kv.HasAny(style.PropBorderTopWidth, style.PropBorderRightWidth, style.PropBorderBottomWidth, style.PropBorderLeftWidth) {
-		ring = render.UniformInsets(checkRing)
-		if !IsEnabled(c) {
-			cols = [4]render.Color{t.DisabledText(), t.DisabledText(), t.DisabledText(), t.DisabledText()}
-		}
+	if !kv.HasAny(style.PropBorderTopWidth, style.PropBorderRightWidth, style.PropBorderBottomWidth, style.PropBorderLeftWidth) && !IsEnabled(c) {
+		cols = [4]render.Color{t.DisabledText(), t.DisabledText(), t.DisabledText(), t.DisabledText()}
 	}
 	radii := radiusOr(kv, 4)
 	if c.group != nil {

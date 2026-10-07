@@ -30,11 +30,18 @@ type composite struct {
 	// border-radius over surfaceRadius.
 	surface       func(th *Theme) Color
 	surfaceRadius int
+	// surfaceRing is the default border width the surface draws (in
+	// the theme's border color) until the cascade declares one.
+	surfaceRing int
 }
 
 // surfaceFill is the plain control surface, the fallback most
 // composite surfaces paint.
 func surfaceFill(th *Theme) Color { return th.Surface }
+
+// surfaceNone is the unfilled surface: only the cascade's background,
+// border, and the default ring paint (outlines such as Frame).
+func surfaceNone(*Theme) Color { return 0 }
 
 // initComposite wires the core: self is the embedding widget, root the
 // tree it is built from.
@@ -89,7 +96,7 @@ func (c *composite) Paint(cv *render.Canvas) {
 // with a state-dependent fill call it from their own Paint.
 func (c *composite) paintSurface(cv *render.Canvas, rect render.Rect, fill Color) {
 	v := c.style(c.self)
-	paintBoxBehind(cv, v, rect, radiusOr(v, c.surfaceRadius), borderOf(v), pickc(0, v, style.PropBackgroundColor, fill))
+	paintBoxBehind(cv, v, rect, radiusOr(v, c.surfaceRadius), ringOr(v, c.surfaceRing), pickc(0, v, style.PropBackgroundColor, fill))
 }
 
 // HitTest resolves into the root; bare background is the embedder.
