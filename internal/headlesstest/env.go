@@ -80,8 +80,11 @@ func (e *Env) KillCompositor() {
 	killByConfigPattern(filepath.Join(e.Dir, e.compositor.ConfigName()))
 }
 
+// CanRestartCompositor reports whether RestartCompositor works here.
+func (e *Env) CanRestartCompositor() bool { return e.compositor.CanRestart() }
+
 // RestartCompositor boots the compositor again after KillCompositor,
-// on the same display (errors.ErrUnsupported where the driver cannot).
+// on the same display.
 func (e *Env) RestartCompositor() error { return e.compositor.Restart(e.Dir) }
 
 // strippedEnv lists the session variables that must never leak from

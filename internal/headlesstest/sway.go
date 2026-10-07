@@ -41,6 +41,9 @@ func (swayCompositor) ConfigName() string { return "sway.cfg" }
 func (swayCompositor) PIDName() string    { return "sway.pid" }
 func (swayCompositor) LogName() string    { return "sway.log" }
 
+// CanRestart is true: the recipe's boot line is all a restart needs.
+func (swayCompositor) CanRestart() bool { return true }
+
 // Restart boots sway again on the recipe's config with the recipe's
 // headless environment (sway from PATH, else through the dev shell,
 // as the recipe does), records its pid, and waits until its display

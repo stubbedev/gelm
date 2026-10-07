@@ -8,7 +8,6 @@
 package headlesstest
 
 import (
-	"errors"
 	"os"
 	"strconv"
 	"testing"
@@ -17,6 +16,9 @@ import (
 
 func TestHeadlessReconnectRebuildsWindows(t *testing.T) {
 	requireEnv(t)
+	if !testEnv.CanRestartCompositor() {
+		t.Skip("the compositor driver cannot restart; the kill test after this one needs it alive")
+	}
 	bin, err := BuildClient(testEnv.Dir, "./cmd/gelm-states", "gelm-states")
 	if err != nil {
 		t.Fatal(err)
@@ -37,9 +39,7 @@ func TestHeadlessReconnectRebuildsWindows(t *testing.T) {
 	fdsBefore := openFDs(t, c.cmd.Process.Pid)
 
 	testEnv.KillCompositor()
-	if err := testEnv.RestartCompositor(); errors.Is(err, errors.ErrUnsupported) {
-		t.Skip("the compositor driver cannot restart")
-	} else if err != nil {
+	if err := testEnv.RestartCompositor(); err != nil {
 		t.Fatal(err)
 	}
 
