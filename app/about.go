@@ -54,7 +54,7 @@ type aboutSection struct {
 func aboutSections(cfg AboutConfig) []aboutSection {
 	var sections []aboutSection
 	if cfg.ReleaseNotes != "" {
-		sections = append(sections, aboutSection{Heading: "What's New", Lines: strings.Split(cfg.ReleaseNotes, "\n")})
+		sections = append(sections, aboutSection{Heading: widget.Tr("What's New"), Lines: strings.Split(cfg.ReleaseNotes, "\n")})
 	}
 	for _, c := range cfg.Credits {
 		if len(c.Names) == 0 {
@@ -63,7 +63,7 @@ func aboutSections(cfg AboutConfig) []aboutSection {
 		sections = append(sections, aboutSection{Heading: c.Role, Lines: c.Names})
 	}
 	if cfg.License != "" {
-		sections = append(sections, aboutSection{Heading: "Legal", Lines: strings.Split(cfg.License, "\n")})
+		sections = append(sections, aboutSection{Heading: widget.Tr("Legal"), Lines: strings.Split(cfg.License, "\n")})
 	}
 	return sections
 }
@@ -90,7 +90,7 @@ func (a *Application) AboutDialog(parent *Window, cfg AboutConfig) (*Dialog, err
 		head.Append(widget.NewLabel(face, 20, cfg.Name, th.Text), false)
 	}
 	if cfg.Version != "" {
-		head.Append(widget.NewLabel(face, 13, "Version "+cfg.Version, th.TextMuted), false)
+		head.Append(widget.NewLabel(face, 13, widget.Tr("Version")+" "+cfg.Version, th.TextMuted), false)
 	}
 	if cfg.Comments != "" {
 		head.Append(widget.NewLabel(face, 13, cfg.Comments, th.TextMuted), false)
@@ -117,10 +117,10 @@ func (a *Application) AboutDialog(parent *Window, cfg AboutConfig) (*Dialog, err
 		content.Append(scroll, true)
 	}
 	return a.NewDialog(parent, DialogConfig{
-		Title: "About " + cfg.Name,
+		Title: widget.Tr("About") + " " + cfg.Name,
 		Width: 380, Height: 320,
 		Content:         content,
-		Buttons:         []DialogButton{{Label: "Close", Response: "close"}},
+		Buttons:         []DialogButton{{Label: widget.Tr("Close"), Response: "close"}},
 		DefaultResponse: "close",
 		CancelResponse:  "close",
 	})

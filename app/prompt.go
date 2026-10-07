@@ -30,8 +30,8 @@ func (a *Application) PromptDialog(parent *Window, title, message, initial strin
 		Content: body,
 		Modal:   true,
 		Buttons: []DialogButton{
-			{Label: "Cancel", Response: "cancel", Role: ButtonRoleCancel},
-			{Label: "OK", Response: "ok", Role: ButtonRoleDefault},
+			{Label: widget.Tr("Cancel"), Response: "cancel", Role: ButtonRoleCancel},
+			{Label: widget.Tr("OK"), Response: "ok", Role: ButtonRoleDefault},
 		},
 		DefaultResponse: "ok",
 		CancelResponse:  "cancel",
@@ -93,7 +93,7 @@ func (a *Application) ProgressDialog(parent *Window, title, text string, pulsing
 	}
 	buttons := []DialogButton{}
 	if onCancel != nil {
-		buttons = append(buttons, DialogButton{Label: "Cancel", Response: "cancel", Role: ButtonRoleCancel})
+		buttons = append(buttons, DialogButton{Label: widget.Tr("Cancel"), Response: "cancel", Role: ButtonRoleCancel})
 	}
 	d, err := a.NewDialog(parent, DialogConfig{
 		Title:          title,

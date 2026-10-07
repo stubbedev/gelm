@@ -67,7 +67,7 @@ func (a *Application) startEyedrop(chooser *widget.ColorChooser) {
 		a.Invoke(func() {
 			if err != nil {
 				debug.Log("shell", "eyedropper: capture: %v", err)
-				_, _ = a.MessageBox(nil, Error, "Pick from screen", "The screen could not be captured on this compositor.", []DialogButton{{Label: "Close", Response: "close", Role: ButtonRoleCancel}})
+				_, _ = a.MessageBox(nil, Error, widget.Tr("Pick from screen"), widget.Tr("The screen could not be captured on this compositor."), []DialogButton{{Label: widget.Tr("Close"), Response: "close", Role: ButtonRoleCancel}})
 				return
 			}
 			a.openEyedrop(chooser, img)
@@ -88,12 +88,12 @@ func (a *Application) openEyedrop(chooser *widget.ColorChooser, img image.Image)
 		}
 	}
 	d, _ = a.NewDialog(nil, DialogConfig{
-		Title:          "Pick from screen",
+		Title:          widget.Tr("Pick from screen"),
 		Width:          520,
 		Height:         400,
 		Content:        pick,
 		Modal:          true,
-		Buttons:        []DialogButton{{Label: "Cancel", Response: "cancel", Role: ButtonRoleCancel}},
+		Buttons:        []DialogButton{{Label: widget.Tr("Cancel"), Response: "cancel", Role: ButtonRoleCancel}},
 		CancelResponse: "cancel",
 	})
 }

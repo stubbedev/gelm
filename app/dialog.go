@@ -273,14 +273,14 @@ func (a *Application) ColorChooserDialog(parent *Window, initial render.Color, o
 		chooser.SetEyedropper(func() { a.startEyedrop(chooser) })
 	}
 	return a.NewDialog(parent, DialogConfig{
-		Title:   "Pick a color",
+		Title:   widget.Tr("Pick a color"),
 		Width:   300,
 		Height:  310,
 		Content: chooser,
 		Modal:   true,
 		Buttons: []DialogButton{
-			{Label: "Cancel", Response: "cancel", Role: ButtonRoleCancel},
-			{Label: "Select", Response: "ok", Role: ButtonRoleDefault},
+			{Label: widget.Tr("Cancel"), Response: "cancel", Role: ButtonRoleCancel},
+			{Label: widget.Tr("Select"), Response: "ok", Role: ButtonRoleDefault},
 		},
 		DefaultResponse: "ok",
 		CancelResponse:  "cancel",
@@ -427,14 +427,14 @@ func (a *Application) FontChooserDialog(parent *Window, initialFamily string, in
 	refreshPreview()
 
 	return a.NewDialog(parent, DialogConfig{
-		Title:   "Pick a font",
+		Title:   widget.Tr("Pick a font"),
 		Width:   380,
 		Height:  420,
 		Content: root,
 		Modal:   true,
 		Buttons: []DialogButton{
-			{Label: "Cancel", Response: "cancel", Role: ButtonRoleCancel},
-			{Label: "Select", Response: "ok", Role: ButtonRoleDefault},
+			{Label: widget.Tr("Cancel"), Response: "cancel", Role: ButtonRoleCancel},
+			{Label: widget.Tr("Select"), Response: "ok", Role: ButtonRoleDefault},
 		},
 		DefaultResponse: "ok",
 		CancelResponse:  "cancel",
@@ -473,12 +473,12 @@ func (a *Application) CalendarDialog(parent *Window, initial time.Time, onSelect
 	}
 	var err error
 	d, err = a.NewDialog(parent, DialogConfig{
-		Title:          "Select date",
+		Title:          widget.Tr("Select date"),
 		Width:          260,
 		Height:         240,
 		Content:        cal,
 		Modal:          true,
-		Buttons:        []DialogButton{{Label: "Cancel", Response: "cancel", Role: ButtonRoleCancel}},
+		Buttons:        []DialogButton{{Label: widget.Tr("Cancel"), Response: "cancel", Role: ButtonRoleCancel}},
 		CancelResponse: "cancel",
 	})
 	return d, err
@@ -604,7 +604,7 @@ func (a *Application) dialogRoot(cfg DialogConfig, respond func(string)) (widget
 		return cfg.Content, cfg.Background, nil
 	}
 	if len(cfg.Buttons) == 0 {
-		cfg.Buttons = []DialogButton{{Label: "OK", Response: "ok"}}
+		cfg.Buttons = []DialogButton{{Label: widget.Tr("OK"), Response: "ok"}}
 	}
 	// The button row's labels need a face; under the toolkit-wide
 	// nil-face contract a nil face into a constructor panics, so a
