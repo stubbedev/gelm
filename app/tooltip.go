@@ -60,6 +60,10 @@ type tooltipCtl struct {
 	painter *popup.Painter
 	hover   widget.Widget
 	since   time.Time
+	// text is the hovered widget's last tooltip: a widget whose tooltip
+	// follows the pointer (a calendar's per-day detail) changes it
+	// without a hover change, and the change restarts the dwell.
+	text string
 }
 
 // next returns when a pending tooltip could open: a hovered widget
@@ -93,9 +97,9 @@ func (t *tooltipCtl) update(router *widget.Router, now time.Time, opener func(wi
 	}
 	h := router.Hovered()
 	text := hoverTooltipText(h)
-	changed := h != t.hover
+	changed := h != t.hover || text != t.text
 	if changed {
-		t.hover, t.since = h, now
+		t.hover, t.text, t.since = h, text, now
 	}
 	if tooltipShouldClose(t.open != nil, changed, text != "") {
 		// Traced as "tooltip closed": the headless harness waits on it.

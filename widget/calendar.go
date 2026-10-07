@@ -72,6 +72,15 @@ type Calendar struct {
 	cellW, cellH int
 	titleH       int
 
+	// marks are the marked dates (MarkDay); hoverDay is the day of the
+	// displayed month under the pointer, 0 when none.
+	marks    map[calendarDate]bool
+	hoverDay int
+
+	// Detail, when set, describes a date - an event title, a holiday -
+	// shown as the tooltip of the day under the pointer ("" for none).
+	Detail func(date time.Time) string
+
 	// OnSelect fires with the chosen date on every applied selection -
 	// click, keyboard motion, or Select.
 	OnSelect func(time.Time)
@@ -88,9 +97,9 @@ func NewCalendar(face render.Font, sizePx float64, initial time.Time) *Calendar 
 		sel:    initial,
 		today:  time.Now(),
 	}
-	for i := range c.nav {
-		label := []string{"<<", "<", ">", ">>"}[i]
-		c.nav[i] = NewButton(NewLabel(face, sizePx, label, Current().TextMuted), 4, 2)
+	glyph := face.Shape("lg", sizePx).LineHeight() - 2
+	for i, kind := range [4]SymbolKind{SymbolDoubleLeft, SymbolChevronLeft, SymbolChevronRight, SymbolDoubleRight} {
+		c.nav[i] = NewButton(NewSymbol(kind, glyph), 2, 4)
 	}
 	c.nav[0].OnClick = func() { c.stepView(-1, 0) }
 	c.nav[1].OnClick = func() { c.stepView(0, -1) }
@@ -106,6 +115,67 @@ func NewCalendar(face render.Font, sizePx float64, initial time.Time) *Calendar 
 func (c *Calendar) SetNames(names CalendarNames) {
 	c.names = names
 	c.Invalidate()
+}
+
+// calendarDate is a date without time or zone, the mark key.
+type calendarDate struct {
+	year  int
+	month time.Month
+	day   int
+}
+
+// dateOf keys t.
+func dateOf(t time.Time) calendarDate { return calendarDate{t.Year(), t.Month(), t.Day()} }
+
+// MarkDay marks t's date (GTK mark_day): a dot under its number. Marks
+// are dates, so they stay with their month as the view moves.
+func (c *Calendar) MarkDay(t time.Time) {
+	if c.marks == nil {
+		c.marks = map[calendarDate]bool{}
+	}
+	c.marks[dateOf(t)] = true
+	c.Invalidate()
+}
+
+// UnmarkDay removes t's mark.
+func (c *Calendar) UnmarkDay(t time.Time) {
+	delete(c.marks, dateOf(t))
+	c.Invalidate()
+}
+
+// ClearMarks removes every mark.
+func (c *Calendar) ClearMarks() {
+	clear(c.marks)
+	c.Invalidate()
+}
+
+// DayMarked reports whether t's date is marked.
+func (c *Calendar) DayMarked(t time.Time) bool { return c.marks[dateOf(t)] }
+
+// dateAt is day d of the displayed month.
+func (c *Calendar) dateAt(d int) time.Time {
+	return time.Date(c.view.Year(), c.view.Month(), d, 0, 0, 0, 0, c.view.Location())
+}
+
+// HoverMove tracks the day under the pointer for its Detail tooltip.
+func (c *Calendar) HoverMove(p Point) { c.hoverDay = c.dayAt(p) }
+
+// SetHovered forgets the day when the pointer leaves.
+func (c *Calendar) SetHovered(on bool) {
+	if !on {
+		c.hoverDay = 0
+	}
+}
+
+// TooltipText is the hovered day's Detail, else the calendar's own
+// tooltip.
+func (c *Calendar) TooltipText() string {
+	if c.Detail != nil && c.hoverDay > 0 {
+		if s := c.Detail(c.dateAt(c.hoverDay)); s != "" {
+			return s
+		}
+	}
+	return c.node.TooltipText()
 }
 
 // Selection returns the selected date, the zero time when none.
@@ -160,7 +230,7 @@ func daysIn(year int, month time.Month) int {
 // firstOffset is the number of blank cells before day 1 in the header's
 // week order.
 func (c *Calendar) firstOffset() int {
-	first := time.Date(c.view.Year(), c.view.Month(), 1, 0, 0, 0, 0, c.view.Location()).Weekday()
+	first := c.dateAt(1).Weekday()
 	start := c.namesOf().FirstWeekday()
 	return (int(first-start) + 7) % 7
 }
@@ -197,20 +267,15 @@ func (c *Calendar) Arrange(r render.Rect) {
 	c.node.Arrange(r)
 	lineH := c.face.Shape("lg", c.sizePx).LineHeight()
 	buttonH := lineH + 4
+	var w [4]int
 	for i, b := range c.nav {
-		nat := b.Measure(Constraints{Max: Size{W: 1 << 20, H: 1 << 20}})
-		x := c.bounds.X
-		switch i {
-		case 0:
-			x += 4
-		case 1:
-			x += 4 + 34
-		case 2:
-			x += r.W - 34 - nat.W - 4
-		case 3:
-			x += r.W - nat.W - 4
-		}
-		b.Arrange(render.Rect{X: x, Y: c.bounds.Y + (c.titleH-buttonH)/2, W: nat.W, H: buttonH})
+		w[i] = b.Measure(Constraints{Max: Size{W: 1 << 20, H: 1 << 20}}).W
+	}
+	const edge, gap = 4, 2
+	left, right := r.X+edge, r.X+r.W-edge
+	xs := [4]int{left, left + w[0] + gap, right - w[3] - gap - w[2], right - w[3]}
+	for i, b := range c.nav {
+		b.Arrange(render.Rect{X: xs[i], Y: c.bounds.Y + (c.titleH-buttonH)/2, W: w[i], H: buttonH})
 		setParents(c, b)
 	}
 }
@@ -249,7 +314,7 @@ func (c *Calendar) Paint(cv *render.Canvas) {
 	days := daysIn(c.view.Year(), c.view.Month())
 	for d := 1; d <= days; d++ {
 		cell := c.cellRect(d, offset)
-		date := time.Date(c.view.Year(), c.view.Month(), d, 0, 0, 0, 0, c.view.Location())
+		date := c.dateAt(d)
 		selected := !c.sel.IsZero() && sameDate(c.sel, date)
 		today := !c.today.IsZero() && sameDate(c.today, date)
 		switch {
@@ -265,6 +330,10 @@ func (c *Calendar) Paint(cv *render.Canvas) {
 		c.face.DrawAligned(cv, dayNumber(d), cell, c.sizePx, col, render.AlignCenter)
 		if today && !selected {
 			cv.BorderRect(cell, 1, th.Accent)
+		}
+		if c.marks[dateOf(date)] {
+			dot := render.Rect{X: cell.X + cell.W/2 - 2, Y: cell.Y + cell.H - 6, W: 4, H: 4}
+			cv.RoundedRect(dot, 2, col)
 		}
 	}
 
@@ -351,7 +420,7 @@ func (c *Calendar) ClickAt(p Point) {
 	if d <= 0 {
 		return
 	}
-	c.Select(time.Date(c.view.Year(), c.view.Month(), d, 0, 0, 0, 0, c.view.Location()))
+	c.Select(c.dateAt(d))
 }
 
 // dayAt maps p to a day of the displayed month, 0 outside the grid or
