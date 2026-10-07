@@ -36,6 +36,7 @@ func BaseVariants(base *render.Typeface) VariantFunc {
 type RichLabel struct {
 	node
 	base     render.Font
+	faces    faceCache
 	variants VariantFunc
 	markup   string
 	sizePx   float64
@@ -178,12 +179,22 @@ func (l *RichLabel) Direction() Direction { return l.dir }
 // use the variants when one is installed, and every other run - and
 // any variant the provider cannot supply - uses the base face.
 func (l *RichLabel) faceFor(st TextStyle) render.Font {
+	f := l.base
 	if l.variants != nil && (st.Bold || st.Italic) {
-		if f := l.variants(st.Bold, st.Italic); f != nil {
-			return f
+		if v := l.variants(st.Bold, st.Italic); v != nil {
+			f = v
 		}
 	}
-	return l.base
+	return l.faces.get(f, l.style(l), 0)
+}
+
+// styleRestyled implements styleRestyler: a changed letter spacing or
+// face setting reshapes the runs.
+func (l *RichLabel) styleRestyled(old, new style.Values) {
+	if old.LetterSpacing != new.LetterSpacing || old.Variations != new.Variations || old.Features != new.Features {
+		l.retext()
+		l.InvalidateLayout()
+	}
 }
 
 // retext re-parses the markup, resolves the line's directional runs
@@ -702,6 +713,7 @@ func (l *RichLabel) Paint(cv *render.Canvas) {
 // paintLine draws the runs on one baseline: each its variant face, its
 // color, and an underline for link runs.
 func (l *RichLabel) paintLine(cv *render.Canvas, runs []*richRun, lineX float64, baseline int) {
+	css := cssDecoration(l.style(l))
 	x := lineX
 	for _, r := range runs {
 		dx := int(math.Round(x))
@@ -710,10 +722,11 @@ func (l *RichLabel) paintLine(cv *render.Canvas, runs []*richRun, lineX float64,
 			col = r.style.Color
 		}
 		r.face.Draw(cv, r.sh, dx, baseline, col)
+		deco := css
 		if r.style.Href != "" {
-			under := render.Rect{X: dx, Y: baseline + 1, W: int(r.sh.Advance() + 0.5), H: max(1, int(l.sizePx/14))}
-			cv.FillRect(under, col)
+			deco.Lines |= render.Underline
 		}
+		r.sh.DrawDecoration(cv, dx, baseline, deco, col)
 		x += r.sh.Advance()
 	}
 }

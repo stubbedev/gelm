@@ -984,7 +984,7 @@ func styleChanged(a, b *style.Values) bool {
 		a.OriginPx != b.OriginPx || a.IconSize != b.IconSize ||
 		a.IconSource != b.IconSource || a.IconXform.M != b.IconXform.M ||
 		a.PaletteTint != b.PaletteTint || a.CaretColor != b.CaretColor ||
-		a.Underline != b.Underline || a.Transition != b.Transition ||
+		a.Decoration != b.Decoration || a.Transition != b.Transition ||
 		!animsEqual(a.Animation, b.Animation)
 }
 
@@ -1281,21 +1281,70 @@ func pickf(v *style.Values, p style.Prop, def float64) float64 {
 func styledFace(f render.Font, v *style.Values, weight int) render.Font {
 	vars := cascadeVariations(v, weight)
 	tnum := v.Has(style.PropFontFeatures) && strings.Contains(v.Features, "tnum")
+	letter := 0.0
+	if v.Has(style.PropLetterSpacing) {
+		letter = v.LetterSpacing
+	}
 	switch t := f.(type) {
 	case *render.Typeface:
-		t = t.WithVariations(vars...)
+		t = t.WithVariations(vars...).Spaced(letter)
 		if tnum {
 			t = t.Tabular()
 		}
 		return t
 	case *render.Chain:
-		t = t.WithVariations(vars...)
+		t = t.WithVariations(vars...).Spaced(letter)
 		if tnum {
 			t = t.Tabular()
 		}
 		return t
 	}
 	return f
+}
+
+// faceKey is what a cascade-styled face depends on.
+type faceKey struct {
+	base                 render.Font
+	weight               int
+	letter               float64
+	features, variations string
+}
+
+// faceCache memoizes a widget's cascade-styled faces (styledFace) per
+// base face and the cascade values that shape them, so the measuring
+// and painting paths reuse one derived face without re-deriving it.
+type faceCache struct{ faces map[faceKey]render.Font }
+
+// get is base styled by v (weight: a font-weight the caller did not
+// already serve, 0 for none).
+func (c *faceCache) get(base render.Font, v *style.Values, weight int) render.Font {
+	k := faceKey{base: base, weight: weight}
+	if v.Has(style.PropLetterSpacing) {
+		k.letter = v.LetterSpacing
+	}
+	if v.Has(style.PropFontFeatures) {
+		k.features = v.Features
+	}
+	if v.Has(style.PropFontVariations) {
+		k.variations = v.Variations
+	}
+	if f, ok := c.faces[k]; ok {
+		return f
+	}
+	if c.faces == nil || len(c.faces) > 16 {
+		c.faces = map[faceKey]render.Font{}
+	}
+	f := styledFace(base, v, weight)
+	c.faces[k] = f
+	return f
+}
+
+// cssDecoration is the cascade's text decoration, zero when none.
+func cssDecoration(v *style.Values) render.Decoration {
+	if v.Has(style.PropTextDecoration) {
+		return v.Decoration
+	}
+	return render.Decoration{}
 }
 
 // cascadeVariations is the axis settings the cascade implies: wght

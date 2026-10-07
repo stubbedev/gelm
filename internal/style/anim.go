@@ -525,28 +525,55 @@ func parseCaretColor(ts []token, cx *ctx, v *Values) bool {
 	return true
 }
 
-// parseTextDecoration parses text-decoration's line keywords: the
-// subset takes underline and none (line-through and overline parse to
-// an error, no painter draws them).
+// parseTextDecoration parses the text-decoration shorthand: none, or
+// any of the lines (underline, overline, line-through), a style
+// (solid, double, dotted, dashed, wavy), and a color, in any order.
 func parseTextDecoration(ts []token, cx *ctx, v *Values) bool {
-	saw := false
+	var d render.Decoration
+	none, lines, style, color := false, false, false, false
 	for _, part := range components(ts) {
-		if len(part) != 1 || part[0].kind != tkIdent {
+		if len(part) == 1 && part[0].kind == tkIdent {
+			name := strings.ToLower(part[0].s)
+			if line, ok := decorationLines[name]; ok {
+				d.Lines |= line
+				lines = true
+				continue
+			}
+			if st, ok := decorationStyles[name]; ok && !style {
+				d.Style, style = st, true
+				continue
+			}
+			if name == "none" && !none {
+				none = true
+				continue
+			}
+		}
+		cv, ok := parseColor(part, cx)
+		if !ok || color {
 			return false
 		}
-		switch strings.ToLower(part[0].s) {
-		case "none":
-			v.Underline = false
-			saw = true
-		case "underline":
-			v.Underline = true
-			saw = true
-		default:
-			return false
-		}
+		d.Color, color = cx.resolve(cv), true
 	}
-	return saw
+	if none && lines {
+		return false
+	}
+	if !none && !lines && !style && !color {
+		return false
+	}
+	v.Decoration = d
+	return true
 }
+
+// decorationLines and decorationStyles are text-decoration's keywords.
+var (
+	decorationLines = map[string]render.DecorationLine{
+		"underline": render.Underline, "overline": render.Overline, "line-through": render.LineThrough,
+	}
+	decorationStyles = map[string]render.DecorationStyle{
+		"solid": render.DecorationSolid, "double": render.DecorationDouble, "dotted": render.DecorationDotted,
+		"dashed": render.DecorationDashed, "wavy": render.DecorationWavy,
+	}
+)
 
 // resolveKeyframes points the computed animations at the named
 // @keyframes rules, the highest-priority layer that declares each

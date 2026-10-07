@@ -40,7 +40,9 @@ const (
 // SetTooltip and let the mode shorten what paints.
 type Label struct {
 	node
-	face   render.Font
+	face render.Font
+	// faces memoizes the cascade-styled face (styledFace).
+	faces  faceCache
 	text   string
 	sizePx float64
 	color  render.Color
@@ -268,7 +270,7 @@ func (l *Label) effStyleIn(v *style.Values) (render.Font, float64) {
 			face, weight = f, 0 // the resolver served the weight
 		}
 	}
-	return styledFace(face, v, weight), px
+	return l.faces.get(face, v, weight), px
 }
 
 // effStyle is effStyleIn over the widget's current cascade.
@@ -482,30 +484,19 @@ func (l *Label) Paint(cv *render.Canvas) {
 				line.H = l.shaped.LineHeight()
 			}
 		}
-		face.DrawAlignedDir(cv, text, line, px, col, l.align, l.dir)
-		if v.Has(style.PropTextDecoration) && v.Underline {
-			l.paintUnderline(cv, face, px, text, line, col)
-		}
+		l.drawLine(cv, face, px, text, line, col, cssDecoration(v))
 	}
 	paintOutline(cv, v, l.bounds, radii)
 	fx.pop(cv)
 }
 
-// paintUnderline strokes the text run's baseline+2 underline, the
-// text-decoration ink, spanning the shaped advance.
-func (l *Label) paintUnderline(cv *render.Canvas, face render.Font, px float64, text string, content render.Rect, col render.Color) {
-	sh := face.ShapeDir(text, px, l.dir)
-	baseline := content.Y + (content.H-sh.LineHeight())/2 + int(sh.Ascent()+0.5)
-	y := baseline + 2
-	adv := int(sh.Advance() + 0.5)
-	x := content.X
-	switch l.align {
-	case render.AlignEnd:
-		x = content.X + content.W - adv
-	case render.AlignCenter:
-		x = content.X + (content.W-adv)/2
+// drawLine draws one aligned line of text and its decoration.
+func (l *Label) drawLine(cv *render.Canvas, face render.Font, px float64, text string, box render.Rect, col render.Color, deco render.Decoration) {
+	sh := face.DrawAlignedDir(cv, text, box, px, col, l.align, l.dir)
+	if sh != nil && deco.Lines != 0 {
+		x, baseline := render.AlignedPen(sh, box, l.align, l.dir)
+		sh.DrawDecoration(cv, x, baseline, deco, col)
 	}
-	cv.FillRect(render.Rect{X: x, Y: y, W: adv, H: 1}, col)
 }
 
 // paintWrapped draws the wrapped rows, the stack vertically centered in
@@ -517,8 +508,9 @@ func (l *Label) paintWrapped(cv *render.Canvas, face render.Font, px float64, co
 	if extra := box.H - len(lines)*lineH; extra > 0 {
 		y += extra / 2
 	}
+	deco := cssDecoration(l.style(l))
 	for _, ln := range lines {
-		face.DrawAlignedDir(cv, ln, render.Rect{X: box.X, Y: y, W: box.W, H: lineH}, px, col, l.align, l.dir)
+		l.drawLine(cv, face, px, ln, render.Rect{X: box.X, Y: y, W: box.W, H: lineH}, col, deco)
 		y += lineH
 	}
 }
