@@ -444,6 +444,11 @@ type Scroll struct {
 	hovered    bool
 	lastInput  time.Time
 	cancelFade anim.Cancel
+
+	// watchers hear every range change (WatchRange); ranges is the
+	// pair they last heard, so an unchanged relayout stays silent.
+	watchers []func()
+	ranges   [2]ScrollRange
 }
 
 // gutter is the scrollbar strip width reserved inside the viewport.
@@ -530,8 +535,42 @@ func (s *Scroll) SetOffset(x, y int) {
 	}
 	s.offX, s.offY = x, y
 	s.Invalidate()
+	s.notifyRange()
 	if s.OnScrolled != nil {
 		s.OnScrolled(x, y)
+	}
+}
+
+// AxisRange implements Adjustable: the offset, the visible extent, and
+// the content's extent along axis.
+func (s *Scroll) AxisRange(axis Axis) ScrollRange {
+	if axis == Row {
+		return ScrollRange{Offset: s.offX, Page: s.viewW, Total: s.nat.W}
+	}
+	return ScrollRange{Offset: s.offY, Page: s.viewH, Total: s.nat.H}
+}
+
+// SetAxisOffset implements Adjustable.
+func (s *Scroll) SetAxisOffset(axis Axis, offset int) {
+	if axis == Row {
+		s.SetOffset(offset, s.offY)
+		return
+	}
+	s.SetOffset(s.offX, offset)
+}
+
+// WatchRange implements Adjustable.
+func (s *Scroll) WatchRange(fn func()) { s.watchers = append(s.watchers, fn) }
+
+// notifyRange tells the watchers when either range moved.
+func (s *Scroll) notifyRange() {
+	now := [2]ScrollRange{s.AxisRange(Row), s.AxisRange(Column)}
+	if now == s.ranges {
+		return
+	}
+	s.ranges = now
+	for _, fn := range s.watchers {
+		fn()
 	}
 }
 
@@ -707,6 +746,7 @@ func (s *Scroll) Arrange(r render.Rect) {
 		})
 		setParents(s, s.child)
 	}
+	s.notifyRange()
 }
 
 // ArrangeRoot records the viewport rect.
@@ -729,18 +769,11 @@ func (s *Scroll) Paint(cv *render.Canvas) {
 	}
 	if s.ShowBars && s.alpha > 0 {
 		s.tickFade()
-		bar := render.RGB(0x58, 0x5b, 0x70)
-		a := uint8(s.alpha * 255)
-		tint := render.RGBA(bar.R(), bar.G(), bar.B(), a)
-		track, handle := s.vBarGeometry()
-		if track.W > 0 {
-			cv.RoundedRect(track, 1, render.RGBA(0, 0, 0, a/3))
-			cv.RoundedRect(handle, 2, tint)
+		if track, handle := s.vBarGeometry(); track.W > 0 {
+			paintScrollbar(cv, track, handle, s.alpha)
 		}
-		track, handle = s.hBarGeometry()
-		if track.W > 0 {
-			cv.RoundedRect(track, 1, render.RGBA(0, 0, 0, a/3))
-			cv.RoundedRect(handle, 2, tint)
+		if track, handle := s.hBarGeometry(); track.W > 0 {
+			paintScrollbar(cv, track, handle, s.alpha)
 		}
 	}
 	cv.PopClip(prev)
@@ -784,29 +817,23 @@ func (s *Scroll) HitTest(p Point) Widget {
 // vBarGeometry returns the vertical track and handle rects; the track
 // width is zero when there is no vertical overflow.
 func (s *Scroll) vBarGeometry() (track, handle render.Rect) {
-	_, maxY := s.scrollMax()
-	if maxY <= 0 || s.viewH <= 0 || s.nat.H <= 0 {
+	r := s.AxisRange(Column)
+	if !r.Overflows() {
 		return track, handle
 	}
 	track = render.Rect{X: s.view.X + s.view.W - gutter, Y: s.view.Y, W: gutter, H: s.viewH}
-	h := max(24, s.viewH*s.viewH/s.nat.H)
-	y := track.Y + (track.H-h)*s.offY/max(1, maxY)
-	handle = render.Rect{X: track.X, Y: y, W: gutter, H: h}
-	return track, handle
+	return track, r.thumbRect(track, Column)
 }
 
 // hBarGeometry returns the horizontal track and handle rects; the
 // track height is zero when there is no horizontal overflow.
 func (s *Scroll) hBarGeometry() (track, handle render.Rect) {
-	maxX, _ := s.scrollMax()
-	if maxX <= 0 || s.viewW <= 0 || s.nat.W <= 0 {
+	r := s.AxisRange(Row)
+	if !r.Overflows() {
 		return track, handle
 	}
 	track = render.Rect{X: s.view.X, Y: s.view.Y + s.view.H - gutter, W: s.viewW, H: gutter}
-	w := max(24, s.viewW*s.viewW/s.nat.W)
-	x := track.X + (track.W-w)*s.offX/max(1, maxX)
-	handle = render.Rect{X: x, Y: track.Y, W: w, H: gutter}
-	return track, handle
+	return track, r.thumbRect(track, Row)
 }
 
 // ScrollBy shifts the offset by dx, dy wheel steps and shows the bars.
@@ -860,16 +887,10 @@ func (s *Scroll) DragMove(p Point) {
 		s.dragGrab = p.X
 		s.dragStartOffX = s.offX
 	case s.dragV:
-		_, handle := s.vBarGeometry()
-		_, maxY := s.scrollMax()
-		denom := max(1, vTrack.H-handle.H)
-		s.SetOffset(s.offX, s.dragStartOffY+(p.Y-s.dragGrab)*maxY/denom)
+		s.SetAxisOffset(Column, s.AxisRange(Column).dragged(s.dragStartOffY, p.Y-s.dragGrab, vTrack.H))
 		s.showBars()
 	case s.dragH:
-		_, handle := s.hBarGeometry()
-		maxX, _ := s.scrollMax()
-		denom := max(1, hTrack.W-handle.W)
-		s.SetOffset(s.dragStartOffX+(p.X-s.dragGrab)*maxX/denom, s.offY)
+		s.SetAxisOffset(Row, s.AxisRange(Row).dragged(s.dragStartOffX, p.X-s.dragGrab, hTrack.W))
 		s.showBars()
 	}
 }
@@ -882,21 +903,15 @@ func (s *Scroll) ClickAt(p Point) {
 	if !IsEnabled(s) {
 		return
 	}
-	vTrack, vHandle := s.vBarGeometry()
-	if vTrack.W > 0 && vTrack.Contains(p.X, p.Y) {
-		if p.Y < vHandle.Y {
-			s.SetOffset(s.offX, s.offY-s.viewH)
-		} else if p.Y >= vHandle.Y+vHandle.H {
-			s.SetOffset(s.offX, s.offY+s.viewH)
+	for _, axis := range [2]Axis{Column, Row} {
+		track, _ := s.vBarGeometry()
+		if axis == Row {
+			track, _ = s.hBarGeometry()
 		}
-		return
-	}
-	hTrack, hHandle := s.hBarGeometry()
-	if hTrack.H > 0 && hTrack.Contains(p.X, p.Y) {
-		if p.X < hHandle.X {
-			s.SetOffset(s.offX-s.viewW, s.offY)
-		} else if p.X >= hHandle.X+hHandle.W {
-			s.SetOffset(s.offX+s.viewW, s.offY)
+		if !track.Empty() && track.Contains(p.X, p.Y) {
+			at, n := along(p, track, axis)
+			s.SetAxisOffset(axis, s.AxisRange(axis).paged(at, n))
+			return
 		}
 	}
 }
