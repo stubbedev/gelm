@@ -14,6 +14,15 @@ disagree:
 - **Syntax**: a CSS Syntax 3 tokenizer; `@keyframes`/`@media` blocks
   skip silently, other at-rules skip with a warning; nested (SCSS)
   blocks and `!important` still reject their rule.
+- **GTK named colors** (#95): `@define-color name value;` and `@name`
+  references in any value. A reference compiles to `var(--name)`, so
+  a subtree's `--name` custom property overrides it; otherwise the
+  defines of the installed sheets resolve it, the highest priority
+  winning, and defines may reference each other (cycles invalid).
+  Defines are global, never inherited. The widget package's theme
+  layer (`StylePriorityTheme`, regenerated on `SetTheme`) defines all
+  of libadwaita's named colors from the palette and styles the
+  `widget/css` classes, so GTK stylesheets port over verbatim.
 - **Selectors**: combinators ` `, `>`, `+`, `~` (with backtracking);
   `:hover` (on the hovered widget *and its ancestors*, GTK's rule),
   `:active`, `:focus`, `:focus-visible` (keyboard focus),

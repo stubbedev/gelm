@@ -35,6 +35,7 @@ func Compute(layers []Layer, n Node, parent, old *Values, env Env, sc *Scratch, 
 		env.FontPx = env.Rem
 	}
 	sc.collect(layers, n)
+	sc.layers = layers
 
 	var pv *Values
 	if parent != nil {
@@ -164,7 +165,7 @@ func (sc *Scratch) parse(d *decl, vars *Vars, cx *ctx) (*Values, bool) {
 	ts := d.val
 	ok := true
 	if d.hasVar {
-		ts, ok = substitute(d.val, func(name string) ([]token, bool) { return vars.lookup(name) }, 0)
+		ts, ok = substitute(d.val, func(name string) ([]token, bool) { return sc.lookup(vars, name) }, 0)
 		ts = trimWS(ts)
 		ok = ok && len(ts) > 0
 	}
@@ -175,6 +176,40 @@ func (sc *Scratch) parse(d *decl, vars *Vars, cx *ctx) (*Values, bool) {
 		e.ok = d.parse(ts, cx, &e.v)
 	}
 	return &e.v, e.ok
+}
+
+// lookup resolves a var() reference: the node's inherited custom
+// properties first, then the @define-color defines of the compute's
+// layers.
+func (sc *Scratch) lookup(vs *Vars, name string) ([]token, bool) {
+	if ts, ok := vs.lookup(name); ok {
+		return ts, true
+	}
+	return sc.define(name, 0)
+}
+
+// define resolves a @define-color: the highest-priority layer's value
+// (the later layer on a tie), its own references substituted against
+// the defines - defines name colors, never a node's properties.
+func (sc *Scratch) define(name string, depth int) ([]token, bool) {
+	var ts []token
+	best := -1
+	for i, l := range sc.layers {
+		if l.Sheet == nil {
+			continue
+		}
+		if d, ok := l.Sheet.defines[name]; ok && (best < 0 || l.Priority >= sc.layers[best].Priority) {
+			ts, best = d, i
+		}
+	}
+	if best < 0 || depth > maxVarDepth {
+		return nil, false
+	}
+	if !containsVar(ts) {
+		return ts, true
+	}
+	out, ok := substitute(ts, func(n string) ([]token, bool) { return sc.define(n, depth+1) }, depth)
+	return trimWS(out), ok
 }
 
 // resolveVars computes the node's custom-property environment: the
@@ -195,7 +230,7 @@ func (sc *Scratch) resolveVars(parent *Vars) *Vars {
 	resolve = func(name string, depth int) ([]token, bool) {
 		i, mine := sc.byName[name]
 		if !mine {
-			return parent.lookup(name)
+			return sc.lookup(parent, name)
 		}
 		switch state[name] {
 		case done:
@@ -213,7 +248,7 @@ func (sc *Scratch) resolveVars(parent *Vars) *Vars {
 		ok := true
 		switch d.wide {
 		case wideInherit, wideUnset:
-			ts, ok = parent.lookup(name)
+			ts, ok = sc.lookup(parent, name)
 		case wideInitial:
 			ok = false
 		default:
