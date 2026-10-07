@@ -261,6 +261,18 @@ Composing over a selection removes the selection, as the protocol's
 done ordering prescribes. TextArea builds its visual-row cache from
 the composed display, so soft wrap stays consistent while composing.
 
+## Cursors
+
+`Session.SetCursor` takes one vocabulary - CSS names (`text`,
+`pointer`, `ns-resize`), the toolkit's `resize_*` spellings, and the
+classic xcursor names. When the compositor offers cursor-shape-v1 the
+shape goes to it as one `set_shape` per pointer enter or change: the
+compositor draws its own cursors, animated shapes included, with no
+theme lookup and no buffer. The client xcursor theme is the fallback -
+compositors without the protocol, the hidden cursor, and names the
+protocol does not carry - and `GELM_NO_CURSOR_SHAPE=1` forces it (the
+headless suite runs both paths).
+
 ## Touch and gestures
 
 gelm binds wl_touch (this overturns the earlier recorded non-goal of

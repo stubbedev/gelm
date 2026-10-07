@@ -98,6 +98,12 @@ func (e *Env) StartShowcase(bin, name string) (*Client, error) {
 // going to a log file a LogWatcher can follow. The caller must Stop it
 // (or Wait it after a close request).
 func (e *Env) StartClient(bin, name, categories string, args ...string) (*Client, error) {
+	return e.StartClientEnv(bin, name, categories, nil, args...)
+}
+
+// StartClientEnv is StartClient with extra environment entries
+// (KEY=value), for knobs such as GELM_NO_CURSOR_SHAPE.
+func (e *Env) StartClientEnv(bin, name, categories string, env []string, args ...string) (*Client, error) {
 	logPath := filepath.Join(e.Dir, name+".log")
 	// The path is the harness's own runtime dir, built from the test's
 	// name; nothing user-controlled reaches it.
@@ -108,11 +114,11 @@ func (e *Env) StartClient(bin, name, categories string, args ...string) (*Client
 	cmd := exec.Command(bin, args...) //nolint:gosec // module-local binary, see above
 	cmd.Stdout = log
 	cmd.Stderr = log
-	cmd.Env = privateEnv(
+	cmd.Env = append(privateEnv(
 		"WAYLAND_DISPLAY="+e.Display,
 		"XDG_RUNTIME_DIR="+e.Dir,
 		"GOELM_DEBUG="+categories,
-	)
+	), env...)
 	if err := cmd.Start(); err != nil {
 		_ = log.Close()
 		return nil, err

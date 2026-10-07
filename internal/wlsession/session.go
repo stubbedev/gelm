@@ -118,8 +118,11 @@ type Session struct {
 	hold            *wlr.ZwpGestureHoldV1
 	gestureSurface  *wl.Surface
 	// tabletMgr and tabletSeat bind tablet tools (tablet.go).
-	tabletMgr           *wlr.ZwpTabletManagerV2
-	tabletSeat          *wlr.ZwpTabletSeatV2
+	tabletMgr  *wlr.ZwpTabletManagerV2
+	tabletSeat *wlr.ZwpTabletSeatV2
+	// shapeMgr and shapeDevice draw cursors compositor-side (cursorshape.go).
+	shapeMgr            *wlr.WpCursorShapeManagerV1
+	shapeDevice         shapeAPI
 	wmBase              *xdg.WmBase
 	wmBaseVersion       uint32
 	compositorVersion   uint32
@@ -473,6 +476,8 @@ func (s *Session) HandleRegistryGlobal(ev wl.RegistryGlobalEvent) {
 		s.bindPointerGestures(ev)
 	case "zwp_tablet_manager_v2":
 		s.bindTabletManager(ev)
+	case "wp_cursor_shape_manager_v1":
+		s.bindCursorShapeManager(ev)
 	case "zwp_keyboard_shortcuts_inhibit_manager_v1":
 		s.bindShortcutsInhibitManager(ev)
 	case "zxdg_output_manager_v1":
@@ -708,6 +713,7 @@ func (s *Session) handleCapabilities(hasPointer, hasKeyboard bool) {
 			p.AddListener(s)
 			s.pointer = p
 			s.ensurePointerGestures()
+			s.ensureCursorShape()
 			debug.Log("seat", "pointer capability gained")
 		}
 	}
@@ -750,6 +756,7 @@ func (s *Session) handleCapabilities(hasPointer, hasKeyboard bool) {
 // desired shape survives so the next enter re-applies it.
 func (s *Session) pointerLost() {
 	s.dropPointerGestures()
+	s.dropCursorShape()
 	if p := s.pointer; p != nil {
 		s.pointer = nil
 		if s.seatVersion >= minSeatReleaseVersion {
