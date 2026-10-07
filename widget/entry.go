@@ -96,6 +96,10 @@ type Entry struct {
 	// applies. See SetReadOnly for the full contract.
 	readOnly bool
 
+	// caretHidden suppresses the caret even while focused: a field
+	// presenting as plain text (EditableLabel at rest).
+	caretHidden bool
+
 	// Composing (input-method preedit) display: peText shows at the
 	// caret position peAt with the composing caret peCur runes into
 	// it (-1 hidden). It lives outside the contents until a commit.
@@ -1112,7 +1116,7 @@ func (e *Entry) Paint(cv *render.Canvas) {
 	// keyboard focus (GTK's rule); hidden while the input method hides
 	// its composing caret. Every frame reads the same offset, so a
 	// repaint (blink or otherwise) never jumps it.
-	if caret := e.caretRune(); caret >= 0 && e.focused {
+	if caret := e.caretRune(); caret >= 0 && e.focused && !e.caretHidden {
 		cv.FillRect(render.Rect{X: e.caretX(sh, caret), Y: c.Y, W: 2, H: c.H}, caretCol)
 	}
 	cv.PopClip(prev)
