@@ -79,7 +79,38 @@ type Config struct {
 
 	Keyboard  KeyboardMode
 	Namespace string
+
+	// shellVersion is the bound layer shell's version (zero reads as
+	// 1), taken from the Shell at New: it gates what the surface may
+	// ask for - set_layer from v2, on-demand keyboard from v4.
+	shellVersion uint32
 }
+
+// Shell is the bound layer shell and the version it was bound at; the
+// session is one. Taking both together keeps a caller from asking for
+// what the bound version cannot carry.
+type Shell interface {
+	LayerShell() *wlr.ZwlrLayerShellV1
+	LayerShellVersion() uint32
+}
+
+// Protocol versions requests and values need.
+const (
+	versionSetLayer       = 2
+	versionKeyboardDemand = 4
+)
+
+// keyboardSupported reports whether a shell at version can carry mode.
+func keyboardSupported(mode KeyboardMode, version uint32) error {
+	if mode == KeyboardOnDemand && max(version, 1) < versionKeyboardDemand {
+		return fmt.Errorf("%w: on-demand keyboard needs v%d", ErrShellTooOld, versionKeyboardDemand)
+	}
+	return nil
+}
+
+// ErrShellTooOld reports a request the compositor's layer shell
+// version cannot carry.
+var ErrShellTooOld = errors.New("layersurface: the compositor's layer shell is too old for this request")
 
 // Margins is the space between the surface and the anchored edges.
 type Margins struct {
@@ -109,11 +140,15 @@ type Surface struct {
 // New assigns the layer role and sends the initial state. The caller must
 // still commit the wl_surface; the compositor answers with the first
 // configure event.
-func New(shell *wlr.ZwlrLayerShellV1, surf *wl.Surface, output *wl.Output, cfg Config) (*Surface, error) {
+func New(shell Shell, surf *wl.Surface, output *wl.Output, cfg Config) (*Surface, error) {
+	if shell.LayerShell() == nil {
+		return nil, errors.New("layersurface: compositor has no zwlr_layer_shell_v1")
+	}
+	cfg.shellVersion = shell.LayerShellVersion()
 	if err := cfg.validate(); err != nil {
 		return nil, err
 	}
-	ls, err := getLayerSurface(shell, surf, output, uint32(cfg.Layer), cfg.Namespace)
+	ls, err := getLayerSurface(shell.LayerShell(), surf, output, uint32(cfg.Layer), cfg.Namespace)
 	if err != nil {
 		return nil, fmt.Errorf("layersurface: get_layer_surface: %w", err)
 	}
@@ -140,6 +175,9 @@ func New(shell *wlr.ZwlrLayerShellV1, surf *wl.Surface, output *wl.Output, cfg C
 // validate mirrors the protocol's invalid_size rule: an automatic (zero)
 // axis is only allowed when both edges of that axis are anchored.
 func (c Config) validate() error {
+	if err := keyboardSupported(c.Keyboard, c.shellVersion); err != nil {
+		return err
+	}
 	if c.Width == 0 && c.Anchor&(AnchorLeft|AnchorRight) != AnchorLeft|AnchorRight {
 		return fmt.Errorf("layersurface: auto width needs both left and right anchors (anchor=%d)", c.Anchor)
 	}
@@ -153,16 +191,55 @@ func (c Config) validate() error {
 // rule as the initial size applies and is enforced locally; the size
 // is double-buffered on the wire, so it lands with the next commit.
 func (s *Surface) SetSize(width, height uint32) error {
+	return s.change(func(c *Config) { c.Width, c.Height = width, height }, "set_size",
+		func() error { return s.Layer.SetSize(width, height) })
+}
+
+// SetAnchor re-anchors the surface after creation (gtk4-layer-shell
+// allows every declarative property to change): a bar moving from the
+// top edge to the bottom. The auto-axis rule is checked against the
+// current size; the change lands with the next commit.
+func (s *Surface) SetAnchor(a Anchor) error {
+	return s.change(func(c *Config) { c.Anchor = a }, "set_anchor",
+		func() error { return s.Layer.SetAnchor(uint32(a)) })
+}
+
+// SetMargin changes the distances from the anchored edges.
+func (s *Surface) SetMargin(m Margins) error {
+	return s.change(func(c *Config) { c.Margin = m }, "set_margin",
+		func() error { return s.Layer.SetMargin(m.Top, m.Right, m.Bottom, m.Left) })
+}
+
+// SetExclusiveZone changes the reserved space along the anchored edge
+// (a bar auto-hiding gives its zone back).
+func (s *Surface) SetExclusiveZone(zone int32) error {
+	return s.change(func(c *Config) { c.ExclusiveZone = zone }, "set_exclusive_zone",
+		func() error { return s.Layer.SetExclusiveZone(zone) })
+}
+
+// SetLayer moves the surface to another stack layer (layer shell v2).
+func (s *Surface) SetLayer(l Layer) error {
+	if max(s.cfg.shellVersion, 1) < versionSetLayer {
+		return fmt.Errorf("%w: set_layer needs v%d", ErrShellTooOld, versionSetLayer)
+	}
+	return s.change(func(c *Config) { c.Layer = l }, "set_layer",
+		func() error { return s.Layer.SetLayer(uint32(l)) })
+}
+
+// change is every post-creation property change: validate the next
+// config, refuse on a closed surface, send, record. The properties are
+// double-buffered, so they land with the next commit.
+func (s *Surface) change(edit func(*Config), request string, send func() error) error {
 	next := s.cfg
-	next.Width, next.Height = width, height
+	edit(&next)
 	if err := next.validate(); err != nil {
 		return err
 	}
 	if s.closed {
 		return ErrClosed
 	}
-	if err := s.Layer.SetSize(width, height); err != nil {
-		return fmt.Errorf("layersurface: set_size: %w", err)
+	if err := send(); err != nil {
+		return fmt.Errorf("layersurface: %s: %w", request, err)
 	}
 	s.cfg = next
 	return nil
@@ -181,6 +258,9 @@ func (s *Surface) SetKeyboardMode(mode KeyboardMode) error {
 	}
 	if mode == s.cfg.Keyboard {
 		return nil
+	}
+	if err := keyboardSupported(mode, s.cfg.shellVersion); err != nil {
+		return err
 	}
 	if err := s.Layer.SetKeyboardInteractivity(uint32(mode)); err != nil {
 		return fmt.Errorf("layersurface: set_keyboard_interactivity: %w", err)

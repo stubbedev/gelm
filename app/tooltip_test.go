@@ -13,31 +13,31 @@ func TestTooltipShouldOpen(t *testing.T) {
 	base := time.Now()
 
 	t.Run("dwell past the delay opens", func(t *testing.T) {
-		if !tooltipShouldOpen(false, &widget.Label{}, "text", base, base.Add(tooltipDelay)) {
+		if !tooltipShouldOpen(false, &widget.Label{}, "text", base, base.Add(tooltipDelay), tooltipDelay) {
 			t.Error("resting hover with text did not open at the delay")
 		}
 	})
 
 	t.Run("before the delay nothing opens", func(t *testing.T) {
-		if tooltipShouldOpen(false, &widget.Label{}, "text", base, base.Add(tooltipDelay-time.Millisecond)) {
+		if tooltipShouldOpen(false, &widget.Label{}, "text", base, base.Add(tooltipDelay-time.Millisecond), tooltipDelay) {
 			t.Error("opened before the dwell elapsed")
 		}
 	})
 
 	t.Run("no text never opens", func(t *testing.T) {
-		if tooltipShouldOpen(false, &widget.Label{}, "", base, base.Add(time.Hour)) {
+		if tooltipShouldOpen(false, &widget.Label{}, "", base, base.Add(time.Hour), tooltipDelay) {
 			t.Error("opened without tooltip text")
 		}
 	})
 
 	t.Run("no hover never opens", func(t *testing.T) {
-		if tooltipShouldOpen(false, nil, "text", base, base.Add(time.Hour)) {
+		if tooltipShouldOpen(false, nil, "text", base, base.Add(time.Hour), tooltipDelay) {
 			t.Error("opened without a hovered widget")
 		}
 	})
 
 	t.Run("an open tooltip blocks a second", func(t *testing.T) {
-		if tooltipShouldOpen(true, &widget.Label{}, "text", base, base.Add(time.Hour)) {
+		if tooltipShouldOpen(true, &widget.Label{}, "text", base, base.Add(time.Hour), tooltipDelay) {
 			t.Error("opened a second tooltip while one was up")
 		}
 	})
@@ -239,5 +239,45 @@ func TestTooltipCtlTextChange(t *testing.T) {
 	ctl.update(router, base.Add(2*tooltipDelay+time.Millisecond), opener)
 	if len(opened) != 2 || opened[1] != "tuesday" {
 		t.Errorf("opened %v, want the new text after its dwell", opened)
+	}
+}
+
+// Zero options keep the defaults; set ones win, and the dwell follows.
+func TestTooltipOptions(t *testing.T) {
+	var o TooltipOptions
+	if o.delay() != tooltipDelay {
+		t.Error("default delay")
+	}
+	if x, y := o.offset(); x != tooltipOffsetX || y != tooltipOffsetY {
+		t.Error("default offset")
+	}
+	o = TooltipOptions{Delay: time.Second, OffsetY: 4, MaxWidth: 600}
+	if w, h := o.maxSize(); w != 600 || h != tooltipMaxH {
+		t.Errorf("max size %dx%d", w, h)
+	}
+	if x, y := o.offset(); x != tooltipOffsetX || y != 4 {
+		t.Errorf("offset %d,%d", x, y)
+	}
+	tc := &tooltipCtl{delay: o.Delay}
+	if tc.dwell() != time.Second || (&tooltipCtl{}).dwell() != tooltipDelay {
+		t.Error("dwell")
+	}
+}
+
+// Point and rect anchors, and the popover ceiling's defaults.
+func TestAnchorsAndPopoverCeiling(t *testing.T) {
+	if b := AnchorAt(30, 40).Bounds(); b != (render.Rect{X: 30, Y: 40, W: 1, H: 1}) {
+		t.Errorf("AnchorAt = %+v", b)
+	}
+	r := render.Rect{X: 1, Y: 2, W: 3, H: 4}
+	if AnchorRect(r).Bounds() != r {
+		t.Error("AnchorRect")
+	}
+	host := &fakeHost{w: 800, h: 600}
+	if got := popoverCeiling(host, 0, 0); got != (widget.Size{W: 800, H: popoverMaxH}) {
+		t.Errorf("default ceiling %+v", got)
+	}
+	if got := popoverCeiling(host, 300, 200); got != (widget.Size{W: 300, H: 200}) {
+		t.Errorf("set ceiling %+v", got)
 	}
 }

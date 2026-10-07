@@ -137,6 +137,14 @@ func TestMenuPopoverSetItems(t *testing.T) {
 	if m.Depth() != 2 {
 		t.Fatal("submenu did not open")
 	}
+	// The open submenu's row still leads to one: it stays open and
+	// takes the new rows, the same menu updated in place.
+	sub := m.Level(1)
+	m.SetItems(widget.MenuItem{Label: "Sub", Items: []widget.MenuItem{{Label: "x"}, {Label: "y"}}})
+	if m.Depth() != 2 || m.Level(1) != sub || len(sub.Items()) != 2 {
+		t.Fatalf("live update: depth %d, same level %v, %d rows", m.Depth(), m.Level(1) == sub, len(sub.Items()))
+	}
+	// The path broke: the submenu closes, the root updates.
 	m.SetItems(widget.MenuItem{Label: "One"}, widget.MenuItem{Label: "Two"})
 	if m.Depth() != 1 || len(m.Level(0).Items()) != 2 || m.Closed() {
 		t.Errorf("after SetItems: depth %d, %d rows", m.Depth(), len(m.Level(0).Items()))
@@ -167,5 +175,38 @@ func TestMenuPopoverRootTakesKeys(t *testing.T) {
 	keys.KeyAction(widget.KeyRight, 0)
 	if m.Depth() != 2 {
 		t.Errorf("Down, Right: depth %d, want the submenu open", m.Depth())
+	}
+}
+
+// Submenus open after their row in its reading direction unless asked
+// otherwise; accelerators display through AccelLabel.
+func TestSubmenuSideAndAccelLabel(t *testing.T) {
+	cases := []struct {
+		side SubmenuSide
+		dir  widget.Direction
+		want Gravity
+	}{
+		{SubmenuAfter, widget.DirectionAuto, GravityRight},
+		{SubmenuAfter, widget.DirectionRTL, GravityLeft},
+		{SubmenuBefore, widget.DirectionAuto, GravityLeft},
+		{SubmenuBefore, widget.DirectionRTL, GravityRight},
+	}
+	for _, c := range cases {
+		if got := c.side.gravity(c.dir); got != c.want {
+			t.Errorf("side %d dir %d = %d, want %d", c.side, c.dir, got, c.want)
+		}
+	}
+	face, err := render.LoadFont(goregular.TTF)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := &fakeMenuOpener{}
+	m, _ := openMenuPopover(MenuPopoverConfig{
+		Anchor: rowAnchor{}, Face: face, SizePx: 13,
+		Items:      []widget.MenuItem{{Label: "Save", Accel: "Ctrl+S", OnClick: func() {}}},
+		AccelLabel: func(a string) string { return "<" + a + ">" },
+	}, f.open)
+	if lbl := m.Level(0).AccelLabel; lbl == nil || lbl("Ctrl+S") != "<Ctrl+S>" {
+		t.Error("AccelLabel did not reach the menu")
 	}
 }

@@ -9,24 +9,59 @@ import (
 	"github.com/stubbedev/gelm/internal/popup"
 	"github.com/stubbedev/gelm/internal/surfx"
 	"github.com/stubbedev/gelm/internal/wlsession"
+	"github.com/stubbedev/gelm/render"
 	"github.com/stubbedev/gelm/widget"
 )
 
-// tooltipDelay is how long the pointer must rest on a widget before
-// its tooltip opens.
-const tooltipDelay = 500 * time.Millisecond
+// TooltipOptions tune hover tooltips; zero fields keep the defaults
+// (a 500ms dwell, the card 12px right and 22px below the pointer, at
+// most 400x200).
+type TooltipOptions struct {
+	// Delay is how long the pointer rests on a widget before its
+	// tooltip opens.
+	Delay time.Duration
+	// OffsetX and OffsetY place the card from the pointer.
+	OffsetX, OffsetY int
+	// MaxWidth and MaxHeight cap the card; longer text wraps or clips.
+	MaxWidth, MaxHeight int
+}
 
-// tooltipOffset places the tooltip below-right of the pointer.
+// Tooltip defaults.
 const (
+	tooltipDelay   = 500 * time.Millisecond
 	tooltipOffsetX = 12
 	tooltipOffsetY = 22
+	tooltipMaxW    = 400
+	tooltipMaxH    = 200
 )
+
+// orDefault is v, or def when v is zero.
+func orDefault[T comparable](v, def T) T {
+	var zero T
+	if v == zero {
+		return def
+	}
+	return v
+}
+
+func (o TooltipOptions) delay() time.Duration { return orDefault(o.Delay, tooltipDelay) }
+
+func (o TooltipOptions) offset() (int, int) {
+	return orDefault(o.OffsetX, tooltipOffsetX), orDefault(o.OffsetY, tooltipOffsetY)
+}
+
+func (o TooltipOptions) maxSize() (int, int) {
+	return orDefault(o.MaxWidth, tooltipMaxW), orDefault(o.MaxHeight, tooltipMaxH)
+}
+
+// SetTooltipOptions tunes every window's tooltips.
+func (a *Application) SetTooltipOptions(o TooltipOptions) { a.tooltipOpts = o }
 
 // tooltipShouldOpen reports whether a resting hover earns a tooltip:
 // none open yet, a hovered widget, hover text, and dwell past the
 // delay.
-func tooltipShouldOpen(open bool, hover widget.Widget, text string, since, now time.Time) bool {
-	return !open && hover != nil && text != "" && now.Sub(since) >= tooltipDelay
+func tooltipShouldOpen(open bool, hover widget.Widget, text string, since, now time.Time, delay time.Duration) bool {
+	return !open && hover != nil && text != "" && now.Sub(since) >= delay
 }
 
 // tooltipShouldClose reports whether an open tooltip must go: the
@@ -35,8 +70,8 @@ func tooltipShouldClose(open, hoverChanged, hasText bool) bool {
 	return open && (hoverChanged || !hasText)
 }
 
-// tooltipSurfacer supplies the xdg_surface tooltips anchor to. Layer
-// surfaces have none, so hosts without it get no tooltips.
+// tooltipSurfacer supplies the xdg_surface an internal host's popups
+// anchor to; layer hosts anchor through LayerSurfacer instead.
 type tooltipSurfacer interface {
 	TooltipSurface() *xdg.Surface
 }
@@ -64,7 +99,12 @@ type tooltipCtl struct {
 	// follows the pointer (a calendar's per-day detail) changes it
 	// without a hover change, and the change restarts the dwell.
 	text string
+	// delay is the dwell (TooltipOptions); zero is the default.
+	delay time.Duration
 }
+
+// dwell is the configured delay, the default when unset.
+func (t *tooltipCtl) dwell() time.Duration { return orDefault(t.delay, tooltipDelay) }
 
 // next returns when a pending tooltip could open: a hovered widget
 // with text, not yet open, one delay away. False when nothing is
@@ -74,7 +114,7 @@ func (t *tooltipCtl) next() (time.Time, bool) {
 		return time.Time{}, false
 	}
 	if text := hoverTooltipText(t.hover); text != "" {
-		return t.since.Add(tooltipDelay), true
+		return t.since.Add(t.dwell()), true
 	}
 	return time.Time{}, false
 }
@@ -107,7 +147,7 @@ func (t *tooltipCtl) update(router *widget.Router, now time.Time, opener func(wi
 		t.open.Dismiss()
 		t.open, t.painter = nil, nil
 	}
-	if tooltipShouldOpen(t.open != nil, h, text, t.since, now) {
+	if tooltipShouldOpen(t.open != nil, h, text, t.since, now, t.dwell()) {
 		if p, pc := opener(h, text); p != nil {
 			t.open, t.painter = p, pc
 		}
@@ -134,34 +174,44 @@ func cursorFor(hover widget.Widget) string {
 	return widget.CursorNameOf(hover)
 }
 
-// openTooltip maps a tooltip popup at the pointer. The popup surface
-// scales with the host window: frac120 is the window's current
+// openTooltip maps a tooltip popup at the pointer, parented like a
+// popover (a window's xdg surface, a panel's layer surface). The popup
+// surface scales with the host window: frac120 is the window's current
 // 120-based device scale. Frames are painted by the application loop
 // through the returned Painter — the enter fade, the rest state, and
 // the exit fade all repaint through the same tween machinery menus
 // use, without a second wayland dispatcher. Tooltips are ungrabbed
-// (NoGrab), so the fades never hold input hostage.
-func openTooltip(sess *wlsession.Session, host Host, cfg *Config, frac120 uint32, pointerX, pointerY int, text string) (*popup.Popup, *popup.Painter) {
-	ts, ok := host.(tooltipSurfacer)
-	if !ok || cfg.TooltipFace == nil {
+// (NoGrab), so the fades never hold input hostage. A hovered widget
+// with markup (SetTooltipMarkup) renders through a RichLabel.
+func openTooltip(sess *wlsession.Session, host Host, face *render.Typeface, opts TooltipOptions, frac120 uint32, pointerX, pointerY int, hover widget.Widget, text string) (*popup.Popup, *popup.Painter) {
+	xdgParent, layerParent, ok := popupParentOf(host)
+	if !ok || face == nil {
 		debug.Log("input", "tooltip unavailable: host %T or nil face", host)
 		return nil, nil
 	}
-	lbl := widget.NewLabel(cfg.TooltipFace, 12, text, widget.Current().Text)
+	var card widget.Widget = widget.NewLabel(face, 12, text, widget.Current().Text)
+	if m, ok := hover.(widget.TooltipMarkupper); ok {
+		if markup, rich := m.TooltipMarkup(); rich {
+			card = widget.NewRichLabel(face, 12, markup, widget.Current().Text)
+		}
+	}
 	box := widget.NewBox(widget.Row, 0, 8)
-	box.Append(lbl, false)
+	box.Append(card, false)
 	// The card styles as the `tooltip` element (css.md).
 	nameSurfaceElement(box, elemTooltip)
-	size := box.Measure(widget.Constraints{Max: widget.Size{W: 400, H: 200}})
+	maxW, maxH := opts.maxSize()
+	size := box.Measure(widget.Constraints{Max: widget.Size{W: maxW, H: maxH}})
 	// The shadow gutter rides on the surface (see OpenPopover): the
 	// tooltip's plate is inset by it and the pointer offset stays on
 	// the plate.
 	gutter := widget.Current().ShadowGutter()
+	dx, dy := opts.offset()
 	tp, err := popup.New(sess, popup.Config{
-		Parent: ts.TooltipSurface(),
-		X:      pointerX + tooltipOffsetX - gutter,
-		Y:      pointerY + tooltipOffsetY - gutter,
-		Width:  size.W + 2*gutter, Height: size.H + 2*gutter,
+		Parent:      xdgParent,
+		LayerParent: layerParent,
+		X:           pointerX + dx - gutter,
+		Y:           pointerY + dy - gutter,
+		Width:       size.W + 2*gutter, Height: size.H + 2*gutter,
 		Gutter: gutter,
 		NoGrab: true,
 		Kind:   surfx.KindTooltip,

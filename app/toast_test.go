@@ -1,11 +1,13 @@
 package app
 
 import (
+	"errors"
 	"testing"
 	"time"
 
 	"golang.org/x/image/font/gofont/goregular"
 
+	"github.com/stubbedev/gelm/internal/wlsession"
 	"github.com/stubbedev/gelm/render"
 	"github.com/stubbedev/gelm/widget"
 )
@@ -171,10 +173,45 @@ func TestToastLayerRemoveUnwraps(t *testing.T) {
 
 func TestShowToastWithoutAWindowIsNil(t *testing.T) {
 	a := &Application{}
-	if got := a.ShowToast("hi", time.Second, nil); got != nil {
-		t.Errorf("ShowToast without windows = %v, want nil", got)
+	if got, err := a.ShowToast("hi", time.Second, nil); got != nil || !errors.Is(err, ErrNoToastWindow) {
+		t.Errorf("ShowToast without windows = %v, %v; want nil, ErrNoToastWindow", got, err)
 	}
-	if got := a.ShowToast("hi", time.Second, &ToastConfig{}); got != nil {
-		t.Errorf("ShowToast with a default config = %v, want nil", got)
+	if got, err := a.ShowToast("hi", time.Second, &ToastConfig{}); got != nil || err == nil {
+		t.Errorf("ShowToast with a default config = %v, %v", got, err)
 	}
+}
+
+// A closing window hands its live toasts to the next toast window, and
+// SetToastHost picks that window for configs naming none.
+func TestToastsMoveOffAClosingWindow(t *testing.T) {
+	face := testFace(t)
+	h1, h2 := &fakeHost{w: 400, h: 300}, &fakeHost{w: 400, h: 300}
+	root1, root2 := &spyRoot{}, &spyRoot{}
+	w1 := &hostWindow{host: h1, router: &widget.Router{Root: root1}}
+	w2 := &hostWindow{host: h2, router: &widget.Router{Root: root2}}
+	a := &Application{sess: &wlsession.Session{}, windows: []*hostWindow{w1, w2}}
+	a.SetToastHost(h1)
+	toast, err := a.ShowToast("saved", time.Minute, &ToastConfig{Face: face, Position: ToastTop})
+	if err != nil || w1.router.Root == widget.Widget(root1) {
+		t.Fatalf("toast not on the toast host: %v", err)
+	}
+
+	m, ok := a.toasts.takeHost(h1)
+	if !ok || w1.router.Root != widget.Widget(root1) || toast.Closed() {
+		t.Fatalf("take: ok %v, root restored %v, closed %v", ok, w1.router.Root == widget.Widget(root1), toast.Closed())
+	}
+	a.windows = []*hostWindow{w2}
+	a.rehostToasts([]movedToasts{m})
+	l, isLayer := w2.router.Root.(*toastLayer)
+	if !isLayer || len(l.slots) != 1 || l.slots[0] != toast || l.pos != ToastTop {
+		t.Fatalf("toast did not move to the remaining window: %T", w2.router.Root)
+	}
+	toast.Close()
+	toast.OnDismissed()
+	if w2.router.Root != widget.Widget(root2) {
+		t.Error("dismissing the moved toast left its layer on the new window")
+	}
+
+	a.windows = nil
+	a.rehostToasts([]movedToasts{{toasts: []*widget.Toast{widget.NewToast(face, "x", time.Minute)}}})
 }

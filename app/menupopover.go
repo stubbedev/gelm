@@ -11,10 +11,16 @@ import (
 type MenuPopoverConfig struct {
 	// Anchor is the widget the root menu opens beside.
 	Anchor widget.Boundser
-	// Gravity picks the root menu's side; submenus open to the right
-	// of their row (the compositor flips them left when there is no
-	// room).
+	// Gravity picks the root menu's side.
 	Gravity Gravity
+	// SubmenuSide picks the side of its row a submenu opens on: after
+	// the row in its reading direction by default (right; left in a
+	// right-to-left menu). The compositor flips it when there is no
+	// room.
+	SubmenuSide SubmenuSide
+	// AccelLabel formats every row's Accel for display at every level
+	// (widget.Menu.AccelLabel).
+	AccelLabel func(accel string) string
 	// Face and SizePx paint every level.
 	Face   render.Font
 	SizePx float64
@@ -24,6 +30,23 @@ type MenuPopoverConfig struct {
 	Serial uint32
 	// OnClosed runs once when the whole menu goes away.
 	OnClosed func()
+}
+
+// SubmenuSide is the side of its row a submenu opens on.
+type SubmenuSide uint8
+
+// Submenu sides, relative to the menu's reading direction.
+const (
+	SubmenuAfter SubmenuSide = iota
+	SubmenuBefore
+)
+
+// gravity resolves the side against the menu's direction.
+func (s SubmenuSide) gravity(dir widget.Direction) Gravity {
+	if (s == SubmenuAfter) == (dir == widget.DirectionRTL) {
+		return GravityLeft
+	}
+	return GravityRight
 }
 
 // MenuPopover is a menu tree presented as nested popovers: GTK's
@@ -59,7 +82,11 @@ func (a *Application) OpenMenuPopover(host Host, cfg MenuPopoverConfig) (*MenuPo
 		if parent == nil {
 			pc.Gravity, pc.Serial = cfg.Gravity, cfg.Serial
 		} else {
-			pc.Gravity = GravityRight
+			dir := widget.DirectionAuto
+			if m, ok := content.(*widget.Menu); ok {
+				dir = m.Direction()
+			}
+			pc.Gravity = cfg.SubmenuSide.gravity(dir)
 		}
 		return a.OpenPopover(host, pc)
 	})
@@ -88,13 +115,12 @@ func openMenuPopover(cfg MenuPopoverConfig, open menuOpener) (*MenuPopover, erro
 	return m, nil
 }
 
-// newLevel builds the menu for one level; depth is its index in the
-// chain.
-func (m *MenuPopover) newLevel(depth int, items []widget.MenuItem) *menuLevel {
+// rows wraps a level's items: a leaf closes the whole chain, then
+// acts.
+func (m *MenuPopover) rows(items []widget.MenuItem) []widget.MenuItem {
 	rows := make([]widget.MenuItem, len(items))
 	for i, it := range items {
 		if action := it.OnClick; action != nil && len(it.Items) == 0 {
-			// A leaf closes the whole chain, then acts.
 			it.OnClick = func() {
 				m.Dismiss()
 				action()
@@ -102,7 +128,14 @@ func (m *MenuPopover) newLevel(depth int, items []widget.MenuItem) *menuLevel {
 		}
 		rows[i] = it
 	}
-	lvl := &menuLevel{menu: widget.NewMenu(m.cfg.Face, m.cfg.SizePx, rows...), openRow: -1}
+	return rows
+}
+
+// newLevel builds the menu for one level; depth is its index in the
+// chain.
+func (m *MenuPopover) newLevel(depth int, items []widget.MenuItem) *menuLevel {
+	lvl := &menuLevel{menu: widget.NewMenu(m.cfg.Face, m.cfg.SizePx, m.rows(items)...), openRow: -1}
+	lvl.menu.AccelLabel = m.cfg.AccelLabel
 	lvl.menu.OnDismiss = func() {
 		if lvl.pop != nil {
 			lvl.pop.Dismiss()
@@ -164,19 +197,29 @@ func (m *MenuPopover) closeBelow(depth int) {
 	m.levels[depth].openRow = -1
 }
 
-// SetItems replaces the tree while it is open, closing any open
-// submenu: the shape a live model update takes (a tray application
-// re-publishing its menu).
+// SetItems updates the tree while it is open, in place - the shape a
+// live model update takes (a tray application re-publishing its
+// menu): every open level takes its new rows, and an open submenu
+// stays open while its row still leads to one; where the path broke,
+// the levels below close.
 func (m *MenuPopover) SetItems(items ...widget.MenuItem) {
 	if m.Closed() {
 		return
 	}
-	m.closeBelow(0)
-	root := m.newLevel(0, items)
-	root.pop = m.levels[0].pop
-	m.levels[0] = root
-	m.frame.Clear()
-	m.frame.Append(root.menu, true)
+	m.cfg.Items = items
+	level := items
+	for depth, lvl := range m.levels {
+		lvl.menu.SetItems(m.rows(level)...)
+		if lvl.openRow < 0 || depth+1 >= len(m.levels) {
+			return
+		}
+		r := lvl.openRow
+		if r >= len(level) || len(level[r].Items) == 0 || level[r].Disabled {
+			m.closeBelow(depth)
+			return
+		}
+		level = level[r].Items
+	}
 }
 
 // Depth is the number of open levels: 1 with no submenu open, 0 once
@@ -202,8 +245,7 @@ func (m *MenuPopover) Dismiss() {
 // Closed reports whether the menu has gone away.
 func (m *MenuPopover) Closed() bool { return len(m.levels) == 0 || m.levels[0].pop.Closed() }
 
-// menuFrame holds the root menu so a live update can swap it, and
-// hands it the popover's keys (arrows, Enter, Right into a submenu):
+// menuFrame holds the root menu and hands it the popover's keys (arrows, Enter, Right into a submenu):
 // the popover forwards key actions to its content only.
 type menuFrame struct {
 	*widget.Box

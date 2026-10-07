@@ -1,6 +1,7 @@
 package app
 
 import (
+	"errors"
 	"slices"
 	"sync"
 	"time"
@@ -53,35 +54,57 @@ type ToastConfig struct {
 	Face *render.Typeface
 }
 
+// Toast errors: ShowToast had nowhere to show the toast.
+var (
+	ErrNoToastWindow = errors.New("app: toast dropped: no window to show it on")
+	ErrNoToastFace   = errors.New("app: toast dropped: no text face available")
+)
+
 // ShowToast shows a transient feedback card over a window: bottom-
 // centered by default (ToastConfig moves it), auto-dismissed after
 // timeout, hover-pausable, optionally actionable through the returned
 // toast (widget.Toast.SetAction). Toasts stack on the host window up
 // to the cap, the oldest dropping first; when the last one goes, the
-// window's tree is back to exactly what it was. A nil config uses the
-// defaults. Without a window to host it, ShowToast returns nil.
-func (a *Application) ShowToast(text string, timeout time.Duration, cfg *ToastConfig) *widget.Toast {
+// window's tree is back to exactly what it was. A host window that
+// closes hands its live toasts to the window toasts go to next, so a
+// toast outlives the dialog it was raised from. A nil config uses the
+// defaults. With no window or no font to show it, the toast is
+// dropped and the error says why.
+func (a *Application) ShowToast(text string, timeout time.Duration, cfg *ToastConfig) (*widget.Toast, error) {
 	if cfg == nil {
 		cfg = &ToastConfig{}
 	}
 	hw := a.windowForToast(cfg.Host)
 	if hw == nil {
-		debug.Log("input", "toast dropped: no window to show it on")
-		return nil
+		return nil, ErrNoToastWindow
 	}
 	face := a.resolveFace(cfg.Face)
 	if face == nil {
-		debug.Log("input", "toast dropped: no text face available")
-		return nil
+		return nil, ErrNoToastFace
 	}
-	margin := cfg.Margin
-	if margin <= 0 {
-		margin = toastMargin
-	}
-	maxStack := cfg.MaxStack
-	if maxStack <= 0 {
-		maxStack = toastMaxStack
-	}
+	t := widget.NewToast(face, text, timeout)
+	a.hostToast(hw, t, toastPlacement{
+		pos:    cfg.Position,
+		margin: orDefault(max(cfg.Margin, 0), toastMargin),
+		max:    orDefault(max(cfg.MaxStack, 0), toastMaxStack),
+	})
+	return t, nil
+}
+
+// SetToastHost names the window toasts go to when their config names
+// none (nil: the focused window, then the first) - a main window that
+// collects every dialog's feedback.
+func (a *Application) SetToastHost(h Host) { a.toastHost = h }
+
+// toastPlacement is a stack's geometry.
+type toastPlacement struct {
+	pos         ToastPosition
+	margin, max int
+}
+
+// hostToast stacks t on hw's toast layer, wrapping the window's tree
+// with the layer on the first toast.
+func (a *Application) hostToast(hw *hostWindow, t *widget.Toast, pl toastPlacement) {
 	layer := a.toasts.layerFor(hw.host, func() *toastLayer {
 		l := &toastLayer{hw: hw, root: hw.router.Root}
 		// The first toast wraps the window's tree; the last removal
@@ -90,13 +113,31 @@ func (a *Application) ShowToast(text string, timeout time.Duration, cfg *ToastCo
 		hw.dirty = true
 		return l
 	})
-	layer.pos = cfg.Position
-	layer.margin = margin
-	layer.max = maxStack
-	t := widget.NewToast(face, text, timeout)
+	layer.pos, layer.margin, layer.max = pl.pos, pl.margin, pl.max
 	t.OnDismissed = func() { layer.remove(t) }
 	layer.add(t)
-	return t
+}
+
+// rehostToasts moves toasts a closed window carried onto the window
+// toasts go to now; with none left they stop.
+func (a *Application) rehostToasts(moved []movedToasts) {
+	for _, m := range moved {
+		hw := a.windowForToast(nil)
+		for _, t := range m.toasts {
+			if hw == nil {
+				t.Close()
+				continue
+			}
+			a.hostToast(hw, t, m.placement)
+		}
+	}
+}
+
+// movedToasts are one closed window's live toasts and their stack's
+// geometry.
+type movedToasts struct {
+	toasts    []*widget.Toast
+	placement toastPlacement
 }
 
 // resolveFace resolves the text face for app-provided widget text:
@@ -120,20 +161,32 @@ func (a *Application) resolveFace(asked *render.Typeface) *render.Typeface {
 }
 
 // windowForToast resolves the hosting window: the one asked for, else
-// the focused window, else the first.
+// the application's toast host while it is open, else the focused
+// window, else the first.
 func (a *Application) windowForToast(h Host) *hostWindow {
 	if h != nil {
-		for _, w := range a.windows {
-			if w.host == h {
-				return w
-			}
+		return a.hostWindowOf(h)
+	}
+	if a.toastHost != nil {
+		if hw := a.hostWindowOf(a.toastHost); hw != nil && !a.toastHost.Closed() {
+			return hw
 		}
-		return nil
 	}
 	if len(a.windows) == 0 {
 		return nil
 	}
 	return a.focused()
+}
+
+// hostWindowOf is the loop state of an open host, nil when it is not
+// one of the application's windows.
+func (a *Application) hostWindowOf(h Host) *hostWindow {
+	for _, w := range a.windows {
+		if w.host == h {
+			return w
+		}
+	}
+	return nil
 }
 
 // toastRegistry tracks each host's toast layer.
@@ -168,6 +221,22 @@ func (r *toastRegistry) closeHost(h Host) {
 	if l != nil {
 		l.close()
 	}
+}
+
+// takeHost detaches a closing window's toast layer without stopping
+// its toasts, for rehosting: the window gets its bare tree back.
+func (r *toastRegistry) takeHost(h Host) (movedToasts, bool) {
+	r.mu.Lock()
+	l := r.open[h]
+	delete(r.open, h)
+	r.mu.Unlock()
+	if l == nil || len(l.slots) == 0 {
+		return movedToasts{}, false
+	}
+	m := movedToasts{toasts: l.slots, placement: toastPlacement{pos: l.pos, margin: l.margin, max: l.max}}
+	l.slots = nil
+	l.close()
+	return m, true
 }
 
 // toastLayer hosts one window's toast stack: the wrapped root keeps

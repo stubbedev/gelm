@@ -76,7 +76,7 @@ func run() error {
 
 	broker = app.NewStream[announceMsg](application)
 	broker.Subscribe(func(m announceMsg) {
-		application.ShowToast(m.text, 3*time.Second, nil)
+		_, _ = application.ShowToast(m.text, 3*time.Second, nil)
 	})
 
 	// The shared state: one counter, every window's label subscribes, so

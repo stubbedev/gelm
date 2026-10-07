@@ -34,7 +34,8 @@ const (
 // PopoverConfig declares a popover anchored to a widget.
 type PopoverConfig struct {
 	// Anchor is the widget to open beside; its Bounds must be current
-	// (any arranged widget qualifies).
+	// (any arranged widget qualifies). AnchorAt and AnchorRect anchor
+	// to a point or a rect instead - a context menu at the pointer.
 	Anchor widget.Boundser
 	// Gravity picks the side; zero opens below the anchor.
 	Gravity Gravity
@@ -56,12 +57,26 @@ type PopoverConfig struct {
 	// the popover closes with its parent. A parent holds one child at a
 	// time: opening another closes the one before.
 	Parent *Popover
-	// MaxHeight caps the content's height when measured, in place of
-	// the default ceiling (a tall dropdown clamping to the monitor less
-	// a margin, the way a GTK popover stays on the output). Zero keeps
-	// the default.
-	MaxHeight int
+	// MaxWidth and MaxHeight cap the content when measured, in place
+	// of the default ceilings (the host's width; 600px tall) - a tall
+	// dropdown clamping to the monitor less a margin, the way a GTK
+	// popover stays on the output; a wide one wrapping its text. Zero
+	// keeps the default.
+	MaxWidth, MaxHeight int
 }
+
+// AnchorAt is an anchor at a point in the host's coordinates - a
+// context menu at the pointer, a popover over a canvas position.
+func AnchorAt(x, y int) widget.Boundser { return AnchorRect(render.Rect{X: x, Y: y, W: 1, H: 1}) }
+
+// AnchorRect is an anchor on a rect in the host's coordinates - a
+// text range, a cell of a custom-drawn grid.
+func AnchorRect(r render.Rect) widget.Boundser { return rectAnchor(r) }
+
+// rectAnchor is a fixed rect standing in for an anchor widget.
+type rectAnchor render.Rect
+
+func (r rectAnchor) Bounds() render.Rect { return render.Rect(r) }
 
 // Popover is a widget-anchored transient popup. It closes on
 // click-away (the popup grab), Esc, or Dismiss; OnClosed fires exactly
@@ -217,8 +232,9 @@ func (r *popoverRegistry) take(h Host) *Popover {
 type popoverKeyRoot struct {
 	onDismiss func()
 	content   widget.Widget
-	// maxH caps the content's height at (re)fit; the open's ceiling.
-	maxH int
+	// maxW and maxH cap the content at (re)fit, the open's ceilings
+	// (popoverCeiling; zero is the default).
+	maxW, maxH int
 	// fireAccel fires the application's accelerators for one raw key,
 	// reporting whether one fired.
 	fireAccel func(sym xkb.Keysym, mods wlsession.Mods) bool
@@ -298,11 +314,10 @@ func (a *Application) OpenPopover(host Host, cfg PopoverConfig) (*Popover, error
 	}
 
 	anchor := cfg.Anchor.Bounds()
-	bw, _ := host.Size()
 	// The popover's content styles as the `popover` element (css.md):
 	// whatever widget tree the app hands over IS the card.
 	nameSurfaceElement(cfg.Content, elemPopover)
-	size := cfg.Content.Measure(widget.Constraints{Max: widget.Size{W: bw, H: cfg.maxHeight()}})
+	size := cfg.Content.Measure(widget.Constraints{Max: popoverCeiling(host, cfg.MaxWidth, cfg.MaxHeight)})
 	// The positioner anchors to the anchor widget's rect on the gravity
 	// side and the compositor flips or slides it against the output (a
 	// bar is never tall enough to judge room by). The shadow gutter rides
@@ -317,7 +332,8 @@ func (a *Application) OpenPopover(host Host, cfg PopoverConfig) (*Popover, error
 	keyRoot := &popoverKeyRoot{
 		onDismiss: p.Dismiss,
 		content:   cfg.Content,
-		maxH:      cfg.maxHeight(),
+		maxW:      cfg.MaxWidth,
+		maxH:      cfg.MaxHeight,
 		fireAccel: func(sym xkb.Keysym, mods wlsession.Mods) bool {
 			// App-wide bindings only: the popup holds the keyboard, so
 			// there is no focused widget whose bindings could own the
@@ -350,12 +366,16 @@ func (a *Application) OpenPopover(host Host, cfg PopoverConfig) (*Popover, error
 	}
 
 	// A bar-style layer declines the keyboard; the popover's grab needs
-	// it (Esc, menus, a form's Entry), so the layer takes keys on demand
-	// while the popover is open, as the Rust bar does around a dropdown.
-	// A nested popover rides on its root's.
+	// it (Esc, menus, a form's Entry), so the layer holds the keyboard
+	// exclusively while the popover is open. Exclusive, not on-demand:
+	// on a v4 layer shell on-demand focuses only on a click into the
+	// layer, which a popover opened from a key or a hover never gets
+	// (before the shell was bound at v4, the on-demand value was read
+	// as the v1 boolean - exclusive in effect). A nested popover rides
+	// on its root's.
 	restoreKeys := func() {}
 	if km, ok := host.(keyboardModer); ok && parent == nil && km.KeyboardMode() == KeyboardNone {
-		if err := km.SetKeyboardMode(KeyboardOnDemand); err == nil {
+		if err := km.SetKeyboardMode(KeyboardExclusive); err == nil {
 			restoreKeys = func() { _ = km.SetKeyboardMode(KeyboardNone) }
 		}
 	}
@@ -420,10 +440,8 @@ func (a *Application) OpenPopover(host Host, cfg PopoverConfig) (*Popover, error
 // other one-shot surfaces match the window they open over; 120 (1x)
 // before the first rescale or for unknown hosts.
 func (a *Application) fracFor(host Host) uint32 {
-	for _, w := range a.windows {
-		if w.host == host {
-			return w.frac120
-		}
+	if w := a.hostWindowOf(host); w != nil {
+		return w.frac120
 	}
 	return scale.Denom
 }
@@ -515,13 +533,12 @@ func (a *Application) drivePopovers(all bool) error {
 
 // fitContent grows (or shrinks) an open popover to its content's
 // natural size when that changed - a tray menu re-publishing more rows
-// - measured as at open, against the host's width and a 600px cap.
+// - measured as at open, against the same ceiling (popoverCeiling).
 func (op *openPopover) fitContent() {
 	if op.pop.Dismissed() {
 		return
 	}
-	bw, _ := op.host.Size()
-	size := op.keyRoot.content.Measure(widget.Constraints{Max: widget.Size{W: bw, H: op.keyRoot.ceiling()}})
+	size := op.keyRoot.content.Measure(widget.Constraints{Max: popoverCeiling(op.host, op.keyRoot.maxW, op.keyRoot.maxH)})
 	g := op.pop.Gutter()
 	w, h := size.W+2*g, size.H+2*g
 	if rw, rh := op.pop.RequestedSize(); rw != w || rh != h {
@@ -577,20 +594,18 @@ type keyboardModer interface {
 // for a config that names no ceiling of its own.
 const popoverMaxH = 600
 
-// maxHeight is the config's ceiling, the default when unset.
-func (c *PopoverConfig) maxHeight() int {
-	if c.MaxHeight > 0 {
-		return c.MaxHeight
+// popoverCeiling is the content's measure ceiling: maxW and maxH, or
+// the host's width and popoverMaxH where unset - the one rule the open
+// and every refit share.
+func popoverCeiling(host Host, maxW, maxH int) widget.Size {
+	bw, _ := host.Size()
+	if maxW <= 0 {
+		maxW = bw
 	}
-	return popoverMaxH
-}
-
-// ceiling is the key root's measure ceiling; zero keeps the default.
-func (k *popoverKeyRoot) ceiling() int {
-	if k.maxH > 0 {
-		return k.maxH
+	if maxH <= 0 {
+		maxH = popoverMaxH
 	}
-	return popoverMaxH
+	return widget.Size{W: maxW, H: maxH}
 }
 
 // popupParentOf is the surface a popup on host hangs from: a layer's

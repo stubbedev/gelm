@@ -145,7 +145,7 @@ func run() error {
 		return fmt.Errorf("gelm-bar: set buffer scale: %w", err)
 	}
 
-	ls, err := layersurface.New(sess.LayerShell(), surf, out.WL, layersurface.Config{
+	ls, err := layersurface.New(sess, surf, out.WL, layersurface.Config{
 		Layer:         layersurface.LayerTop,
 		Anchor:        layersurface.AnchorTop | layersurface.AnchorLeft | layersurface.AnchorRight,
 		Height:        barHeight,
