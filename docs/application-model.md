@@ -184,6 +184,29 @@ the desktop's other citizens, bounded and written atomically; the
 `text/uri-list` parsing the clipboard and drag-and-drop will need
 lives next to it (`recentfiles.ParseURIList`).
 
+## Window chrome
+
+`widget.HeaderBar` is the CSD title bar - title/subtitle, start/end
+packs, `WindowControls` (close/minimize/maximize buttons, shown when
+asked and hooked by the app), `widget.MenuBar` the in-window primary
+navigation opening the existing menu popovers, `widget.ActionBar` the
+bottom bar (#91). A press on the bar's background starts the
+compositor's `xdg_toplevel.move` grab (the `WindowMover` contract any
+widget can implement), a double press maximizes, and
+`app.AttachHeader(win, bar)` wires controls and double-press to the
+window in one call - `Window.SetTitle`, `Minimize`, and
+`ToggleMaximize` are the runtime setters the controls fire into.
+
+**Decoration policy.** xdg-decoration stays as it is: a compositor
+offering server-side decoration gets asked for it. A HeaderBar in the
+tree is the app's explicit opt into client-side chrome - gelm windows
+ship undecorated otherwise, the GTK4 default inverted. The two can
+coexist (a compositor frame around an app-drawn header); the app is
+always right about what it draws itself, the compositor about what it
+draws around it. Minimize and maximize buttons are hints a compositor
+is free to ignore - a shown-and-ignored button is honest degradation,
+a hidden one is undiscoverable.
+
 ## Concept mapping
 
 | relm4 / GTK | gelm | note |
@@ -197,6 +220,7 @@ lives next to it (`recentfiles.ParseURIList`).
 | `relm4::Factory` | `widget.List[W]` + `ListModel[W]` | model-driven, virtualized rows with `OnSelect`/`OnActivate`; `Changed()` re-queries (docs/threading.md) |
 | `gtk::Application::quit` | `Application.Quit` | authoritative, bypasses vetoes |
 | GApplication single-instance / `command-line` / `open` | `app.ClaimInstance` + `InstanceConfig` hooks | socket-keyed guard; secondaries forward and exit 0, never touching the session (see above) |
+| gtk4 CSD: `HeaderBar`/`WindowControls`/`ActionBar`/`PopoverMenuBar` | `widget.HeaderBar`/`MenuBar`/`ActionBar` + `app.AttachHeader`/`AttachMenuBar` | move grab + double-click maximize through the WindowMover contract; decoration policy above |
 | relm4 `binding` module (`StringBinding`, `ConnectBindingExt`) | `widget.Binding[T]` + the widget `Bind*` connectors | loop-owned observable with equal-suppressed Set and deferred write-while-notifying; two-way wiring is echo-free by construction |
 | relm4/macros `open_dialog` / `save_dialog` / `open_button`, GTK `FileDialog` | `app.OpenFileDialog` family over `widget.FileChooser` | pure-Go picker (see File dialogs above), recents in XDG recently-used.xbel, overwrite confirmation, validating ok button |
 | GTK `UriLauncher`/`FileLauncher`, `g_app_info_launch_default_for_uri` | `app.OpenURL` / `app.OpenPath`, `OpenURLFromLink` for `OnLinkClick` | xdg-desktop-portal OpenURI with an activation token from the session (focus-correct launch), xdg-open fallback |

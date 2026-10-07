@@ -17,6 +17,9 @@ import (
 type resizer interface {
 	// Resize starts an interactive compositor-driven resize.
 	Resize(seat *wl.Seat, serial uint32, edges uint32) error
+	// Move starts an interactive compositor-driven move - the CSD
+	// header grab (#91).
+	Move(seat *wl.Seat, serial uint32) error
 }
 
 // sizeLimiter exposes a host's min/max size constraints; layer
