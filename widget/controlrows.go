@@ -137,7 +137,7 @@ func NewButtonRow(face render.Font, sizePx float64, title string, onClick func()
 type ExpanderRow struct {
 	*ActionRow
 	content *Box
-	arrow   *RichLabel
+	arrow   *Symbol
 }
 
 // NewExpanderRow returns a collapsed expander; Add appends into its
@@ -146,7 +146,7 @@ func NewExpanderRow(face render.Font, sizePx float64, title, subtitle string) *E
 	r := &ExpanderRow{ActionRow: NewActionRow(face, sizePx, title, subtitle)}
 	r.content = NewBox(Column, 0, 0)
 	r.SetDisclosure(r.content)
-	r.arrow = NewRichLabel(face, sizePx, "▸", Current().TextMuted)
+	r.arrow = NewSymbol(SymbolChevronRight, int(sizePx))
 	r.PackEnd(r.arrow)
 	r.SetActivatable(true)
 	r.OnActivate = r.Expand
@@ -164,9 +164,9 @@ func (r *ExpanderRow) Expand() {
 	on := !r.Revealed()
 	r.SetRevealed(on)
 	if on {
-		r.arrow.SetMarkup("▾")
+		r.arrow.SetKind(SymbolChevronDown)
 	} else {
-		r.arrow.SetMarkup("▸")
+		r.arrow.SetKind(SymbolChevronRight)
 	}
 }
 

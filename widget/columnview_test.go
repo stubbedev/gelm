@@ -217,9 +217,35 @@ func TestGoldenColumnView(t *testing.T) {
 	tv := NewColumnView(face, 14, tree, []TableColumn[FlatRow[string]]{{
 		Title:  "Name",
 		Expand: true,
-		Cell: TreeCell(tree, face, 14, func(s string) Widget {
+		Cell: TreeCell(tree, 14, func(s string) Widget {
 			return NewLabel(face, 14, s, th.Text)
 		}),
 	}})
-	NewGolden(t, tv, "columnview-tree", goldenTheme(th), goldenFrame(220, 120))
+	NewGolden(t, tv, "columnview-tree", goldenTheme(th), goldenFrame(220, 150))
+}
+
+// TestColumnViewHeaderAlignsWithRows pins the column contract: every
+// header cell and the matching cell of a row share an x and a width,
+// fixed and expanding columns alike - the sized cell both use.
+func TestColumnViewHeaderAlignsWithRows(t *testing.T) {
+	face := viewFace(t)
+	v := NewColumnView(face, 14, SliceModel[tableRow]{{"alpha", 1}, {"bravo", 2}}, tableCols(face))
+	v.Measure(Constraints{Max: Size{W: 300, H: 200}})
+	v.Arrange(render.Rect{W: 300, H: 200})
+	// List arranges its visible rows as it paints them.
+	v.Paint(render.New(make([]byte, render.Stride(300)*200), render.Stride(300), 300, 200))
+	row, ok := v.rows.Row(0).(*Box)
+	if !ok {
+		t.Fatalf("row 0 is %T", v.rows.Row(0))
+	}
+	heads, cells := v.header.Children(), row.Children()
+	if len(heads) != len(cells) {
+		t.Fatalf("%d header cells, %d row cells", len(heads), len(cells))
+	}
+	for i := range heads {
+		h, c := heads[i].(Boundser).Bounds(), cells[i].(Boundser).Bounds()
+		if h.X != c.X || h.W != c.W {
+			t.Errorf("column %d: header %+v, row %+v", i, h, c)
+		}
+	}
 }

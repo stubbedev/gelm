@@ -32,7 +32,7 @@ type FlatRow[T any] struct {
 //	tree := widget.NewFlatTree(roots)
 //	view := widget.NewColumnView(face, 14, tree, []widget.TableColumn[widget.FlatRow[item]]{{
 //		Title: "Name", Expand: true,
-//		Cell: widget.TreeCell(tree, face, 14, func(it item) Widget {
+//		Cell: widget.TreeCell(tree, 14, func(it item) Widget {
 //			return widget.NewLabel(face, 14, it.Name, widget.Current().Text)
 //		}),
 //	}})
@@ -150,17 +150,16 @@ const (
 // instead), then the value's own cell. Activating the toggle calls
 // tree.Toggle(i) and then refresh - the default refresh re-lists the
 // owning List; pass your own when the tree feeds something else.
-func TreeCell[T any](tree *FlatTree[T], face render.Font, sizePx float64, cell func(T) Widget) func(FlatRow[T]) Widget {
-	th := Current()
+func TreeCell[T any](tree *FlatTree[T], sizePx float64, cell func(T) Widget) func(FlatRow[T]) Widget {
 	return func(row FlatRow[T]) Widget {
 		out := NewBox(Row, 2, 0)
 		out.Append(&indentGuides{depth: row.Depth}, false)
 		if !row.Leaf {
-			arrow := "▸"
+			arrow := SymbolChevronRight
 			if row.Expanded {
-				arrow = "▾"
+				arrow = SymbolChevronDown
 			}
-			toggle := NewButton(NewLabel(face, sizePx-2, arrow, th.TextMuted), 4, 2)
+			toggle := NewButton(NewSymbol(arrow, int(sizePx)), 4, 2)
 			which := row.Index
 			toggle.OnClick = func() {
 				tree.Toggle(which)

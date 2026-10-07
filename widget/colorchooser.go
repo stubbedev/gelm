@@ -84,8 +84,7 @@ func (c *ColorChooser) SetPaletteSource(colors func() []render.Color, add func(r
 func (c *ColorChooser) SetEyedropper(start func()) {
 	c.eyedrop = start
 	if start != nil && c.pickFrom == nil {
-		th := Current()
-		c.pickFrom = NewButton(NewLabel(c.face, c.sizePx, "⌖", th.OnAccent), 6, 4)
+		c.pickFrom = NewButton(NewSymbol(SymbolCrosshair, int(c.sizePx)), 6, 4)
 		c.pickFrom.SetCursorName("crosshair")
 	}
 	c.InvalidateLayout()

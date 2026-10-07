@@ -15,6 +15,7 @@ import (
 // its surface too, so a bare row still reads.
 type ActionRow struct {
 	composite
+	packs
 	face   render.Font
 	sizePx float64
 
@@ -22,13 +23,11 @@ type ActionRow struct {
 	// revealed content; line is the row proper.
 	column   *Box
 	line     *Box
-	start    *Box
 	middle   *Box
-	end      *Box
 	title    *RichLabel
 	subtitle *RichLabel
 	reveal   *Revealer
-	chevron  *Icon
+	chevron  *Symbol
 
 	// OnActivate fires for an activatable row's whole-row click or
 	// Enter press - the list-activation contract.
@@ -53,8 +52,7 @@ func NewActionRow(face render.Font, sizePx float64, title, subtitle string) *Act
 	r.middle = NewBox(Column, 1, 0)
 	r.middle.Append(r.title, false)
 	r.middle.Append(r.subtitle, false)
-	r.start = NewBox(Row, 6, 0)
-	r.end = NewBox(Row, 6, 0)
+	r.initPacks(r, 6)
 	r.line = NewBox(Row, 10, 6)
 	r.line.Append(r.start, false)
 	r.line.Append(r.middle, true)
@@ -76,12 +74,6 @@ func (r *ActionRow) SetSubtitle(s string) { r.subtitle.SetMarkup(s) }
 
 // Title returns the current title.
 func (r *ActionRow) Title() string { return r.title.Text() }
-
-// PackStart adds w to the leading slot; PackEnd to the trailing slot.
-func (r *ActionRow) PackStart(w Widget) { r.start.Append(w, false); r.InvalidateLayout() }
-
-// PackEnd adds w to the trailing slot.
-func (r *ActionRow) PackEnd(w Widget) { r.end.Append(w, false); r.InvalidateLayout() }
 
 // SetActivatable makes the whole row click- and Enter-activatable,
 // with the pointer cursor and a disclosure chevron (ShowChevron
@@ -108,8 +100,8 @@ func (r *ActionRow) ShowChevron(on bool) {
 		return
 	}
 	if on {
-		r.chevron = NewThemeIcon("go-next", int(r.sizePx))
-		r.end.Append(r.chevron, false)
+		r.chevron = NewSymbol(SymbolChevronRight, int(r.sizePx))
+		r.PackEnd(r.chevron)
 	} else if i := r.endChildIndex(r.chevron); i >= 0 {
 		r.end.RemoveAt(i)
 		r.chevron = nil

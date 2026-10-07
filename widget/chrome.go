@@ -52,16 +52,16 @@ func DescendsFrom(w, ancestor Widget) bool {
 // title as `headerbar title` (docs/css.md).
 type HeaderBar struct {
 	composite
+	packs
 	face   render.Font
 	sizePx float64
 
-	row      *Box
-	start    *Box
-	center   *Box
-	end      *Box
-	title    *Label
-	sub      *Label
-	controls *WindowControls
+	row         *Box
+	center      *Box
+	controlSlot *Box
+	title       *Label
+	sub         *Label
+	controls    *WindowControls
 
 	// OnDoubleClick fires on a second press inside the grab interval -
 	// the app wires it to maximize/restore.
@@ -81,14 +81,15 @@ func NewHeaderBar(face render.Font, sizePx float64) *HeaderBar {
 	h.center = NewBox(Column, 1, 0)
 	h.center.Append(h.title, false)
 	h.center.Append(h.sub, false)
-	h.start = NewBox(Row, 6, 0)
-	h.end = NewBox(Row, 6, 0)
+	h.initPacks(h, 6)
+	h.controlSlot = NewBox(Row, 0, 0)
 	h.row = NewBox(Row, 8, 6)
 	h.row.Append(h.start, false)
 	h.row.Append(NewSpacer(0, 0), true)
 	h.row.AppendAligned(h.center, false, AlignCenter)
 	h.row.Append(NewSpacer(0, 0), true)
 	h.row.Append(h.end, false)
+	h.row.AppendAligned(h.controlSlot, false, AlignCenter)
 	h.initComposite(h, h.row)
 	h.fillWidth, h.minHeight = true, int(sizePx)+22
 	h.surface = surfaceFill
@@ -102,13 +103,6 @@ func (h *HeaderBar) SetTitle(t string) { h.title.SetText(t) }
 // SetSubtitle sets the subtitle; empty hides it.
 func (h *HeaderBar) SetSubtitle(s string) { h.sub.SetText(s) }
 
-// PackStart adds w to the leading pack, PackEnd to the trailing pack
-// (before the window controls).
-func (h *HeaderBar) PackStart(w Widget) { h.start.Append(w, false); h.InvalidateLayout() }
-
-// PackEnd adds w to the trailing pack, before the controls.
-func (h *HeaderBar) PackEnd(w Widget) { h.end.InsertAt(0, w, false); h.InvalidateLayout() }
-
 // Controls returns the window controls, wiring them is the app's job:
 //
 //	bar.Controls().ShowClose(true)
@@ -116,7 +110,7 @@ func (h *HeaderBar) PackEnd(w Widget) { h.end.InsertAt(0, w, false); h.Invalidat
 func (h *HeaderBar) Controls() *WindowControls {
 	if h.controls == nil {
 		h.controls = NewWindowControls(h.face, h.sizePx)
-		h.end.Append(h.controls, false)
+		h.controlSlot.Append(h.controls, false)
 	}
 	return h.controls
 }
@@ -185,18 +179,22 @@ func NewWindowControls(face render.Font, sizePx float64) *WindowControls {
 }
 
 // ShowClose shows the close button (a cross), wired to OnClose.
-func (c *WindowControls) ShowClose(on bool) { c.toggle(&c.closeBtn, "✕", &c.OnClose, on) }
+func (c *WindowControls) ShowClose(on bool) { c.toggle(&c.closeBtn, SymbolClose, &c.OnClose, on) }
 
 // ShowMinimize shows the minimize button (an underscore), wired to
 // OnMinimize.
-func (c *WindowControls) ShowMinimize(on bool) { c.toggle(&c.minBtn, "—", &c.OnMinimize, on) }
+func (c *WindowControls) ShowMinimize(on bool) {
+	c.toggle(&c.minBtn, SymbolMinimize, &c.OnMinimize, on)
+}
 
 // ShowMaximize shows the maximize button (a square), wired to
 // OnMaximize.
-func (c *WindowControls) ShowMaximize(on bool) { c.toggle(&c.maxBtn, "□", &c.OnMaximize, on) }
+func (c *WindowControls) ShowMaximize(on bool) {
+	c.toggle(&c.maxBtn, SymbolMaximize, &c.OnMaximize, on)
+}
 
 // toggle adds or removes one button.
-func (c *WindowControls) toggle(slot **Button, glyph string, hook *func(), on bool) {
+func (c *WindowControls) toggle(slot **Button, glyph SymbolKind, hook *func(), on bool) {
 	if on == (*slot != nil) {
 		return
 	}
@@ -208,8 +206,7 @@ func (c *WindowControls) toggle(slot **Button, glyph string, hook *func(), on bo
 		c.InvalidateLayout()
 		return
 	}
-	th := Current()
-	btn := NewButton(NewLabel(c.face, c.sizePx-2, glyph, th.Text), 6, 3)
+	btn := NewButton(NewSymbol(glyph, int(c.sizePx)), 6, 3)
 	btn.OnClick = func() {
 		if *hook != nil {
 			(*hook)()
@@ -234,16 +231,14 @@ func (c *WindowControls) rootChildIndex(w Widget) int {
 // the gtk ActionBar shape. PackStart/PackEnd as on HeaderBar.
 type ActionBar struct {
 	composite
-	start *Box
-	end   *Box
+	packs
 }
 
 // NewActionBar returns an empty bottom bar.
 func NewActionBar() *ActionBar {
 	a := &ActionBar{}
 	a.SetElement("actionbar")
-	a.start = NewBox(Row, 6, 0)
-	a.end = NewBox(Row, 6, 0)
+	a.initPacks(a, 6)
 	row := NewBox(Row, 8, 6)
 	row.Append(a.start, false)
 	row.Append(NewSpacer(0, 0), true)
@@ -253,9 +248,3 @@ func NewActionBar() *ActionBar {
 	a.surface = surfaceFill
 	return a
 }
-
-// PackStart adds w to the leading pack.
-func (a *ActionBar) PackStart(w Widget) { a.start.Append(w, false); a.InvalidateLayout() }
-
-// PackEnd adds w to the trailing pack.
-func (a *ActionBar) PackEnd(w Widget) { a.end.Append(w, false); a.InvalidateLayout() }
