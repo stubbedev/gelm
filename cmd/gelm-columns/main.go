@@ -164,7 +164,7 @@ func buildTree(tf *render.Typeface, theme *widget.Theme) widget.Widget {
 		{
 			Title:  "Name",
 			Expand: true,
-			Cell: widget.TreeCell(tree, tf, 13, func(r row) widget.Widget {
+			Cell: widget.TreeCell(tree, 13, func(r row) widget.Widget {
 				color := theme.Text
 				if r.Kind == "folder" {
 					color = theme.TextMuted

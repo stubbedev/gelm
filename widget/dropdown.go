@@ -1,6 +1,7 @@
 package widget
 
 import (
+	"math"
 	"strings"
 	"time"
 
@@ -462,8 +463,7 @@ func (d *Dropdown) Paint(cv *render.Canvas) {
 	av := d.faceArrow.style(&d.faceArrow)
 	chev := pickc(0, av, style.PropColor, col)
 	cx, cy := d.bounds.X+d.bounds.W-16, d.bounds.Y+d.bounds.H/2
-	cv.Line(cx-4, cy-2, cx, cy+2, 1, chev)
-	cv.Line(cx, cy+2, cx+4, cy-2, 1, chev)
+	strokeChevron(cv, cx, cy, 4, math.Pi/2, chev)
 
 	if d.open {
 		// The list hangs below the face, over whatever follows it: it

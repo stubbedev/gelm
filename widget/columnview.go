@@ -160,26 +160,21 @@ func (v *ColumnView[T]) buildHeader() {
 	v.header.Clear()
 	th := Current()
 	for i, col := range v.cols {
-		title := col.Title
+		title := NewBox(Row, 4, 0)
+		title.AppendAligned(NewLabel(v.face, v.sizePx-1, col.Title, th.TextMuted), false, AlignCenter)
 		if i == v.sortBy {
+			arrow := SymbolChevronDown
 			if v.sortUp {
-				title += " ▲"
-			} else {
-				title += " ▼"
+				arrow = SymbolChevronUp
 			}
+			title.AppendAligned(NewSymbol(arrow, int(v.sizePx)), false, AlignCenter)
 		}
-		label := NewLabel(v.face, v.sizePx-1, title, th.TextMuted)
-		btn := NewButton(label, 6, 2)
+		btn := NewButton(title, headerInset, 2)
 		if col.Sort != nil {
 			which := i
 			btn.OnClick = func() { v.cycleSort(which) }
 		}
-		cell := NewBox(Row, 4, 0)
-		if col.Width > 0 {
-			cell.Append(NewSpacer(col.Width, 0), false)
-		}
-		cell.Append(btn, false)
-		v.header.AppendAligned(cell, col.Expand, AlignStart)
+		v.header.AppendAligned(newSizedCell(btn, col.Width), col.Expand, AlignFill)
 	}
 }
 
@@ -284,18 +279,21 @@ func (v *ColumnView[T]) buildRow(i int) Widget {
 		if col.Cell != nil {
 			cell = col.Cell(val)
 		}
-		inner := NewBox(Row, 4, 0)
-		if col.Width > 0 {
-			inner.Append(NewSpacer(col.Width, 0), false)
-		}
-		inner.AppendAligned(cell, false, AlignStart)
-		row.AppendAligned(inner, col.Expand, AlignStart)
+		// The inset matches the header button's padding, so a cell's
+		// content starts under its column title.
+		inner := NewBox(Row, 0, 0)
+		inner.Append(NewSpacer(headerInset, 0), false)
+		inner.AppendAligned(cell, false, AlignCenter)
+		row.AppendAligned(newSizedCell(inner, col.Width), col.Expand, AlignFill)
 	}
 	if !v.dragRows {
 		return row
 	}
 	return &dragRow[T]{Box: row, view: v, at: i}
 }
+
+// headerInset is the header buttons' padding and the row cells' inset.
+const headerInset = 6
 
 // rowReorderMime is the internal drag mime for row moves.
 const rowReorderMime = "application/x-gelm-row"

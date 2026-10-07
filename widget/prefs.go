@@ -66,9 +66,7 @@ func (g *PreferencesGroup) Add(w Widget) {
 func (g *PreferencesGroup) Paint(cv *render.Canvas) {
 	th := Current()
 	g.paintSurface(cv, g.rows.Bounds(), th.Surface)
-	prev := cv.PushClip(g.rows.Bounds())
 	PaintChild(cv, g.root)
-	cv.PopClip(prev)
 	for i, row := range g.rows.Children() {
 		if child, ok := row.(Boundser); ok && i > 0 {
 			b := child.Bounds()

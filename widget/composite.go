@@ -19,6 +19,9 @@ type composite struct {
 	// fillWidth claims the full offered width (bars, rows, lists);
 	// off, the composite wants its root's natural size.
 	fillWidth bool
+	// fixedWidth, when positive, pins the measured width (table cells
+	// that must line up across rows); the root measures within it.
+	fixedWidth int
 	// minHeight floors the measured height (chrome bars keep their
 	// height when their content is short).
 	minHeight int
@@ -50,8 +53,15 @@ func (c *composite) Measure(con Constraints) Size {
 	if sz, ok := c.measureHit(con); ok {
 		return sz
 	}
-	sz := c.root.Measure(con)
-	if c.fillWidth {
+	inner := con
+	if c.fixedWidth > 0 {
+		inner.Max.W = min(inner.Max.W, c.fixedWidth)
+	}
+	sz := c.root.Measure(inner)
+	switch {
+	case c.fixedWidth > 0:
+		sz.W = c.fixedWidth
+	case c.fillWidth:
 		sz.W = con.Max.W
 	}
 	sz.H = max(sz.H, c.minHeight)
@@ -95,3 +105,44 @@ func (c *composite) HitTest(p Point) Widget {
 
 // styleChildren is the root (styleKids).
 func (c *composite) styleChildren() []Widget { return []Widget{c.root} }
+
+// sizedCell pins its child's width - the table cell every header and
+// row of a ColumnView shares, so columns line up by construction.
+type sizedCell struct{ composite }
+
+// newSizedCell wraps child at width (zero leaves the natural width).
+func newSizedCell(child Widget, width int) *sizedCell {
+	c := &sizedCell{}
+	c.initComposite(c, child)
+	c.fixedWidth = width
+	return c
+}
+
+// packs is the leading/trailing slot pair bars and rows share
+// (HeaderBar, ActionBar, ActionRow): packed widgets keep their natural
+// size, centered across the bar - a switch or button never stretches
+// to the row's height.
+type packs struct {
+	owner interface{ InvalidateLayout() }
+	start *Box
+	end   *Box
+}
+
+// initPacks builds the two slots, spaced by gap.
+func (p *packs) initPacks(owner interface{ InvalidateLayout() }, gap int) {
+	p.owner = owner
+	p.start = NewBox(Row, gap, 0)
+	p.end = NewBox(Row, gap, 0)
+}
+
+// PackStart adds w to the leading slot.
+func (p *packs) PackStart(w Widget) {
+	p.start.AppendAligned(w, false, AlignCenter)
+	p.owner.InvalidateLayout()
+}
+
+// PackEnd adds w to the trailing slot.
+func (p *packs) PackEnd(w Widget) {
+	p.end.AppendAligned(w, false, AlignCenter)
+	p.owner.InvalidateLayout()
+}

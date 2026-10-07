@@ -48,7 +48,7 @@ func NewNavigationView(face render.Font, sizePx float64, root *NavigationPage) *
 	th := Current()
 	v.stack = NewStack()
 	v.stack.SetTransition(StackSlideLeftRight, navigationDuration)
-	v.back = NewButton(NewLabel(face, sizePx-1, "‹", th.Text), 8, 4)
+	v.back = NewButton(NewSymbol(SymbolChevronLeft, int(sizePx)), 8, 4)
 	v.back.OnClick = func() { v.Pop() }
 	v.title = NewLabel(face, sizePx, "", th.Text)
 	v.bar = NewBox(Row, 6, 6)
