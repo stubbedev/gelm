@@ -149,7 +149,7 @@ func (m *Manager) Save() error {
 	doc := xbel{Version: "1.0", XMLNSBookmark: "http://www.freedesktop.org/standards/desktop-bookmarks"}
 	for _, e := range m.entries {
 		doc.Bookmarks = append(doc.Bookmarks, xbelBookmark{
-			Href:     pathToFileURI(e.Path),
+			Href:     PathToURI(e.Path),
 			Added:    e.When.Format(time.RFC3339),
 			Modified: e.When.Format(time.RFC3339),
 			Visited:  e.When.Format(time.RFC3339),
@@ -226,9 +226,13 @@ func fileURIToPath(uri string) (string, bool) {
 	return u.Path, true
 }
 
-// pathToFileURI encodes a local path as a file:// URI, the inverse of
-// fileURIToPath.
-func pathToFileURI(path string) string {
+// PathToURI encodes a local path as a file:// URI (absolute paths
+// only; anything else returns unchanged), the inverse of URIToPath's
+// scheme rule. Shared by the file dialogs and the launcher.
+func PathToURI(path string) string {
+	if !filepath.IsAbs(path) {
+		return path
+	}
 	u := url.URL{Scheme: "file", Path: path}
 	return u.String()
 }

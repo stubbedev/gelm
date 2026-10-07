@@ -199,6 +199,7 @@ lives next to it (`recentfiles.ParseURIList`).
 | GApplication single-instance / `command-line` / `open` | `app.ClaimInstance` + `InstanceConfig` hooks | socket-keyed guard; secondaries forward and exit 0, never touching the session (see above) |
 | relm4 `binding` module (`StringBinding`, `ConnectBindingExt`) | `widget.Binding[T]` + the widget `Bind*` connectors | loop-owned observable with equal-suppressed Set and deferred write-while-notifying; two-way wiring is echo-free by construction |
 | relm4/macros `open_dialog` / `save_dialog` / `open_button`, GTK `FileDialog` | `app.OpenFileDialog` family over `widget.FileChooser` | pure-Go picker (see File dialogs above), recents in XDG recently-used.xbel, overwrite confirmation, validating ok button |
+| GTK `UriLauncher`/`FileLauncher`, `g_app_info_launch_default_for_uri` | `app.OpenURL` / `app.OpenPath`, `OpenURLFromLink` for `OnLinkClick` | xdg-desktop-portal OpenURI with an activation token from the session (focus-correct launch), xdg-open fallback |
 | per-window `scale-factor` | per-window `Scale` plus live `preferred_scale` | fractional scaling lands with #14 |
 
 ## What is deliberately absent
