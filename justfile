@@ -187,8 +187,15 @@ test-env dir=test_dir:
     # forever. A shell that writes its own pid and then execs sway
     # records the process that owns the socket, whatever the wrapper's
     # fork/exec choice is.
+    # Inside the dev shell (CI runs `devenv shell -- just headless`)
+    # sway is already on PATH: a nested devenv shell there fails to
+    # start it, so the dev shell is only the fallback for a host shell.
+    boot="exec sway -c '$dir/sway.cfg'"
+    if ! command -v sway >/dev/null 2>&1; then
+        boot="exec devenv shell -- sway -c '$dir/sway.cfg'"
+    fi
     XDG_RUNTIME_DIR="$dir" WLR_BACKENDS=headless WLR_LIBINPUT_NO_DEVICES=1 \
-        WLR_RENDERER=pixman devenv shell -- sh -c "echo \$\$ > '$dir/sway.pid'; exec sway -c '$dir/sway.cfg'" \
+        WLR_RENDERER=pixman sh -c "echo \$\$ > '$dir/sway.pid'; $boot" \
         >"$dir/sway.log" 2>&1 &
     sock=""
     for i in $(seq 1 50); do
@@ -197,7 +204,9 @@ test-env dir=test_dir:
         sleep 0.2
     done
     if [ -z "$sock" ]; then
-        echo "sway failed to start; log: $dir/sway.log"; exit 1
+        echo "sway failed to start; log: $dir/sway.log"
+        tail -n 40 "$dir/sway.log"
+        exit 1
     fi
     echo "WAYLAND_DISPLAY=${sock##*/}" >"$dir/client.env"
     echo "test compositor up: $(cat "$dir/client.env") XDG_RUNTIME_DIR=$dir"
