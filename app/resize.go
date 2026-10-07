@@ -14,6 +14,10 @@ import (
 
 // resizer is the interactive-resize slice of a toplevel host; layer
 // surfaces have no edges and never implement it.
+// A real toplevel must be one: a method renamed out of the interface
+// would silently drop both grabs (it did, from #91 to #115).
+var _ resizer = (*window.Window)(nil)
+
 type resizer interface {
 	// Resize starts an interactive compositor-driven resize.
 	Resize(seat *wl.Seat, serial uint32, edges uint32) error

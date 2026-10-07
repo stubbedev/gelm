@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
-	"sync"
 	"time"
 
 	"github.com/godbus/dbus/v5"
@@ -40,16 +39,9 @@ const (
 )
 
 // launcher is the Application's launch state: the transport seams
-// (tests substitute them) and the pending-activation queue. openPortal
-// and openExternal are the seams; the defaults are the portal D-Bus
-// call and xdg-open.
+// tests substitute. The defaults are the portal D-Bus call and
+// xdg-open.
 type launcher struct {
-	mu sync.Mutex
-	// pending holds URIs waiting for their activation token, oldest
-	// first; the token callback launches and shifts. Bounded: a burst
-	// beyond the bound launches without waiting for tokens.
-	pending []string
-
 	openPortal   func(uri, parentWindow, token string) error
 	openExternal func(uri string) error
 }
@@ -68,31 +60,23 @@ func (a *Application) OpenPath(path string) {
 	a.launch(transfer.FileURI(path))
 }
 
-// launch routes one URI: with activation support it waits for an
-// issued token (the open rides the token callback), else it opens
-// now; a burst beyond the bound opens its oldest without waiting.
+// launch routes one URI: with activation support the open waits for
+// its own token (requested on the loop, anchored to the focused
+// surface and the latest press, so it vouches for a real
+// interaction), else it opens now.
 func (a *Application) launch(uri string) {
 	if uri == "" {
 		return
 	}
-	l := &a.launchState
-	canToken := a.sess != nil && a.sess.ActivationAvailable()
-	l.mu.Lock()
-	l.pending = append(l.pending, uri)
-	var now string
-	if !canToken || len(l.pending) > 4 {
-		now = l.pending[0]
-		l.pending = l.pending[1:]
-	}
-	l.mu.Unlock()
-	if now != "" {
-		a.launchNow(now, "")
+	if a.sess == nil || !a.sess.ActivationAvailable() {
+		a.launchNow(uri, "")
 		return
 	}
-	a.wireActivationToken()
-	// Anchored to the focused surface and the latest input serial the
-	// session saw, so the token vouches for a real interaction.
-	a.sess.RequestActivationToken(a.focusSurface(), a.LastPressSerial(nil))
+	a.Invoke(func() {
+		a.sess.RequestActivationToken(a.focusSurface(), a.LastPressSerial(nil), func(token string) {
+			a.launchNow(uri, token)
+		})
+	})
 }
 
 // focusSurface is the focused window's surface, for anchoring the
@@ -102,38 +86,6 @@ func (a *Application) focusSurface() *wl.Surface {
 		return hw.host.HostSurface()
 	}
 	return nil
-}
-
-// wireActivationToken hooks the session's token callback once; later
-// tokens launch the pending URIs. An app's own callback, if it set
-// one, keeps running.
-func (a *Application) wireActivationToken() {
-	a.launchOnce.Do(func() {
-		if a.sess == nil {
-			return
-		}
-		previous := a.sess.OnActivationToken
-		a.sess.OnActivationToken = func(token string) {
-			if previous != nil {
-				previous(token)
-			}
-			a.launchOldestWith(token)
-		}
-	})
-}
-
-// launchOldestWith opens the oldest pending URI carrying token.
-func (a *Application) launchOldestWith(token string) {
-	l := &a.launchState
-	l.mu.Lock()
-	if len(l.pending) == 0 {
-		l.mu.Unlock()
-		return
-	}
-	uri := l.pending[0]
-	l.pending = l.pending[1:]
-	l.mu.Unlock()
-	a.launchNow(uri, token)
 }
 
 // launchNow runs the transport off the caller's goroutine: portal

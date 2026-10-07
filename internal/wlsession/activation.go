@@ -78,10 +78,11 @@ func (s *Session) bindActivation(ev wl.RegistryGlobalEvent) {
 // RequestActivationToken begins a token request anchored to the
 // user-interaction serial of a pointer press or keyboard event (0
 // means unanchored, which compositors may refuse to honor with
-// focus). The issued token arrives through OnActivationToken; a
-// launcher typically writes it into XDG_ACTIVATION_TOKEN for the app
-// it spawns. No-op without the protocol.
-func (s *Session) RequestActivationToken(surface *wl.Surface, serial uint32) {
+// focus). The issued token goes to done - each request its own, so
+// concurrent requests (a launch, an attention request) never trade
+// tokens - or to OnActivationToken when done is nil; a launcher
+// typically hands it to the app it spawns. No-op without the protocol.
+func (s *Session) RequestActivationToken(surface *wl.Surface, serial uint32, done func(token string)) {
 	req := s.activation
 	if req == nil {
 		return
@@ -91,7 +92,7 @@ func (s *Session) RequestActivationToken(surface *wl.Surface, serial uint32) {
 		debug.Log("shell", "activation token: %v", err)
 		return
 	}
-	tok := &activationToken{sess: s, req: tokReq}
+	tok := &activationToken{sess: s, req: tokReq, done: done}
 	s.activationTokens = append(s.activationTokens, tok)
 	tokReq.AddDoneHandler(tok)
 	if serial != 0 && s.seat != nil {
@@ -121,6 +122,7 @@ func (s *Session) Activate(surface *wl.Surface, token string) {
 type activationToken struct {
 	sess *Session
 	req  activationTokenAPI
+	done func(token string)
 }
 
 // HandleActivationTokenV1Done implements
@@ -129,7 +131,10 @@ type activationToken struct {
 func (t *activationToken) HandleActivationTokenV1Done(ev wlr.ActivationTokenV1DoneEvent) {
 	t.sess.removeActivationToken(t)
 	_ = t.req.Destroy()
-	if t.sess.OnActivationToken != nil {
+	switch {
+	case t.done != nil:
+		t.done(ev.Token)
+	case t.sess.OnActivationToken != nil:
 		t.sess.OnActivationToken(ev.Token)
 	}
 }
