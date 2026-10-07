@@ -616,19 +616,77 @@ func backgroundImageURL(ts []token) (string, bool) {
 	return path, true
 }
 
-// gradientOf parses linear-gradient([<angle> | to <side-or-corner>,]
-// <color> [<pos>]#). Corner directions use the square-box angle (45°
-// multiples); positions are percentages, auto ones spread evenly
-// between their neighbors.
+// gradientFuncs maps the gradient functions onto their kind and
+// whether they repeat.
+var gradientFuncs = map[string]struct {
+	kind   render.GradientKind
+	repeat bool
+}{
+	"linear-gradient":           {render.GradientLinear, false},
+	"repeating-linear-gradient": {render.GradientLinear, true},
+	"radial-gradient":           {render.GradientRadial, false},
+	"repeating-radial-gradient": {render.GradientRadial, true},
+	"conic-gradient":            {render.GradientConic, false},
+	"repeating-conic-gradient":  {render.GradientConic, true},
+}
+
+// gradientOf parses the CSS gradient functions: linear-gradient([<angle>
+// | to <side-or-corner>,] stops), radial-gradient([<shape> || <size>]
+// [at <position>], stops), conic-gradient([from <angle>] [at
+// <position>], stops), and their repeating- forms. Corner directions
+// use the square-box angle (45° multiples); stop positions are
+// percentages (and angles in a conic gradient), auto ones spread
+// evenly between their neighbors; positions are keywords or
+// percentages.
 func gradientOf(ts []token, cx *ctx) (Gradient, bool) {
-	if len(ts) == 0 || ts[0].kind != tkFunc || ts[0].s != "linear-gradient" {
+	if len(ts) == 0 || ts[0].kind != tkFunc {
+		return Gradient{}, false
+	}
+	fn, ok := gradientFuncs[ts[0].s]
+	if !ok {
 		return Gradient{}, false
 	}
 	args := splitTop(funcArgs(ts), tkComma)
-	g := Gradient{Angle: 180}
-	first := components(args[0])
-	switch {
-	case len(first) >= 2 && first[0][0].ident("to"):
+	g := Gradient{Kind: fn.kind, Repeat: fn.repeat, Angle: 180, CenterX: 0.5, CenterY: 0.5}
+	if fn.kind == render.GradientConic {
+		g.Angle = 0
+	}
+	if len(args) > 0 {
+		prelude, ok := g.prelude(components(args[0]), cx)
+		if !ok {
+			return Gradient{}, false
+		}
+		if prelude {
+			args = args[1:]
+		}
+	}
+	if !g.stops(args, cx) {
+		return Gradient{}, false
+	}
+	return g, true
+}
+
+// prelude parses the gradient's leading geometry argument into g;
+// false (with ok) when the first argument is already a stop.
+func (g *Gradient) prelude(first [][]token, cx *ctx) (prelude, ok bool) {
+	if len(first) == 0 {
+		return false, false
+	}
+	if _, isColor := parseColor(first[0], cx); isColor {
+		return false, true
+	}
+	switch g.Kind {
+	case render.GradientLinear:
+		return true, g.linearPrelude(first, cx)
+	case render.GradientRadial:
+		return true, g.radialPrelude(first, cx)
+	}
+	return true, g.conicPrelude(first, cx)
+}
+
+// linearPrelude parses `<angle>` or `to <side-or-corner>`.
+func (g *Gradient) linearPrelude(first [][]token, cx *ctx) bool {
+	if len(first) >= 2 && first[0][0].ident("to") {
 		var dx, dy int
 		for _, c := range first[1:] {
 			switch {
@@ -641,41 +699,171 @@ func gradientOf(ts []token, cx *ctx) (Gradient, bool) {
 			case c[0].ident("right"):
 				dx = 1
 			default:
-				return Gradient{}, false
+				return false
 			}
 		}
 		g.Angle = math.Mod(math.Atan2(float64(dx), float64(-dy))*180/math.Pi+360, 360)
-		args = args[1:]
-	case len(first) == 1:
-		if n, ok := evalNumeric(first[0], cx); ok && n.kind == numAngle {
-			g.Angle = n.v
-			args = args[1:]
-		} else if ok && n.kind == numNumber && n.v == 0 {
-			g.Angle = 0
-			args = args[1:]
+		return true
+	}
+	if len(first) != 1 {
+		return false
+	}
+	n, ok := evalNumeric(first[0], cx)
+	switch {
+	case ok && n.kind == numAngle:
+		g.Angle = n.v
+	case ok && n.kind == numNumber && n.v == 0:
+		g.Angle = 0
+	default:
+		return false
+	}
+	return true
+}
+
+// radialPrelude parses `[<shape> || <size>] [at <position>]`.
+func (g *Gradient) radialPrelude(first [][]token, cx *ctx) bool {
+	var lengths []float64
+	for i, c := range first {
+		switch {
+		case c[0].ident("at"):
+			return g.position(first[i+1:], cx) && g.radialLengths(lengths)
+		case c[0].ident("circle"):
+			g.Circle = true
+		case c[0].ident("ellipse"):
+		case c[0].ident("closest-side"):
+			g.Size = render.ClosestSide
+		case c[0].ident("closest-corner"):
+			g.Size = render.ClosestCorner
+		case c[0].ident("farthest-side"):
+			g.Size = render.FarthestSide
+		case c[0].ident("farthest-corner"):
+			g.Size = render.FarthestCorner
+		default:
+			n, ok := evalNumeric(c, cx)
+			if !ok || n.kind != numLength {
+				return false
+			}
+			lengths = append(lengths, n.v)
 		}
 	}
+	return g.radialLengths(lengths)
+}
+
+// radialLengths applies explicit radii: one for a circle, two for an
+// ellipse.
+func (g *Gradient) radialLengths(ls []float64) bool {
+	switch len(ls) {
+	case 0:
+		return true
+	case 1:
+		g.Circle, g.Size, g.RadiusX, g.RadiusY = true, render.RadiusExplicit, ls[0], ls[0]
+		return true
+	case 2:
+		if g.Circle {
+			return false
+		}
+		g.Size, g.RadiusX, g.RadiusY = render.RadiusExplicit, ls[0], ls[1]
+		return true
+	}
+	return false
+}
+
+// conicPrelude parses `[from <angle>] [at <position>]`.
+func (g *Gradient) conicPrelude(first [][]token, cx *ctx) bool {
+	for i := 0; i < len(first); i++ {
+		switch {
+		case first[i][0].ident("from") && i+1 < len(first):
+			n, ok := evalNumeric(first[i+1], cx)
+			if !ok || (n.kind != numAngle && (n.kind != numNumber || n.v != 0)) {
+				return false
+			}
+			g.Angle = n.v
+			i++
+		case first[i][0].ident("at"):
+			return g.position(first[i+1:], cx)
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+// position parses a center: one or two keywords or percentages (x
+// before y, keywords in either order).
+func (g *Gradient) position(cs [][]token, cx *ctx) bool {
+	if len(cs) == 0 || len(cs) > 2 {
+		return false
+	}
+	var xs, ys []float64
+	var free []float64 // percentages and center, by order
+	for _, c := range cs {
+		switch {
+		case c[0].ident("left"):
+			xs = append(xs, 0)
+		case c[0].ident("right"):
+			xs = append(xs, 1)
+		case c[0].ident("top"):
+			ys = append(ys, 0)
+		case c[0].ident("bottom"):
+			ys = append(ys, 1)
+		case c[0].ident("center"):
+			free = append(free, 0.5)
+		default:
+			n, ok := evalNumeric(c, cx)
+			if !ok || n.kind != numPercent {
+				return false
+			}
+			free = append(free, n.v/100)
+		}
+	}
+	for _, f := range free {
+		if len(xs) == 0 {
+			xs = append(xs, f)
+		} else {
+			ys = append(ys, f)
+		}
+	}
+	if len(xs) > 1 || len(ys) > 1 {
+		return false
+	}
+	if len(xs) == 1 {
+		g.CenterX = xs[0]
+	}
+	if len(ys) == 1 {
+		g.CenterY = ys[0]
+	}
+	return true
+}
+
+// stops parses the color-stop list: a color and an optional position
+// (a percentage, or an angle in a conic gradient), auto positions
+// spread evenly, positions never moving backwards.
+func (g *Gradient) stops(args [][]token, cx *ctx) bool {
 	if len(args) < 2 || len(args) > MaxStops {
-		return Gradient{}, false
+		return false
 	}
 	pos := make([]float64, len(args))
 	for i, a := range args {
 		comps := components(a)
 		if len(comps) < 1 || len(comps) > 2 {
-			return Gradient{}, false
+			return false
 		}
 		cv, ok := parseColor(comps[0], cx)
 		if !ok {
-			return Gradient{}, false
+			return false
 		}
 		g.Stops[i].Color = cx.resolve(cv)
 		pos[i] = math.NaN()
 		if len(comps) == 2 {
 			n, ok := evalNumeric(comps[1], cx)
-			if !ok || n.kind != numPercent {
-				return Gradient{}, false
+			switch {
+			case ok && n.kind == numPercent:
+				pos[i] = n.v / 100
+			case ok && n.kind == numAngle && g.Kind == render.GradientConic:
+				pos[i] = n.v / 360
+			default:
+				return false
 			}
-			pos[i] = n.v / 100
 		}
 	}
 	if math.IsNaN(pos[0]) {
@@ -686,7 +874,7 @@ func gradientOf(ts []token, cx *ctx) (Gradient, bool) {
 	}
 	for i := 1; i < len(pos); i++ {
 		if !math.IsNaN(pos[i]) {
-			pos[i] = math.Max(pos[i], pos[i-1]) // stops never move backwards
+			pos[i] = math.Max(pos[i], pos[i-1])
 			continue
 		}
 		j := i
@@ -702,7 +890,7 @@ func gradientOf(ts []token, cx *ctx) (Gradient, bool) {
 		g.Stops[i].Pos = pos[i]
 	}
 	g.N = len(args)
-	return g, true
+	return true
 }
 
 // parseBoxShadow parses `none` or a comma list of shadows: `inset? <x>

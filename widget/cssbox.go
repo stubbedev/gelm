@@ -85,6 +85,19 @@ func paintBoxBehind(cv *render.Canvas, v *style.Values, border render.Rect, radi
 	paintBoxBehindCol(cv, v, border, radii, bw, bg, borderColors(v))
 }
 
+// cssGradient is the render gradient a background-image declares.
+func cssGradient(g *style.Gradient, stops []render.GradientStop) render.Gradient {
+	out := render.Gradient{
+		Kind: g.Kind, Stops: stops, Angle: g.Angle,
+		CenterX: g.CenterX, CenterY: g.CenterY,
+		Circle: g.Circle, Size: g.Size, RadiusX: g.RadiusX, RadiusY: g.RadiusY,
+	}
+	if g.Repeat {
+		out.Extend = render.ExtendRepeat
+	}
+	return out
+}
+
 // paintBoxBehindCol is paintBoxBehind with explicit border colors: a
 // widget's themed fallback where the cascade names none.
 func paintBoxBehindCol(cv *render.Canvas, v *style.Values, border render.Rect, radii render.Corners, bw render.Insets, bg render.Color, cols [4]render.Color) {
@@ -103,7 +116,7 @@ func paintBoxBehindCol(cv *render.Canvas, v *style.Values, border render.Rect, r
 		for i := range g.N {
 			stops[i] = render.GradientStop{Pos: g.Stops[i].Pos, Color: g.Stops[i].Color}
 		}
-		cv.FillGradient(border, radii, g.Angle, stops)
+		cv.PaintGradient(border, radii, cssGradient(g, stops))
 	}
 	if img := bgImageFor(v.BgImageURL); img != nil {
 		cv.DrawImageCoverImage(img, border, radii)

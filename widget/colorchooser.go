@@ -299,8 +299,8 @@ func (c *ColorChooser) Paint(cv *render.Canvas) {
 
 	hueCol := hsvColor(c.hue, 1, 1, 1)
 	cv.RoundedRect(c.sv, 4, th.Surface)
-	cv.LinearGradient(c.sv, render.RGBA(255, 255, 255, 255), hueCol, true)
-	cv.LinearGradient(c.sv, 0, render.RGBA(0, 0, 0, 255), false)
+	cv.PaintGradient(c.sv, render.Corners{}, render.Linear(90, render.GradientStop{Pos: 0, Color: render.RGBA(255, 255, 255, 255)}, render.GradientStop{Pos: 1, Color: hueCol}))
+	cv.PaintGradient(c.sv, render.Corners{}, render.Linear(180, render.GradientStop{Pos: 0, Color: 0}, render.GradientStop{Pos: 1, Color: render.RGBA(0, 0, 0, 255)}))
 
 	// The hue strip: red through violet, top to bottom.
 	cv.RoundedRect(c.hueStrip, 4, th.Surface)
@@ -321,7 +321,7 @@ func (c *ColorChooser) Paint(cv *render.Canvas) {
 			cv.FillRect(render.Rect{X: c.alphaStrip.X + x, Y: c.alphaStrip.Y + y, W: 8, H: 8}, grey)
 		}
 	}
-	cv.LinearGradient(c.alphaStrip, hsvColor(c.hue, c.sat, c.val, 1), hsvColor(c.hue, c.sat, c.val, 0), false)
+	cv.PaintGradient(c.alphaStrip, render.Corners{}, render.Linear(180, render.GradientStop{Pos: 0, Color: hsvColor(c.hue, c.sat, c.val, 1)}, render.GradientStop{Pos: 1, Color: hsvColor(c.hue, c.sat, c.val, 0)}))
 
 	// Cursors: a ring on the square, bars on the strips.
 	sx := c.sv.X + int(c.sat*float64(c.sv.W))

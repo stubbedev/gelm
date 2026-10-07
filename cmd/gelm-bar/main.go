@@ -317,5 +317,5 @@ func paintElements(cv *render.Canvas, r render.Rect, clock string, second, bufW,
 	cv.RoundedRect(pill, 6*scale, pillColor)
 	font.DrawAligned(cv, clock, pill, textPx, textColor, render.AlignCenter)
 
-	cv.LinearGradient(notchRect(second, bufW, bufH, scale), accentColor, pillColor, false)
+	cv.PaintGradient(notchRect(second, bufW, bufH, scale), render.Corners{}, render.Linear(180, render.GradientStop{Pos: 0, Color: accentColor}, render.GradientStop{Pos: 1, Color: pillColor}))
 }

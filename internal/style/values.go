@@ -225,12 +225,21 @@ type GradientStop struct {
 	Color render.Color
 }
 
-// Gradient is a linear-gradient background image. N zero means none.
-// Angle is in degrees, CSS convention: 0 points up, 90 right.
+// Gradient is a gradient background image - linear, radial, or conic,
+// optionally repeating - in render's geometry terms. N zero means none.
+// Angle is in degrees, CSS convention: 0 points up, 90 right (a conic
+// gradient's start). CenterX/Y place a radial or conic center as box
+// fractions; RadiusX/Y are explicit radial radii in px.
 type Gradient struct {
-	Angle float64
-	N     int
-	Stops [MaxStops]GradientStop
+	Kind             render.GradientKind
+	Repeat           bool
+	Angle            float64
+	CenterX, CenterY float64
+	Circle           bool
+	Size             render.RadialSize
+	RadiusX, RadiusY float64
+	N                int
+	Stops            [MaxStops]GradientStop
 }
 
 // TextTransform is the text-transform keyword.
