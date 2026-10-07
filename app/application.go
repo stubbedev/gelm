@@ -117,7 +117,6 @@ type Application struct {
 	notifyOpts  map[string]NotifyOptions
 	// launcher (launcher.go): the OpenURL/OpenPath transport state.
 	launchState launcher
-	launchOnce  sync.Once
 	// shortcuts (globalshortcuts_portal.go): the lazily created portal
 	// GlobalShortcuts session, the fallback transport.
 	shortcuts portalShortcuts
@@ -322,6 +321,9 @@ type WindowConfig struct {
 	// player, a game) so the compositor may tune for it; ignored where
 	// the compositor lacks wp_content_type_v1.
 	ContentType ContentType
+	// Parent, when set, makes the window transient for it from the
+	// first commit (SetTransientFor): a toolbox above its owner.
+	Parent *Window
 	// OnPress fires after the router recorded a press (chrome drag,
 	// context menus).
 	OnPress func(button uint32, serial uint32, over widget.Widget)
@@ -436,6 +438,9 @@ func (a *Application) newWindowWindow(cfg WindowConfig, animKind surfx.Kind) (*W
 		keyCapture: cfg.KeyCapture,
 	}, cfg.OnClosed, animKind)
 	hw.win = w
+	if cfg.Parent != nil {
+		w.SetTransientFor(cfg.Parent)
+	}
 	a.initialHints(surf, cfg.ContentType)
 	if err := surf.Commit(); err != nil {
 		return nil, fmt.Errorf("app: initial commit: %w", err)
@@ -1019,12 +1024,8 @@ func (w *Window) Unmaximize() {
 }
 
 // Fullscreen asks the compositor to show the window fullscreen; the
-// compositor picks the output. See Maximize.
-func (w *Window) Fullscreen() {
-	if w.win != nil {
-		_ = w.win.Fullscreen(nil)
-	}
-}
+// compositor picks the output (FullscreenOn names one). See Maximize.
+func (w *Window) Fullscreen() { w.FullscreenOn(nil) }
 
 // Unfullscreen asks the compositor to leave fullscreen. See Maximize.
 func (w *Window) Unfullscreen() {

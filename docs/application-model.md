@@ -235,9 +235,21 @@ tree is the app's explicit opt into client-side chrome - gelm windows
 ship undecorated otherwise, the GTK4 default inverted. The two can
 coexist (a compositor frame around an app-drawn header); the app is
 always right about what it draws itself, the compositor about what it
-draws around it. Minimize and maximize buttons are hints a compositor
-is free to ignore - a shown-and-ignored button is honest degradation,
-a hidden one is undiscoverable.
+draws around it. Minimize and maximize buttons follow the
+compositor's `wm_capabilities` (#110): shown until it declares what it
+cannot do, hidden for that.
+
+**Window requests from code (#115).** `Window.BeginMove` and
+`BeginResize(edge)` start the compositor's grabs from the press under
+way (custom title areas, drag handles - the window supplies the press
+serial the protocol wants); `FullscreenOn(output)` names the monitor;
+`SetTransientFor(parent)` (or `WindowConfig.Parent`) keeps a toolbox
+above its owner, the relation dialogs get by construction; and
+`RequestAttention` is the urgency hint: Wayland has none, so it is an
+xdg-activation request with no interaction behind it, which
+compositors answer by marking the window urgent rather than raising
+it. Activation tokens are per request, so an attention request and a
+URI launch never trade tokens.
 
 ## Concept mapping
 

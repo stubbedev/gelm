@@ -14,6 +14,7 @@ import (
 	"github.com/neurlang/wayland/xdg"
 
 	"github.com/stubbedev/gelm/internal/debug"
+	"github.com/stubbedev/gelm/internal/wlnull"
 	"github.com/stubbedev/gelm/wlr"
 )
 
@@ -317,10 +318,10 @@ func (w *Window) Minimize() error {
 	return w.Toplevel.SetMinimized()
 }
 
-// InteractiveMove starts the compositor's xdg_toplevel.move grab:
-// the pointer drags the window from the point of the press with the
-// given serial. Like resize, the grab replaces the widget press.
-func (w *Window) InteractiveMove(seat *wl.Seat, serial uint32) error {
+// Move starts the compositor's xdg_toplevel.move grab: the pointer
+// drags the window from the point of the press with the given serial.
+// Like resize, the grab replaces the widget press.
+func (w *Window) Move(seat *wl.Seat, serial uint32) error {
 	if w.Toplevel == nil {
 		return nil
 	}
@@ -419,10 +420,15 @@ func (w *Window) Resize(seat *wl.Seat, serial uint32, edges uint32) error {
 // otherwise (mode events are not tracked).
 func (w *Window) ServerDecorated() bool { return w.decoration != nil }
 
-// SetParent parents this toplevel to another, for transient dialogs.
-// A nil parent clears the association.
+// SetParent parents this toplevel to another - a dialog, a toolbox
+// that stays above its owner; the compositor keeps it above the parent
+// and may group them. A nil parent clears the association.
 func (w *Window) SetParent(parent *Window) {
+	if w.Toplevel == nil {
+		return
+	}
 	if parent == nil || parent.Toplevel == nil {
+		_ = w.Toplevel.Context().SendRequest(w.Toplevel, 1, wlnull.Null)
 		return
 	}
 	_ = w.Toplevel.SetParent(parent.Toplevel)

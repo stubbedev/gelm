@@ -101,38 +101,3 @@ func TestOpenPathEncodesFileURI(t *testing.T) {
 		t.Errorf("opened %q, want the file URI", got)
 	}
 }
-
-// TestOpenURLActivationRidesTheToken pins the focus plumbing: a queued
-// open waits for its activation token and carries it into the portal
-// call.
-func TestOpenURLActivationRidesTheToken(t *testing.T) {
-	a := testApp(nil)
-	rec := &launchRecorder{}
-	a.launchState.openPortal = rec.portal()
-	a.launch("https://tok.example")
-	waitFor(t, "the immediate open", func() bool { return len(rec.snapshot()) == 1 })
-
-	// Queue one and hand the launcher the token the way the session's
-	// callback would.
-	a.launchState.pending = append(a.launchState.pending, "https://queued.example")
-	a.launchOldestWith("tok-1")
-	waitFor(t, "the queued open", func() bool { return len(rec.snapshot()) == 2 })
-	if got := rec.snapshot()[1]; got.token != "tok-1" || got.uri != "https://queued.example" {
-		t.Errorf("queued open = %+v, want the token riding along", got)
-	}
-}
-
-// TestLauncherBurstDoesNotQueueForever pins the burst rule: beyond the
-// bound, the oldest pending opens without waiting for a token.
-func TestLauncherBurstDoesNotQueueForever(t *testing.T) {
-	a := testApp(nil)
-	rec := &launchRecorder{}
-	a.launchState.openPortal = rec.portal()
-	for range 6 {
-		a.launch("https://burst.example")
-	}
-	waitFor(t, "the oldest burst open", func() bool { return len(rec.snapshot()) >= 1 })
-	if got := rec.snapshot()[0]; got.uri != "https://burst.example" {
-		t.Errorf("burst opened %+v first", got)
-	}
-}

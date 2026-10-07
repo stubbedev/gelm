@@ -313,3 +313,13 @@ func TestWmCapabilities(t *testing.T) {
 		t.Errorf("heard %+v", heard)
 	}
 }
+
+// A wireless window survives the requests that need a toplevel.
+func TestWirelessMoveAndParent(t *testing.T) {
+	w := &Window{}
+	if err := w.Move(nil, 1); err != nil {
+		t.Errorf("Move on a wireless window: %v", err)
+	}
+	w.SetParent(nil)
+	w.SetParent(&Window{})
+}
