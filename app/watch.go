@@ -17,45 +17,6 @@ import (
 // never spins. Stopping (or the loop ending) wakes the poller through
 // the eventfd, without a timeout.
 
-// watchSet is the application's live watchers, stopped with the loop.
-type watchSet struct {
-	mu   sync.Mutex
-	next int
-	live map[int]func()
-	dead bool
-}
-
-func (s *watchSet) add(stop func()) (id int, ok bool) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.dead {
-		return 0, false
-	}
-	if s.live == nil {
-		s.live = map[int]func(){}
-	}
-	s.next++
-	s.live[s.next] = stop
-	return s.next, true
-}
-
-func (s *watchSet) remove(id int) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	delete(s.live, id)
-}
-
-// shutdown stops every watcher; later ones are refused.
-func (s *watchSet) shutdown() {
-	s.mu.Lock()
-	stops := s.live
-	s.live, s.dead = nil, true
-	s.mu.Unlock()
-	for _, stop := range stops {
-		stop()
-	}
-}
-
 // ErrLoopEnded refuses a watcher once the application loop is gone.
 var ErrLoopEnded = errors.New("app: the application loop has ended")
 
