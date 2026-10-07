@@ -14,7 +14,10 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"os"
+	"os/exec"
 	"path/filepath"
+	"strconv"
 	"time"
 )
 
@@ -37,6 +40,45 @@ func (swayCompositor) Name() string       { return "sway" }
 func (swayCompositor) ConfigName() string { return "sway.cfg" }
 func (swayCompositor) PIDName() string    { return "sway.pid" }
 func (swayCompositor) LogName() string    { return "sway.log" }
+
+// Restart boots sway again on the recipe's config with the recipe's
+// headless environment (sway from PATH, else through the dev shell,
+// as the recipe does), records its pid, and waits until its display
+// socket accepts connections. A killed sway leaves its socket name's
+// lock free, so the new one binds the same wayland-N.
+func (swayCompositor) Restart(dir string) error {
+	cfg := filepath.Join(dir, "sway.cfg")
+	var cmd *exec.Cmd
+	if bin, err := exec.LookPath("sway"); err == nil {
+		cmd = exec.Command(bin, "-c", cfg) //nolint:gosec // sway from PATH on the recipe's config
+	} else {
+		cmd = exec.Command("devenv", "shell", "--", "sh", "-c", "exec sway -c '"+cfg+"'") //nolint:gosec // the recipe's own boot line
+	}
+	cmd.Env = privateEnv("XDG_RUNTIME_DIR="+dir, "WLR_BACKENDS=headless", "WLR_LIBINPUT_NO_DEVICES=1", "WLR_RENDERER=pixman")
+	log, err := os.OpenFile(filepath.Join(dir, "sway.log"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600) //nolint:gosec // the recipe's private runtime dir
+	if err != nil {
+		return err
+	}
+	defer log.Close()
+	cmd.Stdout, cmd.Stderr = log, log
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("restart sway: %w", err)
+	}
+	_ = os.WriteFile(filepath.Join(dir, "sway.pid"), []byte(strconv.Itoa(cmd.Process.Pid)+"\n"), 0o600)
+	_ = cmd.Process.Release()
+	display := os.Getenv("WAYLAND_DISPLAY")
+	deadline := time.Now().Add(15 * time.Second)
+	for {
+		if c, err := net.Dial("unix", filepath.Join(dir, display)); err == nil { //nolint:gosec // the session's own display socket
+			_ = c.Close()
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("restarted sway never served %s", display)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+}
 
 // CloseWindow kills the client window with the given app_id.
 func (swayCompositor) CloseWindow(dir, appID string) error {

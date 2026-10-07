@@ -28,6 +28,7 @@ type WMCapabilities = window.Capabilities
 // SetContentType hints the window's content kind; it applies with the
 // next frame. Fails when the compositor lacks the protocol.
 func (w *Window) SetContentType(ct ContentType) error {
+	w.cfg.ContentType = ct
 	err := w.app.sess.SetContentType(w.win.WLSurface, ct)
 	w.requestFrame()
 	return err
@@ -38,6 +39,7 @@ func (w *Window) SetContentType(ct ContentType) error {
 // applies with the next frame; fails when the compositor lacks the
 // protocol.
 func (w *Window) SetOpacity(alpha float64) error {
+	w.alpha = alpha
 	err := w.app.sess.SetSurfaceAlpha(w.win.WLSurface, alpha)
 	w.requestFrame()
 	return err
@@ -56,6 +58,7 @@ func (w *Window) requestFrame() {
 
 // SetContentType hints the layer surface's content kind.
 func (l *LayerWindow) SetContentType(ct ContentType) error {
+	l.cfg.ContentType = ct
 	err := l.app.sess.SetContentType(l.ls.WLSurface, ct)
 	l.requestFrame()
 	return err
@@ -64,6 +67,7 @@ func (l *LayerWindow) SetContentType(ct ContentType) error {
 // SetOpacity sets the opacity the compositor applies to the layer
 // surface (a panel fading out, no repaint).
 func (l *LayerWindow) SetOpacity(alpha float64) error {
+	l.alpha = alpha
 	err := l.app.sess.SetSurfaceAlpha(l.ls.WLSurface, alpha)
 	l.requestFrame()
 	return err

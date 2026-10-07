@@ -80,6 +80,10 @@ func (e *Env) KillCompositor() {
 	killByConfigPattern(filepath.Join(e.Dir, e.compositor.ConfigName()))
 }
 
+// RestartCompositor boots the compositor again after KillCompositor,
+// on the same display (errors.ErrUnsupported where the driver cannot).
+func (e *Env) RestartCompositor() error { return e.compositor.Restart(e.Dir) }
+
 // strippedEnv lists the session variables that must never leak from
 // the test process into a harness child: a stray XDG_RUNTIME_DIR would
 // point the child at the developer's live desktop.

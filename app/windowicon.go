@@ -57,6 +57,7 @@ func (a *Application) SetIcon(img image.Image) {
 	if a.appliedIcons == nil {
 		a.appliedIcons = make(map[*hostWindow]*postedIcon)
 	}
+	a.defaultIconSrc = img
 	a.defaultIcon = a.buildIcon(img)
 	for _, hw := range a.windows {
 		if _, has := a.windowIcons[hw.win]; has {
@@ -78,6 +79,10 @@ func (a *Application) SetWindowIcon(w *Window, img image.Image) {
 	if a.windowIcons == nil {
 		a.windowIcons = make(map[*Window]*postedIcon)
 	}
+	if a.windowIconSrc == nil {
+		a.windowIconSrc = make(map[*Window]image.Image)
+	}
+	a.windowIconSrc[w] = img
 	icon := a.buildIcon(img)
 	a.windowIcons[w] = icon
 	if hw := a.hostOf(w); hw != nil {
@@ -195,9 +200,27 @@ func (a *Application) reapWindowIcons() {
 			delete(a.appliedIcons, hw)
 		}
 	}
+	for w := range a.windowIconSrc {
+		if !handles[w] {
+			delete(a.windowIconSrc, w)
+		}
+	}
 	for w := range a.windowIcons {
 		if !handles[w] {
 			delete(a.windowIcons, w)
 		}
+	}
+}
+
+// repostIcons posts the icons again on a new session (reconnect.go):
+// the posted objects died with the old connection, the source images
+// did not.
+func (a *Application) repostIcons() {
+	a.windowIcons, a.appliedIcons, a.defaultIcon = nil, make(map[*hostWindow]*postedIcon), nil
+	if a.defaultIconSrc != nil {
+		a.SetIcon(a.defaultIconSrc)
+	}
+	for w, img := range a.windowIconSrc {
+		a.SetWindowIcon(w, img)
 	}
 }

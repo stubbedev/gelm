@@ -49,6 +49,13 @@ func run() error {
 	}
 	application := app.NewApplication(sess)
 	application.SetTooltipFace(tf)
+	// GELM_DEMO_RECONNECT rebuilds the window on a restarted compositor
+	// instead of exiting: the headless reconnect test's probe.
+	if os.Getenv("GELM_DEMO_RECONNECT") != "" {
+		application.SetReconnect(&app.ReconnectOptions{
+			OnReconnected: func() { debug.Log("demo", "reconnected") },
+		})
+	}
 
 	hint := widget.NewLabel(tf, 11, "m maximize  n unmaximize  f fullscreen  g unfullscreen  i minimize  esc close", widget.Current().TextMuted)
 	status := widget.NewLabel(tf, 15, "pending configure", widget.Current().Text)
@@ -76,7 +83,7 @@ func run() error {
 				debug.Log("demo", "requested %s", name)
 				fn()
 			}
-			switch sess.KeySym(code) {
+			switch application.KeySym(code) {
 			case xkb.Keysym('m'):
 				request("maximize", w.Maximize)
 			case xkb.Keysym('n'):

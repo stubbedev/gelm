@@ -62,38 +62,50 @@ the new session. The hook itself is optional observation (flush state
 before the teardown, never block indefinitely); without it the same
 clean exit runs.
 
-**Reconnect (design sketch, deliberately not built).** A
-reconnect-with-rebuild mode would reuse the same policy hook point and
-go roughly like this:
+**Reconnect with rebuild (#117).** `Application.SetReconnect` turns a
+lost connection into a rebuild instead of the exit, for the case it can
+honestly cover: the connection was lost without a protocol verdict (a
+compositor that killed the client would do it again) and every window
+came from `NewWindow`, `NewLayer`, or a dialog (a host built outside
+the application cannot be rebuilt; its loop exits as before).
+`DisconnectedEvent.Reconnecting` tells the hook which way it goes.
 
-1. In `OnDisconnect`, request reconnect instead of exit. The teardown
-   above still runs — on a dead connection there is nothing to keep:
-   every proxy (surfaces, seat, clipboard, outputs) is dead regardless.
-2. `wlsession.Connect` a fresh session (the registry re-runs inside
-   it), then rebuild every window from its declarative config:
-   `WindowConfig`/`LayerConfig` are already values, so the application
-   keeps a factory per window and re-runs `newWindow`/`NewLayer` on the
-   new session. Widget trees, application state, `Invoke`/`Every`
-   queues, accelerators, and keymaps survive — they were never
-   wire-owned. The one-way state is compositor-side: clipboard contents,
-   drag sessions, and pending configure serials are gone; focus is the
-   new compositor's to give.
-3. Output identity (`xdg_output` names) re-resolves on the new registry
-   before layer surfaces pin themselves, so a panel lands on the same
-   `DP-1` it came from.
+1. The policy hook fires, the windows are set aside with their toasts,
+   open popovers close (their `OnClosed` fires), and the usual teardown
+   runs - every proxy died with the socket.
+2. Run dials again (`ReconnectOptions.Connect`, default
+   `wlsession.Connect`), backing off from 50ms to a second until
+   `Timeout` (ten seconds). The new session is adopted: dispatch and
+   wake seams, drag and drop, the input method, key repeat, the
+   clipboard handle (`Clipboard.Reset`, empty on the new session), and
+   the session hooks.
+3. Every window reopens through the same path that opened it, on the
+   same handle - an app's `*Window` and `*LayerWindow` stay valid -
+   from its config updated with what the old objects carried: title,
+   size, size limits, maximized and fullscreen, layer anchor, margin,
+   zone, layer, and declared keyboard mode, content type, opacity, and
+   the output a layer was pinned to, re-resolved by its xdg-output name.
+   Then transient parents and dialog modality re-link across the
+   rebuilt set, window icons are posted again from their source images,
+   toasts move onto their rebuilt windows, and keyboard focus inside
+   each tree is restored. Widget trees, queues, timers, and
+   accelerators never left.
 
-The sketch is honest but unproven: it needs the window factory
-plumbing (step 2), a buffer arena re-seeded per session, and tests for
-every protocol re-binding. Clean exit plus a supervisor covers the
-restart story with the machinery that already exists, so reconnect
-stays a stretch goal until an embedder needs state-preserving restarts
-wayle cannot get by respawning.
+Lost, because it was the compositor's: clipboard contents, drags,
+popovers and tooltips, session locks, idle inhibitors and idle watches,
+pointer constraints, and pending configure serials. Code holding the
+`*wlsession.Session` reads the current one from `Application.Session`;
+key handlers use `Application.KeySym` and never hold one.
 
 **Testing.** Unit: dead-socket classification, the bounded retry, the
 exactly-once hook, the pool/queue/fd teardown, and the goroutine budget
 (app and wlsession packages). Live: `internal/headlesstest`'s kill test
 boots the headless session, runs the showcase, SIGKILLs sway mid-run,
-and asserts one policy trace and exit code 75.
+and asserts one policy trace and exit code 75; the reconnect test
+kills sway under a client with `SetReconnect`, boots it again on the
+same socket, and asserts the policy trace, the rebuilt window taking
+keyboard input on the new session, and no file descriptor left over
+from the old one.
 
 ## Loop sharing
 

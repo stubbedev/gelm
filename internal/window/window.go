@@ -151,6 +151,10 @@ type Window struct {
 	// state is the compositor-confirmed set from the last configure;
 	// requests never write it.
 	state State
+	// title and parent are the last title and parent set, what a
+	// rebuild on a new connection reads back.
+	title  string
+	parent *Window
 }
 
 // New assigns the xdg_toplevel role and sends the initial state. The
@@ -170,6 +174,7 @@ func New(wmBase *xdg.WmBase, surf *wl.Surface, cfg Config) (*Window, error) {
 		width: cfg.Width, height: cfg.Height,
 		minW: cfg.MinWidth, minH: cfg.MinHeight,
 		maxW: cfg.MaxWidth, maxH: cfg.MaxHeight,
+		title: cfg.Title,
 	}
 	xdgSurf.AddConfigureHandler(w)
 	tl.AddConfigureHandler(w)
@@ -303,11 +308,18 @@ func (w *Window) Unmaximize() error {
 // xdg_toplevel title is a hint surfaces show in their own chrome
 // (taskbars, alt-tab) - CSD apps paint HeaderBar themselves.
 func (w *Window) SetTitle(title string) error {
+	w.title = title
 	if w.Toplevel == nil {
 		return nil
 	}
 	return w.Toplevel.SetTitle(title)
 }
+
+// Title is the title last set (at creation or by SetTitle).
+func (w *Window) Title() string { return w.title }
+
+// Parent is the toplevel last set as this one's parent, nil for none.
+func (w *Window) Parent() *Window { return w.parent }
 
 // Minimize asks the compositor to minimize the window; a hint
 // compositors without a minimized concept ignore.
@@ -424,6 +436,7 @@ func (w *Window) ServerDecorated() bool { return w.decoration != nil }
 // that stays above its owner; the compositor keeps it above the parent
 // and may group them. A nil parent clears the association.
 func (w *Window) SetParent(parent *Window) {
+	w.parent = parent
 	if w.Toplevel == nil {
 		return
 	}

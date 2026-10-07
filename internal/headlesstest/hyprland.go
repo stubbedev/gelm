@@ -28,6 +28,9 @@ func (hyprlandCompositor) ConfigName() string { return "hypr.conf" }
 func (hyprlandCompositor) PIDName() string    { return "hyprland.pid" }
 func (hyprlandCompositor) LogName() string    { return "hyprland.log" }
 
+// Restart is unsupported: the VM boots Hyprland once, through seatd.
+func (hyprlandCompositor) Restart(string) error { return errors.ErrUnsupported }
+
 // CloseWindow dispatches closewindow for the window with the given
 // app_id (Hyprland matches it against the Wayland app_id, exactly the
 // class the recipes' windowrules pin).

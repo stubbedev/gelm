@@ -48,6 +48,8 @@ type hostWindow struct {
 	cfg  windowHooks
 
 	win *Window
+	// layer is the handle of a NewLayer surface (nil otherwise).
+	layer *LayerWindow
 
 	// blocked suppresses pointer input while a modal dialog is open;
 	// isDialog marks the exempt dialog windows themselves.

@@ -9,6 +9,7 @@ package app
 import (
 	"errors"
 	"fmt"
+	"image"
 	"os"
 	"sync"
 	"sync/atomic"
@@ -95,12 +96,23 @@ type Application struct {
 	windowIcons  map[*Window]*postedIcon
 	appliedIcons map[*hostWindow]*postedIcon
 	defaultIcon  *postedIcon
+	// defaultIconSrc and windowIconSrc are the images behind them, what
+	// a reconnect posts again.
+	defaultIconSrc image.Image
+	windowIconSrc  map[*Window]image.Image
 	// stopA11y stops the AT-SPI bridge while it serves; stopA11yWatch
 	// ends the A11yAuto watch on the desktop's switch; a11yMode is
 	// SetAccessibility's choice.
 	stopA11y      func()
 	stopA11yWatch func()
 	a11yMode      A11yMode
+	// reconnect is SetReconnect's policy (nil: clean exit);
+	// rebuildPlan holds the windows a disconnect planned to rebuild.
+	reconnect   *ReconnectOptions
+	rebuildPlan []*hostWindow
+	// carriedToasts are the planned windows' toasts, set aside for the
+	// rebuilt windows.
+	carriedToasts map[*hostWindow]movedToasts
 	quit          bool
 	// recentFiles (filedialog.go) lazily owns the desktop's shared
 	// recently-used list; nil until a file dialog with Recents runs.
@@ -405,14 +417,24 @@ type LayerConfig struct {
 // adds it to the application. The window joins the loop on the next
 // Run iteration (or immediately when Run is already running).
 func (a *Application) NewWindow(cfg WindowConfig) (*Window, error) {
-	win, err := a.newWindowWindow(cfg, surfx.KindMenu)
-	return win, err
+	return a.newWindowWindow(cfg, surfx.KindMenu)
 }
 
 // newWindowWindow creates the toplevel and its loop state. animKind
 // is the surface-animation profile: KindMenu (zero) for plain
 // toplevels, which open and close instantly.
 func (a *Application) newWindowWindow(cfg WindowConfig, animKind surfx.Kind) (*Window, error) {
+	w := &Window{app: a, cfg: cfg, kind: animKind}
+	if _, err := a.openWindow(w, cfg); err != nil {
+		return nil, err
+	}
+	return w, nil
+}
+
+// openWindow gives handle w a toplevel on the current session, built
+// from cfg, with its loop state - the first open, and the rebuild on a
+// new connection, which keeps every *Window an app holds valid.
+func (a *Application) openWindow(w *Window, cfg WindowConfig) (*hostWindow, error) {
 	if a.sess.WmBase() == nil {
 		return nil, errors.New("app: compositor has no xdg_wm_base; windows unsupported")
 	}
@@ -428,19 +450,15 @@ func (a *Application) newWindowWindow(cfg WindowConfig, animKind surfx.Kind) (*W
 	if err != nil {
 		return nil, err
 	}
-	scale := cfg.Scale
-	if scale == 0 {
-		scale = 1
-	}
-	w := &Window{app: a, win: win}
-	hw := a.newWindow(win, scale, cfg.Root, windowHooks{
+	w.win = win
+	hw := a.newWindow(win, max(cfg.Scale, 1), cfg.Root, windowHooks{
 		background: cfg.Background,
 		opaque:     opaqueFor(cfg.Background, cfg.Opaque),
 		onPress:    cfg.OnPress,
 		onMove:     cfg.OnPointerMove,
 		onKey:      cfg.OnKey,
 		keyCapture: cfg.KeyCapture,
-	}, cfg.OnClosed, animKind)
+	}, cfg.OnClosed, w.kind)
 	hw.win = w
 	if cfg.Parent != nil {
 		w.SetTransientFor(cfg.Parent)
@@ -449,13 +467,23 @@ func (a *Application) newWindowWindow(cfg WindowConfig, animKind surfx.Kind) (*W
 	if err := surf.Commit(); err != nil {
 		return nil, fmt.Errorf("app: initial commit: %w", err)
 	}
-	return w, nil
+	return hw, nil
 }
 
 // NewLayer creates a layer surface from a declarative config — the
 // bar/panel/launcher shape: anchors, margins, exclusive zone, and
 // keyboard interactivity declared up front.
 func (a *Application) NewLayer(cfg LayerConfig) (*LayerWindow, error) {
+	l := &LayerWindow{app: a, cfg: cfg}
+	if _, err := a.openLayer(l, cfg); err != nil {
+		return nil, err
+	}
+	return l, nil
+}
+
+// openLayer gives handle l a layer surface on the current session,
+// built from cfg - the first open and the rebuild, like openWindow.
+func (a *Application) openLayer(l *LayerWindow, cfg LayerConfig) (*hostWindow, error) {
 	if a.sess.LayerShell() == nil {
 		return nil, errors.New("app: compositor has no zwlr_layer_shell_v1")
 	}
@@ -466,9 +494,6 @@ func (a *Application) NewLayer(cfg LayerConfig) (*LayerWindow, error) {
 	scale := cfg.Scale
 	if scale == 0 && cfg.Output != nil {
 		scale = cfg.Output.Scale
-	}
-	if scale == 0 {
-		scale = 1
 	}
 	ls, err := layersurface.New(a.sess, surf, outputWire(cfg.Output), layersurface.Config{
 		Layer:         cfg.Layer,
@@ -483,7 +508,8 @@ func (a *Application) NewLayer(cfg LayerConfig) (*LayerWindow, error) {
 	if err != nil {
 		return nil, err
 	}
-	hw := a.newWindow(&layerHost{ls: ls, out: cfg.Output}, scale, cfg.Root, windowHooks{
+	l.ls = ls
+	hw := a.newWindow(&layerHost{ls: ls, out: cfg.Output}, max(scale, 1), cfg.Root, windowHooks{
 		background: cfg.Background,
 		opaque:     opaqueFor(cfg.Background, cfg.Opaque),
 		onPress:    cfg.OnPress,
@@ -491,6 +517,7 @@ func (a *Application) NewLayer(cfg LayerConfig) (*LayerWindow, error) {
 		onKey:      cfg.OnKey,
 		keyCapture: cfg.KeyCapture,
 	}, cfg.OnClosed, surfx.KindOverlay)
+	hw.layer = l
 	// A rotated output's transform must be published before the first
 	// commit so the compositor maps the buffers correctly.
 	if cfg.Output != nil && cfg.Output.Transform != 0 && hw.sc != nil {
@@ -500,7 +527,7 @@ func (a *Application) NewLayer(cfg LayerConfig) (*LayerWindow, error) {
 	if err := surf.Commit(); err != nil {
 		return nil, fmt.Errorf("app: initial commit: %w", err)
 	}
-	return &LayerWindow{app: a, ls: ls}, nil
+	return hw, nil
 }
 
 // layerHost adapts a layer surface to Host: for automatic (zero) axes
@@ -620,22 +647,38 @@ func (a *Application) Run() error {
 		a.shortcuts.shutdown()
 	}()
 	a.startAccessibility()
-	a.sess.OnKey = a.routeKey
-	a.sess.OnKeyUp = a.rep.release
-	a.sess.OnIME = a.imeEvent
-	a.sess.OnIMEFocus = a.ime.reset
-	step := a.step
-	if step == nil {
-		step = a.sess.Step
-	}
+	a.wireSession()
 	for {
 		if a.done() {
 			return ErrClosed
 		}
-		if err := a.tick(step, time.Now()); err != nil {
+		if err := a.tick(a.stepFn(), time.Now()); err != nil {
+			// A planned reconnect (SetReconnect) rebuilds on a new
+			// session and the loop goes on.
+			if a.reconnectAfter(err) {
+				continue
+			}
 			return err
 		}
 	}
+}
+
+// wireSession installs the application's hooks on its session - at
+// Run, and again on each session a reconnect adopts.
+func (a *Application) wireSession() {
+	a.sess.OnKey = a.routeKey
+	a.sess.OnKeyUp = a.rep.release
+	a.sess.OnIME = a.imeEvent
+	a.sess.OnIMEFocus = a.ime.reset
+}
+
+// stepFn is the dispatch step: the test seam when set, else the
+// current session's.
+func (a *Application) stepFn() func() error {
+	if a.step != nil {
+		return a.step
+	}
+	return a.sess.Step
 }
 
 // tick runs one loop pass: queued work, repeats, IME sync, animation
@@ -941,7 +984,7 @@ func (a *Application) hostOf(w *Window) *hostWindow {
 // hostOfLayer returns the loop state for a layer handle.
 func (a *Application) hostOfLayer(l *LayerWindow) *hostWindow {
 	for _, hw := range a.windows {
-		if lw, ok := hw.host.(*layerHost); ok && lw.ls == l.ls {
+		if hw.layer == l {
 			return hw
 		}
 	}
@@ -953,6 +996,12 @@ type Window struct {
 	app    *Application
 	win    *window.Window
 	closed bool
+	// cfg and kind are what the window was opened from, the base a
+	// rebuild on a new connection starts from (reconnect.go); alpha is
+	// the SetOpacity in effect (0: none).
+	cfg   WindowConfig
+	kind  surfx.Kind
+	alpha float64
 }
 
 // Close closes the window from the client side; the close-request veto
@@ -1071,6 +1120,10 @@ func (w *Window) SetFocus(target widget.Widget) {
 type LayerWindow struct {
 	app *Application
 	ls  *layersurface.Surface
+	// cfg is what the surface was opened from (reconnect.go); alpha is
+	// the SetOpacity in effect.
+	cfg   LayerConfig
+	alpha float64
 }
 
 // Close closes the layer surface from the client side: the exit tween
@@ -1136,7 +1189,16 @@ func (l *LayerWindow) KeyboardMode() KeyboardMode { return l.ls.KeyboardMode() }
 // SetKeyboardMode changes the keyboard interactivity: None, Exclusive,
 // or OnDemand. Popovers opened on a None surface switch it to OnDemand
 // while they are open, so their grab can take the keyboard.
-func (l *LayerWindow) SetKeyboardMode(mode KeyboardMode) error { return l.ls.SetKeyboardMode(mode) }
+func (l *LayerWindow) SetKeyboardMode(mode KeyboardMode) error {
+	if err := l.ls.SetKeyboardMode(mode); err != nil {
+		return err
+	}
+	l.cfg.Keyboard = mode
+	return nil
+}
+
+// holdKeyboard implements keyboardModer: a popover's temporary mode.
+func (l *LayerWindow) holdKeyboard(mode KeyboardMode) error { return l.ls.SetKeyboardMode(mode) }
 
 // Closed reports whether the compositor or client closed the surface.
 // A surface running its exit tween reads closed here (the logical
