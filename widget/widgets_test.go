@@ -182,27 +182,27 @@ func TestSliderValueModel(t *testing.T) {
 		}
 	})
 
-	t.Run("ValueFromX maps the trough to values with edge padding", func(t *testing.T) {
+	t.Run("ValueAt maps the trough to values with edge padding", func(t *testing.T) {
 		s := NewSlider(0, 100, 0, 0)
 		s.Measure(Constraints{Max: Size{W: 500, H: 100}})
 		s.Arrange(render.Rect{X: 0, Y: 0, W: 204, H: 18})
-		if got := s.ValueFromX(4); got != 0 {
+		if got := s.ValueAt(Point{X: 4}); got != 0 {
 			t.Errorf("left edge = %v, want 0", got)
 		}
-		if got := s.ValueFromX(200); got != 100 {
+		if got := s.ValueAt(Point{X: 200}); got != 100 {
 			t.Errorf("right edge = %v, want 100", got)
 		}
-		if got := s.ValueFromX(102); got < 49 || got > 51 {
+		if got := s.ValueAt(Point{X: 102}); got < 49 || got > 51 {
 			t.Errorf("middle = %v, want ~50", got)
 		}
-		if got := s.ValueFromX(-100); got != 0 {
+		if got := s.ValueAt(Point{X: -100}); got != 0 {
 			t.Errorf("far left = %v, want clamped 0", got)
 		}
 	})
 
 	t.Run("degenerate min==max never divides by zero", func(t *testing.T) {
 		s := NewSlider(5, 5, 0, 5)
-		if got := s.ValueFromX(100); got != 5 {
+		if got := s.ValueAt(Point{X: 100}); got != 5 {
 			t.Errorf("value = %v, want 5", got)
 		}
 	})

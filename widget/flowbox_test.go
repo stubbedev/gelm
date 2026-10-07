@@ -260,7 +260,7 @@ func TestSliderScaleNodes(t *testing.T) {
 		t.Errorf("hovered knob %v, want it shown", px(data, 80, 3))
 	}
 	// The value maps across the styled trough's full width.
-	if v := s.ValueFromX(40); v != 25 {
+	if v := s.ValueAt(Point{X: 40}); v != 25 {
 		t.Errorf("x=40 maps to %v, want 25", v)
 	}
 	if !slices.Contains(styleKids(s), Widget(&s.trough)) || parentOf(&s.trough.knob) != Widget(&s.trough) {
