@@ -8,10 +8,10 @@ import (
 	"github.com/stubbedev/gelm/render"
 )
 
-// SpinButton is a numeric entry, GtkSpinButton without its +/-
-// buttons: the text shows the value at Digits decimals; Up and Down
-// step it by Step, PageUp and PageDown by ten steps; Enter, or focus
-// leaving the entry, commits the typed text. A commit clamps into
+// SpinButton is a numeric entry, GtkSpinButton: the text shows the
+// value at Digits decimals; the drawn up/down steppers at its end and
+// the Up and Down keys step it by Step, PageUp and PageDown by ten
+// steps; Enter, or focus leaving the entry, commits the typed text. A commit clamps into
 // [Min, Max] and rounds to Digits; text that does not parse as a
 // number reverts to the value.
 //
@@ -40,6 +40,7 @@ func NewSpinButton(face render.Font, sizePx float64, color render.Color, min, ma
 	s.value = s.clamp(min)
 	s.SetText(s.format(s.value))
 	s.OnActivate = func(string) { s.commit() }
+	s.setSlots(nil, nil, newSpinSteppers(sizePx), s.stepperClick)
 	s.SetOnFocusChanged(func(focused bool) {
 		if !focused {
 			s.commit()
@@ -89,6 +90,30 @@ func (s *SpinButton) KeyAction(a KeyAction, mods Mods) {
 	default:
 		s.Entry.KeyAction(a, mods)
 	}
+}
+
+// stepperClick steps up from a press on the steppers' upper half,
+// down from the lower.
+func (s *SpinButton) stepperClick(p Point) {
+	if !s.Enabled() || s.ReadOnly() {
+		return
+	}
+	r := s.trailingRect()
+	if p.Y < r.Y+r.H/2 {
+		s.stepBy(1)
+		return
+	}
+	s.stepBy(-1)
+}
+
+// newSpinSteppers is the stacked up/down chevron pair, sized to the
+// text's line.
+func newSpinSteppers(sizePx float64) Widget {
+	px := max(int(sizePx*0.7), 8)
+	col := NewBox(Column, 0, 0)
+	col.Append(NewSymbol(SymbolChevronUp, px), false)
+	col.Append(NewSymbol(SymbolChevronDown, px), false)
+	return col
 }
 
 // stepBy commits the typed text, then moves n steps from it.

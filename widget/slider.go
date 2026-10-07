@@ -7,19 +7,25 @@ import (
 	"github.com/stubbedev/gelm/render"
 )
 
-// Slider is a horizontal slider over [min, max] with an optional step.
-// Dragging is input's job (M4): it calls SetValue with values derived from
-// ValueFromX and flips Pressed around a drag.
+// Slider is a slider over [min, max] with an optional step, horizontal
+// by default; SetAxis(Column) stands it up (GTK's orientation), the
+// minimum at the top unless inverted (GTK's inverted, the volume-style
+// minimum at the bottom). Pressing warps the value to the pointer and a
+// drag follows it.
 //
 // It is GtkScale's node tree: `scale` (its box, opacity, outline, and
 // :hover while the pointer is over it) holding `trough` (background,
 // radius, min-height, and min-width as the natural width) holding
 // `highlight` (the filled part) and `slider` (the knob: background,
 // radius, min size, opacity, box-shadow). Unstyled it keeps the theme's
-// 4px trough and 14px knob.
+// 4px trough and 14px knob. The scale carries .horizontal or .vertical;
+// across a vertical scale the trough's min-width is its thickness and
+// min-height its length.
 type Slider struct {
 	node
 	min, max, step, value float64
+	axis                  Axis
+	inverted              bool
 
 	// Pressed reports whether a drag is in progress.
 	Pressed bool
@@ -38,6 +44,7 @@ func NewSlider(min, max, step, value float64) *Slider {
 	s := &Slider{min: min, max: max, step: step}
 	s.cursorName = "pointer"
 	s.value = s.clamp(value)
+	s.AddClass("horizontal")
 	s.trough.SetElement("trough")
 	s.trough.highlight.SetElement("highlight")
 	s.trough.knob.SetElement("slider")
@@ -45,6 +52,35 @@ func NewSlider(min, max, step, value float64) *Slider {
 	setParents(&s.trough, &s.trough.highlight, &s.trough.knob)
 	return s
 }
+
+// SetAxis orients the slider: Row horizontal, Column vertical.
+func (s *Slider) SetAxis(axis Axis) {
+	if s.axis == axis {
+		return
+	}
+	s.axis = axis
+	if axis == Column {
+		s.RemoveClass("horizontal")
+		s.AddClass("vertical")
+	} else {
+		s.RemoveClass("vertical")
+		s.AddClass("horizontal")
+	}
+	s.InvalidateLayout()
+}
+
+// Axis reports the orientation.
+func (s *Slider) Axis() Axis { return s.axis }
+
+// SetInverted puts the minimum at the far end: the right of a
+// horizontal slider, the bottom of a vertical one.
+func (s *Slider) SetInverted(on bool) {
+	s.inverted = on
+	s.Invalidate()
+}
+
+// Inverted reports whether the minimum is at the far end.
+func (s *Slider) Inverted() bool { return s.inverted }
 
 // sliderTrough is the scale's trough node and its highlight and knob.
 type sliderTrough struct {
@@ -70,18 +106,45 @@ func (s *Slider) SetHovered(on bool) {
 // knob at the extremes.
 const sliderPad = 4
 
-// troughRect is the trough inside the content box: its min-height
-// tall (4px unstyled), centered, the content's width (less the
-// unstyled inset).
+// troughProps are the trough's length and thickness properties along
+// the slider's axis.
+func (s *Slider) troughProps() (length, thickness style.Prop) {
+	if s.axis == Column {
+		return style.PropMinHeight, style.PropMinWidth
+	}
+	return style.PropMinWidth, style.PropMinHeight
+}
+
+// troughRect is the trough inside the content box: its thickness (4px
+// unstyled) centered across the axis, the content's length along it
+// (less the unstyled inset).
 func (s *Slider) troughRect() render.Rect {
 	_, c := boxRects(boxOf(s.style(s), render.Insets{}), s.bounds)
 	tv := s.trough.style(&s.trough)
-	h := picki(tv, style.PropMinHeight, 4)
+	_, thickProp := s.troughProps()
+	th := picki(tv, thickProp, 4)
 	pad := sliderPad
-	if tv.Has(style.PropMinHeight) || tv.Has(style.PropBackgroundColor) {
+	if tv.Has(thickProp) || tv.Has(style.PropBackgroundColor) {
 		pad = 0
 	}
-	return render.Rect{X: c.X + pad, Y: c.Y + (c.H-h)/2, W: max(c.W-2*pad, 0), H: h}
+	if s.axis == Column {
+		return render.Rect{X: c.X + (c.W-th)/2, Y: c.Y + pad, W: th, H: max(c.H-2*pad, 0)}
+	}
+	return render.Rect{X: c.X + pad, Y: c.Y + (c.H-th)/2, W: max(c.W-2*pad, 0), H: th}
+}
+
+// along maps the trough onto the value axis: the pixel the minimum
+// sits at and the signed length to the maximum.
+func (s *Slider) along(tr render.Rect) (origin, span int) {
+	origin, span = tr.X, tr.W
+	if s.axis == Column {
+		origin, span = tr.Y, tr.H
+	}
+	// Vertical runs top-down by default; inverted flips either axis.
+	if s.inverted {
+		return origin + span, -span
+	}
+	return origin, span
 }
 
 // knobSize is the knob's min size (14px unstyled).
@@ -116,20 +179,23 @@ func (s *Slider) clamp(v float64) float64 {
 	return math.Min(s.max, math.Max(s.min, v))
 }
 
-// ValueFromX maps a canvas x across the trough to a value (an unstyled
-// trough is inset 4px each side so the extremes are reachable).
-func (s *Slider) ValueFromX(x int) float64 {
-	tr := s.troughRect()
-	span := float64(tr.W)
-	if span <= 0 {
+// ValueAt maps a point across the trough to a value (an unstyled
+// trough is inset 4px each end so the extremes are reachable).
+func (s *Slider) ValueAt(p Point) float64 {
+	origin, span := s.along(s.troughRect())
+	if span == 0 {
 		return s.min
 	}
-	t := float64(x-tr.X) / span
+	pos := p.X
+	if s.axis == Column {
+		pos = p.Y
+	}
+	t := float64(pos-origin) / float64(span)
 	t = math.Min(1, math.Max(0, t))
 	return s.min + t*(s.max-s.min)
 }
 
-// Measure wants the trough's min-width (200px unstyled) by the taller
+// Measure wants the trough's length (200px unstyled) by the thicker
 // of the trough and the knob, at least 18px, inside the scale's box.
 func (s *Slider) Measure(con Constraints) Size {
 	if sz, ok := s.measureHit(con); ok {
@@ -137,11 +203,15 @@ func (s *Slider) Measure(con Constraints) Size {
 	}
 	v := s.style(s)
 	tv := s.trough.style(&s.trough)
-	_, kh := s.knobSize()
-	w := picki(tv, style.PropMinWidth, 200)
-	h := max(18, picki(tv, style.PropMinHeight, 4), kh)
+	kw, kh := s.knobSize()
+	lenProp, thickProp := s.troughProps()
+	length := picki(tv, lenProp, 200)
+	sz := Size{W: length, H: max(18, picki(tv, thickProp, 4), kh)}
+	if s.axis == Column {
+		sz = Size{W: max(18, picki(tv, thickProp, 4), kw), H: length}
+	}
 	return s.measureStore(con, measureBox(v, boxOf(v, render.Insets{}), con, func(inner Constraints) Size {
-		return clampSize(Size{W: w, H: h}, inner)
+		return clampSize(sz, inner)
 	}))
 }
 
@@ -160,20 +230,28 @@ func (s *Slider) Paint(cv *render.Canvas) {
 	defer fx.pop(cv)
 	tr := s.troughRect()
 	tv := s.trough.style(&s.trough)
-	trRadii := radiusOr(tv, tr.H/2)
+	trRadii := radiusOr(tv, min(tr.W, tr.H)/2)
 	paintBoxBehind(cv, tv, tr, trRadii, borderOf(tv), pickc(0, tv, style.PropBackgroundColor, troughCol))
 
+	// The highlight runs from the minimum's end to the knob.
+	origin, span := s.along(tr)
+	at := origin + int(float64(span)*s.fraction())
+	lo, hi := min(origin, at), max(origin, at)
+	filled := render.Rect{X: lo, Y: tr.Y, W: hi - lo, H: tr.H}
+	if s.axis == Column {
+		filled = render.Rect{X: tr.X, Y: lo, W: tr.W, H: hi - lo}
+	}
 	hv := s.trough.highlight.style(&s.trough.highlight)
-	filled := tr
-	filled.W = int(float64(tr.W) * s.fraction())
-	if filled.W > 0 {
+	if hi > lo {
 		paintBoxBehind(cv, hv, filled, radiusOr(hv, trRadii.TopLeft), borderOf(hv), pickc(0, hv, style.PropBackgroundColor, fillCol))
 	}
 
 	kv := s.trough.knob.style(&s.trough.knob)
 	kw, kh := s.knobSize()
-	cx := tr.X + int(float64(tr.W)*s.fraction())
-	knob := render.Rect{X: cx - kw/2, Y: tr.Y + tr.H/2 - kh/2, W: kw, H: kh}
+	knob := render.Rect{X: at - kw/2, Y: tr.Y + tr.H/2 - kh/2, W: kw, H: kh}
+	if s.axis == Column {
+		knob = render.Rect{X: tr.X + tr.W/2 - kw/2, Y: at - kh/2, W: kw, H: kh}
+	}
 	kfx := pushEffects(cv, kv)
 	paintBoxBehind(cv, kv, knob, radiusOr(kv, min(kw, kh)/2), borderOf(kv), pickc(0, kv, style.PropBackgroundColor, knobCol))
 	kfx.pop(cv)
@@ -209,7 +287,7 @@ func (s *Slider) SetPressed(on bool) {
 // sliders ignore it.
 func (s *Slider) PressAt(p Point) {
 	if IsEnabled(s) {
-		s.SetValue(s.ValueFromX(p.X))
+		s.SetValue(s.ValueAt(p))
 	}
 }
 
@@ -219,7 +297,29 @@ func (s *Slider) DragMove(p Point) {
 	if !IsEnabled(s) {
 		return
 	}
-	s.SetValue(s.ValueFromX(p.X))
+	s.SetValue(s.ValueAt(p))
+}
+
+// keyDirection is the value's direction for an arrow: the arrows
+// along the axis move the knob the way they point (so the value's
+// sign follows the orientation and inversion), the cross arrows keep
+// up/right as more.
+func (s *Slider) keyDirection(a KeyAction) float64 {
+	d := 1.0
+	if a == KeyLeft || a == KeyDown {
+		d = -1
+	}
+	alongAxis := (s.axis == Row) == (a == KeyLeft || a == KeyRight)
+	if !alongAxis {
+		return d
+	}
+	if s.axis == Column {
+		d = -d // down the screen is toward a vertical slider's far end
+	}
+	if s.inverted {
+		d = -d
+	}
+	return d
 }
 
 // KeyAction implements KeyActionHandler: arrows nudge the value by one
@@ -234,10 +334,8 @@ func (s *Slider) KeyAction(a KeyAction, mods Mods) {
 		step = (s.max - s.min) / 10
 	}
 	switch a {
-	case KeyLeft, KeyDown:
-		s.SetValue(s.value - step)
-	case KeyRight, KeyUp:
-		s.SetValue(s.value + step)
+	case KeyLeft, KeyRight, KeyUp, KeyDown:
+		s.SetValue(s.value + step*s.keyDirection(a))
 	case KeyHome:
 		s.SetValue(s.min)
 	case KeyEnd:

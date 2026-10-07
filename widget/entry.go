@@ -116,10 +116,10 @@ type Entry struct {
 	// secondary icon, cascade-painted; trailingClick fires on a press
 	// over it. leading is the primary icon (SetLeadingIcon), at the
 	// text area's start.
-	trailing      *Icon
-	trailingClick func()
-	leading       *Icon
-	leadingClick  func()
+	trailing      Widget
+	trailingClick func(Point)
+	leading       Widget
+	leadingClick  func(Point)
 }
 
 // NewEntry returns an empty entry painted with face at sizePx. Face
@@ -155,21 +155,15 @@ func (t *entryText) styleChildren() []Widget { return []Widget{&t.placeholder, &
 // display-only. An empty name clears it.
 func (e *Entry) SetTrailingIcon(name string, px float64, onClick func()) {
 	checkLoop("SetTrailingIcon")
-	if name == "" {
-		e.trailing = nil
-		e.trailingClick = nil
-		setParents(e)
-		e.InvalidateLayout()
-		return
-	}
-	e.trailing = NewThemeIcon(name, int(px))
-	e.trailingClick = onClick
-	setParents(e, e.trailing)
-	e.InvalidateLayout()
+	w, click := entryIcon(name, px, onClick)
+	e.setSlots(e.leading, e.leadingClick, w, click)
 }
 
 // TrailingIcon returns the entry's trailing icon, nil when unset.
-func (e *Entry) TrailingIcon() *Icon { return e.trailing }
+func (e *Entry) TrailingIcon() *Icon {
+	ic, _ := e.trailing.(*Icon)
+	return ic
+}
 
 // SetLeadingIcon shows a themed icon at the entry's start — GtkEntry's
 // primary icon, cascade-painted like the secondary one; onClick fires
@@ -177,29 +171,42 @@ func (e *Entry) TrailingIcon() *Icon { return e.trailing }
 // it.
 func (e *Entry) SetLeadingIcon(name string, px float64, onClick func()) {
 	checkLoop("SetLeadingIcon")
-	if name == "" {
-		e.leading = nil
-		e.leadingClick = nil
-	} else {
-		e.leading = NewThemeIcon(name, int(px))
-		e.leadingClick = onClick
-	}
-	setParents(e, entryIconParents(e.trailing, e.leading)...)
-	e.InvalidateLayout()
+	w, click := entryIcon(name, px, onClick)
+	e.setSlots(w, click, e.trailing, e.trailingClick)
 }
 
 // LeadingIcon returns the entry's leading icon, nil when unset.
-func (e *Entry) LeadingIcon() *Icon { return e.leading }
+func (e *Entry) LeadingIcon() *Icon {
+	ic, _ := e.leading.(*Icon)
+	return ic
+}
 
-// entryIconParents is the entry's icon children that exist.
-func entryIconParents(icons ...*Icon) []Widget {
-	out := make([]Widget, 0, len(icons))
-	for _, ic := range icons {
-		if ic != nil {
-			out = append(out, ic)
+// entryIcon builds an icon slot's widget and click ("" clears it).
+func entryIcon(name string, px float64, onClick func()) (Widget, func(Point)) {
+	if name == "" {
+		return nil, nil
+	}
+	var click func(Point)
+	if onClick != nil {
+		click = func(Point) { onClick() }
+	}
+	return NewThemeIcon(name, int(px)), click
+}
+
+// setSlots fills the two end slots - an icon, or any widget such as a
+// spin button's steppers - with their press handlers (which receive
+// the press point), and re-links them as the entry's children.
+func (e *Entry) setSlots(leading Widget, leadingClick func(Point), trailing Widget, trailingClick func(Point)) {
+	e.leading, e.leadingClick = leading, leadingClick
+	e.trailing, e.trailingClick = trailing, trailingClick
+	var kids []Widget
+	for _, w := range [2]Widget{e.trailing, e.leading} {
+		if w != nil {
+			kids = append(kids, w)
 		}
 	}
-	return out
+	setParents(e, kids...)
+	e.InvalidateLayout()
 }
 
 // trailingRect is the icon's rect: the content height, at the end
@@ -208,7 +215,7 @@ func (e *Entry) trailingRect() render.Rect {
 	if e.trailing == nil {
 		return render.Rect{}
 	}
-	sz := e.trailing.Measure(Constraints{Max: Size{W: e.bounds.W, H: e.bounds.H}})
+	sz := e.slotSize(e.trailing)
 	in := e.textInsets()
 	return render.Rect{
 		X: e.bounds.X + e.bounds.W - in.Right,
@@ -222,7 +229,7 @@ func (e *Entry) trailingWidth() int {
 	if e.trailing == nil {
 		return 0
 	}
-	sz := e.trailing.Measure(Constraints{Max: Size{W: e.bounds.W, H: e.bounds.H}})
+	sz := e.slotSize(e.trailing)
 	return sz.W + entryTrailingGap
 }
 
@@ -232,13 +239,25 @@ func (e *Entry) leadingRect() render.Rect {
 	if e.leading == nil {
 		return render.Rect{}
 	}
-	sz := e.leading.Measure(Constraints{Max: Size{W: e.bounds.W, H: e.bounds.H}})
+	sz := e.slotSize(e.leading)
 	in := e.textInsets()
 	return render.Rect{
 		X: e.bounds.X + in.Left,
 		Y: e.bounds.Y + (e.bounds.H-sz.H)/2,
 		W: sz.W, H: sz.H,
 	}
+}
+
+// slotSize is an end slot's natural size: unbounded across, within
+// the field's height once arranged - before the first arrange the
+// bounds are empty, and measuring inside them counted the slot as
+// nothing.
+func (e *Entry) slotSize(w Widget) Size {
+	h := e.bounds.H
+	if h <= 0 {
+		h = 1 << 20
+	}
+	return w.Measure(Constraints{Max: Size{W: 1 << 20, H: h}})
 }
 
 // entryTrailingGap is the space between the text and the trailing icon.
@@ -249,7 +268,7 @@ func (e *Entry) leadingWidth() int {
 	if e.leading == nil {
 		return 0
 	}
-	sz := e.leading.Measure(Constraints{Max: Size{W: e.bounds.W, H: e.bounds.H}})
+	sz := e.slotSize(e.leading)
 	return sz.W + entryTrailingGap
 }
 
@@ -1205,13 +1224,13 @@ func (e *Entry) ClickAt(p Point) {
 	}
 	if e.leading != nil && e.leadingClick != nil {
 		if r := e.leadingRect(); !r.Empty() && r.Contains(p.X, p.Y) {
-			e.leadingClick()
+			e.leadingClick(p)
 			return
 		}
 	}
 	if e.trailing != nil && e.trailingClick != nil {
 		if r := e.trailingRect(); !r.Empty() && r.Contains(p.X, p.Y) {
-			e.trailingClick()
+			e.trailingClick(p)
 			return
 		}
 	}

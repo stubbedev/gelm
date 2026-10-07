@@ -181,7 +181,7 @@ func TestSearchEntry(t *testing.T) {
 	if s.trailing == nil {
 		t.Error("the clear button did not return")
 	}
-	s.trailingClick()
+	s.trailingClick(Point{})
 	if s.Text() != "" || s.trailing != nil {
 		t.Errorf("clear click: text=%q trailing=%v", s.Text(), s.trailing)
 	}
