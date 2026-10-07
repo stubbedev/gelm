@@ -68,6 +68,9 @@ closed and the map below reflects the tree as of that close.
 | Taskbar/window list | wlr-foreign-toplevel-management: `Toplevels()`, per-handle Activate/minimize/maximize/Close, `OnToplevel*` hooks (#33) | internal/wlsession/toplevel.go |
 | Launcher focus | xdg-activation: `RequestActivationToken`/`Activate`/`OnActivationToken` (#33) | internal/wlsession/activation.go |
 | Idle inhibit | zwp_idle_inhibit: `InhibitIdle`, nil-safe `IdleInhibitor` (#33) | internal/wlsession/idleinhibit.go |
+| Idle notify | ext-idle-notify-v1: `Application.OnIdle(timeout, idle, resume)`, `Session.IdleNotify` (input-only v2 variant); inert without the protocol (#109) | internal/wlsession/idlenotify.go, app/application.go |
+| Pointer lock, relative motion | pointer-constraints-v1 and relative-pointer-v1: `LockPointer`, `ConfinePointer`, `OnRelativeMotion` (#108) | internal/wlsession/constraints.go, app/constraints.go |
+| Touch, tablets, cursor shapes | wl_touch, pointer-gestures, tablet-v2, cursor-shape-v1 (#105-#107) | internal/wlsession/touch.go, tablet.go, cursorshape.go, widget/touch.go |
 | Shortcut grab (games, VMs) | keyboard-shortcuts-inhibit: `InhibitShortcuts`, focus-tracked `ShortcutsInhibitor` (#33) | internal/wlsession/shortinhibit.go |
 | Output naming | xdg-output: logical-name/geometry lookup per output (#33) | internal/wlsession/xdgoutput.go |
 | Dialog modality | xdg-dialog-v1: parented dialogs hint `set_modal`, compositor blocks the parent's input; silent degrade without the global (#61) | internal/wlsession/dialog.go, internal/window |

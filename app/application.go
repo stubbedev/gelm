@@ -1090,3 +1090,22 @@ func (a *Application) repaintOnIconReset(c *icons.Cache) {
 // so the two do not stack; surfaces then map and close at once, with
 // the same callbacks in the same order.
 func (a *Application) SetSurfaceMotion(on bool) { surfx.SetEnabled(on) }
+
+// IdleNotifyAvailable reports whether the compositor can tell the
+// application when the user goes idle (ext-idle-notify-v1).
+func (a *Application) IdleNotifyAvailable() bool { return a.sess.IdleNotifyAvailable() }
+
+// OnIdle watches for timeout of user inactivity: idle runs once the
+// user has been idle that long, resume when they are active again,
+// both on the loop goroutine, until the returned stop. Idle inhibitors
+// (a video playing) hold the timer like they hold the compositor's
+// own. Fails when the protocol is unavailable - an absent protocol
+// leaves the application with no idle signal rather than a guess.
+func (a *Application) OnIdle(timeout time.Duration, idle, resume func()) (stop func(), err error) {
+	n, err := a.sess.IdleNotify(timeout, false)
+	if err != nil {
+		return nil, err
+	}
+	n.OnIdle, n.OnResume = idle, resume
+	return n.Destroy, nil
+}

@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/unxed/xkb-go"
@@ -95,6 +96,16 @@ func run() error {
 	// instead of hardcoded coordinates. app.Run re-arranges at the same
 	// size on every draw, so this pre-arrange changes nothing.
 	debug.Log("demo", "mapped %dx%d", w, h)
+	// GELM_DEMO_IDLE_MS watches the seat for that much idleness and
+	// traces idle and resume: the headless idle-notify test's probe.
+	if ms, err := strconv.Atoi(os.Getenv("GELM_DEMO_IDLE_MS")); err == nil && ms > 0 {
+		if n, err := sess.IdleNotify(time.Duration(ms)*time.Millisecond, false); err == nil {
+			n.OnIdle = func() { debug.Log("demo", "idle") }
+			n.OnResume = func() { debug.Log("demo", "resumed") }
+		} else {
+			debug.Log("demo", "idle notify unavailable: %v", err)
+		}
+	}
 	show.root.Measure(widget.Constraints{Max: widget.Size{W: w, H: h}})
 	show.root.Arrange(render.Rect{X: 0, Y: 0, W: w, H: h})
 	for _, c := range []struct {

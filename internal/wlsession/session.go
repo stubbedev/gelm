@@ -126,10 +126,13 @@ type Session struct {
 	// constraintsMgr locks and confines the pointer, constraints holding
 	// each surface's; relativeMgr and relative read raw motion
 	// (constraints.go).
-	constraintsMgr      *wlr.ZwpPointerConstraintsV1
-	constraints         map[*wl.Surface]*PointerConstraint
-	relativeMgr         *wlr.ZwpRelativePointerManagerV1
-	relative            *wlr.ZwpRelativePointerV1
+	constraintsMgr *wlr.ZwpPointerConstraintsV1
+	constraints    map[*wl.Surface]*PointerConstraint
+	relativeMgr    *wlr.ZwpRelativePointerManagerV1
+	relative       *wlr.ZwpRelativePointerV1
+	// idleNotifier watches the seat's idleness (idlenotify.go).
+	idleNotifier        *wlr.ExtIdleNotifierV1
+	idleNotifierVersion uint32
 	wmBase              *xdg.WmBase
 	wmBaseVersion       uint32
 	compositorVersion   uint32
@@ -489,6 +492,8 @@ func (s *Session) HandleRegistryGlobal(ev wl.RegistryGlobalEvent) {
 		s.bindPointerConstraints(ev)
 	case "zwp_relative_pointer_manager_v1":
 		s.bindRelativePointer(ev)
+	case "ext_idle_notifier_v1":
+		s.bindIdleNotifier(ev)
 	case "zwp_keyboard_shortcuts_inhibit_manager_v1":
 		s.bindShortcutsInhibitManager(ev)
 	case "zxdg_output_manager_v1":

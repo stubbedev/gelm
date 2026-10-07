@@ -1037,3 +1037,21 @@ func TestHeadlessCursorShapePaths(t *testing.T) {
 		})
 	}
 }
+
+// Idle notification: the compositor reports the seat idle after the
+// requested quiet time, and input resumes it.
+func TestHeadlessIdleNotify(t *testing.T) {
+	requireEnv(t)
+	_, w, centers := startShowcaseEnv(t, "GELM_DEMO_IDLE_MS=400")
+	if _, err := w.Wait("demo", "idle", traceTimeout); err != nil {
+		t.Fatalf("the seat never went idle: %v", err)
+	}
+	in := newInput(t)
+	btn := centers["button"]
+	if err := in.MoveTo(btn[0], btn[1]); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.Wait("demo", "resumed", traceTimeout); err != nil {
+		t.Errorf("input did not resume the seat: %v", err)
+	}
+}
