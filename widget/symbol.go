@@ -99,8 +99,7 @@ func (s *Symbol) Paint(cv *render.Canvas) {
 		strokeChevron(cv, cx-r/2, cy, r, ang, col)
 		strokeChevron(cv, cx+r/2, cy, r, ang, col)
 	case SymbolClose:
-		cv.Line(cx-r, cy-r, cx+r, cy+r, 1, col)
-		cv.Line(cx-r, cy+r, cx+r, cy-r, 1, col)
+		strokeCross(cv, cx, cy, r, col)
 	case SymbolMinimize:
 		cv.Line(cx-r, cy+r, cx+r, cy+r, 1, col)
 	case SymbolMaximize:
@@ -116,6 +115,13 @@ func (s *Symbol) Paint(cv *render.Canvas) {
 
 // HitTest resolves inside the bounds.
 func (s *Symbol) HitTest(p Point) Widget { return s.HitLeaf(s, p) }
+
+// strokeCross draws a diagonal cross of half-span r centered on
+// (cx, cy): the close glyph Symbol and the notebook's tab close share.
+func strokeCross(cv *render.Canvas, cx, cy, r int, col render.Color) {
+	cv.Line(cx-r, cy-r, cx+r, cy+r, 1, col)
+	cv.Line(cx-r, cy+r, cx+r, cy-r, 1, col)
+}
 
 // strokeChevron draws a v-shaped chevron centered on (cx, cy) with arm
 // half-span r, rotated ang radians from right-pointing - the stroke the
