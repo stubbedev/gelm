@@ -373,6 +373,25 @@ applies; a theme is never rejected for its colors.
 - **No toplevel drag** (xdg_toplevel_drag_v1) — it only matters for
   detachable tabs; it is folded into that decision rather than bound
   ahead of a use.
+- **No color management or HDR** (wp_color_management_v1,
+  frog_color_management_v1; #111) — researched and declined for now.
+  The upstream protocol (staging since wayland-protocols 1.41) is the
+  one to bind when this changes; frog- was its stopgap and is being
+  retired in its favor by the compositors that carried it. What
+  matters to an sRGB shm client is the protocol's default: a surface
+  without an image description "should" be handled as sRGB, which is
+  what every color-managing compositor does, so gelm's colors already
+  map correctly onto wide-gamut and HDR outputs. Tagging surfaces
+  explicitly as sRGB would restate that default. What gelm cannot do
+  is show content beyond sRGB: that needs per-surface image
+  descriptions, a canvas that carries a color state, 10-bit or
+  half-float shm formats, rasterizers that blend in the right transfer
+  function, CSS `color()` forms beyond sRGB, and goldens per state - a
+  pipeline-wide change with no current consumer (photo and video apps
+  that need it). The trigger to reopen: an app that must show
+  wide-gamut or HDR images; the first step then is the explicit sRGB
+  tag plus the output's preferred description, before any pipeline
+  work.
 
 Implemented from the same review (#110): content-type hints
 (`WindowConfig.ContentType`, `Window.SetContentType`), live surface
