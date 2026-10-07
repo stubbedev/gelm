@@ -31,6 +31,10 @@ const (
 	SymbolMaximize
 	// SymbolCrosshair is a picker's crosshair.
 	SymbolCrosshair
+	// SymbolDoubleLeft is two left chevrons (a bigger step back).
+	SymbolDoubleLeft
+	// SymbolDoubleRight is two right chevrons (a bigger step forward).
+	SymbolDoubleRight
 )
 
 // chevronAngle is each chevron kind's rotation from right-pointing.
@@ -87,6 +91,13 @@ func (s *Symbol) Paint(cv *render.Canvas) {
 		return
 	}
 	switch s.kind {
+	case SymbolDoubleLeft, SymbolDoubleRight:
+		ang := 0.0
+		if s.kind == SymbolDoubleLeft {
+			ang = math.Pi
+		}
+		strokeChevron(cv, cx-r/2, cy, r, ang, col)
+		strokeChevron(cv, cx+r/2, cy, r, ang, col)
 	case SymbolClose:
 		cv.Line(cx-r, cy-r, cx+r, cy+r, 1, col)
 		cv.Line(cx-r, cy+r, cx+r, cy-r, 1, col)

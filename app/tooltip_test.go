@@ -210,3 +210,34 @@ func TestCursorFor(t *testing.T) {
 		t.Errorf("nil hover cursor = %q, want empty", got)
 	}
 }
+
+// A tooltip that follows the pointer within one widget (a calendar's
+// per-day detail) changes its text without a hover change: the open
+// tooltip closes and the new text gets its own dwell.
+func TestTooltipCtlTextChange(t *testing.T) {
+	target := newTipTarget("monday")
+	target.Arrange(render.Rect{W: 100, H: 20})
+	router := &widget.Router{Root: target}
+	var opened []string
+	var last *stub
+	opener := func(_ widget.Widget, text string) (tooltipWindow, *popup.Painter) {
+		opened = append(opened, text)
+		last = &stub{}
+		return last, nil
+	}
+	ctl := &tooltipCtl{}
+	base := time.Now()
+	router.Move(widget.Point{X: 10, Y: 10})
+	ctl.update(router, base, opener)
+	ctl.update(router, base.Add(tooltipDelay), opener)
+	first := last
+	target.tooltip = "tuesday"
+	ctl.update(router, base.Add(tooltipDelay+time.Millisecond), opener)
+	if first.closed != 1 || len(opened) != 1 {
+		t.Fatalf("a text change: closes=%d opened=%v", first.closed, opened)
+	}
+	ctl.update(router, base.Add(2*tooltipDelay+time.Millisecond), opener)
+	if len(opened) != 2 || opened[1] != "tuesday" {
+		t.Errorf("opened %v, want the new text after its dwell", opened)
+	}
+}
