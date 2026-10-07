@@ -21,6 +21,7 @@ package widget
 import (
 	"os"
 	"slices"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -1271,21 +1272,58 @@ func pickf(v *style.Values, p style.Prop, def float64) float64 {
 	return def
 }
 
-// featureFace shapes f through its tabular twin when the cascade's
-// font-feature-settings asks for tnum; other tags wait for their
-// callers to care. The twin is memoized per face, so the shaping cache
+// styledFace applies the cascade's face-level settings to f: weight
+// (font-weight the resolver did not already serve) on a variable
+// face's wght axis, font-variation-settings over it (CSS lets the
+// explicit axis win), and the tabular twin when font-feature-settings
+// asks for tnum. Every derived face is memoized, so the shaping cache
 // keeps hitting.
-func featureFace(f render.Font, v *style.Values) render.Font {
-	if !v.Has(style.PropFontFeatures) || !strings.Contains(v.Features, "tnum") {
-		return f
-	}
+func styledFace(f render.Font, v *style.Values, weight int) render.Font {
+	vars := cascadeVariations(v, weight)
+	tnum := v.Has(style.PropFontFeatures) && strings.Contains(v.Features, "tnum")
 	switch t := f.(type) {
 	case *render.Typeface:
-		return t.Tabular()
+		t = t.WithVariations(vars...)
+		if tnum {
+			t = t.Tabular()
+		}
+		return t
 	case *render.Chain:
-		return t.Tabular()
+		t = t.WithVariations(vars...)
+		if tnum {
+			t = t.Tabular()
+		}
+		return t
 	}
 	return f
+}
+
+// cascadeVariations is the axis settings the cascade implies: wght
+// from weight (0 for none), then font-variation-settings, a later tag
+// replacing an earlier one.
+func cascadeVariations(v *style.Values, weight int) []render.Variation {
+	var out []render.Variation
+	set := func(tag string, val float32) {
+		for i := range out {
+			if out[i].Tag == tag {
+				out[i].Value = val
+				return
+			}
+		}
+		out = append(out, render.Variation{Tag: tag, Value: val})
+	}
+	if weight > 0 {
+		set("wght", float32(weight))
+	}
+	if v.Has(style.PropFontVariations) {
+		for kv := range strings.SplitSeq(v.Variations, ";") {
+			tag, num, ok := strings.Cut(kv, "=")
+			if f, err := strconv.ParseFloat(num, 32); ok && err == nil {
+				set(tag, float32(f))
+			}
+		}
+	}
+	return out
 }
 
 // radiusOr returns the stylesheet's corner radii when any corner is

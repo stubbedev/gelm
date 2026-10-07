@@ -249,25 +249,26 @@ func (l *Label) capWidth(con Constraints) Constraints {
 
 // effStyleIn resolves the paint parameters one cascade value implies:
 // the face (a font-family/font-weight declaration shaped through the
-// installed face resolver, else the constructor face) and the size
-// (font-size, else the constructor size). A font-feature-settings
-// declaration with tnum shapes through the face's tabular twin.
+// installed face resolver, else the constructor face - a variable one
+// taking the weight on its wght axis), its font-variation-settings and
+// tnum twin (styledFace), and the size (font-size, else the
+// constructor size).
 func (l *Label) effStyleIn(v *style.Values) (render.Font, float64) {
 	px := fontPx(v, l.sizePx)
-	if !v.Has(style.PropFontFamily) && !v.Has(style.PropFontWeight) {
-		return featureFace(l.face, v), px
-	}
-	family, weight := "", 0
-	if v.Has(style.PropFontFamily) {
-		family = v.FontFamily
-	}
+	face, weight := l.face, 0
 	if v.Has(style.PropFontWeight) {
 		weight = v.FontWeight
 	}
-	if f, ok := resolveFace(family, weight); ok {
-		return featureFace(f, v), px
+	if v.Has(style.PropFontFamily) || weight != 0 {
+		family := ""
+		if v.Has(style.PropFontFamily) {
+			family = v.FontFamily
+		}
+		if f, ok := resolveFace(family, weight); ok {
+			face, weight = f, 0 // the resolver served the weight
+		}
 	}
-	return featureFace(l.face, v), px
+	return styledFace(face, v, weight), px
 }
 
 // effStyle is effStyleIn over the widget's current cascade.

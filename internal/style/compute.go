@@ -407,6 +407,8 @@ func copyProp(dst, src *Values, p Prop) {
 		dst.LineHeight = src.LineHeight
 	case PropFontFeatures:
 		dst.Features = src.Features
+	case PropFontVariations:
+		dst.Variations = src.Variations
 	case PropTransform:
 		dst.Transform = src.Transform
 	case PropTransformOrigin:

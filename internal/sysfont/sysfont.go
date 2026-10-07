@@ -202,7 +202,27 @@ func Variant(base *render.Typeface, bold, italic bool) (*render.Typeface, error)
 	if err != nil {
 		return nil, fmt.Errorf("sysfont: no %s variant (bold=%v, italic=%v) found", base.Family(), bold, italic)
 	}
-	return tf, nil
+	return instantiate(tf, aspect), nil
+}
+
+// instantiate serves a variable face at the requested aspect: the
+// store matches a variable family as one face at its default instance,
+// so a weight it does not describe is set on the wght axis (and italic
+// on ital) - the family's real weight, as GTK renders it, instead of
+// the default instance. Static faces return unchanged.
+func instantiate(tf *render.Typeface, aspect font.Aspect) *render.Typeface {
+	var vs []render.Variation
+	desc := tf.Describe().Aspect
+	if desc.Weight != aspect.Weight && tf.HasAxis("wght") {
+		vs = append(vs, render.Variation{Tag: "wght", Value: float32(aspect.Weight)})
+	}
+	if aspect.Style == font.StyleItalic && desc.Style != font.StyleItalic && tf.HasAxis("ital") {
+		vs = append(vs, render.Variation{Tag: "ital", Value: 1})
+	}
+	if len(vs) == 0 {
+		return tf
+	}
+	return tf.WithVariations(vs...)
 }
 
 // Weighted resolves family at a CSS numeric weight (100-900) and
@@ -219,7 +239,11 @@ func Weighted(family string, size float64, weight int, italic bool) (*render.Typ
 	if italic {
 		aspect.Style = font.StyleItalic
 	}
-	return lookup(family, aspect, 0, 'x')
+	tf, err := lookup(family, aspect, 0, 'x')
+	if err != nil {
+		return nil, err
+	}
+	return instantiate(tf, aspect), nil
 }
 
 // Fallback returns a chain that shapes with base and, for runes it
