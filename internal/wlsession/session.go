@@ -121,8 +121,15 @@ type Session struct {
 	tabletMgr  *wlr.ZwpTabletManagerV2
 	tabletSeat *wlr.ZwpTabletSeatV2
 	// shapeMgr and shapeDevice draw cursors compositor-side (cursorshape.go).
-	shapeMgr            *wlr.WpCursorShapeManagerV1
-	shapeDevice         shapeAPI
+	shapeMgr    *wlr.WpCursorShapeManagerV1
+	shapeDevice shapeAPI
+	// constraintsMgr locks and confines the pointer, constraints holding
+	// each surface's; relativeMgr and relative read raw motion
+	// (constraints.go).
+	constraintsMgr      *wlr.ZwpPointerConstraintsV1
+	constraints         map[*wl.Surface]*PointerConstraint
+	relativeMgr         *wlr.ZwpRelativePointerManagerV1
+	relative            *wlr.ZwpRelativePointerV1
 	wmBase              *xdg.WmBase
 	wmBaseVersion       uint32
 	compositorVersion   uint32
@@ -478,6 +485,10 @@ func (s *Session) HandleRegistryGlobal(ev wl.RegistryGlobalEvent) {
 		s.bindTabletManager(ev)
 	case "wp_cursor_shape_manager_v1":
 		s.bindCursorShapeManager(ev)
+	case "zwp_pointer_constraints_v1":
+		s.bindPointerConstraints(ev)
+	case "zwp_relative_pointer_manager_v1":
+		s.bindRelativePointer(ev)
 	case "zwp_keyboard_shortcuts_inhibit_manager_v1":
 		s.bindShortcutsInhibitManager(ev)
 	case "zxdg_output_manager_v1":
@@ -714,6 +725,7 @@ func (s *Session) handleCapabilities(hasPointer, hasKeyboard bool) {
 			s.pointer = p
 			s.ensurePointerGestures()
 			s.ensureCursorShape()
+			s.ensureRelativePointer()
 			debug.Log("seat", "pointer capability gained")
 		}
 	}
@@ -757,6 +769,7 @@ func (s *Session) handleCapabilities(hasPointer, hasKeyboard bool) {
 func (s *Session) pointerLost() {
 	s.dropPointerGestures()
 	s.dropCursorShape()
+	s.dropRelativePointer()
 	if p := s.pointer; p != nil {
 		s.pointer = nil
 		if s.seatVersion >= minSeatReleaseVersion {
@@ -811,6 +824,7 @@ func (s *Session) keyboardLost() {
 // is destroyed.
 func (s *Session) SetSurfaceInput(surf *wl.Surface, h SurfacePointerHandler) {
 	if h == nil {
+		s.releaseConstraint(surf)
 		delete(s.surfaceHandlers, surf)
 		return
 	}

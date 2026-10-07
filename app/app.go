@@ -121,6 +121,8 @@ type surfaceInput struct {
 	tip     *tooltipCtl
 	onPress func(button uint32, serial uint32, over widget.Widget)
 	onMove  func(x, y float64)
+	// onRelative hears the pointer's relative motion (OnRelativeMotion).
+	onRelative func(dx, dy, rawDX, rawDY float64)
 	// dnd, when set, starts drags from press+motion gestures and
 	// receives this surface's data-device events (dragdrop.Target).
 	dnd dragController
@@ -185,6 +187,15 @@ func (in *surfaceInput) HandlePointerMotion(x, y float64) {
 		return
 	}
 	in.move(x, y)
+}
+
+// HandleRelativeMotion implements wlsession.SurfaceRelativeHandler.
+func (in *surfaceInput) HandleRelativeMotion(dx, dy, rawDX, rawDY float64) {
+	if in.dropInput() || in.onRelative == nil {
+		return
+	}
+	in.onRelative(dx, dy, rawDX, rawDY)
+	in.request()
 }
 
 // TouchMove implements widget.TouchPointer: an emulating contact
