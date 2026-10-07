@@ -1336,6 +1336,16 @@ func borderOf(v *style.Values) render.Insets {
 	return render.Insets{Top: b.Top, Right: b.Right, Bottom: b.Bottom, Left: b.Left}
 }
 
+// ringOr is the border widths the cascade declares, else a uniform
+// px ring: the themed default ring a widget draws until a stylesheet
+// takes the border over (check indicators, frames).
+func ringOr(v *style.Values, px int) render.Insets {
+	if v.HasAny(style.PropBorderTopWidth, style.PropBorderRightWidth, style.PropBorderBottomWidth, style.PropBorderLeftWidth) {
+		return borderOf(v)
+	}
+	return render.UniformInsets(px)
+}
+
 // marginOf returns the margins.
 func marginOf(v *style.Values) render.Insets {
 	m := v.Margin
