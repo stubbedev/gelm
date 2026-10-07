@@ -370,8 +370,8 @@ type Values struct {
 	// CaretColor is caret-color: an entry's caret takes it over the
 	// text color.
 	CaretColor render.Color
-	// Underline is text-decoration's underline.
-	Underline bool
+	// Decoration is text-decoration: its lines, style, and color.
+	Decoration render.Decoration
 
 	// Vars is the node's custom-property environment: its own
 	// declarations over the inherited chain. Nodes that declare none

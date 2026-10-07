@@ -50,10 +50,14 @@ disagree:
   `border-*-radius`, `box-shadow` (lists, offsets, spread, blur,
   `inset`), `outline[-width|-style|-color|-offset]`, `min-width`,
   `min-height`, `border-spacing` (Box gap), `font[-family|-size|-weight|-style]`,
-  `letter-spacing` (computed, not yet painted), `text-transform`,
+  `letter-spacing` (shaped into the advances of Label, RichLabel,
+  Entry and TextArea), `text-decoration` (the shorthand: underline,
+  overline, line-through; solid, double, dotted, dashed, wavy; a color -
+  painted by the shared text path on the same widgets; the longhands
+  are not parsed), `font-variation-settings`, `text-transform`,
   `-gtk-icon-size`, `transition[-*]` (computed; not yet animated).
-  Animation, icon-transform, text-decoration and similar GTK properties
-  parse and drop silently.
+  Animation, icon-transform and similar GTK properties parse and drop
+  silently.
 - **Cascade**: prioritized stylesheets (`AddStylesheet`, GTK's provider
   priorities; `LoadStylesheet` is the application slot) and per-widget
   inline declarations (`SetInlineStyle`, a widget-scoped provider at
@@ -149,9 +153,8 @@ ships without a painter:
 
 Out for v1, with today's answer recorded: `margin` (layout geometry is
 owned by Box/Grid/Spacing, not style), `opacity` (the fader widget owns
-transitions), `spacing`/`gap` (same owner as margin), `text-decoration`
-(no underline/strike in the text path), `transition`/`animation`
-(the anim package owns motion).
+transitions), `spacing`/`gap` (same owner as margin),
+`transition`/`animation` (the anim package owns motion).
 
 ## Parsing
 

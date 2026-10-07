@@ -448,7 +448,7 @@ func copyProp(dst, src *Values, p Prop) {
 	case PropCaretColor:
 		dst.CaretColor = src.CaretColor
 	case PropTextDecoration:
-		dst.Underline = src.Underline
+		dst.Decoration = src.Decoration
 	}
 }
 

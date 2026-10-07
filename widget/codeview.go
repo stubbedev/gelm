@@ -147,7 +147,7 @@ func (t *TextArea) gutterWidth() int {
 		return 0
 	}
 	digits := max(len(strconv.Itoa(len(t.lines))), 2)
-	return int(float64(digits)*t.face.ShapeRune('0', t.px()).Advance()+0.5) + 2*gutterPad
+	return int(float64(digits)*t.font().ShapeRune('0', t.px()).Advance()+0.5) + 2*gutterPad
 }
 
 // paintGutter draws each line's number, right-aligned in the gutter
@@ -175,7 +175,7 @@ func (t *TextArea) paintGutter(cv *render.Canvas, c render.Rect, lineH int, fade
 			continue
 		}
 		last = r.line
-		sh := t.face.Shape(strconv.Itoa(r.line+1), t.px())
+		sh := t.font().Shape(strconv.Itoa(r.line+1), t.px())
 		y := c.Y + i*lineH
 		baseline := y + int((float64(lineH)-float64(sh.LineHeight()))/2+sh.Ascent()+0.5)
 		sh.Draw(cv, g.X+w-gutterPad-int(sh.Advance()+0.5), baseline, fade(col))
@@ -232,10 +232,10 @@ func (t *TextArea) drawRow(cv *render.Canvas, r visualRow, line []rune, sh *rend
 		if st.Color != 0 {
 			col = fade(st.Color)
 		}
-		face := t.face
+		face := t.font()
 		if (st.Bold || st.Italic) && t.variants != nil {
 			if f := t.variants(st.Bold, st.Italic); f != nil {
-				face = f
+				face = t.faces.get(f, t.style(t), 0)
 			}
 		}
 		x := rowX + int(sh.CaretX(at-r.startCol)+0.5)

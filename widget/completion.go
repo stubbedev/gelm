@@ -117,7 +117,7 @@ func (e *Entry) completionKeys(a KeyAction, mods Mods) bool {
 
 // completionRowH is one list row's height: the text line plus breathing.
 func (e *Entry) completionRowH() int {
-	return int(float64(e.face.Shape("lg", e.fontPx()).LineHeight())+0.5) + 8
+	return int(float64(e.font().Shape("lg", e.fontPx()).LineHeight())+0.5) + 8
 }
 
 // completionHeight is the open list's full height.
@@ -153,7 +153,7 @@ func (e *Entry) paintCompletion(cv *render.Canvas) {
 		if i == e.completeSel {
 			cv.RoundedRect(render.Rect{X: row.X + 2, Y: row.Y + 1, W: row.W - 4, H: row.H - 2}, 3, th.SurfaceHover)
 		}
-		e.face.DrawAligned(cv, match, render.Rect{
+		e.font().DrawAligned(cv, match, render.Rect{
 			X: row.X + completionPadX, Y: row.Y, W: row.W - 2*completionPadX, H: row.H,
 		}, e.fontPx(), th.Text, render.AlignStart)
 	}

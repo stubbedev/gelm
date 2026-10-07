@@ -14,6 +14,7 @@ import (
 type Entry struct {
 	node
 	face        render.Font
+	faces       faceCache
 	sizePx      float64
 	color       render.Color
 	dir         Direction
@@ -346,8 +347,12 @@ func (e *Entry) Direction() Direction { return e.dir }
 // size is the stylesheet's font-size when matched, else the
 // constructor's.
 func (e *Entry) shape(s string) *render.ShapedText {
-	return e.face.ShapeDir(s, e.fontPx(), e.dir)
+	return e.font().ShapeDir(s, e.fontPx(), e.dir)
 }
+
+// font is the face the text shapes with: the constructor face styled
+// by the cascade (letter-spacing, font-variation-settings, tnum).
+func (e *Entry) font() render.Font { return e.faces.get(e.face, e.style(e), 0) }
 
 // fontPx is the effective shaping size: the stylesheet's font-size
 // when matched, else the constructor's.
@@ -942,7 +947,7 @@ func (e *Entry) WidthChars() (minChars, maxChars int) { return e.widthChars, e.m
 // approximate char and digit widths, the larger, rounded up).
 func (e *Entry) charPx() int {
 	px := e.fontPx()
-	return int(math.Ceil(max(e.face.ShapeRune('0', px).Advance(), e.face.ShapeRune('x', px).Advance())))
+	return int(math.Ceil(max(e.font().ShapeRune('0', px).Advance(), e.font().ShapeRune('x', px).Advance())))
 }
 
 // charsText is the text width width-chars ask for, and its floor; ok
@@ -984,9 +989,9 @@ func (e *Entry) Measure(con Constraints) Size {
 	case e.textWidth > 0:
 		w += e.textWidth
 	case text != "":
-		w += int(e.face.Shape(text, px).Advance() + 0.5)
+		w += int(e.font().Shape(text, px).Advance() + 0.5)
 	}
-	lg := e.face.Shape("lg", px)
+	lg := e.font().Shape("lg", px)
 	line := max(int(lg.Ascent()+lg.Descent()+0.5), picki(e.text.style(&e.text), style.PropMinHeight, 0))
 	h := line + in.Top + in.Bottom
 	if e.MaxWidth > 0 {
@@ -1078,7 +1083,7 @@ func (e *Entry) Paint(cv *render.Canvas) {
 			col = scaleAlpha(col, disabledFade)
 		}
 		// On the text's baseline at the reading's start edge, unpanned.
-		ph := e.face.ShapeDir(e.placeholder, e.fontPx(), e.dir)
+		ph := e.font().ShapeDir(e.placeholder, e.fontPx(), e.dir)
 		x := c.X
 		if text.RTL(e.placeholder, e.dir) {
 			x = c.X + c.W - int(ph.Advance()+0.5)
@@ -1115,6 +1120,9 @@ func (e *Entry) Paint(cv *render.Canvas) {
 		}
 	}
 	sh.Draw(cv, lx, baseline, textCol)
+	if deco := cssDecoration(v); deco.Lines != 0 {
+		sh.DrawDecoration(cv, lx, baseline, deco, textCol)
+	}
 	if selFg != 0 {
 		// The selected runes redraw in the selection's color.
 		for _, band := range sh.AppendCaretBands(e.bands[:0], start, end) {
