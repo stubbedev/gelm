@@ -49,13 +49,14 @@ func NewActionRow(face render.Font, sizePx float64, title, subtitle string) *Act
 	r.title.SetEllipsize(EllipsizeMiddle)
 	r.subtitle = NewRichLabel(face, sizePx-3, subtitle, th.TextMuted)
 	r.subtitle.SetEllipsize(EllipsizeMiddle)
+	r.subtitle.SetVisible(subtitle != "")
 	r.middle = NewBox(Column, 1, 0)
 	r.middle.Append(r.title, false)
 	r.middle.Append(r.subtitle, false)
 	r.initPacks(r, 6)
 	r.line = NewBox(Row, 10, 6)
 	r.line.Append(r.start, false)
-	r.line.Append(r.middle, true)
+	r.line.AppendAligned(r.middle, true, AlignCenter)
 	r.line.Append(r.end, false)
 	r.column = NewBox(Column, 0, 0)
 	r.column.Append(r.line, false)
@@ -70,7 +71,10 @@ func NewActionRow(face render.Font, sizePx float64, title, subtitle string) *Act
 func (r *ActionRow) SetTitle(t string) { r.title.SetMarkup(t) }
 
 // SetSubtitle sets the subtitle; empty hides it.
-func (r *ActionRow) SetSubtitle(s string) { r.subtitle.SetMarkup(s) }
+func (r *ActionRow) SetSubtitle(s string) {
+	r.subtitle.SetMarkup(s)
+	r.subtitle.SetVisible(s != "")
+}
 
 // Title returns the current title.
 func (r *ActionRow) Title() string { return r.title.Text() }

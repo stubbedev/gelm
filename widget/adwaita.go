@@ -106,6 +106,7 @@ var classRules = [][2]string{
 	{css.OSD, "background-color: #000000b3; color: #ffffff;"},
 	{css.View, "background-color: @view_bg_color; color: @view_fg_color;"},
 	{css.Toolbar, "padding: 6px;"},
+	{css.Keycap, "font-size: 12px; padding: 2px 6px; border: 1px solid @borders; border-radius: 6px; background-color: @card_bg_color;"},
 }
 
 // partRules style widget parts whose default paint is a named color:
