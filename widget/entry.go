@@ -241,8 +241,10 @@ func (e *Entry) leadingRect() render.Rect {
 	}
 	sz := e.slotSize(e.leading)
 	in := e.textInsets()
+	// The insets already reserve the icon's width: it sits just before
+	// the text area, as the trailing one sits just after.
 	return render.Rect{
-		X: e.bounds.X + in.Left,
+		X: e.bounds.X + in.Left - e.leadingWidth(),
 		Y: e.bounds.Y + (e.bounds.H-sz.H)/2,
 		W: sz.W, H: sz.H,
 	}

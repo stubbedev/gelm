@@ -1,7 +1,6 @@
 package icons
 
 import (
-	"os"
 	"path/filepath"
 	"slices"
 	"sync"
@@ -259,7 +258,7 @@ func (c *Cache) entryLocked(name string, size int, frac120 uint32) (*cacheEntry,
 
 // decode reads and rasterizes the matched file at the key's device box.
 func (e *cacheEntry) decode(path string, size int, frac120 uint32) {
-	data, err := os.ReadFile(path) //nolint:gosec // paths come from the theme lookup, not untrusted input
+	data, err := readIcon(path)
 	if err != nil {
 		e.err = err
 		return
