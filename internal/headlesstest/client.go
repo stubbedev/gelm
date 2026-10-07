@@ -94,10 +94,10 @@ func (e *Env) StartShowcase(bin, name string) (*Client, error) {
 }
 
 // StartClient runs a built client binary inside the env with the given
-// GOELM_DEBUG categories, its stdout and stderr going to a log file a
-// LogWatcher can follow. The caller must Stop it (or Wait it after a
-// close request).
-func (e *Env) StartClient(bin, name, categories string) (*Client, error) {
+// GOELM_DEBUG categories and extra arguments, its stdout and stderr
+// going to a log file a LogWatcher can follow. The caller must Stop it
+// (or Wait it after a close request).
+func (e *Env) StartClient(bin, name, categories string, args ...string) (*Client, error) {
 	logPath := filepath.Join(e.Dir, name+".log")
 	// The path is the harness's own runtime dir, built from the test's
 	// name; nothing user-controlled reaches it.
@@ -105,7 +105,7 @@ func (e *Env) StartClient(bin, name, categories string) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	cmd := exec.Command(bin)
+	cmd := exec.Command(bin, args...) //nolint:gosec // module-local binary, see above
 	cmd.Stdout = log
 	cmd.Stderr = log
 	cmd.Env = privateEnv(
