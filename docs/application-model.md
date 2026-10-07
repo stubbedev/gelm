@@ -161,6 +161,29 @@ test is `TestSingleInstanceForwardsToPrimary`
 (internal/headlesstest): two real processes, one wins, the loser's
 `--open` lands in the winner's shell trace.
 
+## File dialogs
+
+`app.OpenFileDialog`, `OpenFilesDialog`, `OpenFolderDialog`, and
+`SaveFileDialog` (#82) wrap `widget.FileChooser` - the pure-Go picker
+- in the standard Dialog: a places row (Up, Home, Filesystem, and
+Recent when recents are on), the directory listing, pattern filters,
+a name row in save mode, and an ok button that refuses to close the
+dialog until the choice is valid (the new `DialogConfig.
+ValidateResponse` veto). Save asks before replacing an existing file;
+choices land in `OnOpen`/`OnSave` on the loop goroutine, exactly once.
+
+**The picker is portal-free by decision.** gelm ships every widget the
+picker needs, a portal FileChooser adds a D-Bus dependency and a
+second UI to keep honest, and portal-less sessions (lab machines,
+early boot, tests) get the same dialog. The seam is
+`FileChooser.SetSource` - the listing comes from an injected
+`DirSource`, so a future xdg-desktop-portal backend plugs in under the
+same dialog API without touching the picker's UI. Recents are the
+XDG `recently-used.xbel` list (`internal/recentfiles`), shared with
+the desktop's other citizens, bounded and written atomically; the
+`text/uri-list` parsing the clipboard and drag-and-drop will need
+lives next to it (`recentfiles.ParseURIList`).
+
 ## Concept mapping
 
 | relm4 / GTK | gelm | note |
@@ -175,6 +198,7 @@ test is `TestSingleInstanceForwardsToPrimary`
 | `gtk::Application::quit` | `Application.Quit` | authoritative, bypasses vetoes |
 | GApplication single-instance / `command-line` / `open` | `app.ClaimInstance` + `InstanceConfig` hooks | socket-keyed guard; secondaries forward and exit 0, never touching the session (see above) |
 | relm4 `binding` module (`StringBinding`, `ConnectBindingExt`) | `widget.Binding[T]` + the widget `Bind*` connectors | loop-owned observable with equal-suppressed Set and deferred write-while-notifying; two-way wiring is echo-free by construction |
+| relm4/macros `open_dialog` / `save_dialog` / `open_button`, GTK `FileDialog` | `app.OpenFileDialog` family over `widget.FileChooser` | pure-Go picker (see File dialogs above), recents in XDG recently-used.xbel, overwrite confirmation, validating ok button |
 | per-window `scale-factor` | per-window `Scale` plus live `preferred_scale` | fractional scaling lands with #14 |
 
 ## What is deliberately absent
