@@ -139,10 +139,13 @@ func (w *LogWatcher) WaitEver(category, substr string, timeout time.Duration) er
 func (w *LogWatcher) WaitAll(category string, timeout time.Duration, substrs ...string) error {
 	w.mu.Lock()
 	w.pending = nil
+	// Only traces read from here on count: seen holds the whole
+	// history, and an earlier step's matching line must not satisfy
+	// this one (it once could - a false pass).
+	scanned := len(w.seen)
 	w.mu.Unlock()
 	deadline := time.Now().Add(timeout)
 	pending := append([]string(nil), substrs...)
-	scanned := 0
 	for {
 		w.readNew()
 		w.mu.Lock()
