@@ -62,6 +62,16 @@ var schemeFallback = map[string]string{
 	"def:keyword":          "def:statement",
 	"def:reserved":         "def:error",
 	"def:underlined":       "def:net-address",
+	// The markup ids (Markdown): a scheme without them still sets
+	// headings, code, links and markers apart.
+	"def:heading":              "def:keyword",
+	"def:inline-code":          "def:preformatted-section",
+	"def:preformatted-section": "def:string",
+	"def:link-text":            "def:underlined",
+	"def:link-destination":     "def:net-address",
+	"def:list-marker":          "def:statement",
+	"def:blockquote-marker":    "def:statement",
+	"def:thematic-break":       "def:statement",
 }
 
 // Style is class's style, following the def.lang map to the nearest

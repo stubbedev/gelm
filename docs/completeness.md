@@ -26,7 +26,7 @@ closed and the map below reflects the tree as of that close.
 | Range, progress | `Slider` (GtkScale's scale > trough > highlight/slider nodes, press warp, drag/arrows/Home/End), `ProgressBar`, `SpinButton` | widget/slider.go, widget/toggle.go, widget/spin.go |
 | Entry | `Entry`: selection, clipboard, IME preedit; masked echo `EchoPassword`/`EchoNone` with app-driven reveal (#29) | widget/entry.go, widget/echo.go |
 | Undo/redo | bounded coalescing stack behind `widget.Undoer`, shared by `Entry` and `TextArea`; ctrl+z / ctrl+shift+z / ctrl+y in `routeKey` (#29) | widget/undo.go, app/app.go |
-| TextView, SourceView | `TextArea`: soft wrap, logical-line editing, Tab trap; the code view (line numbers, `Highlighter` and `TextScheme`, auto-indent, `highlight.TOML`) | widget/textarea.go, widget/codeview.go, highlight/ |
+| TextView, SourceView | `TextArea`: soft wrap, logical-line editing, Tab trap; the code view (line numbers, `Highlighter` and `TextScheme`, auto-indent; `highlight`: TOML, Go, JSON, YAML, Markdown with fenced-language nesting, a `Register`/`Lookup`/`ForFile` registry, Adwaita schemes) | widget/textarea.go, widget/codeview.go, highlight/ |
 | ComboBox | `Dropdown` / `DropdownOf[T]` — face plus inline themed item list; prefix type-ahead on the open list, first-letter cycling on the closed face (#62) | widget/dropdown.go |
 | Toast | `widget.Toast` + `Application.ShowToast`: stacking, action, hover-pause (#30) | widget/toast.go, app/toast.go |
 | Expander | `Expander`: animated reveal, child visible only while open (#30) | widget/expander.go |

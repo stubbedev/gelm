@@ -23,16 +23,16 @@ var _ widget.Highlighter = TOML{}
 
 // TOML style ids.
 const (
-	tomlComment  = "def:comment"
-	tomlTable    = "def:keyword"
-	tomlKey      = "def:type"
-	tomlString   = "def:string"
-	tomlEscape   = "def:special-char"
-	tomlBoolean  = "def:boolean"
-	tomlInteger  = "def:decimal"
-	tomlFloat    = "def:floating-point"
-	tomlDatetime = "def:constant"
-	tomlError    = "def:error"
+	tomlComment  = styleComment
+	tomlTable    = styleKeyword
+	tomlKey      = styleType
+	tomlString   = styleString
+	tomlEscape   = styleEscape
+	tomlBoolean  = styleBoolean
+	tomlInteger  = styleDecimal
+	tomlFloat    = styleFloat
+	tomlDatetime = styleConstant
+	tomlError    = styleError
 )
 
 // The line state: the multi-line string mode, then the open arrays
@@ -97,35 +97,8 @@ func (TOML) Highlight(line []rune, state int) ([]widget.TextSpan, int) {
 
 // tomlLine is one line's scan.
 type tomlLine struct {
-	rs    []rune
-	i     int
-	st    tomlState
-	spans []widget.TextSpan
-}
-
-func (l *tomlLine) span(start, end int, class string) {
-	if end > start {
-		l.spans = append(l.spans, widget.TextSpan{Start: start, End: end, Class: class})
-	}
-}
-
-func (l *tomlLine) skipSpace() {
-	for l.i < len(l.rs) && (l.rs[l.i] == ' ' || l.rs[l.i] == '\t') {
-		l.i++
-	}
-}
-
-func (l *tomlLine) at(s string) bool {
-	rs := []rune(s)
-	if l.i+len(rs) > len(l.rs) {
-		return false
-	}
-	for k, r := range rs {
-		if l.rs[l.i+k] != r {
-			return false
-		}
-	}
-	return true
+	scanner
+	st tomlState
 }
 
 func (l *tomlLine) run() {
@@ -155,10 +128,7 @@ func (l *tomlLine) run() {
 }
 
 // comment styles the rest of the line.
-func (l *tomlLine) comment() {
-	l.span(l.i, len(l.rs), tomlComment)
-	l.i = len(l.rs)
-}
+func (l *tomlLine) comment() { l.rest(tomlComment) }
 
 // header styles a [table] or [[array table]] header.
 func (l *tomlLine) header() {
@@ -183,8 +153,7 @@ func (l *tomlLine) tail() {
 		l.comment()
 		return
 	}
-	l.span(l.i, len(l.rs), tomlError)
-	l.i = len(l.rs)
+	l.rest(tomlError)
 }
 
 // keys styles a dotted key up to the '=' that ends it, and steps past
@@ -202,15 +171,9 @@ func (l *tomlLine) keys(end rune) bool {
 			l.comment()
 			return false
 		case r == '"' || r == '\'':
+			// A quoted key styles whole, escapes and all.
 			start := l.i
-			l.i++
-			for l.i < len(l.rs) && l.rs[l.i] != r {
-				if r == '"' && l.rs[l.i] == '\\' {
-					l.i++
-				}
-				l.i++
-			}
-			l.i = min(l.i+1, len(l.rs))
+			l.skipQuoted(r, r == '"')
 			l.span(start, l.i, tomlKey)
 		case isBareKey(r):
 			start := l.i
@@ -282,15 +245,9 @@ func (l *tomlLine) values() {
 				return
 			}
 		case r == '"':
-			l.basic()
+			l.quoted('"', true, true, tomlString)
 		case r == '\'':
-			start := l.i
-			l.i++
-			for l.i < len(l.rs) && l.rs[l.i] != '\'' {
-				l.i++
-			}
-			l.i = min(l.i+1, len(l.rs))
-			l.span(start, l.i, tomlString)
+			l.quoted('\'', true, false, tomlString)
 		default:
 			l.scalar()
 		}
@@ -303,42 +260,6 @@ func (l *tomlLine) close() {
 	if n := len(l.st.stack); n > 0 {
 		l.st.stack = l.st.stack[:n-1]
 		l.st.key = false
-	}
-}
-
-// basic styles a "basic string", its escapes apart.
-func (l *tomlLine) basic() {
-	start := l.i
-	l.i++
-	from := start
-	for l.i < len(l.rs) && l.rs[l.i] != '"' {
-		if l.rs[l.i] == '\\' {
-			l.span(from, l.i, tomlString)
-			esc := l.i
-			l.escape()
-			l.span(esc, l.i, tomlEscape)
-			from = l.i
-			continue
-		}
-		l.i++
-	}
-	l.i = min(l.i+1, len(l.rs))
-	l.span(from, l.i, tomlString)
-}
-
-// escape steps over one backslash escape.
-func (l *tomlLine) escape() {
-	l.i++
-	if l.i >= len(l.rs) {
-		return
-	}
-	switch l.rs[l.i] {
-	case 'u':
-		l.i = min(l.i+5, len(l.rs))
-	case 'U':
-		l.i = min(l.i+9, len(l.rs))
-	default:
-		l.i++
 	}
 }
 
@@ -384,46 +305,23 @@ func (l *tomlLine) multiline(mode int) bool {
 // scalar styles a boolean, datetime, number or, failing all, one
 // error rune.
 func (l *tomlLine) scalar() {
-	rest := string(l.rs[l.i:])
-	word := func(w string) bool {
-		if !l.at(w) {
-			return false
-		}
-		end := l.i + len(w)
-		return end == len(l.rs) || !isBareKey(l.rs[end])
-	}
-	match := func(re *regexp.Regexp) int {
-		if loc := re.FindStringIndex(rest); loc != nil {
-			return len([]rune(rest[:loc[1]]))
-		}
-		return 0
-	}
 	switch {
-	case word("true") || word("false"):
-		n := 4
-		if l.rs[l.i] == 'f' {
-			n = 5
-		}
-		l.span(l.i, l.i+n, tomlBoolean)
-		l.i += n
-	case match(tomlDatetimeRe) > 0:
-		n := match(tomlDatetimeRe)
-		l.span(l.i, l.i+n, tomlDatetime)
-		l.i += n
-	case match(tomlHexRe) > 0:
-		n := match(tomlHexRe)
-		l.span(l.i, l.i+n, tomlInteger)
-		l.i += n
-	case match(tomlNumberRe) > 0:
-		n := match(tomlNumberRe)
+	case l.wordAt("true", isBareKey):
+		l.take(4, tomlBoolean)
+	case l.wordAt("false", isBareKey):
+		l.take(5, tomlBoolean)
+	case l.match(tomlDatetimeRe) > 0:
+		l.take(l.match(tomlDatetimeRe), tomlDatetime)
+	case l.match(tomlHexRe) > 0:
+		l.take(l.match(tomlHexRe), tomlInteger)
+	case l.match(tomlNumberRe) > 0:
+		n := l.match(tomlNumberRe)
 		class := tomlFloat
 		if tomlIntegerRe.MatchString(string(l.rs[l.i : l.i+n])) {
 			class = tomlInteger
 		}
-		l.span(l.i, l.i+n, class)
-		l.i += n
+		l.take(n, class)
 	default:
-		l.span(l.i, l.i+1, tomlError)
-		l.i++
+		l.take(1, tomlError)
 	}
 }
