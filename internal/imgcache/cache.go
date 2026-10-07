@@ -23,11 +23,13 @@ const DefaultEntryLimit = 512
 const DefaultByteLimit = 64 << 20
 
 // RasterKey identifies one resampled raster: the source it was derived
-// from, the source rectangle that was sampled, and the device-pixel
-// size it was resampled into. The device scale is implied by W and H:
-// identical keys want identical pixels.
+// from (and which frame of an animated source), the source rectangle
+// that was sampled, and the device-pixel size it was resampled into.
+// The device scale is implied by W and H: identical keys want
+// identical pixels. InvalidateSource drops every frame of a source.
 type RasterKey struct {
 	Source string
+	Frame  int
 	Src    image.Rectangle
 	W, H   int
 }
@@ -244,9 +246,14 @@ func (c *Cache) removeLocked(e *entry) {
 
 // normalize converts a decoded image into a premultiplied *image.RGBA
 // and reports its byte cost. A nil input (a decode failure) costs zero.
+// An image that reports its own cost (an animation's frames) is kept
+// as is: flattening it would drop all but its first frame.
 func normalize(img image.Image) (image.Image, int) {
 	if img == nil {
 		return nil, 0
+	}
+	if c, ok := img.(interface{ PixelBytes() int }); ok {
+		return img, c.PixelBytes()
 	}
 	rgba, ok := img.(*image.RGBA)
 	if !ok {

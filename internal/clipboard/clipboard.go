@@ -36,11 +36,13 @@ var mimePriority = []string{
 }
 
 // imageMimePriority lists the image mime types we accept on paste,
-// best first: PNG round-trips our own writes exactly, JPEG is
-// read-only (decoded on paste, never offered).
+// best first: PNG round-trips our own writes exactly; WebP, JPEG and
+// GIF are read-only (decoded on paste, never offered).
 var imageMimePriority = []string{
 	"image/png",
+	"image/webp",
 	"image/jpeg",
+	"image/gif",
 }
 
 // offeredImageMimes are the mimes a written image claims.
