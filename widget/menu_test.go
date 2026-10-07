@@ -125,3 +125,31 @@ func TestMenuPopoverNodes(t *testing.T) {
 		t.Errorf("disabled row color %v, want the :disabled rule", got)
 	}
 }
+
+// A keyboard highlight survives pointer events over no row - the
+// gutter a compositor reports when the popup maps under a resting
+// cursor - and yields once the pointer selects a row.
+func TestMenuKeyboardHighlightSurvivesStrayPointer(t *testing.T) {
+	m := NewMenu(testFace(t), 13, MenuItem{Label: "a", OnClick: func() {}}, MenuItem{Label: "b", OnClick: func() {}})
+	m.Measure(Constraints{Max: Size{W: 200, H: 200}})
+	m.Arrange(render.Rect{W: 200, H: 200})
+	m.KeyAction(KeyDown, 0)
+	m.KeyAction(KeyDown, 0)
+	if m.hovered != 1 {
+		t.Fatalf("hovered %d after two Downs", m.hovered)
+	}
+	m.HoverMove(Point{X: 100, Y: 199}) // below every row
+	m.SetHovered(false)
+	if m.hovered != 1 {
+		t.Fatalf("a stray pointer took the keyboard highlight: %d", m.hovered)
+	}
+	r := m.RowBounds(0)
+	m.HoverMove(Point{X: r.X + 5, Y: r.Y + r.H/2})
+	if m.hovered != 0 {
+		t.Fatalf("pointing at row 0 left hovered %d", m.hovered)
+	}
+	m.HoverMove(Point{X: 100, Y: 199})
+	if m.hovered != -1 {
+		t.Errorf("a pointer highlight stayed after the pointer left the rows: %d", m.hovered)
+	}
+}

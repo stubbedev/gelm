@@ -7,9 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
-	"os"
 	"sync/atomic"
 	"time"
 
@@ -23,6 +21,7 @@ import (
 	"github.com/stubbedev/gelm/internal/buffer"
 	"github.com/stubbedev/gelm/internal/compose"
 	"github.com/stubbedev/gelm/internal/debug"
+	"github.com/stubbedev/gelm/internal/keymapfd"
 	"github.com/stubbedev/gelm/internal/logutil"
 	"github.com/stubbedev/gelm/wlr"
 )
@@ -1102,31 +1101,34 @@ func (s *Session) HandlePointerAxisValue120(ev wl.PointerAxisValue120Event) {
 	s.wheel120[min(ev.Axis, 1)] += ev.Value120
 }
 
-// HandleKeyboardKeymap implements wl.KeyboardKeymapHandler: the keymap fd
-// is consumed and closed, gelm maps evdev keycodes with a built-in US
-// layout instead of parsing xkb.
+// HandleKeyboardKeymap implements wl.KeyboardKeymapHandler: the keymap
+// fd is mapped (keymapfd.Read), compiled, and closed.
 func (s *Session) HandleKeyboardKeymap(ev wl.KeyboardKeymapEvent) {
 	if ev.FdError != nil || ev.Fd == 0 {
+		debug.Log("input", "keymap event without an fd (format %d): %v", ev.Format, ev.FdError)
 		return
 	}
-	f := os.NewFile(ev.Fd, "wayland-keymap")
-	defer f.Close()
-	data, err := io.ReadAll(f)
+	data, err := keymapfd.Read(ev.Fd, ev.Size)
+	keymapfd.Close(ev.Fd)
 	if err != nil {
+		debug.Log("input", "keymap read: %v", err)
 		return
 	}
 	ctx := xkb.NewContext(context.Background(), xkb.ContextNoFlags)
 	km, err := ctx.NewKeymapFromString(data, xkb.KeymapFormatTextV1)
 	if err != nil {
+		debug.Log("input", "keymap (format %d, %d bytes, size %d) does not compile: %v", ev.Format, len(data), ev.Size, err)
 		return
 	}
 	s.xkbKeymap = km
 	s.xkbState = km.NewState()
+	debug.Log("input", "keymap (format %d, %d bytes) compiled: KEY_A=%v", ev.Format, len(data), s.xkbState.KeyGetOneSym(30+8))
 }
 
 // HandleKeyboardEnter implements wl.KeyboardEnterHandler: the named
 // surface receives keyboard input until a leave or another enter.
 func (s *Session) HandleKeyboardEnter(ev wl.KeyboardEnterEvent) {
+	debug.Log("input", "keyboard enter")
 	s.keyboardFocus = ev.Surface
 	s.keyboardSerial = ev.Serial
 }
@@ -1145,7 +1147,7 @@ func (s *Session) KeyboardFocus() *wl.Surface { return s.keyboardFocus }
 
 // HandleKeyboardKey implements wl.KeyboardKeyHandler.
 func (s *Session) HandleKeyboardKey(ev wl.KeyboardKeyEvent) {
-	debug.Log("input", "wire key code=%d state=%d", ev.Key, ev.State)
+	debug.Log("input", "wire key code=%d state=%d mods=%#x", ev.Key, ev.State, s.mods)
 	s.keyboardSerial = ev.Serial
 	switch ev.State {
 	case 1:
@@ -1162,6 +1164,7 @@ func (s *Session) HandleKeyboardKey(ev wl.KeyboardKeyEvent) {
 // HandleKeyboardModifiers implements wl.KeyboardModifiersHandler.
 func (s *Session) HandleKeyboardModifiers(ev wl.KeyboardModifiersEvent) {
 	s.keyboardSerial = ev.Serial
+	debug.Log("input", "wire modifiers depressed=%#x latched=%#x locked=%#x group=%d", ev.ModsDepressed, ev.ModsLatched, ev.ModsLocked, ev.Group)
 	s.mods = ev.ModsDepressed
 	if s.xkbState != nil {
 		s.xkbState.UpdateMask(xkb.ModMask(ev.ModsDepressed), xkb.ModMask(ev.ModsLatched),
@@ -1375,6 +1378,9 @@ func (s *Session) Run() error {
 		return s.Display.Context().Run()
 	}))
 }
+
+// Closed reports whether Close ran.
+func (s *Session) Closed() bool { return s.closed.Load() }
 
 // Close disconnects from the display and releases the session's shared
 // buffer arena: the pool proxy, mapping, and the session's one fd.

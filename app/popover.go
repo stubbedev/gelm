@@ -568,6 +568,7 @@ func (a *Application) deliverPopoverKey(tr keyTranslator, op *openPopover, keyco
 	defer op.pop.MarkFrame()
 	sym := tr.KeySym(keycode)
 	act, isAction := widget.KeyActionForSym(sym)
+	debug.Log("input", "popover key code=%d sym=%v action=%v focused=%T", keycode, sym, isAction, op.router.Focused())
 	if isAction && act == widget.KeyDismiss {
 		op.keyRoot.onDismiss()
 		return
