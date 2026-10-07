@@ -250,6 +250,35 @@ func (w *Window) Unmaximize() error {
 	return w.Toplevel.UnsetMaximized()
 }
 
+// SetTitle updates the compositor-visible title at runtime; the
+// xdg_toplevel title is a hint surfaces show in their own chrome
+// (taskbars, alt-tab) - CSD apps paint HeaderBar themselves.
+func (w *Window) SetTitle(title string) error {
+	if w.Toplevel == nil {
+		return nil
+	}
+	return w.Toplevel.SetTitle(title)
+}
+
+// SetMinimized asks the compositor to minimize the window; a hint
+// compositors without a minimized concept ignore.
+func (w *Window) Minimize() error {
+	if w.Toplevel == nil {
+		return nil
+	}
+	return w.Toplevel.SetMinimized()
+}
+
+// InteractiveMove starts the compositor's xdg_toplevel.move grab:
+// the pointer drags the window from the point of the press with the
+// given serial. Like resize, the grab replaces the widget press.
+func (w *Window) InteractiveMove(seat *wl.Seat, serial uint32) error {
+	if w.Toplevel == nil {
+		return nil
+	}
+	return w.Toplevel.Move(seat, serial)
+}
+
 // Fullscreen asks the compositor to show the window fullscreen; a nil
 // output lets the compositor pick (the usual choice). The confirmed
 // fullscreen state arrives with the output-sized configure. See

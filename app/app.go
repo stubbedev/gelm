@@ -129,6 +129,13 @@ type surfaceInput struct {
 	// startResize engages the compositor's resize grab; while both are
 	// set, an edge press belongs to the window frame, not the widgets.
 	startResize func(edges uint32, serial uint32)
+	// startMove engages the compositor's xdg_toplevel.move grab for a
+	// press on a WindowMover widget (a CSD header bar); set only for
+	// toplevel windows. lastPress* feeds the double-click detection
+	// that rides the same grab.
+	startMove              func(serial uint32)
+	lastPressAt            time.Time
+	lastPressX, lastPressY float64
 	// primary carries the primary-selection behavior (middle-click
 	// paste, copy-on-select) shared by the application's windows.
 	primary *primarySelection
@@ -232,6 +239,28 @@ func (in *surfaceInput) HandlePointerButton(button, state, serial uint32) {
 			if edges := in.resizeAt(in.x, in.y); edges != 0 {
 				debug.Log("input", "edge %d grabbed for resize (serial %d)", edges, serial)
 				in.startResize(edges, serial)
+				in.request()
+				return
+			}
+		}
+		// A press on a CSD drag handle belongs to the window frame like
+		// an edge press: the xdg_toplevel.move grab replaces the widget
+		// press, and a double press maximizes - the GTK header contract.
+		if in.startMove != nil && button == widget.BTNLeft {
+			if mover, ok := in.router.Hovered().(widget.WindowMover); ok && mover.WindowMoveGrab() {
+				sameSpot := in.x-in.lastPressX < 6 && in.lastPressX-in.x < 6 &&
+					in.y-in.lastPressY < 6 && in.lastPressY-in.y < 6
+				double := time.Since(in.lastPressAt) < 400*time.Millisecond && sameSpot
+				in.lastPressAt, in.lastPressX, in.lastPressY = time.Now(), in.x, in.y
+				if double {
+					debug.Log("input", "header double press (serial %d)", serial)
+					if clickable, ok := mover.(widget.WindowDoubleClickable); ok {
+						clickable.WindowDoubleClick()
+					}
+				} else {
+					debug.Log("input", "header grabbed for move (serial %d)", serial)
+					in.startMove(serial)
+				}
 				in.request()
 				return
 			}

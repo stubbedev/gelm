@@ -103,8 +103,10 @@ type hostWindow struct {
 	// hosts without limits (layer surfaces).
 	limits func() (minW, minH, maxW, maxH int)
 	// startResize engages the compositor's interactive resize grab;
-	// nil for hosts without edges (layer surfaces).
+	// nil for hosts without edges (layer surfaces). startMove is its
+	// move-grab sibling, engaged by a CSD header press (#91).
 	startResize func(edges uint32, serial uint32)
+	startMove   func(serial uint32)
 	// decorated reports compositor-owned decorations, which disables
 	// the client's own edge handles; nil means never decorated.
 	decorated func() bool
@@ -211,6 +213,15 @@ func newHostWindow(sess *wlsession.Session, host Host, initialScale int, root wi
 				debug.Log("input", "interactive resize: %v", err)
 			}
 		}
+		w.startMove = func(serial uint32) {
+			seat := sess.Seat()
+			if seat == nil {
+				return
+			}
+			if err := rz.Move(seat, serial); err != nil {
+				debug.Log("input", "interactive move: %v", err)
+			}
+		}
 	}
 	if sd, ok := host.(serverDecorated); ok {
 		w.decorated = sd.ServerDecorated
@@ -235,6 +246,7 @@ func newHostWindow(sess *wlsession.Session, host Host, initialScale int, root wi
 		blocked:     func() bool { return w.blocked || w.exiting },
 		frac:        func() uint32 { return w.frac120 },
 		startResize: w.startResize,
+		startMove:   w.startMove,
 		primary:     primary,
 	}
 	// The edge probe exists only where the resize grab does (toplevels);
