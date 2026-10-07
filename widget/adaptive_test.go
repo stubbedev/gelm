@@ -134,7 +134,7 @@ func TestCarousel(t *testing.T) {
 	if c.offset <= 0 || c.offset >= 2 {
 		t.Fatalf("drag offset = %v", c.offset)
 	}
-	c.ReleaseAt(Point{X: 40, Y: 50})
+	c.PressEnd()
 	if got := c.Page(); got != 1 {
 		t.Errorf("snap landed on page %d, want 1", got)
 	}
@@ -145,7 +145,7 @@ func TestCarousel(t *testing.T) {
 	if c.offset != 0 {
 		t.Errorf("overscroll left: %v", c.offset)
 	}
-	c.ReleaseAt(Point{X: 500, Y: 50})
+	c.PressEnd()
 
 	// SetPage jumps and reports.
 	paged := -1
