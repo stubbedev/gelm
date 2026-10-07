@@ -109,6 +109,9 @@ type Application struct {
 	notifyMu    sync.Mutex
 	notifyStore *notify.Notifier
 	notifyOpts  map[string]NotifyOptions
+	// launcher (launcher.go): the OpenURL/OpenPath transport state.
+	launchState launcher
+	launchOnce  sync.Once
 	// sessionLock is the lock this application holds (sessionlock.go);
 	// while it exists the loop runs on with no window mapped.
 	sessionLock *SessionLock
