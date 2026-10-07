@@ -58,6 +58,7 @@ func (a *Application) EmojiChooser(host Host, onPick func(emoji string)) (*Popov
 		results.Clear()
 		add := func(items []emoji.Emoji) {
 			grid := widget.NewFlowBox(4, 4)
+			grid.SetSelectionMode(widget.SelectionNone)
 			grid.SetMaxChildrenPerLine(9)
 			for _, e := range items {
 				item := e

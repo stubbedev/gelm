@@ -10,13 +10,19 @@ const flowMaxPerLine = 7
 
 // FlowBox lays its children out in lines, starting a new line when the
 // next child would not fit or the line holds its maximum
-// (GtkFlowBox, horizontal and non-homogeneous, without selection).
+// (GtkFlowBox, horizontal and non-homogeneous). It selects like a
+// List - SetSelectionMode, single by default (GTK's), with clicks,
+// rubber bands, and the keyboard moving by item and by line - and a
+// click activates (OnActivate) unless SetSingleClickActivate(false)
+// leaves activation to a double click. Controls inside a child keep
+// their own clicks.
 // Each child sits in a FlowBoxChild, the `flowboxchild` node a
 // stylesheet addresses (`flowbox > flowboxchild.drop-before`). Its
 // natural width is the widest line at the maximum per line; offered
 // less, it wraps and grows taller.
 type FlowBox struct {
 	node
+	selection
 	kids                   []*FlowBoxChild
 	colSpacing, rowSpacing int
 	maxPerLine             int
@@ -25,6 +31,18 @@ type FlowBox struct {
 	// measuredW and floorW are the last Measure's width and the
 	// narrowest it lays out at (its widest child), for ShrinkableWidth.
 	measuredW, floorW int
+	// arranged is the last Arrange's lines, the keyboard's geometry.
+	arranged [][]int
+	// singleClick activates on a plain click (GTK's default).
+	singleClick bool
+	// gesture state: the press's child and whether a drag left it.
+	anchor int
+	moved  bool
+
+	// OnSelectionChanged fires with the selected indices once per
+	// gesture; OnActivate fires for an activated child.
+	OnSelectionChanged func(children []int)
+	OnActivate         func(i int)
 }
 
 // FlowBoxChild wraps one child of a FlowBox: a CSS box around it.
@@ -38,9 +56,114 @@ type FlowBoxChild struct {
 // NewFlowBox returns an empty flow box with colSpacing between the
 // children of a line and rowSpacing between lines.
 func NewFlowBox(colSpacing, rowSpacing int) *FlowBox {
-	f := &FlowBox{colSpacing: colSpacing, rowSpacing: rowSpacing, maxPerLine: flowMaxPerLine}
+	f := &FlowBox{colSpacing: colSpacing, rowSpacing: rowSpacing, maxPerLine: flowMaxPerLine, singleClick: true}
 	f.SetElement("flowbox")
+	f.initSelection(f, SelectionSingle)
 	return f
+}
+
+// SetSingleClickActivate makes a plain click activate (on, GTK's
+// default) or leaves activation to a double click.
+func (f *FlowBox) SetSingleClickActivate(on bool) { f.singleClick = on }
+
+// count implements selectionHost.
+func (f *FlowBox) count() int { return len(f.kids) }
+
+// selectionSync implements selectionHost: :selected follows membership.
+func (f *FlowBox) selectionSync() {
+	for i, c := range f.kids {
+		c.SetState(StateSelected, f.isSelected(i))
+	}
+	f.Invalidate()
+}
+
+// selectionNotify implements selectionHost: OnSelectionChanged.
+func (f *FlowBox) selectionNotify() {
+	if f.OnSelectionChanged != nil {
+		f.OnSelectionChanged(f.Selection())
+	}
+}
+
+// selectionSingle implements selectionHost; the set notification
+// covers it.
+func (f *FlowBox) selectionSingle(int) {}
+
+// reveal implements selectionHost; a flow box shows every child.
+func (f *FlowBox) reveal(int) {}
+
+// activate implements selectionHost: OnActivate.
+func (f *FlowBox) activate(i int) {
+	if i >= 0 && i < len(f.kids) && f.OnActivate != nil {
+		f.OnActivate(i)
+	}
+}
+
+// KeyAction moves and extends the selection: left and right by a
+// child, up and down to the nearest child of the neighboring line.
+func (f *FlowBox) KeyAction(a KeyAction, mods Mods) {
+	if IsEnabled(f) {
+		f.key(a, mods, f.navigate)
+	}
+}
+
+// navigate maps a motion key to its target child through the last
+// arranged lines.
+func (f *FlowBox) navigate(from int, a KeyAction) (int, bool) {
+	switch a {
+	case KeyLeft:
+		return from - 1, true
+	case KeyRight:
+		return from + 1, true
+	case KeyUp, KeyDown:
+	default:
+		return 0, false
+	}
+	if from < 0 {
+		return 0, true
+	}
+	for li, line := range f.arranged {
+		for _, i := range line {
+			if i != from {
+				continue
+			}
+			to := li - 1
+			if a == KeyDown {
+				to = li + 1
+			}
+			if to < 0 || to >= len(f.arranged) {
+				return from, true
+			}
+			return f.nearest(f.arranged[to], f.kids[from].bounds), true
+		}
+	}
+	return from, true
+}
+
+// nearest is the child of line whose center is closest across to r's.
+func (f *FlowBox) nearest(line []int, r render.Rect) int {
+	best, dist := line[0], -1
+	cx := r.X + r.W/2
+	for _, i := range line {
+		b := f.kids[i].bounds
+		d := b.X + b.W/2 - cx
+		if d = max(d, -d); dist < 0 || d < dist {
+			best, dist = i, d
+		}
+	}
+	return best
+}
+
+// childClick is a click on child i: the selection gesture, then
+// activation under single-click activate. The release ending a rubber
+// band is not a click.
+func (f *FlowBox) childClick(i int) {
+	if f.moved || i < 0 {
+		return
+	}
+	f.click(i)
+	if f.singleClick && f.mode != SelectionMultiple {
+		f.activate(i)
+	}
 }
 
 // SetMaxChildrenPerLine caps a line's children (GTK's
@@ -63,6 +186,7 @@ func (f *FlowBox) Insert(i int, w Widget) *FlowBoxChild {
 	f.kids = append(f.kids, nil)
 	copy(f.kids[i+1:], f.kids[i:])
 	f.kids[i] = c
+	f.inserted(i)
 	setParents(f, c)
 	setParents(c, w)
 	f.InvalidateLayout()
@@ -77,6 +201,7 @@ func (f *FlowBox) RemoveAt(i int) {
 	}
 	c := f.kids[i]
 	f.kids = append(f.kids[:i], f.kids[i+1:]...)
+	f.removed(i)
 	notifyRemoved(c.child)
 	clearParents(c, c.child)
 	f.InvalidateLayout()
@@ -203,7 +328,8 @@ func (f *FlowBox) Arrange(r render.Rect) {
 	border, inner := boxRects(boxOf(f.style(f), render.Insets{}), r)
 	f.node.Arrange(border)
 	y := inner.Y
-	for _, line := range f.lines(inner.W) {
+	f.arranged = f.lines(inner.W)
+	for _, line := range f.arranged {
 		_, h := f.lineSize(line)
 		w, _ := f.lineSize(line)
 		x, grow, gap := f.justify.distribute(inner.X, inner.W-w, len(line))
@@ -280,19 +406,62 @@ func (c *FlowBoxChild) Arrange(r render.Rect) {
 	setParents(c, c.child)
 }
 
-// Paint draws the wrapper's CSS layers and the child.
+// Paint draws the wrapper's CSS layers - a selected child over the
+// theme's selection tint where the stylesheet names no background -
+// and the child.
 func (c *FlowBoxChild) Paint(cv *render.Canvas) {
-	paintCSSBox(cv, c.style(c), c.bounds)
+	v := c.style(c)
+	if c.HasState(StateSelected) && !v.Declares(style.PropBackgroundColor) {
+		cv.RoundedRect(c.bounds, radiusOr(v, 6).TopLeft, selectedTint())
+	}
+	paintCSSBox(cv, v, c.bounds)
 	PaintChild(cv, c.child)
 }
 
-// HitTest resolves through the child, else the wrapper.
+// HitTest resolves through the child; in a selectable box the wrapper
+// takes every press but those a control inside the child consumes.
 func (c *FlowBoxChild) HitTest(p Point) Widget {
-	if hit := c.child.HitTest(p); hit != nil {
+	if hit := c.child.HitTest(p); hit != nil && (c.box == nil || c.box.mode == SelectionNone || interactiveWithin(hit, c)) {
 		return hit
 	}
 	return c.HitLeaf(c, p)
 }
+
+// ClickAt selects (and maybe activates) the child.
+func (c *FlowBoxChild) ClickAt(Point) { c.box.childClick(c.Index()) }
+
+// DoubleClickAt activates the child when a single click does not.
+func (c *FlowBoxChild) DoubleClickAt(Point) {
+	if !c.box.singleClick && c.box.mode != SelectionNone {
+		c.box.activate(c.Index())
+	}
+}
+
+// SetPressed opens a pointer gesture anchored on the child.
+func (c *FlowBoxChild) SetPressed(on bool) {
+	if on {
+		c.box.anchor, c.box.moved = c.Index(), false
+		c.box.hold()
+	}
+}
+
+// DragMove rubber-bands (multiple) or motion-selects from the anchor.
+func (c *FlowBoxChild) DragMove(p Point) {
+	f := c.box
+	if at := f.IndexAt(p); at >= 0 && at != f.anchor {
+		f.moved = true
+		f.drag(f.anchor, at)
+	}
+}
+
+// PressEnd closes the gesture, landing its one notification.
+func (c *FlowBoxChild) PressEnd() { c.box.release() }
+
+// KeyAction is the box's: a focused child steers the selection.
+func (c *FlowBoxChild) KeyAction(a KeyAction, mods Mods) { c.box.KeyAction(a, mods) }
+
+// SelectAll is the box's (ctrl+a on a focused child).
+func (c *FlowBoxChild) SelectAll() { c.box.SelectAll() }
 
 // Children is the wrapped widget.
 func (c *FlowBoxChild) Children() []Widget { return []Widget{c.child} }
@@ -354,5 +523,6 @@ func (j Justify) distribute(x, leftover, n int) (start, grow, gap int) {
 func NewWrapBox(childSpacing, lineSpacing int, justify Justify) *FlowBox {
 	f := NewFlowBox(childSpacing, lineSpacing)
 	f.justify = justify
+	f.SetSelectionMode(SelectionNone)
 	return f
 }

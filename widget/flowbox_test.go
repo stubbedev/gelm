@@ -98,6 +98,12 @@ func TestFlowBoxChildNodes(t *testing.T) {
 	if px(1, 1) != render.RGB(0xff, 0, 0) || px(8, 8) != render.RGB(0, 0, 0xff) {
 		t.Errorf("padding %v, child %v", px(1, 1), px(8, 8))
 	}
+	// Selectable, the wrapper takes the bare child's press; with no
+	// selection the press reaches the child itself.
+	if f.HitTest(Point{X: 8, Y: 8}) != Widget(c) || f.HitTest(Point{X: 1, Y: 1}) != Widget(c) {
+		t.Error("selectable hit test")
+	}
+	f.SetSelectionMode(SelectionNone)
 	if f.HitTest(Point{X: 8, Y: 8}) != Widget(leaf) || f.HitTest(Point{X: 1, Y: 1}) != Widget(c) {
 		t.Error("hit test")
 	}
