@@ -1,15 +1,20 @@
 // Command gelm-messages demonstrates the typed messaging layer
-// (app/message.go): one SharedState counter shared across two windows -
-// either window's buttons move both labels - and one Stream broker that
-// any depth of code can reach without threading senders: both windows
-// subscribe, a button publishes, every window toasts. The click handler
-// itself is a Component: clicks cross onto the loop as typed messages.
+// (app/message.go) and single-instance activation (app/instance.go):
+// one SharedState counter shared across two windows - either window's
+// buttons move both labels - and one Stream broker that any depth of
+// code can reach without threading senders: both windows subscribe, a
+// button publishes, every window toasts. The click handler itself is a
+// Component: clicks cross onto the loop as typed messages. A second
+// run of the binary is the GApplication remote: it forwards its argv
+// and --open paths to the primary, which toasts them, and exits.
 package main
 
 import (
 	"errors"
 	"log"
+	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/unxed/xkb-go"
@@ -33,6 +38,28 @@ func main() {
 }
 
 func run() error {
+	// The single-instance guard runs before anything else: a second
+	// invocation forwards its argv and --open paths to the primary and
+	// exits, never touching the compositor (GApplication's remote
+	// activation). The primary toasts whatever arrives.
+	var broker *app.Stream[announceMsg]
+	ins, primary, err := app.ClaimInstance(app.InstanceConfig{
+		AppID: "dev.stubbe.gelm.messages",
+		OnCommandLine: func(args []string, _ string) {
+			broker.Send(announceMsg{text: "remote invocation: " + strings.Join(args, " ")})
+		},
+		OnOpen: func(paths []string, _ string) {
+			broker.Send(announceMsg{text: "open: " + strings.Join(paths, ", ")})
+		},
+	}, app.OSInvocation(os.Args[1:]))
+	if err != nil {
+		return err
+	}
+	if !primary {
+		return nil
+	}
+	defer ins.Close()
+
 	sess, err := wlsession.Connect()
 	if err != nil {
 		return err
@@ -44,11 +71,10 @@ func run() error {
 	}
 
 	application := app.NewApplication(sess)
+	ins.Bind(application)
 	theme := widget.Current()
 
-	// The broker: a handle any nesting depth can hold, no senders
-	// threaded through. Both windows subscribe; publishing is one Send.
-	broker := app.NewStream[announceMsg](application)
+	broker = app.NewStream[announceMsg](application)
 	broker.Subscribe(func(m announceMsg) {
 		application.ShowToast(m.text, 3*time.Second, nil)
 	})
@@ -74,7 +100,7 @@ func run() error {
 		plus.OnClick = func() { clicks.Send(clickMsg{window: title}) }
 		ping := widget.NewButton(widget.NewLabel(tf, 14, "ping both", theme.OnAccent), 10, 6)
 		ping.OnClick = func() { broker.Send(announceMsg{text: pingText}) }
-		hint := widget.NewLabel(tf, 12, "either window's increment moves both counters; Escape quits", theme.TextMuted)
+		hint := widget.NewLabel(tf, 12, "increments move both counters; a second run of this demo forwards here; Escape quits", theme.TextMuted)
 		box := widget.NewBox(widget.Column, 10, 24)
 		box.Append(count, false)
 		box.Append(plus, false)
