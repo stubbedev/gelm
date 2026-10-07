@@ -42,7 +42,9 @@ disagree:
   CSS-wide `inherit`/`initial`/`unset` and `all`.
 - **Properties** (longhands, with their shorthands): `color`,
   `background[-color|-image]` (`linear-gradient` with angles, `to`
-  sides and positioned stops), `opacity`, `filter: brightness()`,
+  sides and positioned stops; `radial-gradient` with shape, size
+  keywords or radii, and `at` positions; `conic-gradient` with `from`
+  and `at` and angle stops; the `repeating-` form of each), `opacity`, `filter: brightness()`,
   `padding-*`, `margin-*`, `border[-side][-width|-style|-color]`
   (a width draws only with a visible style, the CSS rule),
   `border-*-radius`, `box-shadow` (lists, offsets, spread, blur,
