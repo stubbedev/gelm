@@ -18,6 +18,7 @@ package style
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/stubbedev/gelm/internal/logutil"
@@ -119,6 +120,12 @@ type Sheet struct {
 	// name; a later rule of the same name replaces an earlier one.
 	keyframes map[string]*Keyframes
 
+	// defines holds the sheet's @define-color values by custom-property
+	// name (--name); a later define replaces an earlier one. They are
+	// global, not inherited: the cascade consults them after the
+	// node's inherited custom properties (Scratch.lookup).
+	defines map[string][]token
+
 	sens Sensitivity
 }
 
@@ -208,8 +215,11 @@ func (p *parser) stylesheet(ts []token) {
 // silently, the rest warn.
 func (p *parser) atRule(ts []token, i int) int {
 	name := ts[i].s
-	if name == "keyframes" || name == "-gtk-keyframes" {
+	switch name {
+	case "keyframes", "-gtk-keyframes":
 		return p.keyframes(ts, i)
+	case "define-color":
+		return p.defineColor(ts, i)
 	}
 	j := i + 1
 	for ; j < len(ts); j++ {
@@ -228,6 +238,64 @@ func (p *parser) atRule(ts []token, i int) int {
 	}
 	p.warnAt(name)
 	return j
+}
+
+// defineColor files GTK's `@define-color name value;` as a sheet-level
+// define under the custom-property name --name. References (`@name`,
+// compiled to var(--name)) resolve through the ordinary var()
+// substitution: a custom property on the node's chain first - so a
+// subtree's --name overrides - then the defines, the highest-priority
+// layer winning; defines may reference each other, and a cycle is
+// invalid like any var() cycle. No second color resolver exists.
+func (p *parser) defineColor(ts []token, i int) int {
+	j := i + 1
+	for j < len(ts) && ts[j].kind != tkSemi && ts[j].kind != tkLBrace {
+		if closer(ts[j].kind) != 0 {
+			j = blockEnd(ts, j) - 1
+		}
+		j++
+	}
+	if j < len(ts) && ts[j].kind == tkLBrace {
+		warnf("@define-color skipped: want `name value;`")
+		return blockEnd(ts, j)
+	}
+	body := trimWS(ts[i+1 : min(j, len(ts))])
+	next := min(j+1, len(ts))
+	if len(body) < 2 || body[0].kind != tkIdent {
+		warnf("@define-color skipped: want `name value;`")
+		return next
+	}
+	val := colorRefs(trimWS(body[1:]))
+	if len(val) == 0 {
+		warnf("@define-color skipped: %s has no value", body[0].s)
+		return next
+	}
+	if p.sheet.defines == nil {
+		p.sheet.defines = make(map[string][]token)
+	}
+	p.sheet.defines["--"+body[0].s] = val
+	return next
+}
+
+// colorRefs rewrites GTK named-color references (`@name`) into
+// `var(--name)`, the form the cascade resolves - what @define-color
+// declares and what the theme layer provides for the Adwaita names.
+func colorRefs(ts []token) []token {
+	if !slices.ContainsFunc(ts, func(t token) bool { return t.kind == tkAt }) {
+		return ts
+	}
+	out := make([]token, 0, len(ts)+2)
+	for _, t := range ts {
+		if t.kind != tkAt {
+			out = append(out, t)
+			continue
+		}
+		out = append(out,
+			token{kind: tkFunc, s: "var", pos: t.pos, end: t.pos},
+			token{kind: tkIdent, s: "--" + t.s, pos: t.pos, end: t.end},
+			token{kind: tkRParen, pos: t.end, end: t.end})
+	}
+	return out
 }
 
 // keyframes parses one @keyframes rule into the sheet: the name, then
@@ -499,7 +567,7 @@ func (p *parser) declaration(ts []token) (decl, bool) {
 		return decl{}, false
 	}
 	name := ts[0].s
-	val := trimWS(ts[j+1:])
+	val := colorRefs(trimWS(ts[j+1:]))
 	p.order++
 	d := decl{name: name, val: val, hasVar: containsVar(val), wide: wideOf(val), order: p.order}
 	if strings.HasPrefix(name, "--") {

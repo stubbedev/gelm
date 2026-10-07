@@ -40,6 +40,11 @@ type Theme struct {
 	OnAccent Color
 	// Border strokes control outlines.
 	Border Color
+	// Destructive, Success, Warning, and Error are the status fills
+	// (destructive-action buttons, banners, the @*_bg_color names).
+	// Leave them unset to derive the Adwaita defaults for the
+	// palette's polarity - the zero-falls-back-to-derived rule.
+	Destructive, Success, Warning, Error Color
 	// ShadowColor paints floating surfaces' box shadows (menus,
 	// popovers, tooltips, toasts, dialogs). Leave it unset to derive
 	// the default (neutral black at 110 alpha), the usual zero-falls-
@@ -90,6 +95,7 @@ func SetTheme(t *Theme) {
 	}
 	current = t
 	themeGen++
+	syncThemeSheet(t)
 	for _, w := range t.contrastWarnings() {
 		themeWarn(w)
 	}
@@ -181,6 +187,16 @@ func ParseColor(s string) (Color, error) {
 		return 0, fmt.Errorf("gelm: invalid color %q: want #rgb, #rrggbb, or #rrggbbaa", s)
 	}
 	return c, nil
+}
+
+// FormatColor writes c as the hex form ParseColor reads back:
+// #rrggbb when opaque, #rrggbbaa otherwise (straight alpha).
+func FormatColor(c Color) string {
+	col := c.Straight()
+	if col[3] == 0xff {
+		return fmt.Sprintf("#%02x%02x%02x", col[0], col[1], col[2])
+	}
+	return fmt.Sprintf("#%02x%02x%02x%02x", col[0], col[1], col[2], col[3])
 }
 
 // with copies t and applies f to the copy. Every With* goes through
@@ -297,6 +313,42 @@ func (t *Theme) HoverSurface() Color {
 		return t.SurfaceHover
 	}
 	return mix(t.Surface, t.Text, 0.08)
+}
+
+// IsDark reports the palette's polarity: a background darker than
+// mid-grey luminance.
+func (t *Theme) IsDark() bool { return wcagLuminance(t.Bg) < 0.18 }
+
+// status resolves one status color: the explicit value, else the
+// Adwaita default for the palette's polarity.
+func (t *Theme) status(c Color, dark, light Color) Color {
+	switch {
+	case c != 0:
+		return c
+	case t.IsDark():
+		return dark
+	}
+	return light
+}
+
+// DestructiveColor returns the destructive fill (Destructive when set).
+func (t *Theme) DestructiveColor() Color {
+	return t.status(t.Destructive, render.RGB(0xc0, 0x1c, 0x28), render.RGB(0xe0, 0x1b, 0x24))
+}
+
+// SuccessColor returns the success fill (Success when set).
+func (t *Theme) SuccessColor() Color {
+	return t.status(t.Success, render.RGB(0x26, 0xa2, 0x69), render.RGB(0x2e, 0xc2, 0x7e))
+}
+
+// WarningColor returns the warning fill (Warning when set).
+func (t *Theme) WarningColor() Color {
+	return t.status(t.Warning, render.RGB(0xcd, 0x93, 0x09), render.RGB(0xe5, 0xa5, 0x0a))
+}
+
+// ErrorColor returns the error fill (Error when set).
+func (t *Theme) ErrorColor() Color {
+	return t.status(t.Error, render.RGB(0xc0, 0x1c, 0x28), render.RGB(0xe0, 0x1b, 0x24))
 }
 
 // PressedSurface returns the control fill while pressed: the explicit

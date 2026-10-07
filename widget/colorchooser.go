@@ -1,7 +1,6 @@
 package widget
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/stubbedev/gelm/render"
@@ -122,13 +121,7 @@ func (c *ColorChooser) colorChanged(fromHex bool) {
 }
 
 // hexText renders the current color as #rrggbb (alpha ff omitted).
-func (c *ColorChooser) hexText() string {
-	col := c.Color().Straight()
-	if col[3] == 0xff {
-		return fmt.Sprintf("#%02x%02x%02x", col[0], col[1], col[2])
-	}
-	return fmt.Sprintf("#%02x%02x%02x%02x", col[0], col[1], col[2], col[3])
-}
+func (c *ColorChooser) hexText() string { return FormatColor(c.Color()) }
 
 // applyHex parses typed text and applies the color it names (markup's
 // #RGB/#RRGGBB/#RRGGBBAA reader, the # optional here); anything

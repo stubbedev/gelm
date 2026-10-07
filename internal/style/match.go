@@ -74,6 +74,9 @@ type Scratch struct {
 
 	parsed []parsedDecl
 	cx     ctx
+	// layers is the compute's cascade input, kept for the define
+	// fallback of var() lookups.
+	layers []Layer
 }
 
 // customWin is the winning declaration of one custom property.
