@@ -273,6 +273,27 @@ compositors without the protocol, the hidden cursor, and names the
 protocol does not carry - and `GELM_NO_CURSOR_SHAPE=1` forces it (the
 headless suite runs both paths).
 
+## Pointer lock, confinement, relative motion
+
+`Application.LockPointer(host, persistent)` locks the pointer in place
+over a host (an FPS-style view, a whiteboard pan) and
+`ConfinePointer(host, region, persistent)` keeps it inside logical rects
+of it (zwp_pointer_constraints_v1). The compositor activates a
+constraint while the pointer is over the host and reports each
+activation (`PointerConstraint.OnActive`); a oneshot constraint ends
+with its first deactivation, a persistent one re-activates when the
+pointer returns. A host holds one constraint at a time, and closing the
+host releases it. `OnRelativeMotion(host, fn)` delivers the device's
+motion while the pointer is over the host - accelerated and raw deltas
+(zwp_relative_pointer_v1) - which is the only motion a locked pointer
+produces, and what a remote desktop client forwards.
+
+Escape hatch: the compositor does not force-release a constraint on a
+key of its own, so an application that locks the pointer must offer
+the way out - by convention an accelerator (Escape) that calls
+`PointerConstraint.Release` - and should release when it loses focus.
+`SetCursorHint` says where the cursor reappears when a lock ends.
+
 ## Touch and gestures
 
 gelm binds wl_touch (this overturns the earlier recorded non-goal of
