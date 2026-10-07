@@ -167,6 +167,9 @@ func (s *Stack) SetHomogeneous(h bool) {
 // easing (GTK's interpolate-size); off, the size jumps.
 func (s *Stack) SetInterpolateSize(on bool) { s.interpolate = on }
 
+// Order returns the page names in add order.
+func (s *Stack) Order() []string { return slices.Clone(s.order) }
+
 // Show makes the child under name the visible one through the stack's
 // transition; unknown names are ignored. A switch during a running one
 // starts from the page then showing.
