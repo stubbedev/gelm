@@ -260,7 +260,7 @@ func (w *Window) SetTitle(title string) error {
 	return w.Toplevel.SetTitle(title)
 }
 
-// SetMinimized asks the compositor to minimize the window; a hint
+// Minimize asks the compositor to minimize the window; a hint
 // compositors without a minimized concept ignore.
 func (w *Window) Minimize() error {
 	if w.Toplevel == nil {
