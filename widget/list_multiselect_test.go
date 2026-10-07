@@ -245,7 +245,7 @@ func TestListMultipleChecks(t *testing.T) {
 	l.Paint(cv)
 
 	l.Select(1)
-	l.toggleRow(3)
+	l.toggle(3)
 	if !checks[1].Checked() || !checks[3].Checked() {
 		t.Error("checks do not reflect membership after selection")
 	}
@@ -350,8 +350,8 @@ func TestListSelectionModeMigration(t *testing.T) {
 
 	l.Select(-1)
 	l.SetSelectionMode(SelectionMultiple)
-	l.toggleRow(2)
-	l.toggleRow(2)
+	l.toggle(2)
+	l.toggle(2)
 	*notifications = nil
 	l.SetSelectionMode(SelectionSingle)
 	selEquals(t, l)
@@ -370,7 +370,7 @@ func TestListChangedDropsMultiIndices(t *testing.T) {
 	l.Measure(Constraints{Max: Size{W: 100, H: 1 << 20}})
 	l.Arrange(render.Rect{X: 0, Y: 0, W: 100, H: 60})
 	l.Select(2)
-	l.toggleRow(8)
+	l.toggle(8)
 
 	model.rows = 5
 	l.Changed()

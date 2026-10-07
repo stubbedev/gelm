@@ -90,8 +90,14 @@ type TooltipTexter interface {
 // during Arrange, so call it on an arranged tree. Enabled state does
 // not change the answer: a disabled button is still interactive — it
 // consumes the press and swallows it — never chrome.
-func IsInteractive(w Widget) bool {
-	for w != nil {
+func IsInteractive(w Widget) bool { return interactiveWithin(w, nil) }
+
+// interactiveWithin is IsInteractive's walk stopped at stop (exclusive):
+// whether a press at w is consumed by a control at or below stop - a
+// selectable container's item asks it to leave controls inside the
+// item their clicks.
+func interactiveWithin(w, stop Widget) bool {
+	for w != nil && w != stop {
 		switch w.(type) {
 		case *Button, *Slider, *Switch, *CheckButton, *Entry, *TextArea, *Scroll, *Dropdown, *List:
 			return true

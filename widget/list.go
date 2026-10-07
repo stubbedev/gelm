@@ -1,7 +1,6 @@
 package widget
 
 import (
-	"slices"
 	"time"
 
 	"github.com/stubbedev/gelm/internal/anim"
@@ -65,6 +64,7 @@ const (
 // instead of the check's own state.
 type List struct {
 	node
+	selection
 	model listModel
 	rowH  int
 	// autoH derives rowH from a styled row (a zero rowHeight): probe is
@@ -87,22 +87,15 @@ type List struct {
 	hover        int
 	rows         map[int]*listRow
 
-	mode   SelectionMode
-	sel    int
-	multi  map[int]struct{}
-	cursor int
-
 	// pointer gesture state: dragging while a press is down, the row
 	// the press anchored on (-1 until a point resolves it), the last
-	// drag point, whether the band ever left the anchor row (a click
-	// after that ends the gesture instead of toggling), and the
-	// deferred-notification flag that fires OnSelectionChanged once at
-	// gesture end.
+	// drag point, and whether the band ever left the anchor row (a
+	// click after that ends the gesture instead of toggling). The
+	// selection holds its notification for the gesture.
 	dragging   bool
 	gestureRow int
 	dragPoint  Point
 	dragMoved  bool
-	pending    bool
 
 	// drag auto-scroll: direction and the running tween's cancel.
 	scrollDir  int
@@ -139,14 +132,15 @@ func (a modelAdapter[W]) row(i int) Widget { return a.m.Row(i) }
 // NewList wraps a model with a uniform row height in pixels; zero
 // derives the height from measuring the first row.
 func NewList[W Widget](model ListModel[W], rowHeight int) *List {
-	return &List{
+	l := &List{
 		model: modelAdapter[W]{m: model},
 		rowH:  rowHeight,
 		autoH: rowHeight <= 0,
-		sel:   -1,
 		hover: -1,
 		rows:  make(map[int]*listRow),
 	}
+	l.initSelection(l, SelectionSingle)
+	return l
 }
 
 // SetCellWidth switches the list into a grid: items flow left to
@@ -190,151 +184,6 @@ func (l *List) cellRect(i int) render.Rect {
 	return render.Rect{X: x, Y: l.bounds.Y + (i/c)*l.rowH - l.offY, W: w, H: l.rowH}
 }
 
-// SetSelectionMode switches the selection model. Leaving multiple
-// mode keeps the lowest selected row as the single selection (or
-// clears it when the set was empty); entering it seeds the set with
-// the current selection and anchors there. OnSelectionChanged fires
-// when the switch changes the set.
-func (l *List) SetSelectionMode(mode SelectionMode) {
-	if mode == l.mode {
-		return
-	}
-	before := l.Selection()
-	switch mode {
-	case SelectionMultiple:
-		l.multi = make(map[int]struct{})
-		if l.sel >= 0 {
-			l.multi[l.sel] = struct{}{}
-		}
-		l.cursor = l.sel
-	default:
-		l.sel = -1
-		if len(l.multi) > 0 {
-			l.sel = l.Selection()[0]
-		}
-		l.multi = nil
-		l.cursor = -1
-	}
-	l.mode = mode
-	l.syncChecks()
-	l.Invalidate()
-	if after := l.Selection(); !slices.Equal(before, after) {
-		l.notifySelection()
-	}
-}
-
-// SelectionMode returns the current selection model.
-func (l *List) SelectionMode() SelectionMode { return l.mode }
-
-// Selection returns the whole selected row set, ascending; an empty
-// slice when nothing is selected.
-func (l *List) Selection() []int {
-	switch l.mode {
-	case SelectionMultiple:
-		rows := make([]int, 0, len(l.multi))
-		for i := range l.multi {
-			rows = append(rows, i)
-		}
-		slices.Sort(rows)
-		return rows
-	case SelectionBrowse, SelectionSingle:
-		if l.sel >= 0 {
-			return []int{l.sel}
-		}
-	}
-	return nil
-}
-
-// Select moves the selection to row i (clamped, -1 clears) and fires
-// OnSelect on change. In multiple mode it collapses the set to the
-// one row (-1 clears it); in none mode it does nothing.
-func (l *List) Select(i int) {
-	switch l.mode {
-	case SelectionNone:
-		return
-	case SelectionMultiple:
-		n := l.model.len()
-		i = min(max(i, -1), n-1)
-		set := make(map[int]struct{})
-		if i >= 0 {
-			set[i] = struct{}{}
-		}
-		l.sel, l.cursor = i, i
-		l.applyMulti(set)
-		l.Invalidate()
-		l.notifySelection()
-	default:
-		l.selectRow(i)
-	}
-}
-
-// Selected returns the selected row in single and browse mode; in
-// multiple mode the anchor row the last gesture or Select settled
-// on, -1 when the set is empty. Selection reports the whole set.
-func (l *List) Selected() int { return l.sel }
-
-// SelectAll selects every row. It is the ctrl+a target through
-// Router.SelectAll and does nothing outside multiple mode, where
-// "all" is not a representable selection.
-func (l *List) SelectAll() {
-	if l.mode != SelectionMultiple {
-		return
-	}
-	n := l.model.len()
-	if n == 0 {
-		return
-	}
-	set := make(map[int]struct{}, n)
-	for i := range n {
-		set[i] = struct{}{}
-	}
-	l.applyMulti(set)
-	l.notifySelection()
-}
-
-// selectRow is the single- and browse-mode selection core: clamp,
-// move, scroll, repaint, and notify on change. Browse keeps one row:
-// a clearing move pins to the first row instead.
-func (l *List) selectRow(i int) {
-	n := l.model.len()
-	i = min(max(i, -1), n-1)
-	if l.mode == SelectionBrowse && i < 0 && n > 0 {
-		i = 0
-	}
-	if i == l.sel {
-		return
-	}
-	l.sel = i
-	l.syncSelected()
-	if i >= 0 {
-		l.scrollTo(i)
-	}
-	l.Invalidate()
-	if l.OnSelect != nil {
-		l.OnSelect(i)
-	}
-	l.notifySelection()
-}
-
-// isSelected reports row membership under the active mode.
-func (l *List) isSelected(i int) bool {
-	if l.mode == SelectionMultiple {
-		_, ok := l.multi[i]
-		return ok
-	}
-	return i == l.sel
-}
-
-// applyMulti replaces the multiple-mode set wholesale, syncing the
-// checkbox rows and the proxies' :selected state and repainting;
-// callers notify.
-func (l *List) applyMulti(set map[int]struct{}) {
-	l.multi = set
-	l.syncChecks()
-	l.syncSelected()
-	l.Invalidate()
-}
-
 // syncSelected mirrors membership into the cached row proxies'
 // :selected state; SetState restyles only the rows that flipped.
 // Virtualization means the rest are seeded by newRow as they scroll in.
@@ -344,36 +193,33 @@ func (l *List) syncSelected() {
 	}
 }
 
-// toggleRow flips one row's membership and anchors there.
-func (l *List) toggleRow(i int) {
-	set := make(map[int]struct{}, len(l.multi)+1)
-	for j := range l.multi {
-		set[j] = struct{}{}
-	}
-	if _, ok := set[i]; ok {
-		delete(set, i)
-	} else {
-		set[i] = struct{}{}
-	}
-	l.sel, l.cursor = i, i
-	l.applyMulti(set)
-	l.notifySelection()
+// count implements selectionHost.
+func (l *List) count() int { return l.model.len() }
+
+// selectionSync implements selectionHost: the checkbox rows and the
+// proxies' :selected state follow membership, and the list repaints.
+func (l *List) selectionSync() {
+	l.syncChecks()
+	l.syncSelected()
+	l.Invalidate()
 }
 
-// notifySelection fires OnSelectionChanged with the current set once
-// per gesture: while a pointer gesture is in flight the notification
-// is held and lands at its end (PressEnd), so a rubber-band drag
-// that repaints through many intermediate sets still reports exactly
-// one, with the full final set.
-func (l *List) notifySelection() {
-	if l.dragging {
-		l.pending = true
-		return
-	}
+// selectionNotify implements selectionHost: OnSelectionChanged.
+func (l *List) selectionNotify() {
 	if l.OnSelectionChanged != nil {
 		l.OnSelectionChanged(l.Selection())
 	}
 }
+
+// selectionSingle implements selectionHost: OnSelect.
+func (l *List) selectionSingle(i int) {
+	if l.OnSelect != nil {
+		l.OnSelect(i)
+	}
+}
+
+// reveal implements selectionHost.
+func (l *List) reveal(i int) { l.scrollTo(i) }
 
 // Changed re-queries the model after its data changed, keeping cached
 // row widgets whose indices still exist.
@@ -385,17 +231,7 @@ func (l *List) Changed() {
 		}
 	}
 	l.offY = min(l.offY, l.scrollMax())
-	if l.sel >= n {
-		l.sel = n - 1
-	}
-	if l.cursor >= n {
-		l.cursor = n - 1
-	}
-	for i := range l.multi {
-		if i >= n {
-			delete(l.multi, i)
-		}
-	}
+	l.clampTo(n)
 	l.syncChecks()
 	l.InvalidateLayout()
 }
@@ -415,16 +251,13 @@ func (l *List) Refresh() {
 // and the scroll go, and OnSelectionChanged fires when a selection was
 // dropped.
 func (l *List) Reset() {
-	had := len(l.Selection()) > 0
 	clear(l.rows)
 	l.probe = nil
-	l.offY, l.sel, l.cursor, l.hover = 0, -1, -1, -1
-	if l.multi != nil {
-		l.multi = map[int]struct{}{}
-	}
+	l.offY, l.hover = 0, -1
+	had := l.clearAll()
 	l.Changed()
 	if had {
-		l.notifySelection()
+		l.notify()
 	}
 }
 
@@ -599,13 +432,19 @@ func (l *List) Paint(cv *render.Canvas) {
 func (l *List) rowFill(i int) render.Color {
 	switch {
 	case l.isSelected(i):
-		hl := Current().Accent
-		return render.RGBA(hl.R(), hl.G(), hl.B(), 70)
+		return selectedTint()
 	case i == l.hover:
 		tint := Current().SurfaceHover
 		return render.RGBA(tint.R(), tint.G(), tint.B(), 120)
 	}
 	return 0
+}
+
+// selectedTint is the theme's translucent accent behind a selected
+// item (a list row, a flow box child) where no stylesheet names one.
+func selectedTint() render.Color {
+	hl := Current().Accent
+	return render.RGBA(hl.R(), hl.G(), hl.B(), 70)
 }
 
 // Role implements Roleer.
@@ -656,6 +495,7 @@ func (l *List) gestureStart(row int) {
 	l.dragging = true
 	l.dragMoved = false
 	l.gestureRow = row
+	l.hold()
 }
 
 // gestureEnd closes a pointer gesture: auto-scroll stops and a held
@@ -666,13 +506,7 @@ func (l *List) gestureEnd() {
 	}
 	l.dragging = false
 	l.stopAutoScroll()
-	if !l.pending {
-		return
-	}
-	l.pending = false
-	if l.OnSelectionChanged != nil {
-		l.OnSelectionChanged(l.Selection())
-	}
+	l.release()
 }
 
 // rowClick applies the click half of a pointer gesture on row r.idx.
@@ -688,12 +522,7 @@ func (l *List) rowClick(r *listRow, p Point) {
 	if l.dragMoved {
 		return
 	}
-	switch l.mode {
-	case SelectionSingle, SelectionBrowse:
-		l.selectRow(r.idx)
-	case SelectionMultiple:
-		l.toggleRow(r.idx)
-	}
+	l.click(r.idx)
 	if l.singleClick && l.mode != SelectionMultiple {
 		l.activate(r.idx)
 	}
@@ -743,19 +572,7 @@ func (l *List) dragApply(p Point) {
 // the scrolled offset already in place, so it never touches the
 // scroll state.
 func (l *List) applyDragSelection() {
-	row := l.rowAt(l.dragPoint)
-	switch l.mode {
-	case SelectionMultiple:
-		lo, hi := min(l.gestureRow, row), max(l.gestureRow, row)
-		set := make(map[int]struct{}, hi-lo+1)
-		for i := lo; i <= hi; i++ {
-			set[i] = struct{}{}
-		}
-		l.applyMulti(set)
-		l.notifySelection()
-	case SelectionSingle, SelectionBrowse:
-		l.selectRow(row)
-	}
+	l.drag(l.gestureRow, l.rowAt(l.dragPoint))
 }
 
 // stopAutoScroll drops the drag auto-scroll tween, if any.
@@ -831,7 +648,7 @@ func (l *List) HoverMove(p Point) {
 	l.hover = i
 	l.Invalidate()
 	if l.mode == SelectionBrowse && i >= 0 {
-		l.selectRow(i)
+		l.selectOne(i)
 	}
 }
 
@@ -885,101 +702,31 @@ func (l *List) PressEnd() {
 // cursor/anchor gestures; none mode ignores selection keys. Disabled
 // lists ignore keys.
 func (l *List) KeyAction(a KeyAction, mods Mods) {
-	if !IsEnabled(l) {
-		return
-	}
-	n := l.model.len()
-	if n == 0 || l.mode == SelectionNone {
-		return
-	}
-	if l.mode == SelectionMultiple {
-		l.keyActionMultiple(a, mods, n)
-		return
-	}
-	line, item := l.steps()
-	page := max(1, l.viewH/l.rowH) * line
-	switch a {
-	case KeyUp:
-		l.Select(max(0, l.sel-line))
-	case KeyDown:
-		l.Select(min(n-1, l.sel+line))
-	case KeyLeft:
-		l.Select(max(0, l.sel-item))
-	case KeyRight:
-		l.Select(min(n-1, l.sel+item))
-	case KeyHome:
-		l.Select(0)
-	case KeyEnd:
-		l.Select(n - 1)
-	case KeyPriorPage:
-		l.Select(max(0, l.sel-page))
-	case KeyNextPage:
-		l.Select(min(n-1, l.sel+page))
-	case KeyEnter:
-		l.activate(l.sel)
+	if IsEnabled(l) {
+		l.key(a, mods, l.navigate)
 	}
 }
 
-// keyActionMultiple routes the multiple-mode keyboard: plain motion
-// keys collapse to the cursor row, shift extends the anchor range,
-// ctrl moves the cursor without selecting, ctrl+space toggles the
-// cursor row, and Enter activates every selected row once.
-func (l *List) keyActionMultiple(a KeyAction, mods Mods, n int) {
+// navigate maps a motion key to its target row: a line up or down, an
+// item sideways in a grid, a viewport of lines per page.
+func (l *List) navigate(from int, a KeyAction) (int, bool) {
 	line, item := l.steps()
-	page := max(1, l.viewH/l.rowH) * line
-	ctrl := mods&ModCtrl != 0
-	shift := mods&ModShift != 0
-	move := func(target int) {
-		target = min(max(target, 0), n-1)
-		l.cursor = target
-		switch {
-		case ctrl && !shift:
-			l.Invalidate()
-		case shift:
-			set := make(map[int]struct{})
-			for i := min(l.sel, target); i <= max(l.sel, target); i++ {
-				set[i] = struct{}{}
-			}
-			l.applyMulti(set)
-			l.notifySelection()
-		default:
-			l.sel = target
-			set := map[int]struct{}{target: {}}
-			l.applyMulti(set)
-			l.notifySelection()
-		}
-		l.scrollTo(target)
-	}
+	page := max(1, l.viewH/max(1, l.rowH)) * line
 	switch a {
 	case KeyUp:
-		move(l.cursor - line)
+		return from - line, true
 	case KeyDown:
-		move(l.cursor + line)
+		return from + line, true
 	case KeyLeft:
-		if item > 0 {
-			move(l.cursor - item)
-		}
+		return from - item, item > 0
 	case KeyRight:
-		if item > 0 {
-			move(l.cursor + item)
-		}
-	case KeyHome:
-		move(0)
-	case KeyEnd:
-		move(n - 1)
+		return from + item, item > 0
 	case KeyPriorPage:
-		move(l.cursor - page)
+		return from - page, true
 	case KeyNextPage:
-		move(l.cursor + page)
-	case KeySpace:
-		if ctrl {
-			l.toggleRow(l.cursor)
-		}
-	case KeyEnter:
-		for _, i := range l.Selection() {
-			l.activate(i)
-		}
+		return from + page, true
 	}
+	return 0, false
 }
 
 // steps is how far up/down and left/right move: a line and nothing in
