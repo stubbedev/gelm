@@ -9,7 +9,11 @@ import (
 // one visible page beneath it, the GtkNotebook model. Tabs carry a
 // name; selecting one shows its page and fires OnSelect. With Closable
 // set, each tab paints a close box and a click on it fires OnTabClose
-// instead of selecting - hosts remove the page themselves.
+// instead of selecting - hosts remove the page themselves. With
+// Reorderable set, dragging a tab along the strip moves it (OnReorder
+// reports the new index). Tabs that overflow the strip scroll: arrows
+// appear at its ends, the wheel over it scrolls, and the selected tab
+// is kept in view.
 type Notebook struct {
 	node
 	face     render.Font
@@ -17,10 +21,27 @@ type Notebook struct {
 	selected int
 	header   notebookHeader
 
-	OnSelect   func(name string)
-	OnTabClose func(name string)
-	Closable   bool
+	// scroll is the tab strip's horizontal offset; arrows are the
+	// overflow chevrons; overHeader tracks the pointer for the wheel.
+	scroll     int
+	arrows     [2]*Symbol
+	overHeader bool
+	// revealing asks the next arranged frame to bring the selected tab
+	// into view (a selection before the first arrange has no strip).
+	revealing bool
+	// drag is a tab reorder in flight: the dragged tab's index.
+	drag    dragGesture
+	dragTab int
+
+	OnSelect    func(name string)
+	OnTabClose  func(name string)
+	OnReorder   func(name string, index int)
+	Closable    bool
+	Reorderable bool
 }
+
+// tabArrowW is an overflow arrow's strip width.
+const tabArrowW = 20
 
 // notebookHeader is the tab bar's node tree (`notebook > header >
 // tabs > tab`): the header strip, the tab row, one tab part per page
@@ -60,6 +81,7 @@ const tabWidth = 96
 // panics here (see requireFace) instead of failing later, in shaping.
 func NewNotebook(face render.Font) *Notebook {
 	n := &Notebook{face: requireFace("widget.NewNotebook", face)}
+	n.arrows = [2]*Symbol{NewSymbol(SymbolChevronLeft, 14), NewSymbol(SymbolChevronRight, 14)}
 	n.header.SetElement("header")
 	n.header.tabs.SetElement("tabs")
 	n.syncTabs()
@@ -103,6 +125,78 @@ func (n *Notebook) AppendTab(name string, w Widget) {
 	n.InvalidateLayout()
 }
 
+// stripRange is the tab strip as a scroll range: the offset into the
+// tabs' total width, of which the viewport between the arrows shows.
+func (n *Notebook) stripRange() ScrollRange {
+	total := len(n.tabs) * tabWidth
+	page := n.bounds.W
+	if total > page {
+		page -= 2 * tabArrowW
+	}
+	return ScrollRange{Offset: n.scroll, Page: max(page, 0), Total: total}
+}
+
+// tabViewport is the strip area tabs paint in: inside the arrows while
+// they overflow.
+func (n *Notebook) tabViewport() render.Rect {
+	r := render.Rect{X: n.bounds.X, Y: n.bounds.Y, W: n.bounds.W, H: tabBarHeight}
+	if n.stripRange().Overflows() {
+		r.X += tabArrowW
+		r.W -= 2 * tabArrowW
+	}
+	return r
+}
+
+// scrollStrip moves the strip to offset, clamped.
+func (n *Notebook) scrollStrip(offset int) {
+	offset = min(max(offset, 0), n.stripRange().Max())
+	if offset != n.scroll {
+		n.scroll = offset
+		n.Invalidate()
+	}
+}
+
+// applyReveal brings the selected tab into view once there is a strip.
+func (n *Notebook) applyReveal() {
+	if n.revealing && n.bounds.W > 0 && n.selected < len(n.tabs) {
+		n.revealing = false
+		n.revealTab(n.selected)
+	}
+}
+
+// revealTab scrolls the strip so tab i is whole in view.
+func (n *Notebook) revealTab(i int) {
+	vp, rect := n.tabViewport(), n.tabRect(i)
+	switch {
+	case rect.X < vp.X:
+		n.scrollStrip(n.scroll - (vp.X - rect.X))
+	case rect.X+rect.W > vp.X+vp.W:
+		n.scrollStrip(n.scroll + rect.X + rect.W - vp.X - vp.W)
+	}
+}
+
+// moveTab moves tab from to index to, the selection following its
+// page, and fires OnReorder.
+func (n *Notebook) moveTab(from, to int) {
+	if from == to || from < 0 || to < 0 || from >= len(n.tabs) || to >= len(n.tabs) {
+		return
+	}
+	selected := n.tabs[n.selected].name
+	t := n.tabs[from]
+	n.tabs = append(n.tabs[:from], n.tabs[from+1:]...)
+	n.tabs = append(n.tabs[:to], append([]notebookTab{t}, n.tabs[to:]...)...)
+	for i, k := range n.tabs {
+		if k.name == selected {
+			n.selected = i
+		}
+	}
+	n.syncSelectedTab()
+	n.Invalidate()
+	if n.OnReorder != nil {
+		n.OnReorder(t.name, to)
+	}
+}
+
 // SelectedTab returns the visible page's name, empty when none.
 func (n *Notebook) SelectedTab() string {
 	if n.selected < len(n.tabs) {
@@ -121,12 +215,16 @@ func (n *Notebook) SelectTab(name string) {
 	}
 }
 
-// selectIndex switches pages, invalidates the notebook, and fires OnSelect.
+// selectIndex switches pages (revealing the tab), invalidates the
+// notebook, and fires OnSelect.
 func (n *Notebook) selectIndex(i int) {
-	if i == n.selected {
+	changed := i != n.selected
+	n.selected = i
+	n.revealing = true
+	n.applyReveal()
+	if !changed {
 		return
 	}
-	n.selected = i
 	n.syncSelectedTab()
 	n.Invalidate()
 	if n.OnSelect != nil {
@@ -151,6 +249,7 @@ func (n *Notebook) CloseTab(name string) bool {
 		if n.selected < 0 {
 			n.selected = 0
 		}
+		n.scrollStrip(n.scroll)
 		clearParents(t.w)
 		n.syncTabs()
 		n.InvalidateLayout()
@@ -202,6 +301,8 @@ func (n *Notebook) Measure(con Constraints) Size {
 // Arrange lays out the tab strip and the visible page beneath it.
 func (n *Notebook) Arrange(r render.Rect) {
 	n.node.Arrange(r)
+	n.scrollStrip(n.scroll) // a wider strip may have less to scroll
+	n.applyReveal()
 	page := render.Rect{X: r.X, Y: r.Y + tabBarHeight, W: r.W, H: max(0, r.H-tabBarHeight)}
 	if n.selected < len(n.tabs) {
 		n.tabs[n.selected].w.Arrange(page)
@@ -209,13 +310,34 @@ func (n *Notebook) Arrange(r render.Rect) {
 	}
 }
 
-// tabRect returns the strip occupied by tab i.
+// tabRect returns the strip occupied by tab i, scrolled.
 func (n *Notebook) tabRect(i int) render.Rect {
-	x := n.bounds.X
-	for range i {
-		x += tabWidth
+	return render.Rect{X: n.tabViewport().X + i*tabWidth - n.scroll, Y: n.bounds.Y, W: tabWidth, H: tabBarHeight}
+}
+
+// tabAt is the tab under p, -1 off the visible strip.
+func (n *Notebook) tabAt(p Point) int {
+	if !n.tabViewport().Contains(p.X, p.Y) {
+		return -1
 	}
-	return render.Rect{X: x, Y: n.bounds.Y, W: tabWidth, H: tabBarHeight}
+	for i := range n.tabs {
+		if n.tabRect(i).Contains(p.X, p.Y) {
+			return i
+		}
+	}
+	return -1
+}
+
+// arrowRects are the overflow arrows' strips, empty without overflow.
+func (n *Notebook) arrowRects() [2]render.Rect {
+	if !n.stripRange().Overflows() {
+		return [2]render.Rect{}
+	}
+	y := n.bounds.Y
+	return [2]render.Rect{
+		{X: n.bounds.X, Y: y, W: tabArrowW, H: tabBarHeight},
+		{X: n.bounds.X + n.bounds.W - tabArrowW, Y: y, W: tabArrowW, H: tabBarHeight},
+	}
 }
 
 // Paint draws the tab bar through its nodes — the notebook's box, the
@@ -241,6 +363,7 @@ func (n *Notebook) Paint(cv *render.Canvas) {
 	paintOutline(cv, hv, header, hradii)
 	hfx.pop(cv)
 
+	strip := cv.PushClip(n.tabViewport())
 	for i, t := range n.tabs {
 		rect := n.tabRect(i)
 		tp := &n.header.tabs.tab[i]
@@ -266,9 +389,15 @@ func (n *Notebook) Paint(cv *render.Canvas) {
 			n.face.DrawAligned(cv, t.name, rect, 12, color, render.AlignCenter)
 		}
 		if n.Closable {
-			cx, cy := rect.X+rect.W-13, rect.Y+tabBarHeight/2
-			cv.Line(cx-4, cy-4, cx+4, cy+4, 1, th.TextMuted)
-			cv.Line(cx-4, cy+4, cx+4, cy-4, 1, th.TextMuted)
+			strokeCross(cv, rect.X+rect.W-13, rect.Y+tabBarHeight/2, 4, th.TextMuted)
+		}
+	}
+	cv.PopClip(strip)
+	for k, r := range n.arrowRects() {
+		if !r.Empty() {
+			n.arrows[k].Arrange(r)
+			setParents(n, n.arrows[k])
+			PaintChild(cv, n.arrows[k])
 		}
 	}
 	if n.selected < len(n.tabs) {
@@ -304,20 +433,71 @@ func (n *Notebook) HitTest(p Point) Widget {
 // ClickAt selects the tab under the point, or fires OnTabClose when
 // the close box of a tab was pressed.
 func (n *Notebook) ClickAt(p Point) {
-	for i := range n.tabs {
-		rect := n.tabRect(i)
-		if !rect.Contains(p.X, p.Y) {
-			continue
-		}
-		if n.Closable && p.X > rect.X+rect.W-20 {
-			if n.OnTabClose != nil {
-				n.OnTabClose(n.tabs[i].name)
-			}
-			return
-		}
-		n.selectIndex(i)
+	arrows := n.arrowRects()
+	switch {
+	case arrows[0].Contains(p.X, p.Y):
+		n.scrollStrip(n.scroll - tabWidth)
+		return
+	case arrows[1].Contains(p.X, p.Y):
+		n.scrollStrip(n.scroll + tabWidth)
 		return
 	}
+	i := n.tabAt(p)
+	if i < 0 {
+		return
+	}
+	if rect := n.tabRect(i); n.Closable && p.X > rect.X+rect.W-20 {
+		if n.OnTabClose != nil {
+			n.OnTabClose(n.tabs[i].name)
+		}
+		return
+	}
+	n.selectIndex(i)
+}
+
+// PressAt picks up a tab for reordering.
+func (n *Notebook) PressAt(p Point) {
+	if i := n.tabAt(p); n.Reorderable && i >= 0 {
+		n.drag.begin(p)
+		n.dragTab = i
+	}
+}
+
+// DragMove moves the dragged tab into the slot under the pointer, so
+// the strip reorders live as the pointer crosses its neighbors.
+func (n *Notebook) DragMove(p Point) {
+	if _, _, ok := n.drag.travel(p); !ok {
+		return
+	}
+	if i := n.tabAt(Point{X: p.X, Y: n.bounds.Y + 1}); i >= 0 && i != n.dragTab {
+		n.moveTab(n.dragTab, i)
+		n.dragTab = i
+	}
+}
+
+// PressEnd drops the tab.
+func (n *Notebook) PressEnd() { n.drag.end() }
+
+// HoverMove tracks whether the pointer is over the tab strip.
+func (n *Notebook) HoverMove(p Point) { n.overHeader = p.Y < n.bounds.Y+tabBarHeight }
+
+// SetHovered forgets the strip when the pointer leaves the notebook
+// itself (into a page, or away).
+func (n *Notebook) SetHovered(on bool) {
+	if !on {
+		n.overHeader = false
+	}
+}
+
+// ScrollInput scrolls an overflowing strip under the pointer, a third
+// of a tab per wheel step; anywhere else the step passes on to the
+// scrollers outside.
+func (n *Notebook) ScrollInput(dy int) bool {
+	if !n.overHeader || !n.stripRange().Overflows() {
+		return false
+	}
+	n.scrollStrip(n.scroll + dy*tabWidth/3)
+	return true
 }
 
 // KeyAction implements KeyActionHandler: ctrl+PageUp/PageDown cycle
