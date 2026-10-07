@@ -35,6 +35,7 @@ const (
 	RoleSplitter
 	RoleCalendar
 	RoleColorChooser
+	RoleScrollBar
 )
 
 // String returns the lowercase role name.
@@ -74,6 +75,8 @@ func (r Role) String() string {
 		return "calendar"
 	case RoleColorChooser:
 		return "color-chooser"
+	case RoleScrollBar:
+		return "scroll-bar"
 	default:
 		return "none"
 	}

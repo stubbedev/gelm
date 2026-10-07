@@ -50,6 +50,7 @@ const (
 	roleMenu         uint32 = 33
 	roleProgressBar  uint32 = 42
 	rolePushButton   uint32 = 43
+	roleScrollBar    uint32 = 48
 	roleScrollPane   uint32 = 49
 	roleSlider       uint32 = 51
 	roleSplitPane    uint32 = 53
@@ -110,6 +111,8 @@ func atspiRole(r widget.Role) uint32 {
 		return roleCalendar
 	case widget.RoleColorChooser:
 		return roleColorChooser
+	case widget.RoleScrollBar:
+		return roleScrollBar
 	default:
 		return roleFiller
 	}
@@ -151,6 +154,8 @@ func atspiRoleName(r widget.Role) string {
 		return "calendar"
 	case roleColorChooser:
 		return "color chooser"
+	case roleScrollBar:
+		return "scroll bar"
 	default:
 		return "filler"
 	}
