@@ -330,3 +330,57 @@ func pairDistance(a, b Point) float64 { return math.Hypot(float64(b.X-a.X), floa
 func pairAngle(a, b Point) float64 {
 	return math.Atan2(float64(b.Y-a.Y), float64(b.X-a.X)) * 180 / math.Pi
 }
+
+// StylusTool is a tablet tool's kind.
+type StylusTool uint8
+
+// Stylus tools.
+const (
+	StylusPen StylusTool = iota
+	StylusEraser
+	StylusBrush
+	StylusPencil
+	StylusAirbrush
+	StylusFinger
+	StylusMouse
+	StylusLens
+)
+
+// Stylus is one tablet tool sample: where the tool is, its axes, and
+// whether its tip is down. Pressure and Distance are 0..1; tilt and
+// rotation are degrees. Button reports a stylus button that changed
+// with this sample (0: none) and Pressed its state.
+type Stylus struct {
+	Tool               StylusTool
+	At                 Point
+	Pressure, Distance float64
+	TiltX, TiltY       float64
+	Rotation           float64
+	Down               bool
+	Button             uint32
+	Pressed            bool
+}
+
+// StylusHandler takes tablet samples - a canvas drawing with pressure,
+// a slider dragging finer with a light touch. The tool also drives the
+// pointer (hover, press, drag), so widgets that ignore pressure just
+// work under a pen.
+type StylusHandler interface {
+	Stylus(s Stylus)
+}
+
+// Stylus delivers a tablet sample: to the pressed widget's chain while
+// a press is held (a stroke stays with the widget it began on),
+// otherwise the hovered one's, the first StylusHandler up the tree.
+func (r *Router) Stylus(s Stylus) {
+	from := r.pressed
+	if from == nil {
+		from = r.hover
+	}
+	for w := from; w != nil; w = parentOf(w) {
+		if h, ok := w.(StylusHandler); ok && IsEnabled(w) {
+			h.Stylus(s)
+			return
+		}
+	}
+}

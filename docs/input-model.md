@@ -299,6 +299,25 @@ wl_touch and gesture events driven into the session handlers
 (internal/wlsession) and contact sequences driven into the tracker
 (widget) - rather than injected from the harness side.
 
+## Tablets
+
+zwp_tablet_v2 tools (pens, erasers, brushes, ...) accumulate their
+events over a frame - proximity, motion, pressure, distance, tilt,
+rotation, tip down/up, stylus buttons - and each frame routes to the
+surface the tool is near (pads are not bound). The bridge every input
+surface embeds (internal/touchinput) makes the tool a pointer - in
+range it hovers, the tip presses and releases (through the same
+`TouchPointer` path as touch, so window-frame grabs work), leaving
+range leaves - and delivers a `Stylus` sample (pressure and distance
+0..1, tilt and rotation in degrees, the tip state, a changed stylus
+button) to the first `StylusHandler` up the tree: the pressed widget's
+while a stroke is held, so the stroke and its end stay with the widget
+it began on, else the hovered one's. `widget.DrawingArea` is the
+painting surface that takes them. Like touch, tablets are tested by
+synthetic tool events at the session handlers and tablet frames into
+the bridge - the protocol has no virtual tablet to inject from the
+harness.
+
 ## Seat capability churn
 
 Capabilities are state, not a one-shot: when the compositor reports a
