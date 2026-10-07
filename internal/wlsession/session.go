@@ -94,17 +94,29 @@ const (
 type Session struct {
 	Display *wl.Display
 
-	registry            *wl.Registry
-	compositor          *wl.Compositor
-	shm                 *wl.Shm
-	layerShell          *wlr.ZwlrLayerShellV1
-	viewporter          *wlr.WpViewporter
-	fracScaleManager    *wlr.WpScaleManagerV1
-	seat                *wl.Seat
-	seatVersion         uint32
-	seatDev             seatDevices
-	pointer             pointerAPI
-	keyboard            keyboardAPI
+	registry         *wl.Registry
+	compositor       *wl.Compositor
+	shm              *wl.Shm
+	layerShell       *wlr.ZwlrLayerShellV1
+	viewporter       *wlr.WpViewporter
+	fracScaleManager *wlr.WpScaleManagerV1
+	seat             *wl.Seat
+	seatVersion      uint32
+	seatDev          seatDevices
+	pointer          pointerAPI
+	keyboard         keyboardAPI
+	// touch is the bound wl_touch, touchFocus each contact's surface
+	// (touch.go).
+	touch      touchAPI
+	touchFocus map[int32]*wl.Surface
+	// gestures is the touchpad gesture manager and its per-pointer
+	// objects; gestureSurface is where the gesture in progress began.
+	gestures            *wlr.ZwpGesturesV1
+	gesturesVersion     uint32
+	swipe               *wlr.ZwpGestureSwipeV1
+	pinch               *wlr.ZwpGesturePinchV1
+	hold                *wlr.ZwpGestureHoldV1
+	gestureSurface      *wl.Surface
 	wmBase              *xdg.WmBase
 	wmBaseVersion       uint32
 	compositorVersion   uint32
@@ -453,6 +465,8 @@ func (s *Session) HandleRegistryGlobal(ev wl.RegistryGlobalEvent) {
 		s.bindActivation(ev)
 	case "zwp_idle_inhibit_manager_v1":
 		s.bindIdleInhibitManager(ev)
+	case "zwp_pointer_gestures_v1":
+		s.bindPointerGestures(ev)
 	case "zwp_keyboard_shortcuts_inhibit_manager_v1":
 		s.bindShortcutsInhibitManager(ev)
 	case "zxdg_output_manager_v1":
@@ -571,12 +585,8 @@ func (e *outputEvents) HandleOutputDone(wl.OutputDoneEvent) {}
 const (
 	capPointer  = 1
 	capKeyboard = 2
-	// capTouch is parsed only to be ignored. Touch is a recorded
-	// non-goal: gelm has no touch pipeline — no wl_touch binding and no
-	// touch routing — so a seat advertising the bit gets a session that
-	// takes pointer and keyboard input and never binds a touch object.
-	// Deliberate, not an oversight; revisit together with the input
-	// model if touch surfaces ever matter.
+	// capTouch binds wl_touch (touch.go). This overturns the earlier
+	// recorded non-goal of no touch pipeline (#105).
 	capTouch = 4
 )
 
@@ -668,8 +678,8 @@ func (w wireKeyboard) AddListener(h wlclient.KeyboardListener) { wlclient.Keyboa
 // released and dropped, and a fresh one is created on the next gain,
 // or input goes silent after an unplug-replug.
 func (s *Session) HandleSeatCapabilities(ev wl.SeatCapabilitiesEvent) {
-	// The touch bit is deliberately dropped here — see capTouch.
 	s.handleCapabilities(ev.Capabilities&capPointer != 0, ev.Capabilities&capKeyboard != 0)
+	s.handleTouchCapability(ev.Capabilities&capTouch != 0)
 }
 
 // handleCapabilities is the capability transition state machine,
@@ -691,6 +701,7 @@ func (s *Session) handleCapabilities(hasPointer, hasKeyboard bool) {
 		} else {
 			p.AddListener(s)
 			s.pointer = p
+			s.ensurePointerGestures()
 			debug.Log("seat", "pointer capability gained")
 		}
 	}
@@ -732,6 +743,7 @@ func (s *Session) handleCapabilities(hasPointer, hasKeyboard bool) {
 // in-flight widget drag), and the cursor frame timer stops. The
 // desired shape survives so the next enter re-applies it.
 func (s *Session) pointerLost() {
+	s.dropPointerGestures()
 	if p := s.pointer; p != nil {
 		s.pointer = nil
 		if s.seatVersion >= minSeatReleaseVersion {

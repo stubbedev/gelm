@@ -22,6 +22,7 @@ import (
 	"github.com/stubbedev/gelm/internal/debug"
 	"github.com/stubbedev/gelm/internal/scale"
 	"github.com/stubbedev/gelm/internal/surfx"
+	"github.com/stubbedev/gelm/internal/touchinput"
 	"github.com/stubbedev/gelm/internal/wlnull"
 	"github.com/stubbedev/gelm/internal/wlsession"
 	"github.com/stubbedev/gelm/render"
@@ -531,6 +532,12 @@ func (p *Popup) AttachInput(sess *wlsession.Session, router *widget.Router) (det
 		markDirty: func() { p.dirty.Store(true) },
 		pressed:   p.pressSerial.Store,
 	}
+	input.Input = touchinput.Input{
+		Tracker: widget.TouchTracker{Router: router},
+		Pointer: func() widget.Point { return widget.Point{X: int(pointer.x), Y: int(pointer.y)} },
+		Blocked: p.Dismissed,
+		Changed: input.markDirty,
+	}
 	sess.SetSurfaceInput(p.WLSurface, input)
 	return func() { sess.SetSurfaceInput(p.WLSurface, nil) }
 }
@@ -541,6 +548,8 @@ func (p *Popup) AttachInput(sess *wlsession.Session, router *widget.Router) (det
 // input, belt-and-braces beside the empty input region (which is what
 // actually stops the compositor from routing events here).
 type popupInput struct {
+	// Input routes touch and touchpad gestures (internal/touchinput).
+	touchinput.Input
 	dismissed func() bool
 	router    *widget.Router
 	pointer   *struct{ x, y float64 }

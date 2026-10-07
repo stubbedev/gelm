@@ -391,6 +391,27 @@ func (c *Carousel) PressEnd() {
 	}
 }
 
+// Gesture implements GestureHandler: a touchpad swipe pans the pages
+// like a drag, snapping when the fingers lift (touchscreen drags reach
+// the carousel through the touch pointer emulation).
+func (c *Carousel) Gesture(g Gesture) bool {
+	if g.Kind != GestureSwipe || c.bounds.W == 0 {
+		return false
+	}
+	switch g.Phase {
+	case GestureBegin:
+		if c.cancel != nil {
+			c.cancel()
+		}
+	case GestureUpdate:
+		c.offset = clamp01pages(c.offset-g.DX/float64(c.bounds.W), len(c.pages))
+		c.Invalidate()
+	case GestureEnd, GestureCancel:
+		c.snap()
+	}
+	return true
+}
+
 // snap animates the offset to the nearest integer page.
 func (c *Carousel) snap() {
 	target := float64(max(0, min(len(c.pages)-1, int(c.offset+0.5))))

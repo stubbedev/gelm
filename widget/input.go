@@ -464,7 +464,9 @@ type Router struct {
 	pxRemainder [2]float64
 	// pixelTarget is the PixelScroller the current finger scroll feeds,
 	// told when it ends (AxisEnd).
-	pixelTarget     Widget
+	pixelTarget Widget
+	// gestureTarget claimed the gesture in progress (Gesture).
+	gestureTarget   Widget
 	lastClick       time.Time
 	lastClickWidget Widget
 
@@ -701,6 +703,9 @@ func (r *Router) Forget(w Widget) {
 	}
 	if inSubtree(r.pixelTarget, w) {
 		r.pixelTarget = nil
+	}
+	if inSubtree(r.gestureTarget, w) {
+		r.gestureTarget = nil
 	}
 	if inSubtree(r.focus, w) {
 		setFocusStyle(r.focus, nil, false)

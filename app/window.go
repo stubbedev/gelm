@@ -34,6 +34,7 @@ import (
 	"github.com/stubbedev/gelm/internal/inspect"
 	"github.com/stubbedev/gelm/internal/scale"
 	"github.com/stubbedev/gelm/internal/surfx"
+	"github.com/stubbedev/gelm/internal/touchinput"
 	"github.com/stubbedev/gelm/internal/window"
 	"github.com/stubbedev/gelm/internal/wlsession"
 	"github.com/stubbedev/gelm/render"
@@ -253,6 +254,12 @@ func newHostWindow(sess *wlsession.Session, host Host, initialScale int, root wi
 	// layer surfaces stay pure widgets.
 	if w.startResize != nil {
 		input.resizeAt = w.resizeEdgeAt
+	}
+	input.Input = touchinput.Input{
+		Tracker: widget.TouchTracker{Router: w.router, Pointer: input},
+		Pointer: func() widget.Point { return widget.Point{X: int(input.x), Y: int(input.y)} },
+		Blocked: input.blocked,
+		Changed: input.request,
 	}
 	w.input = input
 	sess.SetSurfaceInput(host.HostSurface(), input)
