@@ -237,6 +237,12 @@ type PixelScroller interface {
 	ScrollPixels(dx, dy float64)
 }
 
+// ScrollEnder is a PixelScroller told when a finger scroll ends (the
+// fingers lifted): Scroll glides on from the gesture's velocity.
+type ScrollEnder interface {
+	ScrollEnd()
+}
+
 // scrollStepPx is one wheel step in pixels, the factor every built-in
 // ScrollHandler applies to ScrollBy's steps.
 const scrollStepPx = 40
@@ -261,6 +267,7 @@ func (r *Router) AxisPixels(dx, dy float64) {
 			}
 			if p, ok := target.(PixelScroller); ok {
 				p.ScrollPixels(dx, dy)
+				r.pixelTarget = target
 				return
 			}
 			if steps := r.pixelSteps(dx, dy); steps != [2]int{} {
@@ -268,6 +275,17 @@ func (r *Router) AxisPixels(dx, dy float64) {
 			}
 			return
 		}
+	}
+}
+
+// AxisEnd ends a finger scroll: the PixelScroller that took the
+// gesture's pixels hears it (ScrollEnder) even when the pointer has
+// since moved off it.
+func (r *Router) AxisEnd() {
+	t := r.pixelTarget
+	r.pixelTarget = nil
+	if e, ok := t.(ScrollEnder); ok && IsEnabled(t) {
+		e.ScrollEnd()
 	}
 }
 
@@ -443,7 +461,10 @@ type Router struct {
 	dragging              bool
 	// pxRemainder holds pixel scrolling not yet a whole step for a
 	// step-only scroller (AxisPixels).
-	pxRemainder     [2]float64
+	pxRemainder [2]float64
+	// pixelTarget is the PixelScroller the current finger scroll feeds,
+	// told when it ends (AxisEnd).
+	pixelTarget     Widget
 	lastClick       time.Time
 	lastClickWidget Widget
 
@@ -677,6 +698,9 @@ func (r *Router) Forget(w Widget) {
 	}
 	if inSubtree(r.pressed, w) {
 		r.CancelPress()
+	}
+	if inSubtree(r.pixelTarget, w) {
+		r.pixelTarget = nil
 	}
 	if inSubtree(r.focus, w) {
 		setFocusStyle(r.focus, nil, false)

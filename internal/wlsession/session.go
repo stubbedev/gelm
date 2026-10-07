@@ -197,6 +197,9 @@ type Session struct {
 	axisValue   [2]float64
 	axisSource  uint32
 	axisSourced bool
+	// axisStopped marks the frame carrying axis_stop: the fingers left
+	// the touchpad, the end a kinetic scroll glides from.
+	axisStopped bool
 
 	// closed is set by Close, before the connection goes; WakeAfter
 	// timers still pending then stand down instead of writing to it.
@@ -273,6 +276,13 @@ type SurfacePointerHandler interface {
 // fingers moved, not in wheel steps.
 type SurfacePreciseScroller interface {
 	HandlePointerScrollPixels(dx, dy float64)
+}
+
+// SurfaceScrollEnder is a SurfacePreciseScroller told when a finger
+// scroll ends (wl_pointer.axis_stop): the fingers lifted, so a kinetic
+// scroller may glide on from the gesture's velocity.
+type SurfaceScrollEnder interface {
+	HandlePointerScrollEnd()
 }
 
 // SurfaceDropHandler receives the wl_data_device drag-and-drop events
@@ -974,24 +984,32 @@ func (s *Session) HandlePointerAxis(ev wl.PointerAxisEvent) {
 func (s *Session) HandlePointerFrame(wl.PointerFrameEvent) {
 	dv, dh := s.wheel120[0], s.wheel120[1]
 	vv, vh := s.axisValue[0], s.axisValue[1]
-	source, sourced := s.axisSource, s.axisSourced
+	source, sourced, stopped := s.axisSource, s.axisSourced, s.axisStopped
 	s.resetAxisFrame()
 	h := s.pointerTarget()
 	if h == nil {
 		return
 	}
+	precise := sourced && (source == wl.PointerAxisSourceFinger || source == wl.PointerAxisSourceContinuous)
 	switch {
 	case dv != 0 || dh != 0:
 		h.HandlePointerAxis(float64(dh)/wheelPerStep, float64(dv)/wheelPerStep)
 	case vv == 0 && vh == 0:
-	case sourced && (source == wl.PointerAxisSourceFinger || source == wl.PointerAxisSourceContinuous):
+	case precise:
 		if p, ok := h.(SurfacePreciseScroller); ok {
 			p.HandlePointerScrollPixels(vh, vv)
-			return
+		} else {
+			h.HandlePointerAxis(vh, vv)
 		}
-		h.HandlePointerAxis(vh, vv)
 	default:
 		h.HandlePointerAxis(vh, vv)
+	}
+	// The stop frame carries the finger source and no motion; it ends
+	// the gesture for a handler that glides.
+	if stopped && (!sourced || source == wl.PointerAxisSourceFinger) {
+		if e, ok := h.(SurfaceScrollEnder); ok {
+			e.HandlePointerScrollEnd()
+		}
 	}
 }
 
@@ -1000,6 +1018,7 @@ func (s *Session) resetAxisFrame() {
 	s.wheel120 = [2]int32{}
 	s.axisValue = [2]float64{}
 	s.axisSource, s.axisSourced = 0, false
+	s.axisStopped = false
 }
 
 // HandlePointerAxisSource implements wl.PointerAxisSourceHandler: what
@@ -1009,7 +1028,9 @@ func (s *Session) HandlePointerAxisSource(ev wl.PointerAxisSourceEvent) {
 }
 
 // HandlePointerAxisStop implements wl.PointerAxisStopHandler.
-func (s *Session) HandlePointerAxisStop(wl.PointerAxisStopEvent) {}
+// The stop lands in the next frame (seats 5+); an older seat has no
+// frames and no stop.
+func (s *Session) HandlePointerAxisStop(wl.PointerAxisStopEvent) { s.axisStopped = true }
 
 // HandlePointerAxisDiscrete implements wl.PointerAxisDiscreteHandler
 // (seats 5-7): wheel notches, counted as 120 units each like

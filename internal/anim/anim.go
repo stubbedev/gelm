@@ -56,6 +56,11 @@ func SetInstant(on bool) (restore func()) {
 // pinned clock pins the whole schedule.
 var clock = time.Now
 
+// Now is the animation clock's current instant - the pinned one under
+// SetClock - for widgets timing input against their tweens (a kinetic
+// scroll's velocity).
+func Now() time.Time { return clock() }
+
 // tstep is one flattened, absolutely-timed piece of a launched
 // timeline: the half-open window [start, end).
 type tstep struct {

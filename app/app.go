@@ -791,3 +791,13 @@ func (in *surfaceInput) HandlePointerScrollPixels(dx, dy float64) {
 	in.router.AxisPixels(dx, dy)
 	in.request()
 }
+
+// HandlePointerScrollEnd implements wlsession.SurfaceScrollEnder: the
+// fingers lifted; a kinetic scroller glides on.
+func (in *surfaceInput) HandlePointerScrollEnd() {
+	if in.dropInput() {
+		return
+	}
+	in.router.AxisEnd()
+	in.request()
+}
