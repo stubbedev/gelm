@@ -288,6 +288,8 @@ type CheckButton struct {
 	mark     *Icon
 	markName string
 	markTint render.Color
+	// group, when set, makes the checkbox a radio button (SetGroup).
+	group *radioGroup
 
 	// OnChanged fires after every state change, including programmatic
 	// ones.
@@ -317,13 +319,20 @@ func (c *CheckButton) SetChecked(checked bool) {
 	c.checked = checked
 	c.invalidateState(style.Checked)
 	c.Invalidate()
+	if checked && c.group != nil {
+		c.group.activated(c)
+	}
 	if c.OnChanged != nil {
 		c.OnChanged(checked)
 	}
 }
 
-// Toggle flips the state and fires OnChanged.
+// Toggle flips the state and fires OnChanged; a radio button only ever
+// checks - clicking the checked one keeps it checked.
 func (c *CheckButton) Toggle() {
+	if c.group != nil && c.checked {
+		return
+	}
 	c.SetChecked(!c.checked)
 }
 
@@ -393,6 +402,9 @@ func (c *CheckButton) Paint(cv *render.Canvas) {
 		}
 	}
 	radii := radiusOr(kv, 4)
+	if c.group != nil {
+		radii = radiusOr(kv, box.W/2)
+	}
 	c.check.Arrange(box)
 	paintBoxBehindCol(cv, kv, box, radii, ring, pickc(0, kv, style.PropBackgroundColor, fill), cols)
 	if src := kv.IconSource; src != "" && (c.checked || c.Inconsistent()) {
@@ -406,6 +418,10 @@ func (c *CheckButton) Paint(cv *render.Canvas) {
 			tint = scaleAlpha(tint, disabledFade)
 		}
 		c.drawThemedMark(cv, src, box, tint)
+	} else if c.group != nil && c.checked {
+		// The radio's mark: a dot a third of the indicator.
+		d := max(box.W/3, 2)
+		cv.RoundedRect(render.Rect{X: box.X + (box.W-d)/2, Y: box.Y + (box.H-d)/2, W: d, H: d}, d/2, tick)
 	} else if c.checked || c.Inconsistent() {
 		drawCheckMark(cv, box, c.Inconsistent(), tick)
 	}
