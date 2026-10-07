@@ -17,14 +17,15 @@ import (
 // BottomSheet lives in bottomsheet.go, WrapBox is FlowBox's justify
 // option.
 
-// ToggleGroup is the segmented control (adw 1.7): a pill of buttons of
-// which exactly one is active, painted with the selected fill and
-// :checked. Clicks and Left/Right activate; SetActive drives it from
-// code. ViewSwitcher is a ToggleGroup bound to a Stack.
+// ToggleGroup is the segmented control (adw 1.7): a pill of
+// ToggleButtons in one radio group, exactly one active. Clicks and
+// Left/Right activate; SetActive drives it from code. ViewSwitcher is
+// a ToggleGroup bound to a Stack.
 type ToggleGroup struct {
 	composite
 	row     *Box
-	buttons []*Button
+	group   radioGroup
+	buttons []*ToggleButton
 	active  int
 
 	// OnChanged fires after every change of the active toggle, from a
@@ -46,14 +47,26 @@ func NewToggleGroup(items ...Widget) *ToggleGroup {
 	return g
 }
 
-// Append adds a toggle; the first one appended is active.
+// Append adds a toggle; the first one appended is active. Appending
+// never announces: OnChanged reports user and SetActive changes only.
 func (g *ToggleGroup) Append(content Widget) {
 	i := len(g.buttons)
-	btn := NewButton(content, 6, 999)
-	btn.OnClick = func() { g.SetActive(i) }
-	g.buttons = append(g.buttons, btn)
-	g.row.Append(btn, false)
-	g.markActive()
+	t := NewToggleButton(content, 6, 999)
+	t.joinGroup(&g.group)
+	t.OnToggled = func(on bool) {
+		if on && g.active != i {
+			g.active = i
+			if g.OnChanged != nil {
+				g.OnChanged(i)
+			}
+		}
+	}
+	g.buttons = append(g.buttons, t)
+	g.row.Append(t, false)
+	if i == 0 {
+		g.active = 0
+		t.setActive(true, false)
+	}
 	g.InvalidateLayout()
 }
 
@@ -61,6 +74,7 @@ func (g *ToggleGroup) Append(content Widget) {
 func (g *ToggleGroup) Clear() {
 	g.row.Clear()
 	g.buttons, g.active = nil, 0
+	g.group = radioGroup{}
 	g.InvalidateLayout()
 }
 
@@ -75,29 +89,13 @@ func (g *ToggleGroup) Active() int {
 	return g.active
 }
 
-// SetActive activates toggle i (clamped) and fires OnChanged when it
+// SetActive activates toggle i (clamped); OnChanged fires when it
 // moved.
 func (g *ToggleGroup) SetActive(i int) {
 	if len(g.buttons) == 0 {
 		return
 	}
-	i = min(max(i, 0), len(g.buttons)-1)
-	if i == g.active {
-		g.markActive()
-		return
-	}
-	g.active = i
-	g.markActive()
-	if g.OnChanged != nil {
-		g.OnChanged(i)
-	}
-}
-
-// markActive paints the active toggle's mark and clears the others.
-func (g *ToggleGroup) markActive() {
-	for i, b := range g.buttons {
-		markChecked(b, i == g.active)
-	}
+	g.buttons[min(max(i, 0), len(g.buttons)-1)].SetActive(true)
 }
 
 // KeyAction moves the active toggle with Left/Right.
@@ -108,20 +106,6 @@ func (g *ToggleGroup) KeyAction(a KeyAction, _ Mods) {
 	case KeyRight:
 		g.SetActive(g.active + 1)
 	}
-}
-
-// markChecked marks a toggle as the active one: the :checked state for
-// stylesheets, and the theme's selected fill so an unstyled group shows
-// which is current. Unchecking returns the unset fill.
-func markChecked(b *Button, on bool) {
-	b.SetState(StateChecked, on)
-	b.BgExplicit = on
-	b.Bg, b.BgHover, b.BgPressed = 0, 0, 0
-	if on {
-		th := Current()
-		b.Bg, b.BgHover, b.BgPressed = th.SurfaceHover, th.SurfaceHover, th.SurfacePressed
-	}
-	b.Invalidate()
 }
 
 // ButtonContent is the icon-and-label pair buttons wear (adw
