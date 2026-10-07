@@ -55,6 +55,11 @@ headless:
     trap 'just test-env-stop "$dir"' EXIT INT TERM
     . "$dir/client.env"
     export WAYLAND_DISPLAY DBUS_SESSION_BUS_ADDRESS XDG_RUNTIME_DIR="$dir" GELM_HEADLESS=1
+    # The client-side cursor path needs a theme; the dev shell supplies
+    # one (GELM_TEST_XCURSOR_PATH) so the run does not depend on the host.
+    if [ -n "$GELM_TEST_XCURSOR_PATH" ]; then
+        export XCURSOR_PATH="$GELM_TEST_XCURSOR_PATH" XCURSOR_THEME=Vanilla-DMZ
+    fi
     go test ./internal/headlesstest ./capture ./vinput -count=1
 
 # `check` plus the headless input gate - what CI runs. The gate is
