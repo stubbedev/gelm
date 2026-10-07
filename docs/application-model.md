@@ -174,6 +174,7 @@ test is `TestSingleInstanceForwardsToPrimary`
 | `relm4::Factory` | `widget.List[W]` + `ListModel[W]` | model-driven, virtualized rows with `OnSelect`/`OnActivate`; `Changed()` re-queries (docs/threading.md) |
 | `gtk::Application::quit` | `Application.Quit` | authoritative, bypasses vetoes |
 | GApplication single-instance / `command-line` / `open` | `app.ClaimInstance` + `InstanceConfig` hooks | socket-keyed guard; secondaries forward and exit 0, never touching the session (see above) |
+| relm4 `binding` module (`StringBinding`, `ConnectBindingExt`) | `widget.Binding[T]` + the widget `Bind*` connectors | loop-owned observable with equal-suppressed Set and deferred write-while-notifying; two-way wiring is echo-free by construction |
 | per-window `scale-factor` | per-window `Scale` plus live `preferred_scale` | fractional scaling lands with #14 |
 
 ## What is deliberately absent
