@@ -111,12 +111,15 @@ type Session struct {
 	touchFocus map[int32]*wl.Surface
 	// gestures is the touchpad gesture manager and its per-pointer
 	// objects; gestureSurface is where the gesture in progress began.
-	gestures            *wlr.ZwpGesturesV1
-	gesturesVersion     uint32
-	swipe               *wlr.ZwpGestureSwipeV1
-	pinch               *wlr.ZwpGesturePinchV1
-	hold                *wlr.ZwpGestureHoldV1
-	gestureSurface      *wl.Surface
+	gestures        *wlr.ZwpGesturesV1
+	gesturesVersion uint32
+	swipe           *wlr.ZwpGestureSwipeV1
+	pinch           *wlr.ZwpGesturePinchV1
+	hold            *wlr.ZwpGestureHoldV1
+	gestureSurface  *wl.Surface
+	// tabletMgr and tabletSeat bind tablet tools (tablet.go).
+	tabletMgr           *wlr.ZwpTabletManagerV2
+	tabletSeat          *wlr.ZwpTabletSeatV2
 	wmBase              *xdg.WmBase
 	wmBaseVersion       uint32
 	compositorVersion   uint32
@@ -438,6 +441,7 @@ func (s *Session) HandleRegistryGlobal(ev wl.RegistryGlobalEvent) {
 		s.ensureDataDevice()
 		s.ensureTextInput()
 		s.ensurePrimarySelectionDevice()
+		s.ensureTabletSeat()
 	case "xdg_wm_base":
 		ctx, _ := wl.GetUserData[wl.Context](s.registry)
 		wmBase := xdg.NewShell(ctx)
@@ -467,6 +471,8 @@ func (s *Session) HandleRegistryGlobal(ev wl.RegistryGlobalEvent) {
 		s.bindIdleInhibitManager(ev)
 	case "zwp_pointer_gestures_v1":
 		s.bindPointerGestures(ev)
+	case "zwp_tablet_manager_v2":
+		s.bindTabletManager(ev)
 	case "zwp_keyboard_shortcuts_inhibit_manager_v1":
 		s.bindShortcutsInhibitManager(ev)
 	case "zxdg_output_manager_v1":

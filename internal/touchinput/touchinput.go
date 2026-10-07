@@ -1,7 +1,8 @@
-// Package touchinput is the session-to-widget touch bridge every
-// input surface embeds (app windows, popups): it implements
-// wlsession.SurfaceTouchHandler and SurfaceGestureHandler over a
-// widget.TouchTracker and the router's gestures.
+// Package touchinput is the session-to-widget bridge for the
+// non-pointer devices every input surface embeds (app windows,
+// popups): it implements wlsession.SurfaceTouchHandler,
+// SurfaceGestureHandler and SurfaceTabletHandler over a
+// widget.TouchTracker, the router's gestures, and its stylus samples.
 package touchinput
 
 import (
@@ -24,6 +25,7 @@ type Input struct {
 	Serial uint32
 
 	rotation float64 // the touchpad pinch's accumulated rotation
+	penDown  bool    // a tablet tool's tip is down
 }
 
 // blocked reports whether input is dropped.
@@ -96,5 +98,60 @@ func (in *Input) HandlePointerGesture(g wlsession.PointerGesture) {
 		Kind: gestureKinds[g.Kind], Phase: widget.GesturePhase(g.Phase), At: at, Fingers: g.Fingers,
 		DX: g.DX, DY: g.DY, Scale: g.Scale, Rotation: in.rotation,
 	})
+	in.changed()
+}
+
+// stylusTools maps the session's tablet tools.
+var stylusTools = map[wlsession.TabletTool]widget.StylusTool{
+	wlsession.ToolPen: widget.StylusPen, wlsession.ToolEraser: widget.StylusEraser,
+	wlsession.ToolBrush: widget.StylusBrush, wlsession.ToolPencil: widget.StylusPencil,
+	wlsession.ToolAirbrush: widget.StylusAirbrush, wlsession.ToolFinger: widget.StylusFinger,
+	wlsession.ToolMouse: widget.StylusMouse, wlsession.ToolLens: widget.StylusLens,
+}
+
+// HandleTabletFrame implements wlsession.SurfaceTabletHandler: the
+// tool drives the pointer - in range it hovers, its tip presses and
+// releases, leaving range leaves - and then the sample goes to the
+// widget under it (Router.Stylus).
+func (in *Input) HandleTabletFrame(s wlsession.TabletSample) {
+	if in.blocked() {
+		return
+	}
+	p := widget.Point{X: int(s.X), Y: int(s.Y)}
+	ptr := in.Tracker.Pointer
+	if ptr == nil {
+		ptr = widget.RouterPointer{R: in.Tracker.Router}
+	}
+	if s.Down {
+		in.Serial = s.Serial
+	}
+	sample := widget.Stylus{
+		Tool: stylusTools[s.Tool], At: p, Pressure: s.Pressure, Distance: s.Distance,
+		TiltX: s.TiltX, TiltY: s.TiltY, Rotation: s.Rotation, Down: in.penDown && !s.Up,
+		Button: s.Button, Pressed: s.Pressed,
+	}
+	switch {
+	case s.ProximityOut:
+		if in.penDown {
+			ptr.TouchCancel()
+			in.penDown = false
+		}
+		in.Tracker.Router.Leave()
+	case s.Down:
+		ptr.TouchPress(p)
+		in.penDown = true
+		sample.Down = true
+		in.Tracker.Router.Stylus(sample)
+	case s.Up:
+		// The stroke's end goes to the widget holding the stroke,
+		// before the release lets go of it.
+		in.Tracker.Router.Stylus(sample)
+		ptr.TouchRelease(p)
+		ptr.TouchMove(p) // the pen still hovers in range
+		in.penDown = false
+	default:
+		ptr.TouchMove(p)
+		in.Tracker.Router.Stylus(sample)
+	}
 	in.changed()
 }

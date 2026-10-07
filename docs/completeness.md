@@ -41,6 +41,7 @@ closed and the map below reflects the tree as of that close.
 | Notebook | `Notebook`: tabs, close hook, ctrl+PageUp/PageDown, drag reordering, overflow scrolling (#96) | widget/notebook.go |
 | ListView | virtualized `List`; single/browse/multiple selection modes with rubber-band drag and edge auto-scroll (#60) | widget/list.go |
 | Menu | check/radio rows, submenus, keyboard nav; Alt-letter mnemonics with underlines, accelerators firing from an open menu through the app's table (#63) | widget/menu.go |
+| DrawingArea, GestureStylus | `widget.DrawingArea` (OnDraw, OnStylus); tablet tools via zwp_tablet_v2 as pointer emulation plus `Stylus` samples (pressure, tilt) to any `StylusHandler` (#106) | widget/drawingarea.go, widget/touch.go, internal/wlsession/tablet.go |
 | ShortcutsWindow | `widget.ShortcutsView` + `app.ShortcutsDialog` from the accelerator registry (`Application.Accels`, `DescribeAction`); multi-key chords (#99) | widget/shortcuts.go, app/accel.go |
 | Popover | `app.Popover`, widget-anchored, works on layer surfaces | app/popover.go |
 | Dialog, MessageBox | `app.Dialog`, `app.MessageBox`; window-level modality through xdg-dialog-v1 with the application-level block as the floor (#61) | app/dialog.go, internal/wlsession/dialog.go |
