@@ -96,8 +96,7 @@ func (s *SearchEntry) fireChanged(text string) {
 // app's shortcut handling flips. The key capture itself stays the
 // app's (accel groups, OnKey); the bar owns only the reveal.
 type SearchBar struct {
-	node
-	root   *Box
+	composite
 	reveal *Revealer
 	entry  *SearchEntry
 }
@@ -116,8 +115,7 @@ func NewSearchBar(face render.Font, sizePx float64) *SearchBar {
 	b.reveal.SetTransition(RevealSlideDown)
 	b.reveal.SetDuration(200 * time.Millisecond)
 	b.reveal.SetRevealed(false)
-	b.root = NewBox(Column, 0, 0)
-	b.root.Append(b.reveal, false)
+	b.initComposite(b, b.reveal)
 	return b
 }
 
@@ -130,38 +128,6 @@ func (b *SearchBar) SetSearchMode(on bool) { b.reveal.SetRevealed(on) }
 
 // SearchMode reports whether the bar is showing.
 func (b *SearchBar) SearchMode() bool { return b.reveal.Revealed() }
-
-// Measure delegates to the composed column, cached like every widget.
-func (b *SearchBar) Measure(con Constraints) Size {
-	if sz, ok := b.measureHit(con); ok {
-		return sz
-	}
-	return b.measureStore(con, b.root.Measure(con))
-}
-
-// Arrange fills the bar with the composed column.
-func (b *SearchBar) Arrange(r render.Rect) {
-	b.node.Arrange(r)
-	b.root.Arrange(r)
-	setParents(b, b.root)
-}
-
-// Paint draws the composed column.
-func (b *SearchBar) Paint(cv *render.Canvas) { PaintChild(cv, b.root) }
-
-// HitTest resolves into the composed column.
-func (b *SearchBar) HitTest(p Point) Widget {
-	if !b.bounds.Contains(p.X, p.Y) {
-		return nil
-	}
-	if hit := b.root.HitTest(p); hit != nil {
-		return hit
-	}
-	return b
-}
-
-// styleChildren is the composed column (styleKids).
-func (b *SearchBar) styleChildren() []Widget { return []Widget{b.root} }
 
 // ComboEntry is the editable dropdown, GTK's ComboBox-with-entry: an
 // Entry whose completion lists the items (prefix match,

@@ -54,17 +54,17 @@ func TestHeaderBarPacksAndControls(t *testing.T) {
 	// Buttons appear and disappear, idempotently.
 	controls.ShowClose(true)
 	controls.ShowClose(true)
-	if got := len(controls.root.Children()); got != 1 {
+	if got := len(controls.row.Children()); got != 1 {
 		t.Fatalf("close toggle left %d buttons", got)
 	}
 	controls.ShowMinimize(true)
 	controls.ShowMaximize(true)
-	if got := len(controls.root.Children()); got != 3 {
+	if got := len(controls.row.Children()); got != 3 {
 		t.Fatalf("controls hold %d buttons, want 3", got)
 	}
 	controls.ShowMaximize(false)
 	controls.ShowMaximize(false)
-	if got := len(controls.root.Children()); got != 2 {
+	if got := len(controls.row.Children()); got != 2 {
 		t.Errorf("maximize toggle left %d buttons", got)
 	}
 

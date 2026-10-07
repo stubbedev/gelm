@@ -20,7 +20,7 @@ import (
 // SortBy/SetFilter/SetModel, and the source's own order is one call
 // away.
 type ColumnView[T any] struct {
-	node
+	composite
 	face   render.Font
 	sizePx float64
 
@@ -31,7 +31,6 @@ type ColumnView[T any] struct {
 	sortUp bool
 	perm   rowPermutation
 
-	root   *Box
 	header *Box
 	list   *List
 	rows   *columnRows[T]
@@ -86,9 +85,10 @@ func NewColumnView[T any](face render.Font, sizePx float64, model ColumnModel[T]
 	v.rows = &columnRows[T]{view: v}
 	v.list = NewList(v.rows, int(sizePx)+12)
 	v.header = NewBox(Row, 0, 0)
-	v.root = NewBox(Column, 0, 0)
-	v.root.Append(v.header, false)
-	v.root.Append(v.list, true)
+	column := NewBox(Column, 0, 0)
+	column.Append(v.header, false)
+	column.Append(v.list, true)
+	v.initComposite(v, column)
 	v.buildHeader()
 	v.recompute()
 	return v
@@ -367,40 +367,4 @@ func parseRowKey(s string) int {
 		n = n*10 + int(s[i]-'0')
 	}
 	return n
-}
-
-// Measure delegates to the composed column, cached like every widget.
-func (v *ColumnView[T]) Measure(con Constraints) Size {
-	if sz, ok := v.measureHit(con); ok {
-		return sz
-	}
-	return v.measureStore(con, v.root.Measure(con))
-}
-
-// Arrange fills the view with the composed column.
-func (v *ColumnView[T]) Arrange(r render.Rect) {
-	v.node.Arrange(r)
-	v.root.Arrange(r)
-	setParents(v, v.root)
-}
-
-// Paint draws the composed column.
-func (v *ColumnView[T]) Paint(cv *render.Canvas) {
-	PaintChild(cv, v.root)
-}
-
-// HitTest resolves into the composed column.
-func (v *ColumnView[T]) HitTest(p Point) Widget {
-	if !v.bounds.Contains(p.X, p.Y) {
-		return nil
-	}
-	if hit := v.root.HitTest(p); hit != nil {
-		return hit
-	}
-	return v
-}
-
-// styleChildren is the composed column (styleKids).
-func (v *ColumnView[T]) styleChildren() []Widget {
-	return []Widget{v.root}
 }
