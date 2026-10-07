@@ -13,6 +13,7 @@ import (
 	"github.com/neurlang/wayland/wl"
 
 	"github.com/stubbedev/gelm/internal/xfer"
+	"github.com/stubbedev/gelm/transfer"
 )
 
 // capturingOffer plays a foreign drag offer and remembers the write
@@ -112,7 +113,7 @@ func TestReceivePayloadRoundtripsASmallDrop(t *testing.T) {
 		wait = peerStream(t, offer.fd, []byte("dropped text"))
 		return nil
 	}
-	data, err := receivePayload(offer, "text/plain", flush, minActionVersion)
+	data, err := receivePayload(offer, "text/plain", flush, minActionVersion, transfer.ActionNone)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -139,7 +140,7 @@ func TestReceivePayloadRefusesAnOversizeSource(t *testing.T) {
 		wait = peerStream(t, offer.fd, payload)
 		return nil
 	}
-	data, err := receivePayload(offer, "text/plain", flush, minActionVersion)
+	data, err := receivePayload(offer, "text/plain", flush, minActionVersion, transfer.ActionNone)
 	if !errors.Is(err, xfer.ErrTooLarge) {
 		t.Fatalf("read = %v, want xfer.ErrTooLarge", err)
 	}
@@ -166,7 +167,7 @@ func TestReceivePayloadCutsOffASilentSource(t *testing.T) {
 
 	before := runtime.NumGoroutine()
 	start := time.Now()
-	if _, err := receivePayload(offer, "text/plain", flush, minActionVersion); !errors.Is(err, xfer.ErrTimeout) {
+	if _, err := receivePayload(offer, "text/plain", flush, minActionVersion, transfer.ActionNone); !errors.Is(err, xfer.ErrTimeout) {
 		t.Fatalf("read = %v, want xfer.ErrTimeout", err)
 	} else if elapsed := time.Since(start); elapsed > 2*time.Second {
 		t.Errorf("silent source hung the read for %s, want the short deadline", elapsed)
@@ -185,7 +186,7 @@ func TestReceivePayloadCutsOffASilentSource(t *testing.T) {
 func TestSourceSendToAStuckConsumerIsBounded(t *testing.T) {
 	shortTransferTimeout(t)
 	c := newTestController()
-	c.srcData = Content{Mimes: []string{"text/plain"}, Write: fakeSourceWriter(bytes.Repeat([]byte("d"), 1<<20))}
+	c.srcData = transfer.Drag{Mimes: []string{"text/plain"}, Write: fakeSourceWriter(bytes.Repeat([]byte("d"), 1<<20))}
 	_, w := rawWriteEnd(t)
 
 	before := runtime.NumGoroutine()

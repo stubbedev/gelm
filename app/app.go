@@ -20,6 +20,7 @@ import (
 	"github.com/stubbedev/gelm/internal/clipboard"
 	"github.com/stubbedev/gelm/internal/compose"
 	"github.com/stubbedev/gelm/internal/debug"
+	"github.com/stubbedev/gelm/internal/dragdrop"
 	"github.com/stubbedev/gelm/internal/surfx"
 	"github.com/stubbedev/gelm/internal/touchinput"
 	"github.com/stubbedev/gelm/internal/wlsession"
@@ -126,6 +127,9 @@ type surfaceInput struct {
 	// dnd, when set, starts drags from press+motion gestures and
 	// receives this surface's data-device events (dragdrop.Target).
 	dnd dragController
+	// transferError hears a failed primary paste or drop
+	// (Application.OnTransferError).
+	transferError func(error)
 	// frac reports the host window's current 120-based device scale,
 	// for one-shot surfaces created from this input (drag icons).
 	frac func() uint32
@@ -312,7 +316,8 @@ func (in *surfaceInput) HandlePointerButton(button, state, serial uint32) {
 		// refugees): the router ignores non-left presses, so this is
 		// the whole handling a middle press gets.
 		if button == widget.BTNMiddle {
-			in.primary.pasteAt(in.router)
+			_, err := in.primary.pasteAt(in.router)
+			in.reportTransfer(err)
 		}
 		in.router.Press(button, p)
 		// Remember the press for the drag gesture: the threshold is
@@ -584,7 +589,7 @@ type primarySelectionSource interface {
 //     committed string lands when the sequence completes (X11 style,
 //     no preedit), and backspace unwinds a level instead of deleting;
 //  4. extra (OnKey), which observes every press either way.
-func routeKey(sess keyTranslator, router *widget.Router, keycode uint32, mods wlsession.Mods, clip *clipboard.Clipboard, accels *accelTable, extra func(*widget.Router, uint32, wlsession.Mods)) {
+func routeKey(sess keyTranslator, router *widget.Router, keycode uint32, mods wlsession.Mods, clip *clipboard.Clipboard, accels *accelTable, extra func(*widget.Router, uint32, wlsession.Mods)) (pasteErr error) {
 	sym := sess.KeySym(keycode)
 	isCtrl := ctrl(mods)
 	// shift re-keys letters and keeps shift+combo free for accels, so
@@ -601,7 +606,7 @@ func routeKey(sess keyTranslator, router *widget.Router, keycode uint32, mods wl
 		}
 		handled = true
 	case isCtrl && noShift && clip != nil && (sym == xkb.Keysym('v') || sym == xkb.Keysym('V')):
-		pasteSelection(router, clip)
+		pasteErr = pasteSelection(router, clip)
 		handled = true
 	case isCtrl && noShift && (sym == xkb.Keysym('a') || sym == xkb.Keysym('A')):
 		router.SelectAll()
@@ -639,7 +644,7 @@ func routeKey(sess keyTranslator, router *widget.Router, keycode uint32, mods wl
 		if extra != nil {
 			extra(router, keycode, mods)
 		}
-		return
+		return nil
 	}
 	if !handled {
 		// Ctrl, Alt and Super chords are shortcuts, never text.
@@ -668,6 +673,7 @@ func routeKey(sess keyTranslator, router *widget.Router, keycode uint32, mods wl
 	if extra != nil {
 		extra(router, keycode, mods)
 	}
+	return pasteErr
 }
 
 // copySelection puts the focused widget's selection on the clipboard
@@ -706,29 +712,47 @@ func focusedSelection(router *widget.Router) (string, bool) {
 }
 
 // pasteSelection puts the clipboard payload where the focused widget
-// wants it: an ImagePaster takes the selection's image bytes (the
-// widget decodes them off the loop goroutine); everything else takes
-// text — Entry and TextArea are text-only by design.
+// wants it: a ContentPaster takes the best of its own mimes (an image
+// view decodes image bytes off the loop goroutine); everything else
+// takes text — Entry and TextArea are text-only by design.
 //
-// Every error rejects the paste: besides an empty selection this
-// covers a hostile peer — a payload past xfer.MaxPayload, or one that
-// stalls past the transfer deadline — which today simply means
-// nothing lands. There is no toast infra to surface it to the user
-// yet; the error stops here.
-func pasteSelection(router *widget.Router, clip *clipboard.Clipboard) {
-	if paster, ok := router.Focused().(widget.ImagePaster); ok {
-		data, mime, err := clip.ReadImageBytes()
+// Every error rejects the paste. A failure worth telling the user - a
+// hostile peer's payload past xfer.MaxPayload, one that stalls past
+// the transfer deadline, a broken pipe - is returned for
+// Application.OnTransferError; an empty selection pastes nothing
+// quietly.
+func pasteSelection(router *widget.Router, clip *clipboard.Clipboard) error {
+	if paster, ok := router.Focused().(widget.ContentPaster); ok {
+		data, mime, err := clip.Read(paster.PasteMimes()...)
 		if err != nil {
-			return
+			return transferFailure(err)
 		}
-		paster.PasteImage(data, mime)
-		return
+		paster.PasteContent(mime, data)
+		return nil
 	}
 	text, err := clip.ReadText()
 	if err != nil {
-		return
+		return transferFailure(err)
 	}
 	insertText(router, text)
+	return nil
+}
+
+// transferFailure keeps the transfer errors worth reporting: nothing
+// to paste (an empty selection, none in a usable type) is not one.
+func transferFailure(err error) error {
+	if errors.Is(err, clipboard.ErrUnavailable) || errors.Is(err, dragdrop.ErrNoPayload) {
+		return nil
+	}
+	return err
+}
+
+// reportTransfer hands a failed primary paste or drop to the
+// application's hook.
+func (in *surfaceInput) reportTransfer(err error) {
+	if err = transferFailure(err); err != nil && in.transferError != nil {
+		in.transferError(err)
+	}
 }
 
 // insertText puts text at the focused widget's cursor — one Insert, so

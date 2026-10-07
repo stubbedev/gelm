@@ -8,12 +8,9 @@
 package clipboard
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"image"
-	"image/png"
-	"io"
 	"os"
 
 	"github.com/neurlang/wayland/wl"
@@ -21,64 +18,19 @@ import (
 	"github.com/stubbedev/gelm/internal/debug"
 	"github.com/stubbedev/gelm/internal/wlsession"
 	"github.com/stubbedev/gelm/internal/xfer"
+	"github.com/stubbedev/gelm/transfer"
 	"github.com/stubbedev/gelm/wlr"
 )
-
-// mimePriority lists the text mime types we offer and accept, best
-// first.
-var mimePriority = []string{
-	"text/plain;charset=utf-8",
-	"UTF8_STRING",
-	"text/plain",
-	"COMPOUND_TEXT",
-	"TEXT",
-	"STRING",
-}
-
-// imageMimePriority lists the image mime types we accept on paste,
-// best first: PNG round-trips our own writes exactly; WebP, JPEG and
-// GIF are read-only (decoded on paste, never offered).
-var imageMimePriority = []string{
-	"image/png",
-	"image/webp",
-	"image/jpeg",
-	"image/gif",
-}
-
-// offeredImageMimes are the mimes a written image claims.
-var offeredImageMimes = []string{"image/png"}
 
 // ErrUnavailable reports that there is no selection or none in a
 // format we can read.
 var ErrUnavailable = errors.New("clipboard: no selection available")
-
-// pickImageMime returns the best image mime type among those present,
-// or "" when none qualify.
-func pickImageMime(present func(string) bool) string {
-	for _, m := range imageMimePriority {
-		if present(m) {
-			return m
-		}
-	}
-	return ""
-}
 
 // transferTimeout bounds one offer read or source write against a
 // peer that stalls (a var so tests can shorten it): a silent peer is
 // cut off with an error instead of hanging a paste, and a consumer
 // that stops reading cannot freeze the dispatch loop.
 var transferTimeout = xfer.DefaultTimeout
-
-// pickTextMime returns the best text mime type among those present,
-// or "" when none qualify.
-func pickTextMime(present func(string) bool) string {
-	for _, m := range mimePriority {
-		if present(m) {
-			return m
-		}
-	}
-	return ""
-}
 
 // Clipboard tracks the seat's selections and claims them on behalf of
 // the app. Create one after connecting; it is not safe for concurrent
@@ -104,25 +56,20 @@ type Clipboard struct {
 	// selectionMimes its advertised set.
 	selection      *wl.DataOffer
 	selectionMimes map[string]bool
-	source         *wl.DataSource
-	out            string
+	// source is our claim on the selection, content what it serves.
+	// Exactly one claim lives at a time: the last write wins.
+	source  *wl.DataSource
+	content transfer.Content
 
 	// The primary selection mirrors the above over its own protocol
 	// objects; separate mimes map and payload, per-selection state.
 	primaryOffers map[*wlr.ZwpPrimarySelectionOfferV1]*offerMimes
 	primary       *wlr.ZwpPrimarySelectionOfferV1
 	primaryMimes  map[string]bool
-	// primarySource is the primary claim, primaryOut its text payload;
-	// images never ride the primary selection (copy-on-select keeps its
-	// text semantics).
-	primarySource *wlr.ZwpPrimarySelectionSourceV1
-	primaryOut    string
-
-	// imgOut is the encoded PNG payload of an image claim; imgSource is
-	// its data source. A claim is text or image - the last write wins,
-	// exactly one source lives at a time.
-	imgOut    []byte
-	imgSource *wl.DataSource
+	// primarySource is the primary claim, primaryContent its payload;
+	// copy-on-select keeps it text.
+	primarySource  *wlr.ZwpPrimarySelectionSourceV1
+	primaryContent transfer.Content
 }
 
 // offerMimes collects the mime types one advertised offer carries.
@@ -213,156 +160,15 @@ func (c *Clipboard) HandleZwpPrimarySelectionDeviceV1Selection(ev wlr.ZwpPrimary
 	}
 }
 
-// readOfferText drains a selection offer through a pipe: receive
-// starts the transfer on the write end, flush is a roundtrip so the
-// compositor dups the fd, and dropping our write end yields EOF at the
-// sender's last byte. The transfer itself is bounded against hostile
-// peers by xfer: capped at MaxPayload and cut off by the deadline,
-// with the fd drained and closed either way so the peer's pipe never
-// blocks forever.
-func (c *Clipboard) readOfferText(receive func(string, uintptr) error, flush func() error, mimes map[string]bool) (string, error) {
-	if len(mimes) == 0 {
-		return "", ErrUnavailable
-	}
-	mime := pickTextMime(func(m string) bool { return mimes[m] })
-	if mime == "" {
-		return "", ErrUnavailable
-	}
-	r, w, err := os.Pipe()
-	if err != nil {
-		return "", fmt.Errorf("clipboard: pipe: %w", err)
-	}
-	defer r.Close()
-	if err := receive(mime, w.Fd()); err != nil {
-		return "", fmt.Errorf("clipboard: receive: %w", err)
-	}
-	// Flush the request so the compositor dups the fd before we drop
-	// our write end; dropping it is what eventually yields EOF. The
-	// close error carries no signal we could act on.
-	if err := flush(); err != nil {
-		return "", fmt.Errorf("clipboard: flush: %w", err)
-	}
-	_ = w.Close()
-
-	data, err := xfer.Read(r, xfer.MaxPayload, transferTimeout)
-	if err != nil {
-		// An oversize or stalled peer lands here: the payload is
-		// refused whole, and the fd has been drained and closed, so
-		// the peer is not left blocked on the pipe.
-		return "", fmt.Errorf("clipboard: transfer: %w", err)
-	}
-	return string(data), nil
-}
-
-// ReadText returns the current selection as text, blocking until the
-// compositor delivers it. Errors with ErrUnavailable when there is
-// nothing to read. The transfer is bounded against hostile peers: a
-// selection past xfer.MaxPayload is refused (truncated at the cap, the
-// fd drained so the offering peer never blocks) and a peer that stalls
-// is cut off after transferTimeout — both surface here as errors, so
-// paste callers react to a rejected paste instead of an OOM or a hung
-// window.
-func (c *Clipboard) ReadText() (string, error) {
-	if c.selection == nil {
-		return "", ErrUnavailable
-	}
-	return c.readOfferText(c.selection.Receive, c.sess.Roundtrip, c.selectionMimes)
-}
-
-// ReadPrimary returns the current primary selection as text, blocking
-// until the compositor delivers it. Errors with ErrUnavailable when
-// the protocol is missing or there is nothing to read; oversize and
-// stalled peers surface as errors exactly as in ReadText — the two
-// selections share one hardened transfer.
-func (c *Clipboard) ReadPrimary() (string, error) {
-	if c.primary == nil {
-		return "", ErrUnavailable
-	}
-	return c.readOfferText(c.primary.Receive, c.sess.Roundtrip, c.primaryMimes)
-}
-
-// WriteText claims the selection with s as its text content. The data
-// source stays alive until another client or app replaces the
-// selection.
-func (c *Clipboard) WriteText(s string) error {
-	mgr := c.sess.DataDeviceManager()
-	dev := c.sess.DataDevice()
-	if mgr == nil || dev == nil {
-		return ErrUnavailable
-	}
-	source, err := mgr.CreateDataSource()
-	if err != nil {
-		return fmt.Errorf("clipboard: create source: %w", err)
-	}
-	for _, m := range mimePriority {
-		if err := source.Offer(m); err != nil {
-			return fmt.Errorf("clipboard: offer: %w", err)
-		}
-	}
-	c.dropClaim()
-	c.out = s
-	c.source = source
-	source.AddSendHandler(c)
-	source.AddCancelledHandler(c)
-
-	if err := dev.SetSelection(source, c.sess.KeyboardSerial()); err != nil {
-		return fmt.Errorf("clipboard: set selection: %w", err)
-	}
-	return nil
-}
-
-// WritePrimary claims the primary selection with s as its text
-// content. serial is the serial of the input event that triggered the
-// claim — the protocol asks for the triggering press, so callers pass
-// the pointer (or keyboard) serial they received. The source stays
-// alive until another client or app replaces the selection.
-func (c *Clipboard) WritePrimary(s string, serial uint32) error {
-	mgr := c.sess.PrimarySelectionManager()
-	dev := c.sess.PrimarySelectionDevice()
-	if mgr == nil || dev == nil {
-		return ErrUnavailable
-	}
-	source, err := mgr.CreateSource()
-	if err != nil {
-		return fmt.Errorf("clipboard: create primary source: %w", err)
-	}
-	for _, m := range mimePriority {
-		if err := source.Offer(m); err != nil {
-			return fmt.Errorf("clipboard: offer: %w", err)
-		}
-	}
-	c.primaryOut = s
-	c.primarySource = source
-	source.AddSendHandler(c)
-	source.AddCancelledHandler(c)
-
-	if err := dev.SetSelection(source, serial); err != nil {
-		return fmt.Errorf("clipboard: set primary selection: %w", err)
-	}
-	return nil
-}
-
-// ReadImageBytes returns the current selection's image payload -
-// PNG or JPEG, whichever the offer carries best - as encoded bytes
-// with its mime type, blocking until the compositor delivers it.
-// Errors with ErrUnavailable when the selection holds no image; the
-// same xfer bounds as text apply (the 16 MiB cap is the image-sized
-// one: text never approaches it). Decoding is the caller's - the
-// widget pipeline decodes off the loop goroutine.
-func (c *Clipboard) ReadImageBytes() ([]byte, string, error) {
-	if c.selection == nil {
-		return nil, "", ErrUnavailable
-	}
-	return c.readOfferImage(c.selection.Receive, c.sess.Roundtrip, c.selectionMimes)
-}
-
-// readOfferImage is ReadImageBytes against an injectable receive/flush
-// pair, mirroring readOfferText for tests.
-func (c *Clipboard) readOfferImage(receive func(string, uintptr) error, flush func() error, mimes map[string]bool) ([]byte, string, error) {
-	if len(mimes) == 0 {
-		return nil, "", ErrUnavailable
-	}
-	mime := pickImageMime(func(m string) bool { return mimes[m] })
+// readOffer drains a selection offer through a pipe, as the best of
+// prefs the offer carries: receive starts the transfer on the write
+// end, flush is a roundtrip so the compositor dups the fd, and
+// dropping our write end yields EOF at the sender's last byte. The
+// transfer itself is bounded against hostile peers by xfer: capped at
+// MaxPayload and cut off by the deadline, with the fd drained and
+// closed either way so the peer's pipe never blocks forever.
+func readOffer(receive func(string, uintptr) error, flush func() error, mimes map[string]bool, prefs []string) ([]byte, string, error) {
+	mime := transfer.Pick(prefs, func(m string) bool { return mimes[m] })
 	if mime == "" {
 		return nil, "", ErrUnavailable
 	}
@@ -374,25 +180,89 @@ func (c *Clipboard) readOfferImage(receive func(string, uintptr) error, flush fu
 	if err := receive(mime, w.Fd()); err != nil {
 		return nil, "", fmt.Errorf("clipboard: receive: %w", err)
 	}
+	// Flush the request so the compositor dups the fd before we drop
+	// our write end; dropping it is what eventually yields EOF. The
+	// close error carries no signal we could act on.
 	if err := flush(); err != nil {
 		return nil, "", fmt.Errorf("clipboard: flush: %w", err)
 	}
 	_ = w.Close()
+
 	data, err := xfer.Read(r, xfer.MaxPayload, transferTimeout)
 	if err != nil {
+		// An oversize or stalled peer lands here: the payload is
+		// refused whole, and the fd has been drained and closed, so
+		// the peer is not left blocked on the pipe.
 		return nil, "", fmt.Errorf("clipboard: transfer: %w", err)
 	}
 	return data, mime, nil
 }
 
-// WriteImage claims the regular selection with img's PNG encoding:
-// encoding happens here, on the caller's goroutine, so the send path
-// writes finished bytes and never encodes under a peer's deadline.
-// The primary selection is untouched - copy-on-select keeps its text
-// semantics; images ride the regular clipboard only.
-func (c *Clipboard) WriteImage(img image.Image) error {
-	if b := img.Bounds(); b.Dx() <= 0 || b.Dy() <= 0 {
-		return errors.New("clipboard: image claim needs a non-empty image")
+// Read returns the selection's payload as the best of prefs it offers,
+// with that mime, blocking until the compositor delivers it. Errors
+// with ErrUnavailable when there is no selection or none of prefs.
+// The transfer is bounded against hostile peers: a selection past
+// xfer.MaxPayload is refused (the fd drained so the offering peer
+// never blocks) and a peer that stalls is cut off after the transfer
+// deadline - both surface here as errors, so paste callers react to a
+// rejected paste instead of an OOM or a hung window.
+func (c *Clipboard) Read(prefs ...string) ([]byte, string, error) {
+	if c.selection == nil {
+		return nil, "", ErrUnavailable
+	}
+	return readOffer(c.selection.Receive, c.sess.Roundtrip, c.selectionMimes, prefs)
+}
+
+// Offers reports whether the selection offers mime - what a paste
+// target checks before choosing how to read.
+func (c *Clipboard) Offers(mime string) bool { return c.selection != nil && c.selectionMimes[mime] }
+
+// ReadText returns the selection as text.
+func (c *Clipboard) ReadText() (string, error) {
+	data, _, err := c.Read(transfer.TextMimes...)
+	return string(data), err
+}
+
+// ReadImageBytes returns the selection's image payload - the best of
+// transfer.ImageMimes the offer carries - as encoded bytes with its
+// mime type. Decoding is the caller's: the widget pipeline decodes off
+// the loop goroutine.
+func (c *Clipboard) ReadImageBytes() ([]byte, string, error) {
+	return c.Read(transfer.ImageMimes...)
+}
+
+// ReadURIs returns the selection's uri list - files a file manager
+// copied, say; transfer.FilePaths keeps the local ones.
+func (c *Clipboard) ReadURIs() ([]string, error) {
+	data, _, err := c.Read(transfer.MimeURIList)
+	return transfer.ParseURIList(data), err
+}
+
+// ReadHTML returns the selection's formatted text as HTML.
+func (c *Clipboard) ReadHTML() (string, error) {
+	data, _, err := c.Read(transfer.MimeHTML)
+	return transfer.DecodeHTML(data), err
+}
+
+// ReadPrimary returns the current primary selection as text. Errors
+// with ErrUnavailable when the protocol is missing or there is nothing
+// to read; oversize and stalled peers surface as errors exactly as in
+// Read - the two selections share one hardened transfer.
+func (c *Clipboard) ReadPrimary() (string, error) {
+	if c.primary == nil {
+		return "", ErrUnavailable
+	}
+	data, _, err := readOffer(c.primary.Receive, c.sess.Roundtrip, c.primaryMimes, transfer.TextMimes)
+	return string(data), err
+}
+
+// Write claims the selection with content, served to every consumer
+// that asks until another client or app replaces the selection. The
+// transfer builders (transfer.Text, Image, Files, HTML, Merge) encode
+// up front, so serving never encodes under a peer's deadline.
+func (c *Clipboard) Write(content transfer.Content) error {
+	if content.Empty() {
+		return errors.New("clipboard: empty content")
 	}
 	if c.sess == nil {
 		return ErrUnavailable
@@ -402,21 +272,17 @@ func (c *Clipboard) WriteImage(img image.Image) error {
 	if mgr == nil || dev == nil {
 		return ErrUnavailable
 	}
-	var buf bytes.Buffer
-	if err := png.Encode(&buf, img); err != nil {
-		return fmt.Errorf("clipboard: encode png: %w", err)
-	}
 	source, err := mgr.CreateDataSource()
 	if err != nil {
 		return fmt.Errorf("clipboard: create source: %w", err)
 	}
-	for _, m := range offeredImageMimes {
+	for _, m := range content.Mimes {
 		if err := source.Offer(m); err != nil {
 			return fmt.Errorf("clipboard: offer: %w", err)
 		}
 	}
 	c.dropClaim()
-	c.imgOut, c.imgSource = buf.Bytes(), source
+	c.source, c.content = source, content
 	source.AddSendHandler(c)
 	source.AddCancelledHandler(c)
 	if err := dev.SetSelection(source, c.sess.KeyboardSerial()); err != nil {
@@ -425,25 +291,66 @@ func (c *Clipboard) WriteImage(img image.Image) error {
 	return nil
 }
 
-// dropClaim tears down whichever claim (text or image) holds the
-// regular selection, if any.
+// WriteText claims the selection with s as text.
+func (c *Clipboard) WriteText(s string) error { return c.Write(transfer.Text(s)) }
+
+// WriteImage claims the selection with img, as PNG and JPEG encoded
+// here on the caller's goroutine. The primary selection is untouched:
+// copy-on-select keeps its text semantics.
+func (c *Clipboard) WriteImage(img image.Image) error {
+	content, err := transfer.Image(img)
+	if err != nil {
+		return err
+	}
+	return c.Write(content)
+}
+
+// WritePrimary claims the primary selection with s as its text
+// content. serial is the serial of the input event that triggered the
+// claim - the protocol asks for the triggering press, so callers pass
+// the pointer (or keyboard) serial they received. The source stays
+// alive until another client or app replaces the selection.
+func (c *Clipboard) WritePrimary(s string, serial uint32) error {
+	mgr := c.sess.PrimarySelectionManager()
+	dev := c.sess.PrimarySelectionDevice()
+	if mgr == nil || dev == nil {
+		return ErrUnavailable
+	}
+	content := transfer.Text(s)
+	source, err := mgr.CreateSource()
+	if err != nil {
+		return fmt.Errorf("clipboard: create primary source: %w", err)
+	}
+	for _, m := range content.Mimes {
+		if err := source.Offer(m); err != nil {
+			return fmt.Errorf("clipboard: offer: %w", err)
+		}
+	}
+	c.primarySource, c.primaryContent = source, content
+	source.AddSendHandler(c)
+	source.AddCancelledHandler(c)
+	if err := dev.SetSelection(source, serial); err != nil {
+		return fmt.Errorf("clipboard: set primary selection: %w", err)
+	}
+	return nil
+}
+
+// dropClaim tears down our claim on the regular selection, if any.
 func (c *Clipboard) dropClaim() {
 	if c.source != nil {
 		_ = c.source.Destroy()
 	}
-	c.source, c.out = nil, ""
-	if c.imgSource != nil {
-		_ = c.imgSource.Destroy()
-	}
-	c.imgSource, c.imgOut = nil, nil
+	c.source, c.content = nil, transfer.Content{}
 }
 
-// fd and closes it, so the reader sees EOF. The write is bounded by
-// the deadline — a consumer that never reads would otherwise stall
-// the dispatch loop on a full pipe — and EPIPE from one that closed
-// early ends it at once. A failed write leaves the consumer a short
-// payload plus EOF: the transfer visibly broke instead of hanging.
-func (c *Clipboard) sendPayload(out string, fd uintptr) {
+// sendPayload writes content's payload for mime to a consumer's fd and
+// closes it, so the reader sees EOF. The write is bounded by the
+// deadline - a consumer that never reads would otherwise stall the
+// dispatch loop on a full pipe - and EPIPE from one that closed early
+// ends it at once. A failed write leaves the consumer a short payload
+// plus EOF: the transfer visibly broke instead of hanging. A mime the
+// content does not offer writes nothing.
+func sendPayload(content transfer.Content, mime string, fd uintptr) {
 	w, err := xfer.DeadlineWriter(fd, transferTimeout)
 	if err != nil {
 		// A zero fd (the binding failed to dup the descriptor) lands
@@ -451,8 +358,10 @@ func (c *Clipboard) sendPayload(out string, fd uintptr) {
 		debug.Log("input", "clipboard send: %v", err)
 		return
 	}
-	if _, err := io.WriteString(w, out); err != nil {
-		debug.Log("input", "clipboard send: %v", err)
+	if content.Has(mime) {
+		if err := content.Write(mime, w); err != nil {
+			debug.Log("input", "clipboard send: %v", err)
+		}
 	}
 	_ = w.Close()
 }
@@ -463,26 +372,12 @@ func (c *Clipboard) HandleDataSourceSend(ev wl.DataSourceSendEvent) {
 	if ev.FdError != nil {
 		return
 	}
-	// One source serves its claim's payload by the requested mime: the
-	// image bytes for image/png, the text for the text mimes.
-	if ev.MimeType == "image/png" && c.imgSource != nil {
-		c.sendPayload(string(c.imgOut), ev.Fd)
-		return
-	}
-	c.sendPayload(c.out, ev.Fd)
+	sendPayload(c.content, ev.MimeType, ev.Fd)
 }
 
-// HandleDataSourceCancelled implements wl.DataSourceCancelledHandler.
-func (c *Clipboard) HandleDataSourceCancelled(wl.DataSourceCancelledEvent) {
-	if c.source != nil {
-		_ = c.source.Destroy()
-		c.source = nil
-	}
-	if c.imgSource != nil {
-		_ = c.imgSource.Destroy()
-		c.imgSource = nil
-	}
-}
+// HandleDataSourceCancelled implements wl.DataSourceCancelledHandler:
+// another claim replaced ours.
+func (c *Clipboard) HandleDataSourceCancelled(wl.DataSourceCancelledEvent) { c.dropClaim() }
 
 // HandleZwpPrimarySelectionSourceV1Send implements
 // wlr.ZwpPrimarySelectionSourceV1SendHandler: a consumer asked for the
@@ -491,7 +386,7 @@ func (c *Clipboard) HandleZwpPrimarySelectionSourceV1Send(ev wlr.ZwpPrimarySelec
 	if ev.FdError != nil {
 		return
 	}
-	c.sendPayload(c.primaryOut, ev.Fd)
+	sendPayload(c.primaryContent, ev.MimeType, ev.Fd)
 }
 
 // HandleZwpPrimarySelectionSourceV1Cancelled implements
@@ -501,4 +396,5 @@ func (c *Clipboard) HandleZwpPrimarySelectionSourceV1Cancelled(wlr.ZwpPrimarySel
 		_ = c.primarySource.Destroy()
 		c.primarySource = nil
 	}
+	c.primaryContent = transfer.Content{}
 }

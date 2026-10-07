@@ -1,13 +1,13 @@
 package widget
 
 import (
-	"io"
 	"time"
 
 	"github.com/unxed/xkb-go"
 
 	"github.com/stubbedev/gelm/internal/style"
 	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/gelm/transfer"
 )
 
 // doubleClickWindow is the maximum gap between the clicks of a
@@ -24,13 +24,15 @@ const BTNRight uint32 = 0x111
 // the X11 paste button.
 const BTNMiddle uint32 = 0x112
 
-// ImagePaster receives a pasted image payload: encoded bytes plus
-// the mime they arrived as. widget.Image implements it — the widget
-// decodes off the loop goroutine and then fires its OnPasteImage —
-// and holding this interface is what makes a widget the image paste
-// target of ctrl+v.
-type ImagePaster interface {
-	PasteImage(data []byte, mime string)
+// ContentPaster takes ctrl+v content in formats of its own instead of
+// text: PasteMimes lists the mimes it reads, best first, and
+// PasteContent receives the best one the clipboard offers. widget.Image
+// reads images (decoding off the loop goroutine); a file list would
+// read transfer.MimeURIList. Holding this interface is what makes a
+// widget a non-text paste target.
+type ContentPaster interface {
+	PasteMimes() []string
+	PasteContent(mime string, data []byte)
 }
 
 // HoverSetter receives hover tracking from the Router.
@@ -160,15 +162,10 @@ type ScrollInputHandler interface {
 	ScrollInput(dy int) bool
 }
 
-// DragContent is the payload a drag carries: mime types best first
-// and a provider that writes the bytes for one mime on demand. OnDone
-// is optional; it fires once the drag concluded — dropped and handed
-// off (true), or cancelled (false).
-type DragContent struct {
-	Mimes  []string
-	Write  func(mime string, w io.Writer) error
-	OnDone func(dropped bool)
-}
+// DragContent is the payload a drag carries - mime types best first
+// with a writer, the actions offered (copy unless set), and the
+// source's feedback and completion hooks; see transfer.Drag.
+type DragContent = transfer.Drag
 
 // DragSource lets a widget start a drag-and-drop: a press on it plus
 // motion past the app's drag threshold offers DragContent through the
@@ -194,6 +191,13 @@ type DragHoverer interface {
 // DragLeaver receives a drag that left the widget without dropping.
 type DragLeaver interface {
 	DragLeave()
+}
+
+// DropActionChooser is a drop target that picks the action from those
+// the source offers - a file view moving within one disk, copying
+// across. Without it a drop prefers copy.
+type DropActionChooser interface {
+	DropAction(offered transfer.Action) transfer.Action
 }
 
 // Dropper receives a drop: the accepted mime, its bytes, and the
@@ -796,6 +800,15 @@ func (r *Router) Drop(mime string, data []byte, p Point) {
 // DragMime returns the mime the current drop target accepted, empty
 // while nothing is accepted; the payload is fetched for it on drop.
 func (r *Router) DragMime() string { return r.dragMime }
+
+// DragAction is the current drop target's pick among offered
+// (DropActionChooser), ActionNone to leave the choice to the default.
+func (r *Router) DragAction(offered transfer.Action) transfer.Action {
+	if c, ok := r.dragTarget.(DropActionChooser); ok && r.dragMime != "" {
+		return c.DropAction(offered)
+	}
+	return transfer.ActionNone
+}
 
 // applyDragTarget swaps the drop target, clearing the old one's
 // highlight and notifying it of the departure; the new one is

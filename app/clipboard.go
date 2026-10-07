@@ -7,7 +7,8 @@ import (
 
 // Clipboard is the seat's regular and primary selections: ReadText and
 // WriteText for ctrl+c/v content, ReadPrimary and WritePrimary for the
-// middle-click selection, ReadImageBytes and WriteImage for pictures.
+// middle-click selection, ReadImageBytes and WriteImage for pictures,
+// and Write and Read for any transfer.Content (uri lists, HTML).
 // It is the alias external consumers name the clipboard by; hand it to
 // Application.SetClipboard (or Config.Clipboard) to wire the built-in
 // copy and paste keys, and keep it to put content on the clipboard from

@@ -8,12 +8,12 @@ package recentfiles
 import (
 	"encoding/xml"
 	"errors"
-	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
-	"strings"
 	"time"
+
+	"github.com/stubbedev/gelm/transfer"
 )
 
 // Entry is one recently used file: its path (decoded from the file://
@@ -110,7 +110,7 @@ func (m *Manager) Load() error {
 	}
 	m.entries = m.entries[:0]
 	for _, b := range doc.Bookmarks {
-		path, ok := fileURIToPath(b.Href)
+		path, ok := transfer.URIPath(b.Href)
 		if !ok {
 			continue
 		}
@@ -149,7 +149,7 @@ func (m *Manager) Save() error {
 	doc := xbel{Version: "1.0", XMLNSBookmark: "http://www.freedesktop.org/standards/desktop-bookmarks"}
 	for _, e := range m.entries {
 		doc.Bookmarks = append(doc.Bookmarks, xbelBookmark{
-			Href:     PathToURI(e.Path),
+			Href:     transfer.FileURI(e.Path),
 			Added:    e.When.Format(time.RFC3339),
 			Modified: e.When.Format(time.RFC3339),
 			Visited:  e.When.Format(time.RFC3339),
@@ -207,49 +207,4 @@ type xbelMetadata struct {
 type xbelApp struct {
 	Name string `xml:"name,attr,omitempty"`
 	Exec string `xml:"exec,attr,omitempty"`
-}
-
-// fileURIToPath decodes a file:// URI to a local path; percent escapes
-// come along, anything else (remote hosts, other schemes, bad
-// escapes) is not a local file.
-func fileURIToPath(uri string) (string, bool) {
-	if !strings.HasPrefix(uri, "file:") {
-		return "", false
-	}
-	u, err := url.Parse(uri)
-	if err != nil || u.Scheme != "file" || u.Host != "" && u.Host != "localhost" {
-		return "", false
-	}
-	if u.Path == "" {
-		return "", false
-	}
-	return u.Path, true
-}
-
-// PathToURI encodes a local path as a file:// URI (absolute paths
-// only; anything else returns unchanged), the inverse of URIToPath's
-// scheme rule. Shared by the file dialogs and the launcher.
-func PathToURI(path string) string {
-	if !filepath.IsAbs(path) {
-		return path
-	}
-	u := url.URL{Scheme: "file", Path: path}
-	return u.String()
-}
-
-// ParseURIList decodes a text/uri-list body (the clipboard and drag
-// format): one URI per line, comment lines starting with # skipped,
-// only local file:// URIs kept, as paths.
-func ParseURIList(text string) []string {
-	var paths []string
-	for line := range strings.SplitSeq(text, "\n") {
-		line = strings.TrimRight(line, "\r")
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		if path, ok := fileURIToPath(line); ok {
-			paths = append(paths, path)
-		}
-	}
-	return paths
 }

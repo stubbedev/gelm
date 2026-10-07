@@ -62,7 +62,7 @@ func TestPastePrimaryReplacesSelectionAndFiresOnce(t *testing.T) {
 	e.OnChanged = func(string) { changes++ }
 
 	p := &primarySelection{src: &fakePrimarySource{readText: "XY"}}
-	if !p.pasteAt(r) {
+	if ok, _ := p.pasteAt(r); !ok {
 		t.Fatal("pasteAt = false, want a paste")
 	}
 	if got := e.Text(); got != "XYlo" {
@@ -101,7 +101,7 @@ func TestPastePrimaryTargetsHoveredOverFocused(t *testing.T) {
 	}
 
 	p := &primarySelection{src: &fakePrimarySource{readText: "XY"}}
-	if !p.pasteAt(r) {
+	if ok, _ := p.pasteAt(r); !ok {
 		t.Fatal("pasteAt = false, want a paste")
 	}
 	if got := left.Text(); got != "XY" {
@@ -122,7 +122,7 @@ func TestPastePrimaryFallsBackToFocused(t *testing.T) {
 	}
 
 	p := &primarySelection{src: &fakePrimarySource{readText: "XY"}}
-	if !p.pasteAt(r) {
+	if ok, _ := p.pasteAt(r); !ok {
 		t.Fatal("pasteAt = false, want a paste into the focused entry")
 	}
 	if got := e.Text(); got != "XY" {
@@ -136,22 +136,22 @@ func TestPastePrimaryWithoutSourceOrText(t *testing.T) {
 	// No clipboard configured (or no primary protocol): no paste, no
 	// panic.
 	var disabled *primarySelection
-	if disabled.pasteAt(r) {
+	if ok, _ := disabled.pasteAt(r); ok {
 		t.Error("a nil primary pasted")
 	}
-	if (&primarySelection{}).pasteAt(r) {
+	if ok, _ := (&primarySelection{}).pasteAt(r); ok {
 		t.Error("a primary without a source pasted")
 	}
 	// A source that reports nothing to read: no paste.
 	unavailable := &primarySelection{src: &fakePrimarySource{readErr: clipboard.ErrUnavailable}}
-	if unavailable.pasteAt(r) {
+	if ok, _ := unavailable.pasteAt(r); ok {
 		t.Error("a failed read pasted")
 	}
 	// Neither the widget under the pointer nor the focus is an
 	// editor: no paste target.
 	noTarget := &primarySelection{src: &fakePrimarySource{readText: "XY"}}
 	blank := &widget.Router{Root: widget.NewBox(widget.Row, 0, 0)}
-	if noTarget.pasteAt(blank) {
+	if ok, _ := noTarget.pasteAt(blank); ok {
 		t.Error("a paste without a text target succeeded")
 	}
 }

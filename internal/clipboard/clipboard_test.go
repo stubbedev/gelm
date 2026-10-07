@@ -8,6 +8,7 @@ import (
 	"github.com/neurlang/wayland/wl"
 
 	"github.com/stubbedev/gelm/internal/wlsession"
+	"github.com/stubbedev/gelm/transfer"
 )
 
 func TestPickTextMime(t *testing.T) {
@@ -83,7 +84,7 @@ func TestSelectionSurvivesDragOffers(t *testing.T) {
 }
 
 func TestSendHandlerWritesAndCloses(t *testing.T) {
-	c := &Clipboard{out: "clipboard payload"}
+	c := &Clipboard{content: transfer.Text("clipboard payload")}
 	r, w, err := os.Pipe()
 	if err != nil {
 		t.Fatal(err)

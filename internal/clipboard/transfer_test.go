@@ -11,8 +11,8 @@ import (
 
 	"github.com/neurlang/wayland/wl"
 
-	"github.com/stubbedev/gelm/internal/wlsession"
 	"github.com/stubbedev/gelm/internal/xfer"
+	"github.com/stubbedev/gelm/transfer"
 	"github.com/stubbedev/gelm/wlr"
 )
 
@@ -86,13 +86,12 @@ func rawWriteEnd(t *testing.T) (r, w *os.File) {
 
 // The offer pipeline keeps working for an honest peer.
 func TestReadOfferTextRoundtripsASmallPayload(t *testing.T) {
-	c := &Clipboard{sess: &wlsession.Session{}}
 	var wait func() error
 	receive := func(mime string, fd uintptr) error {
 		wait = fakePeer(t, fd, []byte("pasted text"))
 		return nil
 	}
-	text, err := c.readOfferText(receive, func() error { return nil }, map[string]bool{"text/plain;charset=utf-8": true})
+	text, err := readOfferText(receive, func() error { return nil }, map[string]bool{"text/plain;charset=utf-8": true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -109,14 +108,13 @@ func TestReadOfferTextRoundtripsASmallPayload(t *testing.T) {
 // returns once the peer's whole payload landed without error, which
 // takes the reader draining what it refused to keep.
 func TestReadOfferTextRefusesAnOversizePeer(t *testing.T) {
-	c := &Clipboard{sess: &wlsession.Session{}}
 	payload := bytes.Repeat([]byte{0xE5}, xfer.MaxPayload+64)
 	var wait func() error
 	receive := func(mime string, fd uintptr) error {
 		wait = fakePeer(t, fd, payload)
 		return nil
 	}
-	text, err := c.readOfferText(receive, func() error { return nil }, map[string]bool{"text/plain": true})
+	text, err := readOfferText(receive, func() error { return nil }, map[string]bool{"text/plain": true})
 	if !errors.Is(err, xfer.ErrTooLarge) {
 		t.Fatalf("read = %v, want xfer.ErrTooLarge", err)
 	}
@@ -132,7 +130,6 @@ func TestReadOfferTextRefusesAnOversizePeer(t *testing.T) {
 // the read off, with no goroutine left behind.
 func TestReadOfferTextCutsOffASilentPeer(t *testing.T) {
 	shortTransferTimeout(t)
-	c := &Clipboard{sess: &wlsession.Session{}}
 	receive := func(mime string, fd uintptr) error {
 		holdSilentPeer(t, fd)
 		return nil
@@ -140,7 +137,7 @@ func TestReadOfferTextCutsOffASilentPeer(t *testing.T) {
 
 	before := runtime.NumGoroutine()
 	start := time.Now()
-	_, err := c.readOfferText(receive, func() error { return nil }, map[string]bool{"text/plain": true})
+	_, err := readOfferText(receive, func() error { return nil }, map[string]bool{"text/plain": true})
 	elapsed := time.Since(start)
 	if !errors.Is(err, xfer.ErrTimeout) {
 		t.Fatalf("read = %v, want xfer.ErrTimeout", err)
@@ -160,12 +157,12 @@ func TestReadOfferTextCutsOffASilentPeer(t *testing.T) {
 // below.
 func TestSendToAStuckConsumerIsBounded(t *testing.T) {
 	shortTransferTimeout(t)
-	c := &Clipboard{out: string(bytes.Repeat([]byte("p"), 1<<20))} // far past the pipe buffer
+	c := &Clipboard{content: transfer.Text(string(bytes.Repeat([]byte("p"), 1<<20)))} // far past the pipe buffer
 	_, w := rawWriteEnd(t)
 
 	before := runtime.NumGoroutine()
 	start := time.Now()
-	c.HandleDataSourceSend(wl.DataSourceSendEvent{Fd: w.Fd()})
+	c.HandleDataSourceSend(wl.DataSourceSendEvent{MimeType: transfer.MimeText, Fd: w.Fd()})
 	if elapsed := time.Since(start); elapsed > 2*time.Second {
 		t.Errorf("send to a silent consumer blocked for %s, want the deadline", elapsed)
 	}
@@ -177,12 +174,12 @@ func TestSendToAStuckConsumerIsBounded(t *testing.T) {
 
 func TestPrimarySendToAStuckConsumerIsBounded(t *testing.T) {
 	shortTransferTimeout(t)
-	c := &Clipboard{primaryOut: string(bytes.Repeat([]byte("p"), 1<<20))}
+	c := &Clipboard{primaryContent: transfer.Text(string(bytes.Repeat([]byte("p"), 1<<20)))}
 	_, w := rawWriteEnd(t)
 
 	before := runtime.NumGoroutine()
 	start := time.Now()
-	c.HandleZwpPrimarySelectionSourceV1Send(wlr.ZwpPrimarySelectionSourceV1SendEvent{Fd: w.Fd()})
+	c.HandleZwpPrimarySelectionSourceV1Send(wlr.ZwpPrimarySelectionSourceV1SendEvent{MimeType: transfer.MimeText, Fd: w.Fd()})
 	if elapsed := time.Since(start); elapsed > 2*time.Second {
 		t.Errorf("send to a silent consumer blocked for %s, want the deadline", elapsed)
 	}
@@ -196,13 +193,33 @@ func TestPrimarySendToAStuckConsumerIsBounded(t *testing.T) {
 // away.
 func TestSendToAClosedConsumerEndsOnEPIPE(t *testing.T) {
 	shortTransferTimeout(t)
-	c := &Clipboard{out: "nobody reads this"}
+	c := &Clipboard{content: transfer.Text("nobody reads this")}
 	r, w := rawWriteEnd(t)
 	r.Close()
 
 	start := time.Now()
-	c.HandleDataSourceSend(wl.DataSourceSendEvent{Fd: w.Fd()})
+	c.HandleDataSourceSend(wl.DataSourceSendEvent{MimeType: transfer.MimeText, Fd: w.Fd()})
 	if elapsed := time.Since(start); elapsed > 2*time.Second {
 		t.Errorf("send to a closed consumer took %s, want an immediate EPIPE", elapsed)
 	}
+}
+
+// readOfferText and readOfferImage read an offer the way ReadText and
+// ReadImageBytes do, against an injected receive/flush pair.
+func readOfferText(receive func(string, uintptr) error, flush func() error, mimes map[string]bool) (string, error) {
+	data, _, err := readOffer(receive, flush, mimes, transfer.TextMimes)
+	return string(data), err
+}
+
+func readOfferImage(receive func(string, uintptr) error, flush func() error, mimes map[string]bool) ([]byte, string, error) {
+	return readOffer(receive, flush, mimes, transfer.ImageMimes)
+}
+
+// pickTextMime and pickImageMime are the read preferences.
+func pickTextMime(present func(string) bool) string {
+	return transfer.Pick(transfer.TextMimes, present)
+}
+
+func pickImageMime(present func(string) bool) string {
+	return transfer.Pick(transfer.ImageMimes, present)
 }

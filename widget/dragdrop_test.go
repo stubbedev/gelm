@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/gelm/transfer"
 )
 
 // dropPanel plays a drop target: it accepts a drag by mime, tracks the
@@ -238,5 +239,39 @@ func TestRouterCancelPressSuppressesClick(t *testing.T) {
 	}
 	if src.pressed {
 		t.Error("CancelPress did not clear the pressed state on the widget")
+	}
+}
+
+// movePanel is a drop panel that moves when the source lets it.
+type movePanel struct{ dropPanel }
+
+func (p *movePanel) HitTest(point Point) Widget { return p.HitLeaf(p, point) }
+
+func (p *movePanel) DropAction(offered transfer.Action) transfer.Action {
+	return transfer.Prefer(offered, transfer.ActionMove)
+}
+
+// The accepting target's DropActionChooser picks the action; a plain
+// target or a rejected drag leaves the default.
+func TestRouterDragAction(t *testing.T) {
+	m := &movePanel{dropPanel{nat: Size{W: 20, H: 20}, mime: "a/b"}}
+	plain := &dropPanel{nat: Size{W: 20, H: 20}, mime: "a/b"}
+	root := NewBox(Row, 0, 0).Append(m, false).Append(plain, false)
+	root.Measure(Constraints{Max: Size{W: 100, H: 100}})
+	root.Arrange(render.Rect{W: 40, H: 20})
+	r := &Router{Root: root}
+	both := transfer.ActionCopy | transfer.ActionMove
+	r.DragEnter([]string{"a/b"}, Point{X: 5, Y: 5})
+	if got := r.DragAction(both); got != transfer.ActionMove {
+		t.Errorf("chooser picked %d, want move", got)
+	}
+	r.DragHover(Point{X: 25, Y: 5})
+	if got := r.DragAction(both); got != transfer.ActionNone {
+		t.Errorf("plain target picked %d, want the default", got)
+	}
+	m.mime = ""
+	r.DragHover(Point{X: 5, Y: 5})
+	if got := r.DragAction(both); got != transfer.ActionNone {
+		t.Errorf("rejecting chooser picked %d", got)
 	}
 }

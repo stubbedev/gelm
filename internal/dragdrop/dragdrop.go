@@ -9,18 +9,16 @@
 package dragdrop
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
-	"io"
 	"os"
-	"slices"
 
 	"github.com/neurlang/wayland/wl"
 
 	"github.com/stubbedev/gelm/internal/debug"
 	"github.com/stubbedev/gelm/internal/wlsession"
 	"github.com/stubbedev/gelm/internal/xfer"
+	"github.com/stubbedev/gelm/transfer"
 )
 
 // minActionVersion is the wl_data_device_manager version that gained
@@ -44,17 +42,6 @@ var ErrNoPayload = errors.New("dragdrop: no drag payload available")
 // stream unbounded bytes into memory.
 var transferTimeout = xfer.DefaultTimeout
 
-// Content is the payload a drag offers: mime types best first and a
-// provider that writes the bytes for one mime on demand. OnDone fires
-// once the drag concluded — dropped and handed off, or cancelled.
-type Content struct {
-	Mimes []string
-	Write func(mime string, w io.Writer) error
-	// OnDone is optional; dropped reports whether a destination took
-	// the payload (true) or the drag was cancelled (false).
-	OnDone func(dropped bool)
-}
-
 // StartConfig describes one start_drag request.
 type StartConfig struct {
 	// Origin is the surface the implicit grab belongs to.
@@ -64,8 +51,8 @@ type StartConfig struct {
 	Icon *wl.Surface
 	// GrabSerial is the pointer button-press serial of the gesture.
 	GrabSerial uint32
-	// Content is the offered payload.
-	Content Content
+	// Content is the offered payload with its actions and hooks.
+	Content transfer.Drag
 }
 
 // Target receives the drag-and-drop events for one bound surface,
@@ -77,6 +64,12 @@ type Target interface {
 	DragMotion(x, y float64) string
 	DragLeave()
 	Drop(x, y float64)
+}
+
+// ActionTarget is a Target that picks the drop action from those the
+// source offers (copy, move, ask); without it a drop prefers copy.
+type ActionTarget interface {
+	DragAction(offered transfer.Action) transfer.Action
 }
 
 // Controller owns the drag-and-drop half of the session's data device.
@@ -103,10 +96,16 @@ type Controller struct {
 	// with.
 	dragOffer offerAPI
 	dragMimes []string
-	target    Target
-	accepted  string
-	serial    uint32
-	x, y      float64
+	// dragActions is what the drag's source offers (version 3+; zero
+	// below).
+	dragActions transfer.Action
+	target      Target
+	accepted    string
+	// resolve is the single action an ask drop settles on, set while
+	// the drop's payload is read.
+	resolve transfer.Action
+	serial  uint32
+	x, y    float64
 
 	// drag state on the source side: src is the wire proxy (the
 	// source events attach to it and StartDrag names it), srcReq its
@@ -114,8 +113,11 @@ type Controller struct {
 	// surface (destroy-on-finish seam so tests can record it).
 	src     *wl.DataSource
 	srcReq  sourceAPI
-	srcData Content
+	srcData transfer.Drag
 	icon    interface{ Destroy() error }
+	// feedback is what the source last heard: the accepted mime and
+	// the negotiated action.
+	feedback transfer.Feedback
 }
 
 // dataDeviceAPI is the slice of wl.DataDevice the controller sends.
@@ -142,6 +144,8 @@ type sourceAPI interface {
 	AddCancelledHandler(h wl.DataSourceCancelledHandler)
 	AddDndDropPerformedHandler(h wl.DataSourceDndDropPerformedHandler)
 	AddDndFinishedHandler(h wl.DataSourceDndFinishedHandler)
+	AddTargetHandler(h wl.DataSourceTargetHandler)
+	AddActionHandler(h wl.DataSourceActionHandler)
 }
 
 // offerAPI is the request side of a wl_data_offer: accept with the
@@ -154,11 +158,26 @@ type offerAPI interface {
 	Finish() error
 }
 
-// offerMimes collects the mime types one wl_data_offer advertises, in
-// arrival order. The binding dispatches offer events without naming
-// their object, so each offer carries its own listener.
+// offerMimes collects what one wl_data_offer advertises: its mime
+// types in arrival order, the source's actions, and the action the
+// compositor negotiated. The binding dispatches offer events without
+// naming their object, so each offer carries its own listener.
 type offerMimes struct {
-	mimes []string
+	mimes   []string
+	actions transfer.Action
+	action  transfer.Action
+}
+
+// HandleDataOfferSourceActions implements
+// wl.DataOfferSourceActionsHandler: the actions the source offers.
+func (o *offerMimes) HandleDataOfferSourceActions(ev wl.DataOfferSourceActionsEvent) {
+	o.actions = transfer.Action(ev.SourceActions)
+}
+
+// HandleDataOfferAction implements wl.DataOfferActionHandler: the
+// action the compositor negotiated.
+func (o *offerMimes) HandleDataOfferAction(ev wl.DataOfferActionEvent) {
+	o.action = transfer.Action(ev.DndAction)
 }
 
 // HandleDataOfferOffer implements wl.DataOfferOfferHandler: one
@@ -248,6 +267,8 @@ func (c *Controller) HandleDataDeviceDataOffer(ev wl.DataDeviceDataOfferEvent) {
 	m := &offerMimes{}
 	c.offers[ev.Id] = m
 	ev.Id.AddOfferHandler(m)
+	ev.Id.AddSourceActionsHandler(m)
+	ev.Id.AddActionHandler(m)
 }
 
 // enter records a drag entering a surface and asks its target for an
@@ -261,11 +282,13 @@ func (c *Controller) enter(t Target, x, y float64, serial uint32, offer *wl.Data
 	// tests may seed the nil key.
 	c.dragOffer = nil
 	c.dragMimes = nil
+	c.dragActions = 0
 	if offer != nil {
 		c.dragOffer = offer
 	}
 	if m := c.offers[offer]; m != nil {
 		c.dragMimes = m.mimes
+		c.dragActions = m.actions
 	}
 	c.target = t
 	c.accepted = ""
@@ -306,7 +329,9 @@ func (c *Controller) drop() {
 		c.resetDrag()
 		return
 	}
+	c.resolve = c.dropAction()
 	t.Drop(x, y)
+	c.resolve = transfer.ActionNone
 	c.resetDrag()
 }
 
@@ -316,20 +341,61 @@ func (c *Controller) resetDrag() {
 	c.target = nil
 	c.dragOffer = nil
 	c.dragMimes = nil
+	c.dragActions = 0
 	c.accepted = ""
 	c.offers = make(map[*wl.DataOffer]*offerMimes)
 }
 
 // accept replies to the compositor with the accepted mime ("" rejects)
-// using the enter serial, and declares the copy action on version 3+.
+// using the enter serial, and on version 3+ declares the actions the
+// destination takes: copy and move, preferring the target's pick (an
+// ActionTarget may also take ask), none when rejected.
 func (c *Controller) accept(mime string) {
 	if c.dragOffer == nil {
 		return
 	}
 	_ = c.dragOffer.Accept(c.serial, mime)
-	if c.version >= minActionVersion {
-		_ = c.dragOffer.SetActions(wl.DataDeviceManagerDndActionCopy, wl.DataDeviceManagerDndActionCopy)
+	if c.version < minActionVersion {
+		return
 	}
+	if mime == "" {
+		_ = c.dragOffer.SetActions(0, 0)
+		return
+	}
+	offered := c.dragActions
+	if offered == 0 {
+		offered = transfer.ActionCopy
+	}
+	preferred := transfer.Prefer(offered)
+	if at, ok := c.target.(ActionTarget); ok {
+		if a := at.DragAction(offered); a != transfer.ActionNone {
+			preferred = a
+		}
+	}
+	_ = c.dragOffer.SetActions(uint32(transfer.ActionCopy|transfer.ActionMove|preferred), uint32(preferred))
+}
+
+// dropAction is the action a cross-process drop finishes with: the
+// negotiated one, with ask resolved to the target's non-ask pick (no
+// drop menu: the destination decides).
+func (c *Controller) dropAction() transfer.Action {
+	m := c.offers[c.dragOfferProxy()]
+	if m == nil || m.action != transfer.ActionAsk {
+		return transfer.ActionNone
+	}
+	offered := m.actions &^ transfer.ActionAsk
+	if at, ok := c.target.(ActionTarget); ok {
+		if a := at.DragAction(offered); a != transfer.ActionNone && a != transfer.ActionAsk {
+			return a
+		}
+	}
+	return transfer.Prefer(offered)
+}
+
+// dragOfferProxy is the current offer's wire proxy, nil for a fake.
+func (c *Controller) dragOfferProxy() *wl.DataOffer {
+	o, _ := c.dragOffer.(*wl.DataOffer)
+	return o
 }
 
 // StartDrag claims the seat's drag-and-drop with the given content:
@@ -343,7 +409,7 @@ func (c *Controller) StartDrag(cfg StartConfig) error {
 	if c.src != nil {
 		return ErrDragActive
 	}
-	if len(cfg.Content.Mimes) == 0 || cfg.Content.Write == nil {
+	if cfg.Content.Empty() {
 		return errors.New("dragdrop: drag content needs mimes and a writer")
 	}
 	source, req, err := c.maker.CreateDataSource()
@@ -356,15 +422,16 @@ func (c *Controller) StartDrag(cfg StartConfig) error {
 	c.src = source
 	c.srcReq = req
 	c.srcData = cfg.Content
+	c.feedback = transfer.Feedback{}
 	for _, m := range cfg.Content.Mimes {
 		if err := req.Offer(m); err != nil {
-			c.concludeSource(false)
+			c.concludeSource(transfer.ActionNone)
 			return fmt.Errorf("dragdrop: offer %q: %w", m, err)
 		}
 	}
 	if c.version >= minActionVersion {
-		if err := req.SetActions(wl.DataDeviceManagerDndActionCopy); err != nil {
-			c.concludeSource(false)
+		if err := req.SetActions(uint32(cfg.Content.Offered())); err != nil {
+			c.concludeSource(transfer.ActionNone)
 			return fmt.Errorf("dragdrop: set actions: %w", err)
 		}
 	}
@@ -378,9 +445,11 @@ func (c *Controller) StartDrag(cfg StartConfig) error {
 	req.AddCancelledHandler(c)
 	req.AddDndDropPerformedHandler(c)
 	req.AddDndFinishedHandler(c)
+	req.AddTargetHandler(c)
+	req.AddActionHandler(c)
 
 	if err := c.dev.StartDrag(source, cfg.Origin, cfg.Icon, cfg.GrabSerial); err != nil {
-		c.concludeSource(false)
+		c.concludeSource(transfer.ActionNone)
 		return fmt.Errorf("dragdrop: start drag: %w", err)
 	}
 	debug.Log("input", "dnd start mimes=%v serial=%d", cfg.Content.Mimes, cfg.GrabSerial)
@@ -389,6 +458,19 @@ func (c *Controller) StartDrag(cfg StartConfig) error {
 
 // Dragging reports whether a drag started by this process is running.
 func (c *Controller) Dragging() bool { return c.src != nil }
+
+// CancelDrag cancels this process's running drag from the source side
+// (Esc during a drag, GTK's drag-cancel): destroying the data source
+// ends the drag at the compositor, and OnDone hears ActionNone.
+// Reports whether a drag was running.
+func (c *Controller) CancelDrag() bool {
+	if c.src == nil {
+		return false
+	}
+	debug.Log("input", "dnd cancelled by the source")
+	c.concludeSource(transfer.ActionNone)
+	return true
+}
 
 // ReadPayload returns the drop's bytes for mime. A drag that
 // originated in this process short-circuits the wire: the content
@@ -400,15 +482,12 @@ func (c *Controller) ReadPayload(mime string) ([]byte, error) {
 	if mime == "" {
 		return nil, ErrNoPayload
 	}
-	if c.src != nil && c.srcData.Write != nil && c.offeredBySelf(mime) {
-		var buf bytes.Buffer
-		err := c.srcData.Write(mime, &buf)
-		data := make([]byte, buf.Len())
-		copy(data, buf.Bytes())
+	if c.src != nil && c.srcData.Write != nil && c.srcData.Has(mime) {
+		data, err := c.srcData.Bytes(mime)
 		// No wl_data_offer.receive will ever arrive for this drop —
 		// both ends are us — so the source concludes locally instead
 		// of waiting for a dnd_finished that will not come.
-		c.concludeSource(true)
+		c.concludeSource(c.finishedAction())
 		return data, err
 	}
 	if c.dragOffer == nil || c.accepted == "" {
@@ -417,17 +496,28 @@ func (c *Controller) ReadPayload(mime string) ([]byte, error) {
 	return c.receive(c.dragOffer, mime)
 }
 
-// offeredBySelf reports whether mime is one of our active source's
-// offers.
-func (c *Controller) offeredBySelf(mime string) bool {
-	return slices.Contains(c.srcData.Mimes, mime)
+// finishedAction is the action a finished drop reports to the
+// source: the negotiated one, an ask settled by the destination, copy
+// when the compositor named none (version 1 and 2).
+func (c *Controller) finishedAction() transfer.Action {
+	switch a := c.feedback.Action; a {
+	case transfer.ActionNone:
+		return transfer.ActionCopy
+	case transfer.ActionAsk:
+		if c.resolve != transfer.ActionNone {
+			return c.resolve
+		}
+		return transfer.Prefer(c.srcData.Offered() &^ transfer.ActionAsk)
+	default:
+		return a
+	}
 }
 
 // receive transfers the payload through the offer pipe: request, flush
 // so the compositor dups the fd and asks the source to write, then read
 // to EOF under the hostile-peer guard.
 func (c *Controller) receive(offer offerAPI, mime string) ([]byte, error) {
-	return receivePayload(offer, mime, c.sess.Roundtrip, c.version)
+	return receivePayload(offer, mime, c.sess.Roundtrip, c.version, c.resolve)
 }
 
 // receivePayload is the wire choreography of receive, split from the
@@ -436,8 +526,10 @@ func (c *Controller) receive(offer offerAPI, mime string) ([]byte, error) {
 // an oversize or stalled source surfaces as an error, with the fd
 // drained and closed either way so its pipe never blocks forever. A
 // truncated transfer is not finished: the drag transaction unwinds
-// through the compositor's cancel path instead.
-func receivePayload(offer offerAPI, mime string, flush func() error, version uint32) ([]byte, error) {
+// through the compositor's cancel path instead. resolve, when set,
+// settles an ask drop on one action before the finish, as the
+// protocol requires.
+func receivePayload(offer offerAPI, mime string, flush func() error, version uint32, resolve transfer.Action) ([]byte, error) {
 	r, w, err := os.Pipe()
 	if err != nil {
 		return nil, fmt.Errorf("dragdrop: pipe: %w", err)
@@ -456,28 +548,33 @@ func receivePayload(offer offerAPI, mime string, flush func() error, version uin
 		return nil, fmt.Errorf("dragdrop: transfer: %w", err)
 	}
 	if version >= minActionVersion {
+		if resolve != transfer.ActionNone {
+			_ = offer.SetActions(uint32(resolve), uint32(resolve))
+		}
 		_ = offer.Finish()
 	}
 	return data, nil
 }
 
 // concludeSource tears down the source side of a drag and reports the
-// outcome through Content.OnDone.
-func (c *Controller) concludeSource(dropped bool) {
+// outcome through OnDone: the finished action, ActionNone for a
+// cancelled drag.
+func (c *Controller) concludeSource(done transfer.Action) {
 	if c.icon != nil {
 		_ = c.icon.Destroy()
 		c.icon = nil
 	}
-	if done := c.srcData.OnDone; done != nil {
+	if fn := c.srcData.OnDone; fn != nil {
 		c.srcData.OnDone = nil
-		done(dropped)
+		fn(done)
 	}
 	if c.srcReq != nil {
 		_ = c.srcReq.Destroy()
 	}
 	c.src = nil
 	c.srcReq = nil
-	c.srcData = Content{}
+	c.srcData = transfer.Drag{}
+	c.feedback = transfer.Feedback{}
 }
 
 // HandleDataSourceSend implements wl.DataSourceSendHandler: a
@@ -504,7 +601,30 @@ func (c *Controller) HandleDataSourceSend(ev wl.DataSourceSendEvent) {
 // HandleDataSourceCancelled implements wl.DataSourceCancelledHandler:
 // the compositor aborted the drag.
 func (c *Controller) HandleDataSourceCancelled(wl.DataSourceCancelledEvent) {
-	c.concludeSource(false)
+	c.concludeSource(transfer.ActionNone)
+}
+
+// HandleDataSourceTarget implements wl.DataSourceTargetHandler: the
+// destination under the pointer accepted a mime, or none.
+func (c *Controller) HandleDataSourceTarget(ev wl.DataSourceTargetEvent) {
+	c.setFeedback(transfer.Feedback{Mime: ev.MimeType, Action: c.feedback.Action})
+}
+
+// HandleDataSourceAction implements wl.DataSourceActionHandler: the
+// compositor negotiated an action with the destination.
+func (c *Controller) HandleDataSourceAction(ev wl.DataSourceActionEvent) {
+	c.setFeedback(transfer.Feedback{Mime: c.feedback.Mime, Action: transfer.Action(ev.DndAction)})
+}
+
+// setFeedback records and announces a change of what the source hears.
+func (c *Controller) setFeedback(f transfer.Feedback) {
+	if f == c.feedback {
+		return
+	}
+	c.feedback = f
+	if fn := c.srcData.OnFeedback; fn != nil {
+		fn(f)
+	}
 }
 
 // HandleDataSourceDndDropPerformed implements
@@ -517,12 +637,12 @@ func (c *Controller) HandleDataSourceDndDropPerformed(wl.DataSourceDndDropPerfor
 	}
 	// Below version 3 there is no dnd_finished: conclude as dropped.
 	if c.version < minActionVersion {
-		c.concludeSource(true)
+		c.concludeSource(transfer.ActionCopy)
 	}
 }
 
 // HandleDataSourceDndFinished implements wl.DataSourceDndFinishedHandler:
 // the destination acknowledged the transfer.
 func (c *Controller) HandleDataSourceDndFinished(wl.DataSourceDndFinishedEvent) {
-	c.concludeSource(true)
+	c.concludeSource(c.finishedAction())
 }
