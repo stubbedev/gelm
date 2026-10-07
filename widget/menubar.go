@@ -24,7 +24,6 @@ type MenuBar struct {
 	OnRoot func(i int, anchor Boundser)
 
 	buttons []*Button
-	focused bool
 }
 
 // NewMenuBar returns a bar with one button per root label.

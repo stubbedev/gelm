@@ -26,8 +26,26 @@ type Entry struct {
 	// in the entry (GTK's activate): submit a password, run a search,
 	// move to the next field. A disabled entry never activates.
 	OnActivate func(string)
+	// Completion, when set, offers matches for the current text as an
+	// inline list below the field (#92): arrows move the highlight,
+	// Enter picks, Esc closes, a click picks. OnComplete fires with the
+	// picked match after OnChanged delivered the new text.
+	Completion func(prefix string) []string
+	OnComplete func(chosen string)
+	// OnEscape, when set, fires on Esc while no completion list is
+	// open; returning true consumes the key. SearchEntry clears the
+	// field with it.
+	OnEscape func() bool
 
 	runes []rune
+	// completion state (#92): the open match list below the field,
+	// the highlighted row, and the guard that stops a pick's own
+	// SetText from reopening the list. completeRect is the drawn list
+	// in root coordinates, live after Arrange.
+	complete     []string
+	completeSel  int
+	completing   bool
+	completeRect render.Rect
 	// disp is the string form of runes, refreshed by setRunes: the
 	// paint and measure paths read the display text several times per
 	// frame, and re-converting the runes per read was the entry's
@@ -425,6 +443,7 @@ func (e *Entry) changed() {
 	if e.OnChanged != nil {
 		e.OnChanged(e.Text())
 	}
+	e.recomputeCompletion()
 }
 
 // setRunes replaces the contents and refreshes the string form the
@@ -956,6 +975,9 @@ func (e *Entry) Measure(con Constraints) Size {
 	// The stylesheet's margin sits outside the field, as in every CSS box.
 	m := marginOf(v)
 	sz := e.measureStore(con, clampSize(Size{W: w + m.Left + m.Right, H: h + m.Top + m.Bottom}, con))
+	// The open completion list claims height below the field (the
+	// parent learns through the cache drop the open/close bought).
+	sz.H += e.completionHeight()
 	e.measuredW = sz.W
 	return sz
 }
@@ -1095,6 +1117,7 @@ func (e *Entry) Paint(cv *render.Canvas) {
 	}
 	cv.PopClip(prev)
 	e.paintIcons(cv)
+	e.paintCompletion(cv)
 }
 
 // paintIcons draws the entry > image nodes, the primary and secondary
@@ -1133,7 +1156,14 @@ func (e *Entry) bandRect(lx int, band [2]float64, c render.Rect) render.Rect {
 // resize itself already scheduled the layout damage. r is the margin box;
 // Bounds records the field inside the stylesheet's margin.
 func (e *Entry) Arrange(r render.Rect) {
-	e.node.Arrange(marginOf(e.style(e)).Shrink(r))
+	field := marginOf(e.style(e)).Shrink(r)
+	// While the completion list is open the arranged rect covers field
+	// plus list; the field keeps its own height at the top so the list
+	// hangs below it, not inside it.
+	if h := e.completionHeight(); h > 0 {
+		field.H = max(0, field.H-h)
+	}
+	e.node.Arrange(field)
 	if e.leading != nil {
 		e.leading.Arrange(e.leadingRect())
 	}
@@ -1146,9 +1176,16 @@ func (e *Entry) Arrange(r render.Rect) {
 // Role implements Roleer.
 func (e *Entry) Role() Role { return RoleEntry }
 
-// HitTest returns the entry when p is inside its bounds.
+// HitTest returns the entry when p is inside its bounds - the field
+// or, while open, the completion list hanging under it.
 func (e *Entry) HitTest(p Point) Widget {
-	return e.HitLeaf(e, p)
+	if w := e.HitLeaf(e, p); w != nil {
+		return w
+	}
+	if e.completionOpen() && e.completionListRect().Contains(p.X, p.Y) {
+		return e
+	}
+	return nil
 }
 
 // ClickAt places the cursor (and the selection anchor) at the clicked
@@ -1159,6 +1196,9 @@ func (e *Entry) HitTest(p Point) Widget {
 // Masked modes keep the cursor a logical index. A press over the
 // trailing icon goes to the icon's handler instead.
 func (e *Entry) ClickAt(p Point) {
+	if e.clickCompletion(p) {
+		return
+	}
 	if e.leading != nil && e.leadingClick != nil {
 		if r := e.leadingRect(); !r.Empty() && r.Contains(p.X, p.Y) {
 			e.leadingClick()
@@ -1245,6 +1285,16 @@ func (e *Entry) InsertRune(r rune) {
 func (e *Entry) KeyAction(a KeyAction, mods Mods) {
 	if !e.Enabled() {
 		return
+	}
+	// The completion list owns the navigation keys while open, and a
+	// wired OnEscape owns Esc while it is closed (#92).
+	if e.completionKeys(a, mods) {
+		return
+	}
+	if a == KeyDismiss && !e.completionOpen() && e.OnEscape != nil {
+		if e.OnEscape() {
+			return
+		}
 	}
 	shift := mods&ModShift != 0
 	ctrl := mods&ModCtrl != 0
