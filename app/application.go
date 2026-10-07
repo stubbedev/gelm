@@ -24,6 +24,7 @@ import (
 	"github.com/stubbedev/gelm/internal/icons"
 	"github.com/stubbedev/gelm/internal/inspect"
 	"github.com/stubbedev/gelm/internal/layersurface"
+	"github.com/stubbedev/gelm/internal/notify"
 	"github.com/stubbedev/gelm/internal/popup"
 	"github.com/stubbedev/gelm/internal/recentfiles"
 	"github.com/stubbedev/gelm/internal/surfx"
@@ -101,6 +102,13 @@ type Application struct {
 	// availability for the color chooser's pick-from-screen button.
 	eyedropChecked bool
 	eyedropOK      bool
+	// notify (notification.go): the once-started desktop notifier and
+	// the per-notification callback table; the connection dies with
+	// the loop.
+	notifyOnce  sync.Once
+	notifyMu    sync.Mutex
+	notifyStore *notify.Notifier
+	notifyOpts  map[string]NotifyOptions
 	// sessionLock is the lock this application holds (sessionlock.go);
 	// while it exists the loop runs on with no window mapped.
 	sessionLock *SessionLock
@@ -573,6 +581,7 @@ func (a *Application) Run() error {
 		if a.appearance != nil {
 			a.appearance.Close()
 		}
+		a.closeNotifier()
 	}()
 	a.sess.OnKey = a.routeKey
 	a.sess.OnKeyUp = a.rep.release
