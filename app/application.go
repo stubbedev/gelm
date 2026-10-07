@@ -25,6 +25,7 @@ import (
 	"github.com/stubbedev/gelm/internal/inspect"
 	"github.com/stubbedev/gelm/internal/layersurface"
 	"github.com/stubbedev/gelm/internal/popup"
+	"github.com/stubbedev/gelm/internal/recentfiles"
 	"github.com/stubbedev/gelm/internal/surfx"
 	"github.com/stubbedev/gelm/internal/window"
 	"github.com/stubbedev/gelm/internal/wlsession"
@@ -90,6 +91,9 @@ type Application struct {
 	// //go:build atspi); the untagged core only sees the stop hook.
 	stopA11y func()
 	quit     bool
+	// recentFiles (filedialog.go) lazily owns the desktop's shared
+	// recently-used list; nil until a file dialog with Recents runs.
+	recentFiles *recentfiles.Manager
 	// sessionLock is the lock this application holds (sessionlock.go);
 	// while it exists the loop runs on with no window mapped.
 	sessionLock *SessionLock

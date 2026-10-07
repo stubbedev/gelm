@@ -36,7 +36,13 @@ type DialogConfig struct {
 	Buttons         []DialogButton
 	DefaultResponse string
 	CancelResponse  string
-	OnResponse      func(response string)
+	// ValidateResponse, when set, vetoes a response: returning false
+	// keeps the dialog open (nothing responded, nothing closed), so a
+	// dialog can refuse to close until its content is valid - the file
+	// picker refusing an empty selection, say. It runs before
+	// OnResponse on every Respond, including the Esc and Enter keys.
+	ValidateResponse func(response string) bool
+	OnResponse       func(response string)
 	// Bare makes Content the whole window: no button row, no card,
 	// Background as the window's clear color. The content carries its
 	// own buttons (styled by the application's stylesheet) and answers
@@ -133,6 +139,11 @@ func (a *Application) NewDialog(parent *Window, cfg DialogConfig) (*Dialog, erro
 // are ignored, so a double event cannot produce two responses.
 func (d *Dialog) Respond(response string) {
 	if d.responded {
+		return
+	}
+	// A vetoed response leaves the dialog exactly as it was: not
+	// responded, not closed, retryable.
+	if d.cfg.ValidateResponse != nil && !d.cfg.ValidateResponse(response) {
 		return
 	}
 	d.responded = true
