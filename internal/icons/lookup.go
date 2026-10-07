@@ -28,7 +28,9 @@ func Lookup(name string, size int, frac120 uint32) (string, error) {
 // theme and search paths, per the icon theme spec's lookup algorithm:
 // for each theme of the inheritance chain (hicolor last), first any
 // directory whose size rule accepts the request, then the nearest
-// existing one, then the unthemed fallback across the base directories.
+// existing one, then the unthemed fallback across the base directories,
+// and last the bundled set - whose matches return a "builtin:" path
+// rather than a file.
 func (c *Cache) Lookup(name string, size int, frac120 uint32) (string, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -49,6 +51,9 @@ func (c *Cache) resolveLocked(name string, size int, frac120 uint32) (string, er
 		}
 	}
 	if path := lookupUnthemed(paths, name); path != "" {
+		return path, nil
+	}
+	if path := lookupBuiltin(name); path != "" {
 		return path, nil
 	}
 	return "", fmt.Errorf("%w: %q at size %d scale %d", ErrNotFound, name, size, scale)
