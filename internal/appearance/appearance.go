@@ -63,7 +63,6 @@ package appearance
 import (
 	"context"
 	"log/slog"
-	"slices"
 	"sync"
 	"time"
 
@@ -112,6 +111,8 @@ const (
 
 	schemeNamespace = "org.freedesktop.appearance"
 	schemeKey       = "color-scheme"
+	accentKey       = "accent-color"
+	contrastKey     = "contrast"
 
 	interfaceNamespace = "org.gnome.desktop.interface"
 	iconThemeKey       = "icon-theme"
@@ -148,9 +149,12 @@ func dialSession() (*dbus.Conn, error) {
 	return dbus.ConnectSessionBus()
 }
 
-// Monitor tracks the system dark/light preference. Create one with New
-// (session bus) or NewOn (an existing connection), call OnChange, and
-// Close it when the application exits. All methods are safe from any
+// Monitor tracks the desktop's appearance preferences: the
+// dark/light color scheme, the icon-theme name (#64), the accent
+// color (#88), and the high-contrast preference (#88) - all portal
+// settings, all with the same contract. Create one with New (session
+// bus) or NewOn (an existing connection), call OnChange, and Close it
+// when the application exits. All methods are safe from any
 // goroutine; see the package comment for the threading and failure
 // contracts.
 type Monitor struct {
@@ -164,12 +168,12 @@ type Monitor struct {
 
 	done chan struct{}
 
-	mu            sync.Mutex
-	closed        bool
-	current       Appearance
-	listeners     []func(Appearance)
-	iconTheme     string
-	iconListeners []func(string)
+	mu       sync.Mutex
+	closed   bool
+	scheme   setting[Appearance]
+	icons    setting[string]
+	accent   setting[Accent]
+	contrast setting[Contrast]
 }
 
 // New starts a monitor on the session bus. It performs the startup read
@@ -226,20 +230,26 @@ func startOn(m *Monitor, conn *dbus.Conn) *Monitor {
 		}
 		return m
 	}
-	baseline := readScheme(conn)
-	m.set(baseline, false)
-	m.setIconTheme(readIconTheme(conn), false)
+	m.refresh(conn, false)
 	go m.run(conn, ch, owned)
 	return m
+}
+
+// refresh reads every tracked setting from conn; deliver decides
+// whether a moved value fires its listeners (the startup read is the
+// baseline and never fires; the reconnect refresh is an event).
+func (m *Monitor) refresh(conn *dbus.Conn, deliver bool) {
+	m.scheme.update(m, readSetting(conn, schemeNamespace, schemeKey, schemeValue, Unknown), deliver)
+	m.icons.update(m, readSetting(conn, interfaceNamespace, iconThemeKey, stringValue, ""), deliver)
+	m.accent.update(m, readSetting(conn, schemeNamespace, accentKey, accentValue, Accent{}), deliver)
+	m.contrast.update(m, readSetting(conn, schemeNamespace, contrastKey, contrastValue, ContrastUnknown), deliver)
 }
 
 // Appearance returns the current system preference: Dark, Light, or
 // Unknown (no portal, no preference, unparseable value, or the monitor
 // never connected). Safe from any goroutine.
 func (m *Monitor) Appearance() Appearance {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return m.current
+	return m.scheme.get(m)
 }
 
 // OnChange registers fn to run with the new value whenever the system
@@ -250,12 +260,7 @@ func (m *Monitor) Appearance() Appearance {
 // Application.Invoke (package comment, docs/appearance.md). Safe from
 // any goroutine; registering fn twice calls it once per change each.
 func (m *Monitor) OnChange(fn func(Appearance)) {
-	if fn == nil {
-		return
-	}
-	m.mu.Lock()
-	m.listeners = append(m.listeners, fn)
-	m.mu.Unlock()
+	m.scheme.on(m, fn)
 }
 
 // Close stops the monitor: the loop goroutine exits, the subscription
@@ -299,9 +304,8 @@ func (m *Monitor) run(conn *dbus.Conn, ch chan *dbus.Signal, owned bool) {
 		}
 		// A reconnect is a fresh read of a possibly-changed world: the
 		// refresh is an event (unlike the startup read), but only when
-		// the value actually moved (set dedups).
-		m.set(readScheme(conn), true)
-		m.setIconTheme(readIconTheme(conn), true)
+		// a value actually moved (update dedups).
+		m.refresh(conn, true)
 	}
 }
 
@@ -345,15 +349,27 @@ func (m *Monitor) listen(conn *dbus.Conn, ch chan *dbus.Signal, owned bool) (sto
 				// connection dies — our disconnect signal.
 				return false
 			}
-			if a, matches := schemeChanged(sig); matches {
-				m.set(a, true)
-			}
-			if name, matches := iconThemeChanged(sig); matches {
-				m.setIconTheme(name, true)
-			}
+			m.signal(sig)
 		case <-m.done:
 			return true
 		}
+	}
+}
+
+// signal dispatches one SettingChanged to whichever tracked setting it
+// names; every other signal is not ours.
+func (m *Monitor) signal(sig *dbus.Signal) {
+	if v, ok := settingChanged(sig, schemeNamespace, schemeKey, schemeValue, Unknown); ok {
+		m.scheme.update(m, v, true)
+	}
+	if v, ok := settingChanged(sig, interfaceNamespace, iconThemeKey, stringValue, ""); ok {
+		m.icons.update(m, v, true)
+	}
+	if v, ok := settingChanged(sig, schemeNamespace, accentKey, accentValue, Accent{}); ok {
+		m.accent.update(m, v, true)
+	}
+	if v, ok := settingChanged(sig, schemeNamespace, contrastKey, contrastValue, ContrastUnknown); ok {
+		m.contrast.update(m, v, true)
 	}
 }
 
@@ -379,33 +395,12 @@ func (m *Monitor) redial() *dbus.Conn {
 	}
 }
 
-// set updates the current value and, when deliver is set and something
-// actually changed, runs the listeners — on the monitor goroutine, in
-// registration order, without holding the lock (a listener may call
-// Appearance or OnChange back). Duplicate values are dropped: the
-// portal can re-announce a scheme nobody changed.
-func (m *Monitor) set(a Appearance, deliver bool) {
-	m.mu.Lock()
-	changed := a != m.current
-	m.current = a
-	var fns []func(Appearance)
-	if deliver && changed {
-		fns = slices.Clone(m.listeners)
-	}
-	m.mu.Unlock()
-	for _, fn := range fns {
-		fn(a)
-	}
-}
-
 // IconTheme returns the current icon-theme name (the portal's
 // org.gnome.desktop.interface icon-theme setting): empty means no
 // portal, no setting, or a value that is not a string. Safe from any
 // goroutine.
 func (m *Monitor) IconTheme() string {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return m.iconTheme
+	return m.icons.get(m)
 }
 
 // OnIconThemeChange registers fn to run with the new icon-theme name
@@ -416,44 +411,36 @@ func (m *Monitor) IconTheme() string {
 // baseline and never fires; an explicitly emptied setting is reported
 // as "" (the consumer owns the fallback policy).
 func (m *Monitor) OnIconThemeChange(fn func(string)) (off func()) {
-	if fn == nil {
-		return func() {}
-	}
-	m.mu.Lock()
-	m.iconListeners = append(m.iconListeners, fn)
-	i := len(m.iconListeners) - 1
-	m.mu.Unlock()
-	var once sync.Once
-	return func() {
-		once.Do(func() {
-			m.mu.Lock()
-			defer m.mu.Unlock()
-			// Function values are not comparable, so the slot is the
-			// identity: unregistering tombstones it and delivery skips
-			// the hole.
-			if i < len(m.iconListeners) {
-				m.iconListeners[i] = nil
-			}
-		})
-	}
+	return m.icons.on(m, fn)
 }
 
-// setIconTheme is set() for the icon-theme name, with the same
-// deliver-on-change-only contract.
-func (m *Monitor) setIconTheme(name string, deliver bool) {
-	m.mu.Lock()
-	changed := name != m.iconTheme
-	m.iconTheme = name
-	var fns []func(string)
-	if deliver && changed {
-		fns = slices.Clone(m.iconListeners)
-	}
-	m.mu.Unlock()
-	for _, fn := range fns {
-		if fn != nil {
-			fn(name)
-		}
-	}
+// Accent returns the desktop's accent-color preference: RGB in [0,1]
+// with Known set, or the zero Accent when the desktop published none
+// (no portal, no key, unreadable value). Safe from any goroutine.
+func (m *Monitor) Accent() Accent {
+	return m.accent.get(m)
+}
+
+// OnAccentChange registers fn for every accent-color change; the
+// returned function unregisters it. The same threading contract as
+// OnChange: callbacks run serialized on the monitor's goroutine -
+// bridge with Application.Invoke.
+func (m *Monitor) OnAccentChange(fn func(Accent)) (off func()) {
+	return m.accent.on(m, fn)
+}
+
+// Contrast returns the desktop's contrast preference: ContrastHigh or
+// ContrastUnknown (no portal, no preference, unreadable value). Safe
+// from any goroutine.
+func (m *Monitor) Contrast() Contrast {
+	return m.contrast.get(m)
+}
+
+// OnContrastChange registers fn for every contrast change; the
+// returned function unregisters it. Same threading contract as
+// OnChange.
+func (m *Monitor) OnContrastChange(fn func(Contrast)) (off func()) {
+	return m.contrast.on(m, fn)
 }
 
 // isClosed reports whether Close has fired.
@@ -461,49 +448,6 @@ func (m *Monitor) isClosed() bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.closed
-}
-
-// readScheme reads the color-scheme key once: a bounded name-ownership
-// probe (no portal, and deliberately no on-demand activation — a
-// startup that may sit 25s on dbus activation is worse than Unknown),
-// then a bounded ReadOne. Any failure reads Unknown; the value itself
-// may also map to Unknown (no preference, unparseable).
-func readScheme(conn *dbus.Conn) Appearance {
-	body, err := call(conn.BusObject(), probeTimeout,
-		"org.freedesktop.DBus.NameHasOwner", portalName)
-	if err != nil || len(body) != 1 {
-		return Unknown
-	}
-	owned, _ := body[0].(bool)
-	if !owned {
-		return Unknown
-	}
-	body, err = call(conn.Object(portalName, portalPath), readTimeout,
-		readOne, schemeNamespace, schemeKey)
-	if err != nil || len(body) != 1 {
-		return Unknown
-	}
-	return schemeValue(body[0])
-}
-
-// schemeChanged inspects one signal and reports whether it is the
-// portal's color-scheme SettingChanged (namespace, key, value); the
-// mapped value may still be Unknown. Signals for other settings —
-// gtk-theme, font settings, other namespaces — are filtered here so
-// listeners never see them.
-func schemeChanged(sig *dbus.Signal) (Appearance, bool) {
-	if sig == nil || sig.Name != changedSig || sig.Path != portalPath {
-		return Unknown, false
-	}
-	if len(sig.Body) != 3 {
-		return Unknown, false
-	}
-	namespace, _ := sig.Body[0].(string)
-	key, _ := sig.Body[1].(string)
-	if namespace != schemeNamespace || key != schemeKey {
-		return Unknown, false
-	}
-	return schemeValue(sig.Body[2]), true
 }
 
 // schemeValue maps a portal value — a variant around uint32 — to an
@@ -524,47 +468,6 @@ func schemeValue(v any) Appearance {
 		}
 	}
 	return Unknown
-}
-
-// readIconTheme reads the desktop's icon-theme name once (the
-// org.gnome.desktop.interface setting every portal publishes): the
-// same bounded ownership probe as readScheme, then a bounded ReadOne.
-// Any failure — no portal, no key, a non-string value — reads empty.
-func readIconTheme(conn *dbus.Conn) string {
-	body, err := call(conn.BusObject(), probeTimeout,
-		"org.freedesktop.DBus.NameHasOwner", portalName)
-	if err != nil || len(body) != 1 {
-		return ""
-	}
-	owned, _ := body[0].(bool)
-	if !owned {
-		return ""
-	}
-	body, err = call(conn.Object(portalName, portalPath), readTimeout,
-		readOne, interfaceNamespace, iconThemeKey)
-	if err != nil || len(body) != 1 {
-		return ""
-	}
-	return stringValue(body[0])
-}
-
-// iconThemeChanged inspects one signal and reports whether it is the
-// icon-theme SettingChanged, with the new name (empty for unreadable
-// values). Same filtering discipline as schemeChanged: every other
-// setting — color-scheme included — is not ours.
-func iconThemeChanged(sig *dbus.Signal) (string, bool) {
-	if sig == nil || sig.Name != changedSig || sig.Path != portalPath {
-		return "", false
-	}
-	if len(sig.Body) != 3 {
-		return "", false
-	}
-	namespace, _ := sig.Body[0].(string)
-	key, _ := sig.Body[1].(string)
-	if namespace != interfaceNamespace || key != iconThemeKey {
-		return "", false
-	}
-	return stringValue(sig.Body[2]), true
 }
 
 // stringValue maps a portal value to its string — a variant around

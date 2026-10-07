@@ -146,6 +146,31 @@ func LightTheme() *Theme {
 	}
 }
 
+// HighContrastTheme returns the high-contrast preset (#88): pure
+// black on pure white, no muted tones, hairline chrome replaced by a
+// solid border - the palette the desktop's contrast preference asks
+// for. The WCAG guard in SetTheme is its acceptance test by
+// construction: every pair passes AA with room to spare. Shadows and
+// animations stay off; the point is legibility, not depth.
+func HighContrastTheme() *Theme {
+	return &Theme{
+		Bg:             render.RGB(0xFF, 0xFF, 0xFF),
+		Surface:        render.RGB(0xFF, 0xFF, 0xFF),
+		SurfaceHover:   render.RGB(0xEE, 0xEE, 0xEE),
+		SurfacePressed: render.RGB(0xDD, 0xDD, 0xDD),
+		Text:           render.RGB(0x00, 0x00, 0x00),
+		TextMuted:      render.RGB(0x00, 0x00, 0x00),
+		Accent:         render.RGB(0x00, 0x3E, 0xB8),
+		OnAccent:       render.RGB(0xFF, 0xFF, 0xFF),
+		Border:         render.RGB(0x00, 0x00, 0x00),
+		Radius:         2,
+		Spacing:        8,
+		Padding:        10,
+		TextSize:       14,
+		Animations:     false,
+	}
+}
+
 // ParseColor reads a hex color — #rgb, #rrggbb, or #rrggbbaa, the same
 // forms the markup parser accepts — into a premultiplied Color. It
 // reports malformed input instead of defaulting, so a config file's

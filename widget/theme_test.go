@@ -486,3 +486,18 @@ func TestScaleAlphaPerChannel(t *testing.T) {
 		t.Error("the bounds changed")
 	}
 }
+
+// TestHighContrastThemePassesItsOwnGuard pins the preset's acceptance
+// (#88): installing HighContrastTheme raises no contrast warnings -
+// the WCAG guard is the theme's test by construction.
+func TestHighContrastThemePassesItsOwnGuard(t *testing.T) {
+	orig := themeWarn
+	var warns []string
+	themeWarn = func(msg string) { warns = append(warns, msg) }
+	defer func() { themeWarn = orig; SetTheme(nil) }()
+
+	SetTheme(HighContrastTheme())
+	if len(warns) != 0 {
+		t.Errorf("high-contrast warnings = %v", warns)
+	}
+}

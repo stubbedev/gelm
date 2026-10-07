@@ -51,6 +51,38 @@ if mon.Appearance() == appearance.Light {
 }
 ```
 
+## Accent color and high contrast (#88)
+
+The same portal namespace carries two more preferences, tracked by
+the same monitor with the same contracts:
+
+- `accent-color` — a `(ddd)` RGB triple, `Accent()` with
+  `Known=false` for no preference. The follow is three lines in the
+  color-scheme callback's shape:
+
+```go
+mon.OnAccentChange(func(a appearance.Accent) {
+	if !a.Known {
+		return
+	}
+	application.Invoke(func() {
+		col := render.RGB(uint8(a.R*255), uint8(a.G*255), uint8(a.B*255))
+		widget.SetTheme(widget.Current().WithAccent(col))
+	})
+})
+```
+
+- `contrast` — 1 asks for the high-contrast presentation;
+  `Contrast()` reports `ContrastHigh` or `ContrastUnknown`, and
+  `widget.HighContrastTheme()` is the preset to install (pure black
+  on white, no muted tones, solid borders, animations off - its
+  acceptance test is the theme's own WCAG guard, which stays silent
+  against it).
+
+Both follow the color-scheme failure model exactly: no preference,
+no portal, or an unreadable value reads as unknown forever, and no
+event is fabricated.
+
 ## Threading contract
 
 `OnChange` callbacks run on the **monitor's own goroutine**, serialized
