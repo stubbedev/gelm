@@ -245,6 +245,11 @@ func (s *Surface) change(edit func(*Config), request string, send func() error) 
 	return nil
 }
 
+// Config is the surface's current declarative state: creation's,
+// updated by every accepted runtime change - what a rebuild on a new
+// connection reads back.
+func (s *Surface) Config() Config { return s.cfg }
+
 // KeyboardMode is the keyboard interactivity in effect.
 func (s *Surface) KeyboardMode() KeyboardMode { return s.cfg.Keyboard }
 

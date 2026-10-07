@@ -6,8 +6,8 @@
 // the loop with an error callers can match. The sanctioned default is a
 // clean exit with the distinct DisconnectExitCode so a supervisor
 // (systemd Restart=on-failure, a wayle supervisor) respawns on the
-// restarted session; the reconnect-with-rebuild sketch is in
-// docs/application-model.md.
+// restarted session; SetReconnect (reconnect.go) rebuilds on the new
+// session instead.
 package app
 
 import (
@@ -49,6 +49,9 @@ type DisconnectedEvent struct {
 	Reason DisconnectReason
 	// Err is the *wlsession.DisconnectError the loop failed with.
 	Err error
+	// Reconnecting reports that Run will dial the compositor again and
+	// rebuild the windows (SetReconnect) rather than return.
+	Reconnecting bool
 }
 
 // OnDisconnect installs the disconnect policy hook (also available as
@@ -93,8 +96,12 @@ func (a *Application) handleDisconnect(de *wlsession.DisconnectError) {
 		return
 	}
 	debug.Log("wire", "app: compositor disconnected (%s): %v", de.Reason, de.Err)
+	reconnecting := a.reconnect != nil && de.Reason == DisconnectConnectionLost && a.rebuildable()
 	if a.onDisconnect != nil {
-		a.onDisconnect(DisconnectedEvent{Reason: de.Reason, Err: de})
+		a.onDisconnect(DisconnectedEvent{Reason: de.Reason, Err: de, Reconnecting: reconnecting})
+	}
+	if reconnecting {
+		a.rebuildPlan = a.planRebuild()
 	}
 	for _, w := range a.windows {
 		a.toasts.closeHost(w.host)

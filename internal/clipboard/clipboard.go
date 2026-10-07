@@ -96,7 +96,17 @@ func (o *offerMimes) HandleZwpPrimarySelectionOfferV1Offer(ev wlr.ZwpPrimarySele
 // primary selection device when the compositor has one — and starts
 // tracking selection offers.
 func New(sess *wlsession.Session) *Clipboard {
-	c := &Clipboard{
+	c := &Clipboard{}
+	c.Reset(sess)
+	return c
+}
+
+// Reset attaches the clipboard to sess, forgetting everything the
+// previous session held - its offers, the selections, our claims: a
+// compositor restart takes the clipboard's contents with it, so after
+// a reconnect the clipboard starts empty on the new session.
+func (c *Clipboard) Reset(sess *wlsession.Session) {
+	*c = Clipboard{
 		sess:          sess,
 		offers:        make(map[*wl.DataOffer]*offerMimes),
 		primaryOffers: make(map[*wlr.ZwpPrimarySelectionOfferV1]*offerMimes),
@@ -109,7 +119,6 @@ func New(sess *wlsession.Session) *Clipboard {
 		dev.AddDataOfferHandler(c)
 		dev.AddSelectionHandler(c)
 	}
-	return c
 }
 
 // HandleDataDeviceDataOffer implements wl.DataDeviceDataOfferHandler:

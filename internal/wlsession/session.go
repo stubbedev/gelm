@@ -1379,7 +1379,9 @@ func (s *Session) Run() error {
 // Close disconnects from the display and releases the session's shared
 // buffer arena: the pool proxy, mapping, and the session's one fd.
 func (s *Session) Close() {
-	s.closed.Store(true)
+	if s.closed.Swap(true) {
+		return // idempotent: the disconnect teardown and a deferred Close both run
+	}
 	s.stopCursorAnim()
 	buffer.CloseArenas(s.shm)
 	if s.Display != nil {

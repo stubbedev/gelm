@@ -375,8 +375,8 @@ func (a *Application) OpenPopover(host Host, cfg PopoverConfig) (*Popover, error
 	// on its root's.
 	restoreKeys := func() {}
 	if km, ok := host.(keyboardModer); ok && parent == nil && km.KeyboardMode() == KeyboardNone {
-		if err := km.SetKeyboardMode(KeyboardExclusive); err == nil {
-			restoreKeys = func() { _ = km.SetKeyboardMode(KeyboardNone) }
+		if err := km.holdKeyboard(KeyboardExclusive); err == nil {
+			restoreKeys = func() { _ = km.holdKeyboard(KeyboardNone) }
 		}
 	}
 	pop, err := popup.New(a.sess, pcfg)
@@ -587,7 +587,9 @@ func (a *Application) deliverPopoverKey(tr keyTranslator, op *openPopover, keyco
 // raise while open (*LayerWindow).
 type keyboardModer interface {
 	KeyboardMode() KeyboardMode
-	SetKeyboardMode(KeyboardMode) error
+	// holdKeyboard changes the mode for the popover's lifetime only:
+	// the surface's declared mode (what a rebuild restores) stays.
+	holdKeyboard(KeyboardMode) error
 }
 
 // popoverMaxH caps a popover's height when its content is measured,

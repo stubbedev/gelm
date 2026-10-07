@@ -40,6 +40,10 @@ type Compositor interface {
 	// real xdg_toplevel.close delivery the synthetic seat cannot
 	// express. dir is the session's private runtime dir.
 	CloseWindow(dir, appID string) error
+	// Restart boots the compositor again in dir after a kill, on the
+	// same display socket name - the reconnect scenario. A driver that
+	// cannot returns errors.ErrUnsupported.
+	Restart(dir string) error
 }
 
 // driverFor picks the compositor driver named by GELM_TEST_COMPOSITOR;
