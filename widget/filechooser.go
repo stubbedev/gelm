@@ -126,7 +126,7 @@ func NewFileChooser(face render.Font, sizePx float64, mode FileMode, startDir st
 		startDir, _ = os.UserHomeDir()
 	}
 	if len(filters) == 0 {
-		filters = []FileFilter{{Name: "All files"}}
+		filters = []FileFilter{{Name: Tr("All files")}}
 	}
 	c := &FileChooser{
 		face: face, sizePx: sizePx, mode: mode,
@@ -154,7 +154,7 @@ func NewFileChooser(face render.Font, sizePx float64, mode FileMode, startDir st
 	if mode == FileModeSave {
 		c.name = NewEntry(face, sizePx, th.Text)
 		nameRow := NewBox(Row, 8, 0)
-		nameRow.Append(NewLabel(face, sizePx, "Name:", th.Text), false)
+		nameRow.Append(NewLabel(face, sizePx, Tr("Name:"), th.Text), false)
 		nameRow.Append(c.name, true)
 		c.root.Append(nameRow, true)
 	}
@@ -166,7 +166,7 @@ func NewFileChooser(face render.Font, sizePx float64, mode FileMode, startDir st
 		c.filterDrop = NewDropdown(face, sizePx, names, 0)
 		c.filterDrop.OnSelect = func(i int) { c.setFilter(i) }
 		filterRow := NewBox(Row, 8, 0)
-		filterRow.Append(NewLabel(face, sizePx, "Filter:", th.Text), false)
+		filterRow.Append(NewLabel(face, sizePx, Tr("Filter:"), th.Text), false)
 		filterRow.Append(c.filterDrop, false)
 		c.root.Append(filterRow, false)
 	}
@@ -217,13 +217,13 @@ func (c *FileChooser) Apply() ([]string, bool) {
 			}
 			return nil, false
 		}
-		c.setStatus("choose a file")
+		c.setStatus(Tr("choose a file"))
 	case FileModeOpenMultiple:
 		picked := c.pickedFiles()
 		if len(picked) > 0 {
 			return picked, true
 		}
-		c.setStatus("choose at least one file")
+		c.setStatus(Tr("choose at least one file"))
 	case FileModeOpenFolder:
 		if i := c.list.Selected(); i >= 0 && c.listing[i].Dir {
 			return []string{c.paths[i]}, true
@@ -231,19 +231,19 @@ func (c *FileChooser) Apply() ([]string, bool) {
 		if c.dir != "" {
 			return []string{c.dir}, true
 		}
-		c.setStatus("choose a folder")
+		c.setStatus(Tr("choose a folder"))
 	case FileModeSave:
 		if c.dir == "" {
-			c.setStatus("save needs a directory")
+			c.setStatus(Tr("save needs a directory"))
 			break
 		}
 		name := strings.TrimSpace(c.name.Text())
 		if name == "" {
-			c.setStatus("enter a file name")
+			c.setStatus(Tr("enter a file name"))
 			break
 		}
 		if strings.ContainsRune(name, '/') || strings.ContainsRune(name, os.PathSeparator) {
-			c.setStatus("the name cannot contain a path separator")
+			c.setStatus(Tr("the name cannot contain a path separator"))
 			break
 		}
 		return []string{filepath.Join(c.dir, name)}, true
@@ -297,7 +297,7 @@ func (c *FileChooser) activate(i int) {
 // applyOne validates a single file row against the active filter.
 func (c *FileChooser) applyOne(i int) ([]string, bool) {
 	if !c.passes(c.listing[i].Name) {
-		c.setStatus("\"" + c.listing[i].Name + "\" does not match " + c.filters[c.filter].Name)
+		c.setStatus("\"" + c.listing[i].Name + "\" " + Tr("does not match") + " " + c.filters[c.filter].Name)
 		return nil, false
 	}
 	return []string{c.paths[i]}, true
@@ -361,7 +361,7 @@ func (c *FileChooser) refresh() {
 	c.path.SetText(c.dirLabel())
 	if c.inRecents {
 		if c.recents == nil {
-			c.setStatus("no recent files")
+			c.setStatus(Tr("no recent files"))
 		} else {
 			for _, p := range c.recents() {
 				c.listing = append(c.listing, FileEntry{Name: filepath.Base(p)})
@@ -390,7 +390,7 @@ func (c *FileChooser) refresh() {
 // dirLabel titles the current view.
 func (c *FileChooser) dirLabel() string {
 	if c.inRecents {
-		return "Recent files"
+		return Tr("Recent files")
 	}
 	return c.dir
 }
@@ -409,20 +409,20 @@ func (c *FileChooser) buildPlaces() {
 	} else {
 		c.places.Clear()
 	}
-	climb := NewButton(NewLabel(c.face, c.sizePx, "Up", th.OnAccent), 8, 4)
+	climb := NewButton(NewLabel(c.face, c.sizePx, Tr("Up"), th.OnAccent), 8, 4)
 	climb.OnClick = c.climb
-	home := NewButton(NewLabel(c.face, c.sizePx, "Home", th.OnAccent), 8, 4)
+	home := NewButton(NewLabel(c.face, c.sizePx, Tr("Home"), th.OnAccent), 8, 4)
 	home.OnClick = func() {
 		dir, _ := os.UserHomeDir()
 		c.navigate(dir)
 	}
-	root := NewButton(NewLabel(c.face, c.sizePx, "Filesystem", th.OnAccent), 8, 4)
+	root := NewButton(NewLabel(c.face, c.sizePx, Tr("Filesystem"), th.OnAccent), 8, 4)
 	root.OnClick = func() { c.navigate("/") }
 	c.places.Append(climb, false)
 	c.places.Append(home, false)
 	c.places.Append(root, false)
 	if c.recents != nil {
-		recent := NewButton(NewLabel(c.face, c.sizePx, "Recent", th.OnAccent), 8, 4)
+		recent := NewButton(NewLabel(c.face, c.sizePx, Tr("Recent"), th.OnAccent), 8, 4)
 		recent.OnClick = func() { c.navigate("") }
 		c.places.Append(recent, false)
 	}

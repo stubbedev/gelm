@@ -3,6 +3,7 @@ package app
 import (
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/stubbedev/gelm/internal/debug"
 	"github.com/stubbedev/gelm/internal/recentfiles"
@@ -86,7 +87,7 @@ func (a *Application) fileDialog(parent *Window, mode widget.FileMode, defTitle,
 	}
 	title := cfg.Title
 	if title == "" {
-		title = defTitle
+		title = widget.Tr(defTitle)
 	}
 	chooser := widget.NewFileChooser(face, 14, mode, cfg.StartDir, cfg.Filters)
 	if cfg.StartName != "" && mode == widget.FileModeSave {
@@ -131,12 +132,12 @@ func (a *Application) fileDialog(parent *Window, mode widget.FileMode, defTitle,
 			// Replace? - parented to the picker's own window, so the
 			// question lands on top of the file that is about to go.
 			_, _ = a.NewDialog(d.win, DialogConfig{
-				Title:   "Replace file?",
+				Title:   widget.Tr("Replace file?"),
 				Content: a.confirmBody(filepath.Base(chosen[0])),
 				Modal:   true,
 				Buttons: []DialogButton{
-					{Label: "Cancel", Response: "cancel", Role: ButtonRoleCancel},
-					{Label: "Replace", Response: "replace", Role: ButtonRoleDefault},
+					{Label: widget.Tr("Cancel"), Response: "cancel", Role: ButtonRoleCancel},
+					{Label: widget.Tr("Replace"), Response: "replace", Role: ButtonRoleDefault},
 				},
 				DefaultResponse: "replace",
 				CancelResponse:  "cancel",
@@ -163,8 +164,8 @@ func (a *Application) fileDialog(parent *Window, mode widget.FileMode, defTitle,
 		Content: chooser,
 		Modal:   true,
 		Buttons: []DialogButton{
-			{Label: "Cancel", Response: "cancel", Role: ButtonRoleCancel},
-			{Label: okLabel, Response: "ok", Role: ButtonRoleDefault},
+			{Label: widget.Tr("Cancel"), Response: "cancel", Role: ButtonRoleCancel},
+			{Label: widget.Tr(okLabel), Response: "ok", Role: ButtonRoleDefault},
 		},
 		DefaultResponse: "ok",
 		CancelResponse:  "cancel",
@@ -200,9 +201,10 @@ func (a *Application) fileDialog(parent *Window, mode widget.FileMode, defTitle,
 func (a *Application) confirmBody(name string) widget.Widget {
 	face := a.resolveFace(nil)
 	th := widget.Current()
+	named := strings.ReplaceAll(widget.Tr("A file named \"{name}\" already exists."), "{name}", name)
 	return widget.NewBox(widget.Column, 8, 16).
-		Append(widget.NewLabel(face, 14, "A file named \""+name+"\" already exists.", th.Text), false).
-		Append(widget.NewLabel(face, 13, "Replacing it overwrites its contents.", th.TextMuted), false)
+		Append(widget.NewLabel(face, 14, named, th.Text), false).
+		Append(widget.NewLabel(face, 13, widget.Tr("Replacing it overwrites its contents."), th.TextMuted), false)
 }
 
 // recentsManager lazily owns the desktop shared recents list.
