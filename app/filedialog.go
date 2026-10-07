@@ -1,7 +1,6 @@
 package app
 
 import (
-	"errors"
 	"os"
 	"path/filepath"
 
@@ -83,7 +82,7 @@ func (a *Application) SaveFileDialog(parent *Window, cfg SaveDialogConfig) (*Dia
 func (a *Application) fileDialog(parent *Window, mode widget.FileMode, defTitle, okLabel string, cfg FileDialogConfig, save *SaveDialogConfig) (*Dialog, error) {
 	face := a.resolveFace(nil)
 	if face == nil {
-		return nil, errors.New("app: dialog text face unavailable: no configured tooltip face and the system has no sans font")
+		return nil, ErrNoDialogFace
 	}
 	title := cfg.Title
 	if title == "" {
