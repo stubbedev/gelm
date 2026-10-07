@@ -11,6 +11,10 @@ How gelm resolves and paints themed icons (stubbedev/gelm#20).
   (exact-size pass, nearest-size pass, inheritance chain with hicolor
   last, unthemed base-directory fallback), `-symbolic` name fallback,
   and a raster cache keyed by (name, logical size, 120-based scale).
+  The last tier is a bundled set of Lucide icons (lucide-static, ISC,
+  `internal/icons/lucide`): freedesktop names such as
+  `document-save-symbolic` map onto them, so stock chrome draws on a
+  host with no icon theme, and an installed theme always wins.
 - `widget.Icon` — four constructors: `NewIcon` (a raster the caller
   made), `NewThemeIcon` (theme name), `NewFileIcon` (png / svg / svgz
   path), `NewSVGIcon` (embedded bytes, for apps that ship their own

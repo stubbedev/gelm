@@ -76,8 +76,8 @@ func (g *PreferencesGroup) Paint(cv *render.Canvas) {
 }
 
 // PreferencesPage is the scrolling stack of groups: a column of
-// groups inside a Scroll, capped wide enough to read - the adw page
-// without the viewport ceremony beyond the Scroll widget itself.
+// groups in a vertical Scroll, clamped to a readable width - the adw
+// page.
 type PreferencesPage struct {
 	composite
 	column *Box
@@ -87,12 +87,11 @@ type PreferencesPage struct {
 // NewPreferencesPage returns an empty page.
 func NewPreferencesPage() *PreferencesPage {
 	p := &PreferencesPage{}
-	p.column = NewBox(Column, 24, 0)
-	row := NewBox(Row, 0, 0)
-	row.Append(NewSpacer(0, 0), true)
-	row.AppendAligned(p.column, false, AlignStart)
-	row.Append(NewSpacer(0, 0), true)
-	p.scroll = NewScroll(row)
+	p.column = NewBox(Column, 24, 12)
+	// The page scrolls vertically only, so the groups lay out at the
+	// viewport's width, clamped readable (adw's clamp).
+	p.scroll = NewScroll(NewClamp(600, p.column))
+	p.scroll.VerticalOnly = true
 	p.initComposite(p, p.scroll)
 	return p
 }

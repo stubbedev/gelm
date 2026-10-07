@@ -33,19 +33,20 @@ closed and the map below reflects the tree as of that close.
 | Spinner | `Spinner`: anim-driven rotating arc (#30) | widget/spinner.go |
 | Separator | `NewSeparator(orientation)` (#30) | widget/separator.go |
 | Box, Stack, Overlay, ScrolledWindow | `Box` (rows narrow shrinkable children, height for width)/`Stack`/`Overlay`/`Scroll` (a CSS box; keyboard focus and a TextArea's caret scroll into view, `RevealRect`) | widget/box.go, widget/containers.go, widget/reveal.go |
-| FlowBox | `FlowBox`: wrapping lines, per-line maximum, `flowboxchild` nodes, `IndexAt` for drop targets | widget/flowbox.go |
+| FlowBox | `FlowBox`: wrapping lines, per-line maximum, `flowboxchild` nodes, `IndexAt` for drop targets; selection modes shared with `List` (#96) | widget/flowbox.go, widget/selection.go |
 | Paned | `Paned`: two panes, draggable themed divider clamped by MinSizer floors, keyboard nudges, GTK keep-child-one resize semantics (#71) | widget/paned.go |
 | Calendar | `widget.Calendar` + `app.CalendarDialog`: month grid, month/year navigation, today marker, single selection, pluggable locale names (#73) | widget/calendar.go, app/dialog.go |
 | Color picker | `widget.ColorChooser` + `app.ColorChooserDialog`: SV square (shader-less stacked gradients), hue/alpha strips, hex entry, theme presets + session palette (#72) | widget/colorchooser.go, app/dialog.go |
 | Grid | `Grid`: cells, spans, per-axis spacing/homogeneous, child align (#34); deficit negotiation — under-sized rects squeeze tracks proportionally down to per-track MinSizer floors, overflowing only past them (#67) | widget/grid.go |
-| Notebook | `Notebook`: tabs, close hook, ctrl+PageUp/PageDown | widget/notebook.go |
+| Notebook | `Notebook`: tabs, close hook, ctrl+PageUp/PageDown, drag reordering, overflow scrolling (#96) | widget/notebook.go |
 | ListView | virtualized `List`; single/browse/multiple selection modes with rubber-band drag and edge auto-scroll (#60) | widget/list.go |
 | Menu | check/radio rows, submenus, keyboard nav; Alt-letter mnemonics with underlines, accelerators firing from an open menu through the app's table (#63) | widget/menu.go |
+| ShortcutsWindow | `widget.ShortcutsView` + `app.ShortcutsDialog` from the accelerator registry (`Application.Accels`, `DescribeAction`); multi-key chords (#99) | widget/shortcuts.go, app/accel.go |
 | Popover | `app.Popover`, widget-anchored, works on layer surfaces | app/popover.go |
 | Dialog, MessageBox | `app.Dialog`, `app.MessageBox`; window-level modality through xdg-dialog-v1 with the application-level block as the floor (#61) | app/dialog.go, internal/wlsession/dialog.go |
 | Tooltip | `SetTooltip` on any widget, 500ms dwell | widget/widget.go, app/tooltip.go |
 | Drag and drop | `DragSource`/`DragEnterer` per widget, mime negotiation, cross-window | app/dragdrop.go, internal/dragdrop |
-| Icon | raster/theme/file/embedded-SVG constructors, symbolic recoloring | widget/icon.go, [icons.md](icons.md) |
+| Icon | raster/theme/file/embedded-SVG constructors, symbolic recoloring; bundled Lucide fallback set (#98) | widget/icon.go, internal/icons, [icons.md](icons.md) |
 | Image | raster `Image`: `ImageFit`/`ImageCover`/`ImageNone`, async file/URL decode, LRU pixel cache (#35) | widget/image.go, internal/imgcache |
 | Font selection | `sysfont.Sans`/`Monospace`/`Serif`/`Best(family, size)`, system-store fallback chains (#31); `Families()` enumeration + `app.FontChooserDialog` (#74) | internal/sysfont, app/dialog.go |
 | Font fallback | `render.Chain`: per-rune coverage, bitmap/CBDT/sbix color-emoji strikes (#31) | render/text.go, internal/sysfont |

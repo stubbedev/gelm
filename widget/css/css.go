@@ -37,6 +37,8 @@ const (
 	Flat = "flat"
 	// Heading is bold body text.
 	Heading = "heading"
+	// Keycap draws a label as a key on a keyboard (a shortcut's keys).
+	Keycap = "keycap"
 	// Monospace sets the monospace family.
 	Monospace = "monospace"
 	// Numeric uses tabular figures (a hint; the face decides).

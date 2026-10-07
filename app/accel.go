@@ -2,8 +2,10 @@ package app
 
 import (
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/unxed/xkb-go"
 
@@ -154,27 +156,84 @@ func normalizeSym(sym xkb.Keysym) xkb.Keysym {
 	return sym
 }
 
-// accelBinding is one registered accelerator: either an app-wide
-// binding naming an action from the action table, or a widget-scoped
-// binding that runs while exactly that widget holds keyboard focus.
+// Shortcut is a key sequence: one Accel, or a chord of several pressed
+// in turn ("ctrl+x ctrl+s", "g g").
+type Shortcut []Accel
+
+// ParseShortcut parses a shortcut: accelerators (ParseAccel's forms)
+// separated by spaces, each step pressed after the last.
+func ParseShortcut(s string) (Shortcut, error) {
+	fields := strings.Fields(s)
+	if len(fields) == 0 {
+		return nil, fmt.Errorf("app: accel %q: empty", s)
+	}
+	out := make(Shortcut, len(fields))
+	for i, f := range fields {
+		a, err := ParseAccel(f)
+		if err != nil {
+			return nil, err
+		}
+		out[i] = a
+	}
+	return out, nil
+}
+
+// String renders the canonical label: the steps' Accel labels joined
+// by spaces ("Ctrl+X Ctrl+S").
+func (s Shortcut) String() string {
+	parts := make([]string, len(s))
+	for i, a := range s {
+		parts[i] = a.String()
+	}
+	return strings.Join(parts, " ")
+}
+
+// hasPrefix reports whether p is a (non-strict) prefix of s.
+func (s Shortcut) hasPrefix(p Shortcut) bool {
+	return len(p) <= len(s) && slices.Equal(s[:len(p)], p)
+}
+
+// AccelInfo is one registered binding, as Application.Accels reports
+// it: the shortcut, and either the action an app-wide binding invokes
+// or the widget a focus-scoped one belongs to.
+type AccelInfo struct {
+	Shortcut Shortcut
+	Action   string        // app-wide bindings
+	Widget   widget.Widget // focus-scoped bindings
+}
+
+// accelBinding is one registered shortcut: either an app-wide binding
+// naming an action from the action table, or a widget-scoped binding
+// that runs while exactly that widget holds keyboard focus.
 type accelBinding struct {
+	keys   Shortcut
 	widget widget.Widget // nil for an app-wide binding
 	action string        // app-wide bindings name an action
 	run    func()        // widget-scoped bindings run directly
 }
 
-// accelTable is the application's accelerator map: keysym+mods to
-// bindings, plus the named actions app-wide bindings invoke.
+// chordTimeout is how long a chord waits for its next step.
+const chordTimeout = 1500 * time.Millisecond
+
+// accelNow is the chord clock; tests pin it.
+var accelNow = time.Now
+
+// accelTable is the application's accelerator map: shortcuts to
+// bindings in registration order, the named actions app-wide bindings
+// invoke, and the chord in progress.
 type accelTable struct {
 	actions map[string]func()
-	bound   map[Accel][]accelBinding
+	// described holds the shortcuts overview's section and title per
+	// action (DescribeAction).
+	described map[string]actionDescription
+	bound     []accelBinding
+	// pending is the chord typed so far, since pendingAt.
+	pending   Shortcut
+	pendingAt time.Time
 }
 
 func newAccelTable() *accelTable {
-	return &accelTable{
-		actions: map[string]func(){},
-		bound:   map[Accel][]accelBinding{},
-	}
+	return &accelTable{actions: map[string]func(){}, described: map[string]actionDescription{}}
 }
 
 // addAction registers a named action; re-registering a name replaces
@@ -183,30 +242,73 @@ func (t *accelTable) addAction(name string, fn func()) {
 	t.actions[name] = fn
 }
 
+// actionDescription is how the shortcuts overview presents an action.
+type actionDescription struct{ section, title string }
+
+// sections groups the app-wide bindings for the shortcuts overview:
+// sections in order of first appearance (undescribed actions under
+// "General"), one item per binding titled by its description, else
+// its action name.
+func (t *accelTable) sections() []widget.ShortcutSection {
+	var out []widget.ShortcutSection
+	index := map[string]int{}
+	for _, b := range t.bound {
+		if b.widget != nil {
+			continue // focus-scoped bindings are contextual
+		}
+		d := t.described[b.action]
+		if d.section == "" {
+			d.section = widget.Tr("General")
+		}
+		if d.title == "" {
+			d.title = b.action
+		}
+		i, ok := index[d.section]
+		if !ok {
+			i = len(out)
+			index[d.section] = i
+			out = append(out, widget.ShortcutSection{Title: d.section})
+		}
+		out[i].Items = append(out[i].Items, widget.ShortcutItem{Title: d.title, Keys: b.keys.String()})
+	}
+	return out
+}
+
+// conflict reports the binding keys would be ambiguous with in the
+// same scope: the same shortcut, or one a prefix of the other (a chord
+// could never complete, or a single key would always wait).
+func (t *accelTable) conflict(keys Shortcut, w widget.Widget) (accelBinding, bool) {
+	for _, b := range t.bound {
+		if b.widget == w && (b.keys.hasPrefix(keys) || keys.hasPrefix(b.keys)) {
+			return b, true
+		}
+	}
+	return accelBinding{}, false
+}
+
 // bindApp binds keys to a registered action. The conflict rule is an
-// error at registration: the first binding on an accelerator keeps it
-// and a second one fails naming the incumbent, so re-binding never
-// silently steals a key.
+// error at registration: the first binding keeps its keys, and a
+// second one on the same shortcut - or on a prefix or extension of it
+// - fails naming the incumbent, so re-binding never silently steals a
+// key.
 func (t *accelTable) bindApp(keys, action string) error {
-	key, err := ParseAccel(keys)
+	sc, err := ParseShortcut(keys)
 	if err != nil {
 		return err
 	}
 	if _, ok := t.actions[action]; !ok {
 		return fmt.Errorf("app: accel %q: no action %q registered", keys, action)
 	}
-	for _, b := range t.bound[key] {
-		if b.widget == nil {
-			return fmt.Errorf("app: accel %q already bound to action %q", keys, b.action)
-		}
+	if b, ok := t.conflict(sc, nil); ok {
+		return fmt.Errorf("app: accel %q conflicts with %q, bound to action %q", keys, b.keys, b.action)
 	}
-	t.bound[key] = append(t.bound[key], accelBinding{action: action})
+	t.bound = append(t.bound, accelBinding{keys: sc, action: action})
 	return nil
 }
 
 // bindWidget binds keys to fn while w itself holds keyboard focus.
-// The same keys may bind per-widget on many widgets; re-binding the
-// same widget errors like the app-wide rule.
+// The same keys may bind per-widget on many widgets; a conflicting
+// binding on the same widget errors like the app-wide rule.
 func (t *accelTable) bindWidget(w widget.Widget, keys string, fn func()) error {
 	if w == nil {
 		return fmt.Errorf("app: accel %q: nil widget", keys)
@@ -214,61 +316,121 @@ func (t *accelTable) bindWidget(w widget.Widget, keys string, fn func()) error {
 	if fn == nil {
 		return fmt.Errorf("app: accel %q: nil handler", keys)
 	}
-	key, err := ParseAccel(keys)
+	sc, err := ParseShortcut(keys)
 	if err != nil {
 		return err
 	}
-	for _, b := range t.bound[key] {
-		if b.widget == w {
-			return fmt.Errorf("app: accel %q already bound on this widget", keys)
-		}
+	if b, ok := t.conflict(sc, w); ok {
+		return fmt.Errorf("app: accel %q conflicts with %q on this widget", keys, b.keys)
 	}
-	t.bound[key] = append(t.bound[key], accelBinding{widget: w, run: fn})
+	t.bound = append(t.bound, accelBinding{keys: sc, widget: w, run: fn})
 	return nil
 }
 
 // unbind removes every binding on keys; error when none was bound.
 func (t *accelTable) unbind(keys string) error {
-	key, err := ParseAccel(keys)
+	sc, err := ParseShortcut(keys)
 	if err != nil {
 		return err
 	}
-	if len(t.bound[key]) == 0 {
+	n := len(t.bound)
+	t.bound = slices.DeleteFunc(t.bound, func(b accelBinding) bool { return slices.Equal(b.keys, sc) })
+	if len(t.bound) == n {
 		return fmt.Errorf("app: accel %q is not bound", keys)
 	}
-	delete(t.bound, key)
 	return nil
 }
 
-// fire runs the binding for sym+mods and reports whether one fired.
-// Widget-scoped bindings for the focused widget shadow the app-wide
-// binding on the same keys; a fired accelerator consumes the event,
-// so text routing and widget actions never see it.
+// infos lists the bindings in registration order.
+func (t *accelTable) infos() []AccelInfo {
+	out := make([]AccelInfo, len(t.bound))
+	for i, b := range t.bound {
+		out[i] = AccelInfo{Shortcut: slices.Clone(b.keys), Action: b.action, Widget: b.widget}
+	}
+	return out
+}
+
+// isModifierSym reports whether sym is a bare modifier key: pressing
+// ctrl between ctrl+x and ctrl+s must not break the chord.
+func isModifierSym(sym xkb.Keysym) bool {
+	switch sym {
+	case xkb.KeyShiftL, xkb.KeyShiftR, xkb.KeyControlL, xkb.KeyControlR,
+		xkb.KeyAltL, xkb.KeyAltR, xkb.KeyMetaL, xkb.KeyMetaR,
+		xkb.KeySuperL, xkb.KeySuperR, xkb.KeyCapsLock, xkb.KeyISOLevel3Shift:
+		return true
+	}
+	return false
+}
+
+// fire runs the binding for sym+mods and reports whether the key was
+// consumed. The key extends the chord in progress (dropped once it
+// waited past chordTimeout): a complete shortcut fires, a prefix of
+// one waits for the next step, and a key that matches neither ends
+// the chord and is tried on its own. Bindings in scope are the
+// focused widget's, which shadow the app-wide ones, then the app-wide
+// ones; a consumed key never reaches text routing or widget actions.
 func (t *accelTable) fire(router *widget.Router, sym xkb.Keysym, mods wlsession.Mods) bool {
-	if t == nil || len(t.bound) == 0 {
+	if t == nil || len(t.bound) == 0 || isModifierSym(sym) {
 		return false
 	}
-	bs, ok := t.bound[Accel{Sym: normalizeSym(sym), Mods: mods}]
-	if !ok {
-		return false
+	if len(t.pending) > 0 && accelNow().Sub(t.pendingAt) > chordTimeout {
+		t.pending = nil
 	}
+	var focus widget.Widget
 	if router != nil {
-		if f := router.Focused(); f != nil {
-			for _, b := range bs {
-				if b.widget == f && b.run != nil {
-					b.run()
-					return true
-				}
+		focus = router.Focused()
+	}
+	key := Accel{Sym: normalizeSym(sym), Mods: mods}
+	chord := append(slices.Clone(t.pending), key)
+	t.pending = nil
+	if t.step(chord, focus) {
+		return true
+	}
+	if len(chord) > 1 {
+		return t.step(Shortcut{key}, focus)
+	}
+	return false
+}
+
+// step resolves a chord against the bindings in scope: fires a
+// complete match (the focused widget's first), arms a prefix, and
+// reports whether either happened.
+func (t *accelTable) step(chord Shortcut, focus widget.Widget) bool {
+	prefix := false
+	for _, scope := range [2]widget.Widget{focus, nil} {
+		if scope == nil && focus != nil && prefix {
+			break // the focused widget's chord in progress shadows
+		}
+		for _, b := range t.bound {
+			if b.widget != scope {
+				continue
 			}
+			switch {
+			case slices.Equal(b.keys, chord):
+				return t.run(b)
+			case b.keys.hasPrefix(chord):
+				prefix = true
+			}
+		}
+		if focus == nil {
+			break
 		}
 	}
-	for _, b := range bs {
-		if b.widget == nil {
-			if fn, ok := t.actions[b.action]; ok {
-				fn()
-				return true
-			}
-		}
+	if prefix {
+		t.pending, t.pendingAt = chord, accelNow()
+	}
+	return prefix
+}
+
+// run invokes a binding; false when its action is gone.
+func (t *accelTable) run(b accelBinding) bool {
+	if b.run != nil {
+		b.run()
+		return true
+	}
+	if fn, ok := t.actions[b.action]; ok {
+		fn()
+		return true
 	}
 	return false
 }
@@ -279,11 +441,13 @@ func (t *accelTable) fire(router *widget.Router, sym xkb.Keysym, mods wlsession.
 // items and accels alike.
 func (a *Application) AddAction(name string, fn func()) { a.accels.addAction(name, fn) }
 
-// AddAccel binds an accelerator ("ctrl+q") to an action registered
-// with AddAction. The conflict rule is an error at registration: the
-// first binding on an accelerator keeps it, and a second AddAccel for
-// the same keysym+mods fails naming the incumbent instead of stealing
-// the key. Malformed keys or an unknown action also error.
+// AddAccel binds a shortcut - an accelerator ("ctrl+q") or a chord of
+// them pressed in turn ("ctrl+x ctrl+s", "g g") - to an action
+// registered with AddAction. The conflict rule is an error at
+// registration: the first binding keeps its keys, and a second one on
+// the same shortcut, or on a prefix or extension of it, fails naming
+// the incumbent instead of stealing the key. Malformed keys or an
+// unknown action also error.
 func (a *Application) AddAccel(keys, action string) error { return a.accels.bindApp(keys, action) }
 
 // AddWidgetAccel binds keys to fn in the focused widget's context:
@@ -298,3 +462,33 @@ func (a *Application) AddWidgetAccel(w widget.Widget, keys string, fn func()) er
 // RemoveAccel unbinds keys whatever their scope. Unbinding keys that
 // are not bound errors.
 func (a *Application) RemoveAccel(keys string) error { return a.accels.unbind(keys) }
+
+// DescribeAction sets how the shortcuts overview presents an action:
+// the section it is listed under and its human title (the action name
+// when empty).
+func (a *Application) DescribeAction(name, section, title string) {
+	a.accels.described[name] = actionDescription{section: section, title: title}
+}
+
+// ShortcutsDialog opens the shortcuts overview (GTK ShortcutsWindow):
+// every app-wide binding of the registry, grouped by the sections
+// DescribeAction gave their actions, keys drawn as keycaps. Esc
+// closes it.
+func (a *Application) ShortcutsDialog(parent *Window) (*Dialog, error) {
+	face := a.resolveFace(nil)
+	if face == nil {
+		return nil, ErrNoDialogFace
+	}
+	return a.NewDialog(parent, DialogConfig{
+		Title:          widget.Tr("Keyboard Shortcuts"),
+		Width:          420,
+		Height:         480,
+		Content:        widget.NewShortcutsView(face, a.accels.sections()),
+		Buttons:        []DialogButton{{Label: widget.Tr("Close"), Response: "close", Role: ButtonRoleCancel}},
+		CancelResponse: "close",
+	})
+}
+
+// Accels lists every binding in registration order, read-only (a
+// copy): the registry a shortcuts window or a settings page renders.
+func (a *Application) Accels() []AccelInfo { return a.accels.infos() }
