@@ -142,6 +142,29 @@ func (v *VirtualInput) ClickAt(x, y int, button uint32) error {
 	return nil
 }
 
+// DoubleClickAt clicks button twice at (x, y) as one burst: one move
+// (MoveOnto), then both press/release pairs back to back with a single
+// roundtrip, so the pair stays inside any double-click interval however
+// slow the compositor's roundtrips are.
+func (v *VirtualInput) DoubleClickAt(x, y int, button uint32) error {
+	if err := v.MoveOnto(x, y); err != nil {
+		return err
+	}
+	for range 2 {
+		if err := v.dev.Button(button, true); err != nil {
+			return err
+		}
+		if err := v.dev.Button(button, false); err != nil {
+			return err
+		}
+	}
+	if err := v.roundtrip(); err != nil {
+		return err
+	}
+	time.Sleep(settleDelay)
+	return nil
+}
+
 // DragTo presses at (x0, y0), moves in steps to (x1, y1), and
 // releases there: the gesture drag-driven widgets need (a plain click
 // neither moves a slider nor drags a scrollbar).

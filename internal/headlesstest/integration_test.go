@@ -85,20 +85,7 @@ func startShowcaseEnv(t *testing.T, env ...string) (*Client, *LogWatcher, map[st
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() {
-		c.Stop()
-		// On failure, the whole client log is the evidence; the trace
-		// tails a Wait error carries cover only what was read in time.
-		if t.Failed() {
-			if data, err := os.ReadFile(c.LogPath); err == nil {
-				lines := strings.Split(strings.TrimRight(string(data), "\n"), "\n")
-				if len(lines) > 120 {
-					lines = lines[len(lines)-120:]
-				}
-				t.Logf("client log tail:\n\t%s", strings.Join(lines, "\n\t"))
-			}
-		}
-	})
+	stopAndReport(t, c)
 	w, err := c.Watch()
 	if err != nil {
 		t.Fatal(err)
@@ -171,6 +158,26 @@ func clickUntil(w *LogWatcher, in *VirtualInput, category string, x, y int, butt
 		}
 	}
 	return fmt.Errorf("no trace [%s] %q after 3 attempts; last tail:\n%s", category, want, w.Tail(25))
+}
+
+// stopAndReport stops c when the test ends and, on failure, logs its
+// log tail: the whole client log is the evidence, the trace tails a
+// Wait error carries cover only what was read in time.
+func stopAndReport(t *testing.T, c *Client) {
+	t.Helper()
+	t.Cleanup(func() {
+		c.Stop()
+		if !t.Failed() {
+			return
+		}
+		if data, err := os.ReadFile(c.LogPath); err == nil {
+			lines := strings.Split(strings.TrimRight(string(data), "\n"), "\n")
+			if len(lines) > 120 {
+				lines = lines[len(lines)-120:]
+			}
+			t.Logf("client log tail:\n\t%s", strings.Join(lines, "\n\t"))
+		}
+	})
 }
 
 // waitPresented waits until the compositor presented the client's
@@ -586,7 +593,7 @@ func startStatesClient(t *testing.T) (*Client, *LogWatcher) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(c.Stop)
+	stopAndReport(t, c)
 	w, err := c.Watch()
 	if err != nil {
 		t.Fatal(err)
@@ -673,10 +680,26 @@ func TestHeadlessWindowStates(t *testing.T) {
 	}
 	tapUntil('p', fmt.Sprintf("polled maximized=%v", honored))
 	if honored {
-		// Hyprland restores a floating window to its own remembered
-		// geometry; the state flags are the assertion here, and the
-		// fullscreen round trip below re-asserts the pinned size.
-		tapUntil('n', "state maximized=false fullscreen=false")
+		// Whether the compositor confirms the unmaximize is its call
+		// (requests are hints); the poll below reads whatever holds.
+		tapUntil('n', "requested unmaximize")
+	}
+	// The size unfullscreen must come back to: what is confirmed now
+	// (sway: the pinned float, 420x280).
+	restore := ""
+	for attempt := 0; restore == "" && attempt < 4; attempt++ {
+		tap('p')
+		if tr, err := w.Wait("demo", "polled ", attemptTimeout); err == nil {
+			if i := strings.LastIndexByte(tr.Message, ' '); i >= 0 {
+				restore = tr.Message[i+1:]
+			}
+		}
+	}
+	if restore == "" {
+		t.Fatalf("the poll never answered: %s", tailTraces(w, 15))
+	}
+	if !honored && restore != fmt.Sprintf("%dx%d", statesW, statesH) {
+		t.Errorf("confirmed size %s, want the pinned %dx%d", restore, statesW, statesH)
 	}
 
 	// Fullscreen from floating: the output-sized configure is a REAL
@@ -689,8 +712,8 @@ func TestHeadlessWindowStates(t *testing.T) {
 	default:
 	}
 
-	// Unfullscreen restores the pinned floating size.
-	tapUntil('g', fmt.Sprintf("fullscreen=false %dx%d", statesW, statesH))
+	// Unfullscreen restores the size confirmed before it.
+	tapUntil('g', "fullscreen=false "+restore)
 
 	// Close while fullscreen: fullscreen again, then the COMPOSITOR
 	// closes the window (sway kill, the real xdg_toplevel.close event).
@@ -722,7 +745,7 @@ func startMultilistClient(t *testing.T) (*Client, *LogWatcher, [][2]int) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(c.Stop)
+	stopAndReport(t, c)
 	w, err := c.Watch()
 	if err != nil {
 		t.Fatal(err)
@@ -810,17 +833,11 @@ func TestHeadlessListMultiSelect(t *testing.T) {
 	// A rapid second click on a row activates it (double-click opens)
 	// without toggling its membership back out: the first click removes
 	// row 6 from the set, the pair then activates it.
-	if err := in.ClickAt(rows[6][0], rows[6][1], BTNLeft); err != nil {
-		t.Fatalf("first click on row 6: %v", err)
+	if err := in.DoubleClickAt(rows[6][0], rows[6][1], BTNLeft); err != nil {
+		t.Fatalf("double click on row 6: %v", err)
 	}
-	if _, err := w.Wait("demo", "selection [5,7]", traceTimeout); err != nil {
-		t.Errorf("the first click of the pair never toggled row 6 out: %v", err)
-	}
-	if err := in.ClickAt(rows[6][0], rows[6][1], BTNLeft); err != nil {
-		t.Fatalf("second click on row 6: %v", err)
-	}
-	if _, err := w.Wait("demo", "activated 6", traceTimeout); err != nil {
-		t.Errorf("the rapid pair never activated row 6: %v", err)
+	if err := w.WaitAll("demo", traceTimeout, "selection [5,7]", "activated 6"); err != nil {
+		t.Errorf("the rapid pair did not toggle row 6 out and activate it: %v", err)
 	}
 }
 
@@ -936,7 +953,7 @@ func TestHeadlessPopoverTakesTypingAndRepaints(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(c.Stop)
+	stopAndReport(t, c)
 	w, err := c.Watch()
 	if err != nil {
 		t.Fatal(err)
@@ -1024,7 +1041,7 @@ func TestHeadlessNestedMenuPopover(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(c.Stop)
+	stopAndReport(t, c)
 	w, err := c.Watch()
 	if err != nil {
 		t.Fatal(err)
