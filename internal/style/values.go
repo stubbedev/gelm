@@ -59,6 +59,7 @@ const (
 	PropTextTransform
 	PropLineHeight
 	PropFontFeatures
+	PropFontVariations
 	PropTransform
 	PropTransformOrigin
 	PropIconSize
@@ -95,8 +96,9 @@ func setOf(ps ...Prop) PropSet {
 	return s
 }
 
-// allProps is every longhand: the reach of the `all` shorthand.
-const allProps = PropSet(1)<<numProps - 1
+// allProps is every longhand: the reach of the `all` shorthand. The
+// shift form holds with the 64-bit set full.
+const allProps = ^PropSet(0) >> (64 - numProps)
 
 // inheritedProps is the CSS (and GTK) inherited set: color, the font
 // group, letter-spacing, text-transform, line-height, and
@@ -104,7 +106,7 @@ const allProps = PropSet(1)<<numProps - 1
 // longhand table.
 var inheritedProps = setOf(PropColor, PropFontFamily, PropFontSize, PropFontWeight,
 	PropFontStyle, PropLetterSpacing, PropTextTransform, PropLineHeight,
-	PropFontFeatures, PropIconSize)
+	PropFontFeatures, PropFontVariations, PropIconSize)
 
 // Sides is a per-side length set, in logical pixels, in CSS's
 // top-right-bottom-left order.
@@ -323,6 +325,9 @@ type Values struct {
 	// (`on=1;ss01=0;tnum=1`, sorted); empty is `normal`. The text
 	// shaper honors the tags it knows (tnum today).
 	Features string
+	// Variations is the font-variation-settings axis list in canonical
+	// form (`wdth=80.5;wght=650`, sorted); empty is `normal`.
+	Variations string
 	// Transform carries the transform property: the composed affine
 	// the widget paints its subtree through, with the primitive list
 	// the tweens interpolate. The identity means unset; the parser

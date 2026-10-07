@@ -98,18 +98,19 @@ func init() {
 		"min-height":     {setOf(PropMinHeight), lengthInto(func(v *Values) *int { return &v.MinHeight }, false)},
 		"border-spacing": {setOf(PropBorderSpacing), parseBorderSpacing},
 
-		"font-family":           {setOf(PropFontFamily), parseFontFamily},
-		"font-size":             {setOf(PropFontSize), parseFontSize},
-		"font-weight":           {setOf(PropFontWeight), parseFontWeight},
-		"font-style":            {setOf(PropFontStyle), parseFontStyle},
-		"font":                  {setOf(PropFontFamily, PropFontSize, PropFontWeight, PropFontStyle), parseFont},
-		"letter-spacing":        {setOf(PropLetterSpacing), parseLetterSpacing},
-		"text-transform":        {setOf(PropTextTransform), parseTextTransform},
-		"line-height":           {setOf(PropLineHeight), parseLineHeight},
-		"transform":             {setOf(PropTransform), parseTransform},
-		"transform-origin":      {setOf(PropTransformOrigin), parseTransformOrigin},
-		"font-feature-settings": {setOf(PropFontFeatures), parseFontFeatures},
-		"-gtk-icon-size":        {setOf(PropIconSize), lengthInto(func(v *Values) *int { return &v.IconSize }, false)},
+		"font-family":             {setOf(PropFontFamily), parseFontFamily},
+		"font-size":               {setOf(PropFontSize), parseFontSize},
+		"font-weight":             {setOf(PropFontWeight), parseFontWeight},
+		"font-style":              {setOf(PropFontStyle), parseFontStyle},
+		"font":                    {setOf(PropFontFamily, PropFontSize, PropFontWeight, PropFontStyle), parseFont},
+		"letter-spacing":          {setOf(PropLetterSpacing), parseLetterSpacing},
+		"text-transform":          {setOf(PropTextTransform), parseTextTransform},
+		"line-height":             {setOf(PropLineHeight), parseLineHeight},
+		"transform":               {setOf(PropTransform), parseTransform},
+		"transform-origin":        {setOf(PropTransformOrigin), parseTransformOrigin},
+		"font-feature-settings":   {setOf(PropFontFeatures), parseFontFeatures},
+		"font-variation-settings": {setOf(PropFontVariations), parseFontVariations},
+		"-gtk-icon-size":          {setOf(PropIconSize), lengthInto(func(v *Values) *int { return &v.IconSize }, false)},
 
 		"transition":                 {transitionProps, parseTransition},
 		"transition-property":        {setOf(PropTransitionProperty), parseTransitionProperty},
@@ -1174,6 +1175,36 @@ func parseTransformOrigin(ts []token, cx *ctx, v *Values) bool {
 		fy = 0.5
 	}
 	v.OriginFrac, v.OriginPx = [2]float64{fx, fy}, [2]float64{px, py}
+	return true
+}
+
+// parseFontVariations parses `normal` or the axis list: each "tag" (a
+// quoted four-character axis tag) and its number. The list lands in
+// canonical sorted `tag=value` form so the comparable Values can hold
+// it.
+func parseFontVariations(ts []token, _ *ctx, v *Values) bool {
+	if first := components(ts)[0]; first[0].ident("normal") {
+		v.Variations = ""
+		return true
+	}
+	var parts []string
+	for _, comp := range splitTop(ts, tkComma) {
+		comps := components(comp)
+		if len(comps) != 2 {
+			return false
+		}
+		tag := strings.Trim(comps[0][0].s, "\"'")
+		if len(tag) != 4 {
+			return false
+		}
+		n, ok := evalNumeric(comps[1], &ctx{})
+		if !ok || n.kind != numNumber {
+			return false
+		}
+		parts = append(parts, fmt.Sprintf("%s=%g", tag, n.v))
+	}
+	slices.Sort(parts)
+	v.Variations = strings.Join(parts, ";")
 	return true
 }
 

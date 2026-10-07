@@ -137,7 +137,8 @@ ships without a painter:
 | `padding` | content insets | Box, Button, Label, Entry, TextArea, containers | no |
 | `font-family` | font chain head (sysfont/Chain) | text widgets | yes |
 | `font-size` | text size (px) | text widgets | yes |
-| `font-weight` | face weight selection | text widgets | yes |
+| `font-weight` | face weight selection (a variable face's wght axis) | text widgets | yes |
+| `font-variation-settings` | variable-font axes (`"wght" 650, "wdth" 80`) | text widgets | yes |
 | `border-radius` | rounded-rect corners | Button, Entry, Switch, ListRow, panels, popovers, toasts, dialogs | no |
 | `border-width` | outline stroke width | Button, Entry focus ring | no |
 | `border-color` | outline stroke color | Button, Entry focus ring | no |
@@ -321,7 +322,8 @@ widgets that honor each property today, each with a golden:
 | `padding` | Button (measure + arrange), Box, Entry text inset, Label content inset | `css-button-properties` |
 | `font-family` | Label, through the app-installed face resolver (`widget.SetFaceResolver`; without one the constructor face stays, the same graceful no-op as an unknown element name) | `css-label-font-family` |
 | `font-size` | Label (reshape + relayout), Entry (shape, measure, caret) | `css-label-font-size` |
-| `font-weight` | Label, through the same resolver (`normal`/`bold`/number) | `css-label-font-weight` |
+| `font-weight` | Label, through the same resolver (`normal`/`bold`/number); a variable face takes the weight on its wght axis (#100) | `css-label-font-weight`, `variable-weights` |
+| `font-variation-settings` | Label: axis settings on a variable face, overriding font-weight's wght (#100) | `variable-weights` |
 | `border-radius` | Button, Entry, Toast, Elevation | `css-button-properties`, `css-dialog-card` |
 | `border-width`, `border-color` | Button and Entry stroke their outline (the fill shrinks inside the ring) | `css-button-properties`, `css-entry-min-border` |
 | `box-shadow` | Toast and Elevation (`COLOR BLUR` or `none`; the damage ring follows the effective blur) | `css-toast-shadow`, `css-dialog-card` |
@@ -368,7 +370,8 @@ adapters, rank table) are what replaced the prototype's 261 allocs.
   `internal/sysfont` directly: face loading is the app's font store's
   job, goldens never consult host fonts, and without a resolver the
   declarations keep the constructor face — degraded but running, like
-  an unknown element name.
+  an unknown element name. A variable constructor face still takes
+  `font-weight` on its wght axis without a resolver.
 - **Popover names its content tree** (the card the app hands over is
   the popover surface), and the dialog names its Elevation card — or
   the plain root box when client shadows are off. There is no separate
