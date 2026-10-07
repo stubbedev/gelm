@@ -1,5 +1,3 @@
-//go:build atspi
-
 // Introspection XML for the served interfaces, mirroring the
 // at-spi2-core interface definitions (xml/*.xml) — AT tooling
 // introspects objects before calling, so the signatures must match the
@@ -340,4 +338,16 @@ const xmlIntrospectable = `  <interface name="org.freedesktop.DBus.Introspectabl
     <method name="Introspect">
       <arg name="data" type="s" direction="out"/>
     </method>
+  </interface>`
+
+const xmlCache = `  <interface name="org.a11y.atspi.Cache">
+    <method name="GetItems">
+      <arg direction="out" type="a((so)(so)(so)iiassusau)"/>
+    </method>
+    <signal name="AddAccessible">
+      <arg name="nodeAdded" type="((so)(so)(so)iiassusau)"/>
+    </signal>
+    <signal name="RemoveAccessible">
+      <arg name="nodeRemoved" type="(so)"/>
+    </signal>
   </interface>`

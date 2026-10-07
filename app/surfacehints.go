@@ -86,12 +86,9 @@ func (a *Application) Bell(host Host) error {
 
 // ringFor is the widget error bell: it rings the window holding w.
 func (a *Application) ringFor(w widget.Widget) {
-	root := widget.RootOf(w)
-	for _, hw := range a.windows {
-		if hw.router != nil && hw.router.Root == root {
-			_ = a.sess.Bell(hw.host.HostSurface())
-			return
-		}
+	if hw := a.windowOf(w); hw != nil {
+		_ = a.sess.Bell(hw.host.HostSurface())
+		return
 	}
 	_ = a.sess.Bell(nil)
 }

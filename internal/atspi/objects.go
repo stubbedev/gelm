@@ -1,5 +1,3 @@
-//go:build atspi
-
 // The D-Bus object surface: the AT-SPI interface handlers exported per
 // accessible object. Each interface is a small struct with the
 // interface's methods (godbus's ExportAll path — the map form of
@@ -7,7 +5,9 @@
 // appearance tests already note). Every handler reads the published
 // snapshot under the bridge mutex — no widget is ever touched from the
 // D-Bus handler goroutine — and the actions that must reach widgets
-// (DoAction, SetCurrentValue) hop through Scene.Invoke onto the loop.
+// (DoAction, SetCurrentValue, GrabFocus, the caret and selection
+// setters) hop through Scene.Invoke onto the loop; the geometry probes
+// wait for theirs (programmatic.go).
 package atspi
 
 import (
@@ -147,10 +147,6 @@ func (o *componentIface) GetSize() (int32, int32) {
 func (o *componentIface) GetLayer() uint32    { return 3 } // WIDGET
 func (o *componentIface) GetMDIZOrder() int16 { return -1 }
 
-// GrabFocus is honestly false: the semantic model is read-only and
-// gelm exposes no programmatic focus setter — focus belongs to the
-// Router's input path.
-func (o *componentIface) GrabFocus() bool                                    { return false }
 func (o *componentIface) GetAlpha() float64                                  { return 1.0 }
 func (o *componentIface) SetExtents(x, y, w, h int32, coordType uint32) bool { return false }
 func (o *componentIface) SetPosition(x, y int32, coordType uint32) bool      { return false }
@@ -160,9 +156,8 @@ func (o *componentIface) ScrollToPoint(coordType uint32, x, y int32) bool    { r
 
 // textIface is org.a11y.atspi.Text for text-bearing roles. The rune
 // offsets are the semantic model's. The caret and selection setters
-// are honestly false — gelm exposes no programmatic caret or selection
-// API (the semantic model is deliberately read-only), and a read-only
-// Text is a well-formed AT-SPI citizen.
+// and the character geometry live in programmatic.go: they reach the
+// widget (widget.TextSelector, widget.TextGeometry) on the loop.
 type textIface struct {
 	b  *Bridge
 	id int32
@@ -194,8 +189,13 @@ func (o *textIface) GetCharacterCount() int32 {
 	return int32(len(o.runes()))
 }
 
+// GetText is start..end; an end of -1 reads to the end (the AT-SPI
+// convention ATs use to fetch everything).
 func (o *textIface) GetText(start, end int32) string {
 	r := o.runes()
+	if end < 0 {
+		end = int32(len(r))
+	}
 	start = max32(0, min32(start, int32(len(r))))
 	end = max32(start, min32(end, int32(len(r))))
 	return string(r[start:end])
@@ -206,7 +206,7 @@ func (o *textIface) GetCharacterAtOffset(offset int32) int32 {
 	if offset < 0 || offset >= int32(len(r)) {
 		return -1
 	}
-	return int32(r[offset])
+	return r[offset]
 }
 
 func (o *textIface) GetNSelections() int32 {
@@ -278,27 +278,10 @@ func (o *textIface) GetAttributeRun(offset int32, includeDefaults bool) (map[str
 func (o *textIface) GetDefaultAttributes() map[string]string   { return map[string]string{} }
 func (o *textIface) GetDefaultAttributeSet() map[string]string { return map[string]string{} }
 
-// Per-glyph geometry is not in the semantic model (it is shaping-time
-// state), so the extent and point probes report nothing rather than
-// guessing.
-func (o *textIface) GetCharacterExtents(offset int32, coordType uint32) (int32, int32, int32, int32) {
-	return 0, 0, 0, 0
-}
-
-func (o *textIface) GetOffsetAtPoint(x, y int32, coordType uint32) int32 { return -1 }
-
-func (o *textIface) GetRangeExtents(start, end int32, coordType uint32) (int32, int32, int32, int32) {
-	return 0, 0, 0, 0
-}
-
 func (o *textIface) GetBoundedRanges(x, y, w, h int32, coordType, xClip, yClip uint32) []any {
 	return []any{}
 }
 
-func (o *textIface) SetCaretOffset(offset int32) bool                           { return false }
-func (o *textIface) AddSelection(start, end int32) bool                         { return false }
-func (o *textIface) RemoveSelection(num int32) bool                             { return false }
-func (o *textIface) SetSelection(num, start, end int32) bool                    { return false }
 func (o *textIface) ScrollSubstringTo(start, end int32, scrollType uint32) bool { return false }
 func (o *textIface) ScrollSubstringToPoint(start, end int32, coordType uint32, x, y int32) bool {
 	return false
@@ -462,6 +445,11 @@ type introspectIface struct {
 func (o *introspectIface) Introspect() (string, *dbus.Error) {
 	return introspectionXML(o.text, o.action, o.value, o.app), nil
 }
+
+// xmlIntrospect answers Introspect with a fixed document.
+type xmlIntrospect struct{ xml string }
+
+func (o *xmlIntrospect) Introspect() (string, *dbus.Error) { return o.xml, nil }
 
 // toolkitVersion reports the module's version from the build info,
 // "devel" for untagged checkouts.

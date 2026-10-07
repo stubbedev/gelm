@@ -884,16 +884,23 @@ func (t *TextArea) clampPan(l, x int) int {
 // visually — at the line origin linePan positions.
 func (t *TextArea) caretX(l, col int) int {
 	t.ensureRows(t.wrapWidth())
-	row := t.rows[t.rowOf(pos{l, min(max(col, 0), len(t.lines[l]))})]
-	rs := t.displayLine(l)[row.startCol:row.endCol]
+	ri := t.rowOf(pos{l, min(max(col, 0), len(t.lines[l]))})
+	sh, x := t.rowLayout(ri)
+	return x + int(sh.CaretX(col-t.rows[ri].startCol)+0.5)
+}
+
+// rowLayout is visual row ri shaped, with the screen x its caret
+// offsets count from (the reading edge, pan applied).
+func (t *TextArea) rowLayout(ri int) (*render.ShapedText, int) {
+	row := t.rows[ri]
 	// One conversion serves both the shape cache key and the RTL read.
-	s := string(rs)
+	s := string(t.displayLine(row.line)[row.startCol:row.endCol])
 	sh := t.font().ShapeDir(s, t.px(), t.dir)
-	x := t.textRect().X - t.linePan(l)
+	x := t.textRect().X - t.linePan(row.line)
 	if text.RTL(s, t.dir) {
 		x += t.wrapWidth() - int(sh.Advance()+0.5)
 	}
-	return x + int(sh.CaretX(col-row.startCol)+0.5)
+	return sh, x
 }
 
 // panToCaret adjusts the caret line's pan so the caret stays visible:

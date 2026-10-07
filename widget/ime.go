@@ -209,8 +209,13 @@ func (e *Entry) IMECursorRect() render.Rect {
 		caret = e.peAt + len(e.peText)
 	}
 	x := e.caretX(e.shape(e.displayText()), caret)
-	return render.Rect{X: x, Y: e.bounds.Y + 6, W: 2, H: max(e.bounds.H-12, 0)}
+	y, h := e.caretBand()
+	return render.Rect{X: x, Y: y, W: 2, H: h}
 }
+
+// caretBand is the vertical extent of the text line: the caret's, and
+// every character's.
+func (e *Entry) caretBand() (y, h int) { return e.bounds.Y + 6, max(e.bounds.H-12, 0) }
 
 // IMEMultiline implements IMETracker.
 func (e *Entry) IMEMultiline() bool { return false }

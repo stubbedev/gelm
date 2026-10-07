@@ -100,7 +100,7 @@ deliberate non-goals and the honest, deferred gaps — lives in
 | Fractional scale | done | 120-based rational scales end to end; logical coordinates for input, layout, and carets; text rasterizes at device scale |
 | Rendering | done | premultiplied-alpha ARGB8888, signed-distance AA (coverage scales all channels), shaped text, SVG/PNG icons |
 | Translucent surfaces | done | `Background` alpha < 255 composites for compositor blur (Hyprland blurs translucent layer surfaces; panels keep alpha ≈ 200–235); a fully opaque background sets `wl_surface.set_opaque_region` automatically — see [docs/architecture.md](docs/architecture.md), rule 13 |
-| Accessibility | done | semantic roles + `DescribeTree`, keyboard-first guarantee pinned by tests; in-process AT-SPI bridge behind the `atspi` build tag (Accessible/Component/Text/Action/Value, minimal event set) — see [docs/a11y.md](docs/a11y.md) |
+| Accessibility | done | semantic roles + `DescribeTree`, keyboard-first guarantee pinned by tests; in-process AT-SPI bridge in every build, serving while the desktop asks for assistive technologies (Accessible/Component/Text/Action/Value/Cache, focus/caret/selection setters, character geometry, text and property events) — see [docs/a11y.md](docs/a11y.md) |
 | Icon themes | done | freedesktop icon-theme spec lookup in pure Go; follows the portal's live icon-theme setting (empty keeps the previous theme) — see [docs/icons.md](docs/icons.md) |
 | System dark/light preference | done | `internal/appearance` watches xdg-desktop-portal `color-scheme` via godbus (pure Go); reports `Dark`/`Light`/`Unknown` + `OnChange` — the app wires it to `widget.SetTheme`, gelm never switches on its own — see [docs/appearance.md](docs/appearance.md) |
 
