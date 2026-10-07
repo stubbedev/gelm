@@ -20,3 +20,5 @@ require (
 	github.com/yalue/native_endian v1.0.2 // indirect
 	golang.org/x/net v0.45.0 // indirect
 )
+
+replace github.com/neurlang/wayland => ./third_party/neurlang-wayland
