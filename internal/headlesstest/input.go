@@ -111,9 +111,24 @@ func (v *VirtualInput) press(button uint32, pressed bool) error {
 	return v.roundtrip()
 }
 
-// ClickAt presses and releases button at (x, y).
+// MoveOnto moves the pointer onto (x, y) so the compositor always
+// sees motion arriving there, from a pixel off: a window can map under
+// a pointer that already rests on the spot (the client traces its
+// layout before its first frame lands), or a retry can aim at the
+// spot the last attempt left the pointer on - and a compositor that
+// sends no enter for a surface appearing under a resting cursor
+// (Hyprland) then leaves the press with no surface at all.
+func (v *VirtualInput) MoveOnto(x, y int) error {
+	if err := v.MoveTo(x+1, y); err != nil {
+		return err
+	}
+	return v.MoveTo(x, y)
+}
+
+// ClickAt presses and releases button at (x, y), arriving there with
+// motion (MoveOnto).
 func (v *VirtualInput) ClickAt(x, y int, button uint32) error {
-	if err := v.MoveTo(x, y); err != nil {
+	if err := v.MoveOnto(x, y); err != nil {
 		return err
 	}
 	if err := v.press(button, true); err != nil {
@@ -166,13 +181,15 @@ func (v *VirtualInput) ScrollAt(x, y int, dy float64) error {
 
 // Tap presses and releases one key.
 func (v *VirtualInput) Tap(code uint32) error {
+	// Press and release go out together and settle with one roundtrip:
+	// a roundtrip between them measures the compositor's speed, and on
+	// a slow one (the software-rendered Hyprland VM, ~0.5-2s) that hold
+	// outlasts the key-repeat delay the compositor gives a virtual
+	// keyboard - its configured repeat_delay applies to real keyboards
+	// only - so a tap became a held, repeating key ("hi" typed "hhii").
 	if err := v.dev.Key(code, true); err != nil {
 		return err
 	}
-	if err := v.roundtrip(); err != nil {
-		return err
-	}
-	time.Sleep(pressDelay)
 	if err := v.dev.Key(code, false); err != nil {
 		return err
 	}

@@ -27,8 +27,11 @@ let
   # Same pin set the sway recipe uses (internal/headlesstest guards
   # them): the showcase, the states client and the multilist client
   # float at fixed sizes and positions so client-traced widget
-  # coordinates are compositor coordinates. Hyprland 0.56 legacy rule
-  # syntax: "windowrule = <field> <value>, ..." where fields are
+  # coordinates are compositor coordinates. The config must verify
+  # clean (Hyprland --verify-config): any error raises an error banner
+  # that reserves a strip at the top of the output, shifting every
+  # window off the coordinates the clients trace - which is what kept
+  # this gate red from #66 on. Hyprland 0.56 legacy rule syntax: "windowrule = <field> <value>, ..." where fields are
   # effects (float, size, move) or "match:<prop> <regex>".
   hyprConf = pkgs.writeText "gelm-vm-hypr.conf" ''
     monitor=,preferred,auto,1
@@ -36,12 +39,20 @@ let
     animations {
         enabled = 0
     }
+    # The harness taps keys with a roundtrip between press and release;
+    # on this software-rendered VM one roundtrip (~800ms) outlasts the
+    # default 600ms repeat delay, turning every tap into a repeating
+    # held key. Taps are taps: repeat starts far past any roundtrip.
+    input {
+        repeat_delay = 5000
+    }
     decoration {
         rounding = 0
-        drop_shadow = 0
+        shadow {
+            enabled = false
+        }
     }
     misc {
-        disable_hyprland_qtutils_check = true
         disable_splash_rendering = true
         force_default_wallpaper = 0
     }
@@ -117,6 +128,8 @@ pkgs.testers.nixosTest {
       environment.systemPackages = [
         pkgs.hyprland
         go
+        # The client-side cursor path's theme (XCURSOR_PATH below).
+        pkgs.vanilla-dmz
       ];
     };
 
@@ -139,6 +152,15 @@ pkgs.testers.nixosTest {
       machine.succeed(
         "install -m 0644 -o ${gelmUser} -g users ${hyprConf} ${runtimeDir}/hypr.conf"
       )
+
+      # A config error is not a warning here: Hyprland's error banner
+      # reserves a strip of the output and shifts every window off the
+      # coordinates the clients trace. Refuse to boot on one.
+      verdict = machine.succeed(
+        "su - ${gelmUser} -c 'XDG_RUNTIME_DIR=${runtimeDir} Hyprland --verify-config -c ${runtimeDir}/hypr.conf 2>&1' | tail -n 5"
+      )
+      if "config ok" not in verdict:
+          raise Exception("the Hyprland config does not verify:\n" + verdict)
 
       hypr_env = (
         "XDG_RUNTIME_DIR=${runtimeDir} HYPRLAND_INSTANCE_SIGNATURE=${sig} "
@@ -214,6 +236,7 @@ pkgs.testers.nixosTest {
         + " HYPRLAND_INSTANCE_SIGNATURE="
         + hypr_sig
         + " GELM_HEADLESS=1 GELM_TEST_COMPOSITOR=hyprland "
+        "XCURSOR_PATH=${pkgs.vanilla-dmz}/share/icons XCURSOR_THEME=Vanilla-DMZ "
         "GOFLAGS=-mod=vendor GOPROXY=off GOSUMDB=off "
         "GOCACHE=/tmp/gocache GOPATH=/tmp/gopath CGO_ENABLED=0 "
       )
@@ -239,8 +262,17 @@ pkgs.testers.nixosTest {
             + " >/tmp/gelmtest/suite.log 2>&1'"
           )
       except Exception:
-          print(machine.execute("tail -n 120 /tmp/gelmtest/suite.log")[1])
+          # The whole suite log: each failing test carries its client's
+          # log tail, the evidence a 120-line suite tail cuts off.
+          print(machine.execute("cat /tmp/gelmtest/suite.log")[1])
           print(machine.execute(f"tail -n 60 {runtime_dir}/hypr/{hypr_sig}/hyprland.log")[1])
+          # Each client's keyboard story: the keymaps it received and the
+          # keys it routed - the evidence a key test failure needs.
+          print(machine.execute(
+            f"for f in {runtime_dir}/client-*.log; do echo \"== $f\"; "
+            "grep -E 'keymap|keyboard|popover key|wire key|modifiers|demo: key' $f | head -n 16; done"
+          )[1])
+          print(machine.execute(f"grep -niE 'sessionlock|session lock|lockdead|refusing|unlock' {runtime_dir}/hypr/{hypr_sig}/hyprland.log | head -n 80")[1])
           raise Exception("compositor-in-the-loop suite failed on Hyprland")
       print(machine.succeed("tail -n 200 /tmp/gelmtest/suite.log"))
     '';

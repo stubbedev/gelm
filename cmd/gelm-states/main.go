@@ -73,6 +73,7 @@ func run() error {
 		Background: widget.Current().Bg,
 		OnClosed:   func() { debug.Log("demo", "closed") },
 		OnKey: func(_ *widget.Router, code uint32, mods wlsession.Mods) {
+			debug.Log("demo", "key sym=%v mods=%#x", application.KeySym(code), uint32(mods))
 			if mods&wlsession.ModAlt != 0 {
 				return
 			}
