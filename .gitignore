@@ -1,6 +1,6 @@
-/gelm-bar
-/gelm-panel
-/gelm-hello
+# Binaries `go build ./cmd/<name>` drops in the repo root.
+/gelm-*
+!/gelm-*/
 *.test
 
 # Devenv

@@ -33,8 +33,12 @@
             version = self.shortRev or "dev";
             src = self;
             env.CGO_ENABLED = "0";
-            vendorHash = "sha256-iZuwAslRVoSKAo/cZBVjjPHqcENi0tPj5JEaw/WLrC4=";
+            vendorHash = "sha256-kHgYpZBR72bbozU09berXb0VjoLJ/YduK7GfZENaS2E=";
             doCheck = false;
+            # third_party/ holds patched upstream modules wired in with
+            # go.mod replace directives - their own modules, not gelm
+            # packages to build.
+            excludedPackages = [ "third_party" ];
 
             meta = with lib; {
               license = licenses.mit;

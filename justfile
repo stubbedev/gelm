@@ -96,12 +96,16 @@ build:
     go build -o /dev/null ./cmd/gelm-bar
 
 # Format every Go source in place with gofumpt (stricter gofmt).
+# The Go sources gelm formats: everything but third_party/, upstream
+# code carried verbatim (see third_party/*/README.gelm.md).
+go_sources := "$(find . -name '*.go' -not -path './third_party/*' -not -path './.devenv/*' -not -path './.git/*' -not -name '*.xml.go')"
+
 fmt:
-    gofumpt -w .
+    gofumpt -w {{go_sources}}
 
 # The formatting gate: fail when any source is not gofumpt-clean.
 fmt-check:
-    test -z "$(gofumpt -l .)" || { echo 'not gofumpt-clean:'; gofumpt -l .; exit 1; }
+    test -z "$(gofumpt -l {{go_sources}})" || { echo 'not gofumpt-clean:'; gofumpt -l {{go_sources}}; exit 1; }
 
 # Run the widget showcase (gelm-hello): clicks, drag, tooltips, menu, Tab focus.
 demo:
@@ -181,6 +185,7 @@ test-env dir=test_dir:
     printf '%s\n' 'output * mode 1280x800 scale 1' \
         'default_border none' \
         'default_floating_border none' \
+        'input type:keyboard repeat_delay 5000' \
         'for_window [app_id="dev.stubbe.gelm.hello"] floating enable, move position 0 0, resize set 640 470' \
         'for_window [app_id="dev.stubbe.gelm.states"] floating enable, move position 40 40, resize set 420 280' \
         'for_window [app_id="dev.stubbe.gelm.multilist"] floating enable, move position 0 0, resize set 300 300' \
