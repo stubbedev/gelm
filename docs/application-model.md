@@ -180,9 +180,41 @@ early boot, tests) get the same dialog. The seam is
 `DirSource`, so a future xdg-desktop-portal backend plugs in under the
 same dialog API without touching the picker's UI. Recents are the
 XDG `recently-used.xbel` list (`internal/recentfiles`), shared with
-the desktop's other citizens, bounded and written atomically; the
-`text/uri-list` parsing the clipboard and drag-and-drop will need
-lives next to it (`recentfiles.ParseURIList`).
+the desktop's other citizens, bounded and written atomically, with
+their uris through the same `transfer.FileURI`/`URIPath` the
+clipboard and drag and drop use.
+
+## Clipboard and drag and drop
+
+Every data transfer shares one shape, `transfer.Content`: the mimes a
+payload is offered as, best first, and a writer per mime. The
+builders encode up front - `Text`, `Image` (PNG plus a JPEG flattened
+onto white, so image editors that only read JPEG paste too), `Files`
+and `URIs` (`text/uri-list` with the uris as plain text), `HTML`
+(formatted text with its plain fallback) - and `Merge` combines them.
+`Clipboard.Write` claims the selection with any content;
+`Clipboard.Read(prefs...)` reads the best mime offered, with
+`ReadText`, `ReadImageBytes`, `ReadURIs` and `ReadHTML` on top.
+
+A drag is a `transfer.Drag` (`widget.DragContent`): content plus the
+actions it offers (copy unless set; a row reorder offers move),
+`OnFeedback` for the destination's acceptance and the negotiated
+action, and `OnDone` with the action the drop finished as
+(`ActionMove`: delete the source data; `ActionNone`: cancelled). A
+drop target picks among the offered actions through
+`widget.DropActionChooser`; an ask drop settles on that pick, since
+gelm shows no drop menu. Escape cancels the application's own drag
+when the compositor delivers the key (most cancel on Escape
+themselves), and `Application.CancelDrag` does it from code.
+
+A non-text paste target implements `widget.ContentPaster` (its mimes,
+best first); `widget.Image` reads images that way. Failed transfers -
+a paste or drop whose peer exceeded `xfer.MaxPayload`, stalled past
+the deadline, or broke the pipe - reach
+`Application.SetTransferErrorHandler` for a toast; an empty clipboard
+is not an error. A middle-click paste over a read-only text widget is
+refused there, ringing the error bell, rather than redirected to the
+keyboard focus.
 
 ## Window chrome
 

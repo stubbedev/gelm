@@ -1,10 +1,10 @@
 package widget
 
 import (
-	"io"
 	"slices"
 
 	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/gelm/transfer"
 )
 
 // ColumnView is the virtualized table (#90): typed columns over a
@@ -310,11 +310,8 @@ type dragRow[T any] struct {
 // DragContent implements DragSource.
 func (d *dragRow[T]) DragContent() *DragContent {
 	return &DragContent{
-		Mimes: []string{rowReorderMime},
-		Write: func(mime string, w io.Writer) error {
-			_, err := w.Write([]byte(rowKey(d.at)))
-			return err
-		},
+		Content: transfer.Bytes(rowReorderMime, []byte(rowKey(d.at))),
+		Actions: transfer.ActionMove,
 	}
 }
 

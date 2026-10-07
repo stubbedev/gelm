@@ -9,6 +9,7 @@ import (
 	"github.com/neurlang/wayland/wl"
 
 	"github.com/stubbedev/gelm/internal/wlsession"
+	"github.com/stubbedev/gelm/transfer"
 )
 
 // fakeOffer records the requests the controller sends to one offer.
@@ -65,6 +66,8 @@ func (f *fakeSource) AddSendHandler(wl.DataSourceSendHandler)                   
 func (f *fakeSource) AddCancelledHandler(wl.DataSourceCancelledHandler)               {}
 func (f *fakeSource) AddDndDropPerformedHandler(wl.DataSourceDndDropPerformedHandler) {}
 func (f *fakeSource) AddDndFinishedHandler(wl.DataSourceDndFinishedHandler)           {}
+func (f *fakeSource) AddTargetHandler(wl.DataSourceTargetHandler)                     {}
+func (f *fakeSource) AddActionHandler(wl.DataSourceActionHandler)                     {}
 
 // fakeMaker hands out one fake source; the wire proxy is an opaque
 // identity the controller only names in start_drag.
@@ -174,7 +177,7 @@ func TestEnterAsksTargetAndStoresSerial(t *testing.T) {
 }
 
 func TestAcceptUsesEnterSerialAndVersion(t *testing.T) {
-	t.Run("version 3 accepts with the enter serial and copy action", func(t *testing.T) {
+	t.Run("version 3 accepts with the enter serial, copy and move, copy preferred", func(t *testing.T) {
 		c := newTestController()
 		offer := &fakeOffer{}
 		c.dragOffer = offer
@@ -185,8 +188,8 @@ func TestAcceptUsesEnterSerialAndVersion(t *testing.T) {
 		if len(offer.accepts) != 1 || offer.accepts[0] != (acceptCall{77, "a/b"}) {
 			t.Errorf("accepts = %v, want one accept with serial 77 and a/b", offer.accepts)
 		}
-		if len(offer.setActions) != 1 || offer.setActions[0] != [2]uint32{wl.DataDeviceManagerDndActionCopy, wl.DataDeviceManagerDndActionCopy} {
-			t.Errorf("setActions = %v, want one copy action pair", offer.setActions)
+		if len(offer.setActions) != 1 || offer.setActions[0] != [2]uint32{3, 1} {
+			t.Errorf("setActions = %v, want copy|move preferring copy", offer.setActions)
 		}
 	})
 
@@ -313,7 +316,7 @@ func newSourceController(dev *fakeDevice, src *fakeSource, version uint32) *Cont
 func TestStartDragGuards(t *testing.T) {
 	t.Run("no device fails with ErrUnavailable", func(t *testing.T) {
 		c := newTestController()
-		err := c.StartDrag(StartConfig{Content: Content{Mimes: []string{"a/b"}, Write: fakeWriter}})
+		err := c.StartDrag(StartConfig{Content: transfer.Drag{Content: transfer.Content{Mimes: []string{"a/b"}, Write: fakeWriter}}})
 		if !errors.Is(err, ErrUnavailable) {
 			t.Errorf("StartDrag = %v, want ErrUnavailable", err)
 		}
@@ -322,7 +325,7 @@ func TestStartDragGuards(t *testing.T) {
 	t.Run("a running drag rejects a second one", func(t *testing.T) {
 		c := newSourceController(&fakeDevice{}, &fakeSource{}, minActionVersion)
 		c.src = &wl.DataSource{}
-		err := c.StartDrag(StartConfig{Content: Content{Mimes: []string{"a/b"}, Write: fakeWriter}})
+		err := c.StartDrag(StartConfig{Content: transfer.Drag{Content: transfer.Content{Mimes: []string{"a/b"}, Write: fakeWriter}}})
 		if !errors.Is(err, ErrDragActive) {
 			t.Errorf("StartDrag = %v, want ErrDragActive", err)
 		}
@@ -333,7 +336,7 @@ func TestStartDragGuards(t *testing.T) {
 		if err := c.StartDrag(StartConfig{Origin: &wl.Surface{}}); err == nil {
 			t.Error("content without mimes started a drag")
 		}
-		if err := c.StartDrag(StartConfig{Content: Content{Mimes: []string{"a/b"}}}); err == nil {
+		if err := c.StartDrag(StartConfig{Content: transfer.Drag{Content: transfer.Content{Mimes: []string{"a/b"}}}}); err == nil {
 			t.Error("content without a writer started a drag")
 		}
 	})
@@ -354,10 +357,9 @@ func TestStartDragHappyPath(t *testing.T) {
 
 	err := c.StartDrag(StartConfig{
 		Origin: origin, Icon: icon, GrabSerial: 1234,
-		Content: Content{
-			Mimes:  []string{"application/x-gelm-tile", "text/plain"},
-			Write:  fakeWriter,
-			OnDone: func(dropped bool) { done++ },
+		Content: transfer.Drag{
+			Content: transfer.Content{Mimes: []string{"application/x-gelm-tile", "text/plain"}, Write: fakeWriter},
+			OnDone:  func(transfer.Action) { done++ },
 		},
 	})
 	if err != nil {
@@ -422,9 +424,9 @@ func TestStartDragDeviceErrorConcludes(t *testing.T) {
 	concluded := -1
 	err := c.StartDrag(StartConfig{
 		GrabSerial: 7,
-		Content: Content{
-			Mimes: []string{"a/b"}, Write: fakeWriter,
-			OnDone: func(dropped bool) { concluded = boolInt(dropped) },
+		Content: transfer.Drag{
+			Content: transfer.Content{Mimes: []string{"a/b"}, Write: fakeWriter},
+			OnDone:  func(a transfer.Action) { concluded = boolInt(a != transfer.ActionNone) },
 		},
 	})
 	if err == nil {
@@ -450,8 +452,8 @@ func TestCancelAndDropPerformedConclude(t *testing.T) {
 		c := newTestController()
 		src := &fakeSource{}
 		c.src, c.srcReq = &wl.DataSource{}, src
-		c.srcData = Content{Mimes: []string{"a/b"}, Write: fakeWriter, OnDone: func(dropped bool) {
-			if dropped {
+		c.srcData = transfer.Drag{Mimes: []string{"a/b"}, Write: fakeWriter, OnDone: func(a transfer.Action) {
+			if a != transfer.ActionNone {
 				t.Error("cancel reported as dropped")
 			}
 		}}
@@ -466,7 +468,7 @@ func TestCancelAndDropPerformedConclude(t *testing.T) {
 	t.Run("version 3 waits for finish after drop_performed", func(t *testing.T) {
 		c := newTestController()
 		c.src, c.srcReq = &wl.DataSource{}, &fakeSource{}
-		c.srcData = Content{Mimes: []string{"a/b"}, Write: fakeWriter}
+		c.srcData = transfer.Drag{Mimes: []string{"a/b"}, Write: fakeWriter}
 
 		c.HandleDataSourceDndDropPerformed(wl.DataSourceDndDropPerformedEvent{})
 
@@ -480,7 +482,7 @@ func TestCancelAndDropPerformedConclude(t *testing.T) {
 		c.version = 2
 		src := &fakeSource{}
 		c.src, c.srcReq = &wl.DataSource{}, src
-		c.srcData = Content{Mimes: []string{"a/b"}, Write: fakeWriter}
+		c.srcData = transfer.Drag{Mimes: []string{"a/b"}, Write: fakeWriter}
 
 		c.HandleDataSourceDndDropPerformed(wl.DataSourceDndDropPerformedEvent{})
 
@@ -498,11 +500,10 @@ func TestReadPayloadShortCircuitsSelfDrops(t *testing.T) {
 	src := &fakeSource{}
 	c.src, c.srcReq = &wl.DataSource{}, src
 	done := -1
-	c.srcData = Content{
-		Mimes: []string{"application/x-gelm-tile"},
-		Write: fakeWriter,
-		OnDone: func(dropped bool) {
-			done = boolInt(dropped)
+	c.srcData = transfer.Drag{
+		Mimes: []string{"application/x-gelm-tile"}, Write: fakeWriter,
+		OnDone: func(a transfer.Action) {
+			done = boolInt(a == transfer.ActionCopy)
 		},
 	}
 
@@ -582,7 +583,7 @@ func TestBindRoutesThroughSession(t *testing.T) {
 
 func TestSourceSendWritesAndCloses(t *testing.T) {
 	c := newTestController()
-	c.srcData = Content{Mimes: []string{"text/plain"}, Write: fakeWriter}
+	c.srcData = transfer.Drag{Mimes: []string{"text/plain"}, Write: fakeWriter}
 	r, w, err := os.Pipe()
 	if err != nil {
 		t.Fatal(err)
@@ -602,4 +603,76 @@ func TestSourceSendWritesAndCloses(t *testing.T) {
 	// A send for a drag without content is ignored.
 	c2 := newTestController()
 	c2.HandleDataSourceSend(wl.DataSourceSendEvent{MimeType: "text/plain", Fd: w.Fd()})
+}
+
+// actionTarget is a drop target that prefers one action.
+type actionTarget struct {
+	recordingTarget
+	want transfer.Action
+}
+
+func (a *actionTarget) DragAction(transfer.Action) transfer.Action { return a.want }
+
+// An ActionTarget's pick becomes the preferred action; a rejection
+// declares none; an ask drop settles on the target's non-ask pick
+// before the finish.
+func TestDropActions(t *testing.T) {
+	c := newTestController()
+	offer := &fakeOffer{}
+	c.dragOffer = offer
+	c.dragActions = transfer.ActionCopy | transfer.ActionMove
+	c.target = &actionTarget{want: transfer.ActionMove}
+	c.accept("a/b")
+	if got := offer.setActions[len(offer.setActions)-1]; got != [2]uint32{3, 2} {
+		t.Errorf("move target set %v, want copy|move preferring move", got)
+	}
+	c.accept("")
+	if got := offer.setActions[len(offer.setActions)-1]; got != [2]uint32{0, 0} {
+		t.Errorf("rejection set %v, want none", got)
+	}
+
+	// The fake keeps no copy of the fd: the read ends empty at once.
+	resolveOffer := &fakeOffer{}
+	if _, err := receivePayload(resolveOffer, "a/b", func() error { return nil }, minActionVersion, transfer.ActionMove); err != nil {
+		t.Fatal(err)
+	}
+	if len(resolveOffer.setActions) != 1 || resolveOffer.setActions[0] != [2]uint32{2, 2} || resolveOffer.finished != 1 {
+		t.Errorf("ask resolve set %v finish %d, want move alone then finish", resolveOffer.setActions, resolveOffer.finished)
+	}
+}
+
+// The source hears acceptance and the negotiated action as they
+// change, the finish reports the negotiated action, and CancelDrag
+// ends the drag with ActionNone.
+func TestSourceFeedbackAndCancel(t *testing.T) {
+	c := newTestController()
+	src := &fakeSource{}
+	c.src, c.srcReq = &wl.DataSource{}, src
+	var heard []transfer.Feedback
+	var done []transfer.Action
+	c.srcData = transfer.Drag{
+		Mimes: []string{"a/b"}, Write: fakeWriter,
+		Actions:    transfer.ActionCopy | transfer.ActionMove,
+		OnFeedback: func(f transfer.Feedback) { heard = append(heard, f) },
+		OnDone:     func(a transfer.Action) { done = append(done, a) },
+	}
+	c.HandleDataSourceTarget(wl.DataSourceTargetEvent{MimeType: "a/b"})
+	c.HandleDataSourceAction(wl.DataSourceActionEvent{DndAction: uint32(transfer.ActionMove)})
+	c.HandleDataSourceAction(wl.DataSourceActionEvent{DndAction: uint32(transfer.ActionMove)}) // unchanged: not repeated
+	if len(heard) != 2 || !heard[1].Accepted() || heard[1].Action != transfer.ActionMove {
+		t.Fatalf("feedback = %+v", heard)
+	}
+	c.HandleDataSourceDndFinished(wl.DataSourceDndFinishedEvent{})
+	if len(done) != 1 || done[0] != transfer.ActionMove {
+		t.Fatalf("done = %v, want move", done)
+	}
+
+	if c.CancelDrag() {
+		t.Error("CancelDrag with no drag reported one")
+	}
+	c.src, c.srcReq = &wl.DataSource{}, src
+	c.srcData.OnDone = func(a transfer.Action) { done = append(done, a) }
+	if !c.CancelDrag() || c.Dragging() || done[len(done)-1] != transfer.ActionNone {
+		t.Errorf("cancel: dragging %v, done %v", c.Dragging(), done)
+	}
 }

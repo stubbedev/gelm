@@ -14,6 +14,7 @@ import (
 
 	"github.com/stubbedev/gelm/internal/imgcache"
 	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/gelm/transfer"
 )
 
 // ImageScale picks how an Image fills its arranged box. It aliases the
@@ -143,7 +144,7 @@ type Image struct {
 	// construction.
 	OnLoaded func(img *Image)
 	// OnPasteImage fires on the loop goroutine when a pasted image
-	// (the ctrl+v payload an ImagePaster receives) finished decoding:
+	// (the ctrl+v payload it takes as a ContentPaster) finished decoding:
 	// the widget has already taken it as its source. The Image is the
 	// paste surface — Entry and TextArea are text-only by design.
 	OnPasteImage func(img image.Image)
@@ -341,7 +342,13 @@ func (im *Image) HitTest(p Point) Widget {
 	return im.HitLeaf(im, p)
 }
 
-// PasteImage implements ImagePaster: the pasted encoded bytes (with
+// PasteMimes implements ContentPaster: the image types, best first.
+func (im *Image) PasteMimes() []string { return transfer.ImageMimes }
+
+// PasteContent implements ContentPaster through PasteImage.
+func (im *Image) PasteContent(mime string, data []byte) { im.PasteImage(data, mime) }
+
+// PasteImage is the ctrl+v image path: the pasted encoded bytes (with
 // the mime they arrived as, for error messages) become the widget's
 // source, decoded off the loop goroutine through the same invoker
 // bridge as file loads — a large PNG never stalls the loop — and then

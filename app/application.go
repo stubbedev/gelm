@@ -58,6 +58,9 @@ type Application struct {
 	// dnd drives drag-and-drop for every window on this application;
 	// inert when the compositor lacks a data device.
 	dnd *dragdrop.Controller
+	// onTransferError hears failed pastes and drops
+	// (SetTransferErrorHandler).
+	onTransferError func(error)
 	// dataControl is the lazily bound data-control device
 	// (datacontrol.go); nil until DataControl first succeeds.
 	dataControl *datacontrol.Device
@@ -532,6 +535,9 @@ func (a *Application) newWindow(host Host, scale int, root widget.Widget, hooks 
 	ov := inspect.NewOverlay(root)
 	ov.SetOn(a.inspectOn)
 	w := newHostWindow(a.sess, host, scale, ov, hooks, a.dnd, a.primary, animKind, hostCloser(host))
+	if w.input != nil {
+		w.input.transferError = a.reportTransfer
+	}
 	ov.SetRouter(w.router)
 	w.inspector = ov
 	a.windows = append(a.windows, w)
@@ -793,6 +799,9 @@ func (a *Application) routeKey(keycode uint32, mods wlsession.Mods) {
 // window - consulting only the app-level hook silently dropped every
 // Config.OnKey a client passed to Run, so Escape-to-close never fired.
 func (a *Application) deliverKey(keycode uint32, mods wlsession.Mods) {
+	if a.cancelDragKey(keycode) {
+		return
+	}
 	if op := a.keyPopover(); op != nil {
 		a.deliverPopoverKey(a.sess, op, keycode, mods)
 		return
@@ -828,7 +837,7 @@ func (a *Application) deliverKey(keycode uint32, mods wlsession.Mods) {
 	if captureKey(a.sess, target.cfg.keyCapture, keycode, mods) {
 		return
 	}
-	routeKey(a.sess, target.router, keycode, mods, a.clip, a.accels, extra)
+	a.reportTransfer(routeKey(a.sess, target.router, keycode, mods, a.clip, a.accels, extra))
 }
 
 // captureKey offers one press to a window's KeyCapture hook and

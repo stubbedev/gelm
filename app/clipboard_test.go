@@ -5,7 +5,12 @@ import (
 	"image"
 	"testing"
 
+	"github.com/stubbedev/gelm/internal/clipboard"
+	"github.com/stubbedev/gelm/internal/dragdrop"
 	"github.com/stubbedev/gelm/internal/wlsession"
+	"github.com/stubbedev/gelm/internal/xfer"
+	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/gelm/widget"
 )
 
 // NewClipboard is the public way in for consumers outside the module:
@@ -25,5 +30,42 @@ func TestClipboardInstalledAndUnavailable(t *testing.T) {
 	img := image.NewRGBA(image.Rect(0, 0, 2, 2))
 	if err := a.Clipboard().WriteImage(img); !errors.Is(err, ErrClipboardUnavailable) {
 		t.Fatalf("WriteImage without a data device = %v, want ErrUnavailable", err)
+	}
+}
+
+// A failed transfer reaches the handler; nothing to paste does not,
+// and an empty clipboard pastes nothing quietly on either paste path.
+func TestTransferErrorHandler(t *testing.T) {
+	a := accelApp()
+	var got []error
+	a.SetTransferErrorHandler(func(err error) { got = append(got, err) })
+	a.reportTransfer(nil)
+	a.reportTransfer(ErrClipboardUnavailable)
+	a.reportTransfer(dragdrop.ErrNoPayload)
+	a.reportTransfer(xfer.ErrTooLarge)
+	if len(got) != 1 || !errors.Is(got[0], xfer.ErrTooLarge) {
+		t.Fatalf("reported %v, want the oversize transfer alone", got)
+	}
+
+	clip := &clipboard.Clipboard{}
+	face := testFace(t)
+	entry := widget.NewEntry(face, 14, render.RGB(0, 0, 0))
+	r := &widget.Router{Root: entry}
+	r.SetFocus(entry)
+	if err := pasteSelection(r, clip); err != nil {
+		t.Errorf("text paste from an empty clipboard: %v", err)
+	}
+	img := widget.NewImage(nil)
+	img.OnPasteImage = func(image.Image) {}
+	r = &widget.Router{Root: img}
+	r.SetFocus(img)
+	if err := pasteSelection(r, clip); err != nil {
+		t.Errorf("image paste from an empty clipboard: %v", err)
+	}
+
+	in := &surfaceInput{transferError: a.reportTransfer}
+	in.reportTransfer(xfer.ErrTimeout)
+	if len(got) != 2 {
+		t.Errorf("surface input did not report: %v", got)
 	}
 }

@@ -22,28 +22,33 @@ type primarySelection struct {
 
 // pasteAt reads the primary selection into the text widget under the
 // pointer — else the keyboard-focused one — inserting at its caret.
-// Reports whether something was pasted.
+// Reports whether something was pasted, and the read's error.
 //
 // Every error rejects the paste, the same contract as the keyboard
 // paste path (pasteSelection in app.go): a hostile peer — a payload
 // past xfer.MaxPayload, or one that stalls past the transfer deadline
-// — simply pastes nothing today.
-func (p *primarySelection) pasteAt(router *widget.Router) bool {
+// — pastes nothing and is reported (Application.OnTransferError).
+//
+// A read-only or disabled text widget under the pointer is still the
+// target: it refuses the insert, as it refuses typing, and a read-only
+// one rings the error bell - the paste is not redirected to whatever
+// widget holds the keyboard, which would surprise more than help.
+func (p *primarySelection) pasteAt(router *widget.Router) (bool, error) {
 	if p == nil || p.src == nil {
-		return false
-	}
-	text, err := p.src.ReadPrimary()
-	if err != nil {
-		return false
+		return false, nil
 	}
 	target := inserterAt(router)
 	if target == nil {
-		return false
+		return false, nil
+	}
+	text, err := p.src.ReadPrimary()
+	if err != nil {
+		return false, err
 	}
 	// One Insert replaces any active selection and fires OnChanged
 	// exactly once, whatever the pasted length.
 	target.Insert(text)
-	return true
+	return true, nil
 }
 
 // copyAfterRelease claims the primary selection with the focused

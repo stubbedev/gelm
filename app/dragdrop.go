@@ -6,6 +6,7 @@ package app
 
 import (
 	"github.com/neurlang/wayland/wl"
+	"github.com/unxed/xkb-go"
 
 	"github.com/stubbedev/gelm/internal/buffer"
 	"github.com/stubbedev/gelm/internal/debug"
@@ -13,6 +14,7 @@ import (
 	"github.com/stubbedev/gelm/internal/scale"
 	"github.com/stubbedev/gelm/internal/wlsession"
 	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/gelm/transfer"
 	"github.com/stubbedev/gelm/widget"
 )
 
@@ -56,11 +58,7 @@ func (in *surfaceInput) startDrag() {
 		Origin:     in.surf,
 		Icon:       renderDragIcon(in.sess, in.router.Pressed(), in.deviceScale()),
 		GrabSerial: in.pressSerial,
-		Content: dragdrop.Content{
-			Mimes:  content.Mimes,
-			Write:  content.Write,
-			OnDone: content.OnDone,
-		},
+		Content:    *content,
 	})
 	if err != nil {
 		debug.Log("input", "dnd start: %v", err)
@@ -169,10 +167,47 @@ func (in *surfaceInput) Drop(x, y float64) {
 	data, err := in.dnd.ReadPayload(mime)
 	if err != nil {
 		debug.Log("input", "dnd drop: %v", err)
+		in.reportTransfer(err)
 		return
 	}
 	in.router.Drop(mime, data, in.dropPoint(x, y))
 	in.request()
+}
+
+// DragAction implements dragdrop.ActionTarget: the drop target's pick
+// (widget.DropActionChooser).
+func (in *surfaceInput) DragAction(offered transfer.Action) transfer.Action {
+	return in.router.DragAction(offered)
+}
+
+// cancelDragKey cancels this process's running drag on Escape, GTK's
+// drag-cancel. Compositors that keep the keyboard during a drag (most
+// cancel on Escape themselves) deliver nothing, which leaves the drag
+// to them; one that delivers keys gets the source-side cancel.
+func (a *Application) cancelDragKey(keycode uint32) bool {
+	return a.dnd != nil && a.dnd.Dragging() && a.sess.KeySym(keycode) == xkb.KeyEscape && a.dnd.CancelDrag()
+}
+
+// CancelDrag cancels the drag this application started, if one is
+// running; its OnDone hears transfer.ActionNone. Reports whether a
+// drag was running.
+func (a *Application) CancelDrag() bool { return a.dnd != nil && a.dnd.CancelDrag() }
+
+// SetTransferErrorHandler installs fn to hear clipboard and drag
+// transfers that failed - a paste (ctrl+v or middle-click) or a drop
+// whose peer sent more than xfer.MaxPayload, stalled past the
+// transfer deadline, or broke the pipe - so the app can show a toast.
+// An empty clipboard is not an error. fn runs on the loop goroutine.
+func (a *Application) SetTransferErrorHandler(fn func(err error)) { a.onTransferError = fn }
+
+// reportTransfer hands a failed transfer to the installed handler.
+func (a *Application) reportTransfer(err error) {
+	if err = transferFailure(err); err != nil {
+		debug.Log("input", "transfer failed: %v", err)
+		if a.onTransferError != nil {
+			a.onTransferError(err)
+		}
+	}
 }
 
 // deviceScale reports the host window's 120-based device scale for

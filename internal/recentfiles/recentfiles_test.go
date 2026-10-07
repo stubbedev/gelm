@@ -127,22 +127,6 @@ func TestRecentFilesSkipsRemoteURIs(t *testing.T) {
 	}
 }
 
-// TestParseURIList pins the clipboard/drag uri-list consumption: CRLF
-// and LF both split, comments skip, non-file URIs drop, percent
-// escapes decode.
-func TestParseURIList(t *testing.T) {
-	got := ParseURIList("# comment\r\nfile:///tmp/a%20b.txt\r\nfile:///tmp/c.txt\nhttps://example.com/x\r\n\r\n")
-	want := []string{"/tmp/a b.txt", "/tmp/c.txt"}
-	if len(got) != len(want) {
-		t.Fatalf("paths = %v, want %v", got, want)
-	}
-	for i := range want {
-		if got[i] != want[i] {
-			t.Fatalf("paths = %v, want %v", got, want)
-		}
-	}
-}
-
 // TestSaveEmptyListWritesEmptyXbel pins that clearing writes an empty
 // document rather than deleting the shared file.
 func TestSaveEmptyListWritesEmptyXbel(t *testing.T) {

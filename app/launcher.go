@@ -13,7 +13,7 @@ import (
 
 	"github.com/stubbedev/gelm/internal/debug"
 	"github.com/stubbedev/gelm/internal/logutil"
-	"github.com/stubbedev/gelm/internal/recentfiles"
+	"github.com/stubbedev/gelm/transfer"
 )
 
 // External launching (#86): app.OpenURL and app.OpenPath hand a URL or
@@ -65,7 +65,7 @@ func (a *Application) OpenURL(uri string) {
 // OpenPath opens a file or directory in the user's handler for it,
 // the FileLauncher shape.
 func (a *Application) OpenPath(path string) {
-	a.launch(pathToFileURI(path))
+	a.launch(transfer.FileURI(path))
 }
 
 // launch routes one URI: with activation support it waits for an
@@ -205,12 +205,6 @@ func portalOpen(uri, parentWindow, token string) error {
 func xdgOpen(uri string) error {
 	cmd := exec.Command("xdg-open", uri) //nolint:gosec // the documented external opener; the URI is the user-chosen link
 	return cmd.Start()
-}
-
-// pathToFileURI encodes a local path as a file:// URI; an empty or
-// relative path is returned unchanged for the transport to reject.
-func pathToFileURI(path string) string {
-	return recentfiles.PathToURI(path)
 }
 
 // OpenURLFromLink wires a RichLabel's (or any link-emitting widget's)

@@ -5,11 +5,15 @@ import (
 	"errors"
 	"image"
 	"image/color"
+	"image/jpeg"
 	"image/png"
+	"io"
 	"os"
 	"testing"
 
 	"github.com/neurlang/wayland/wl"
+
+	"github.com/stubbedev/gelm/transfer"
 )
 
 // testImage builds a small deterministic image.
@@ -37,42 +41,46 @@ func TestPickImageMime(t *testing.T) {
 	}
 }
 
-// TestImageSendByMime pins the claim's send half (#69): a consumer
-// asking image/png receives exactly the encoded PNG bytes, the claim
-// is exclusive (a text write replaces it, an image write replaces the
-// text), and an empty image never claims.
+// TestImageSendByMime pins the claim's send half (#69, #112): a
+// consumer asking image/png receives exactly the encoded PNG bytes,
+// image/jpeg a decodable JPEG, a mime the claim lacks nothing; an
+// empty image never claims.
 func TestImageSendByMime(t *testing.T) {
-	c := &Clipboard{}
-
 	img := testImage(24, 12)
+	content, err := transfer.Image(img)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := &Clipboard{content: content}
+	send := func(mime string) []byte {
+		r, w, err := os.Pipe()
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer r.Close()
+		c.HandleDataSourceSend(wl.DataSourceSendEvent{MimeType: mime, Fd: w.Fd()})
+		w.Close()
+		data, _ := io.ReadAll(r)
+		return data
+	}
 	var want bytes.Buffer
 	if err := png.Encode(&want, img); err != nil {
 		t.Fatal(err)
 	}
-
-	// The image claim's payload, served by mime.
-	c.imgOut = want.Bytes()
-	c.imgSource = &wl.DataSource{} // opaque identity; never driven on the wire
-	r, w, err := os.Pipe()
-	if err != nil {
-		t.Fatal(err)
+	if got := send(transfer.MimePNG); !bytes.Equal(got, want.Bytes()) {
+		t.Errorf("image/png payload = %d bytes, want the %d encoded ones", len(got), want.Len())
 	}
-	c.HandleDataSourceSend(wl.DataSourceSendEvent{MimeType: "image/png", Fd: w.Fd(), FdError: nil})
-	w.Close()
-	buf := make([]byte, want.Len()+16)
-	n, _ := r.Read(buf)
-	if !bytes.Equal(buf[:n], want.Bytes()) {
-		t.Errorf("image/png payload = %d bytes, want the %d encoded ones", n, want.Len())
+	if j, err := jpeg.Decode(bytes.NewReader(send(transfer.MimeJPEG))); err != nil || j.Bounds() != img.Bounds() {
+		t.Errorf("image/jpeg payload: %v", err)
+	}
+	if got := send(transfer.MimeText); len(got) != 0 {
+		t.Errorf("text from an image claim: %d bytes", len(got))
 	}
 
-	// dropClaim retires whatever claim holds the selection: with the
-	// image source already cancelled (its destroy went out), only the
-	// payload remains to clear - and on an empty clipboard it is a
-	// no-op.
-	c.imgSource = nil
+	// dropClaim retires the claim; on an empty clipboard it is a no-op.
 	c.dropClaim()
-	if c.imgOut != nil {
-		t.Error("dropClaim left the image payload behind")
+	if !c.content.Empty() {
+		t.Error("dropClaim left the payload behind")
 	}
 	c.dropClaim()
 
@@ -92,8 +100,6 @@ func TestImageSendByMime(t *testing.T) {
 // honest peer's bytes round-trip through the bounded transfer, and a
 // text-only offer reports ErrUnavailable.
 func TestReadOfferImage(t *testing.T) {
-	c := &Clipboard{}
-
 	t.Run("round-trips a small png payload", func(t *testing.T) {
 		receive := func(mime string, fd uintptr) error {
 			if mime != "image/png" {
@@ -102,7 +108,7 @@ func TestReadOfferImage(t *testing.T) {
 			wait := fakePeer(t, fd, []byte("fake-png-bytes"))
 			return wait()
 		}
-		data, mime, err := c.readOfferImage(receive, func() error { return nil },
+		data, mime, err := readOfferImage(receive, func() error { return nil },
 			map[string]bool{"image/png": true})
 		if err != nil || mime != "image/png" {
 			t.Fatalf("read = %q, %v", mime, err)
@@ -113,7 +119,7 @@ func TestReadOfferImage(t *testing.T) {
 	})
 
 	t.Run("a text-only offer is unavailable", func(t *testing.T) {
-		if _, _, err := c.readOfferImage(func(string, uintptr) error { return nil },
+		if _, _, err := readOfferImage(func(string, uintptr) error { return nil },
 			func() error { return nil }, map[string]bool{"text/plain": true}); !errors.Is(err, ErrUnavailable) {
 			t.Errorf("text offer read = %v, want ErrUnavailable", err)
 		}

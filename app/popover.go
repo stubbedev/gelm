@@ -556,7 +556,7 @@ func (a *Application) deliverPopoverKey(tr keyTranslator, op *openPopover, keyco
 		return
 	}
 	if op.router.Focused() != nil {
-		routeKey(tr, op.router, keycode, mods, a.clip, a.accels, nil)
+		a.reportTransfer(routeKey(tr, op.router, keycode, mods, a.clip, a.accels, nil))
 		return
 	}
 	if isAction {

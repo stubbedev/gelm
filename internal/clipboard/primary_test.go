@@ -8,6 +8,7 @@ import (
 	"github.com/neurlang/wayland/wl"
 
 	"github.com/stubbedev/gelm/internal/wlsession"
+	"github.com/stubbedev/gelm/transfer"
 	"github.com/stubbedev/gelm/wlr"
 )
 
@@ -89,7 +90,7 @@ func TestPrimaryOfferTrackingIsolatesSelections(t *testing.T) {
 func TestPrimarySendHandlerWritesAndCloses(t *testing.T) {
 	// The primary source's send event carries the primary payload,
 	// and only it: the regular selection's payload stays untouched.
-	c := &Clipboard{out: "clipboard payload", primaryOut: "primary payload"}
+	c := &Clipboard{content: transfer.Text("clipboard payload"), primaryContent: transfer.Text("primary payload")}
 	r, w, err := os.Pipe()
 	if err != nil {
 		t.Fatal(err)
@@ -109,7 +110,7 @@ func TestPrimarySendHandlerWritesAndCloses(t *testing.T) {
 }
 
 func TestPrimarySendHandlerIgnoresBrokenFds(t *testing.T) {
-	c := &Clipboard{primaryOut: "primary payload"}
+	c := &Clipboard{primaryContent: transfer.Text("primary payload")}
 	// A failed descriptor dup arrives as FdError or a zero fd; the
 	// handler must drop both without writing anywhere.
 	c.HandleZwpPrimarySelectionSourceV1Send(wlr.ZwpPrimarySelectionSourceV1SendEvent{FdError: errors.New("dup failed")})
@@ -120,20 +121,20 @@ func TestSelectionPayloadsStayIndependent(t *testing.T) {
 	// The regular and primary sources are alive at once whenever both
 	// selections are claimed; each consumer must read the payload of
 	// the selection it asked for.
-	c := &Clipboard{out: "clipboard payload", primaryOut: "primary payload"}
+	c := &Clipboard{content: transfer.Text("clipboard payload"), primaryContent: transfer.Text("primary payload")}
 
 	cr, cw, err := os.Pipe()
 	if err != nil {
 		t.Fatal(err)
 	}
-	c.HandleDataSourceSend(wl.DataSourceSendEvent{Fd: cw.Fd()})
+	c.HandleDataSourceSend(wl.DataSourceSendEvent{MimeType: transfer.MimeText, Fd: cw.Fd()})
 	cw.Close()
 
 	pr, pw, err := os.Pipe()
 	if err != nil {
 		t.Fatal(err)
 	}
-	c.HandleZwpPrimarySelectionSourceV1Send(wlr.ZwpPrimarySelectionSourceV1SendEvent{Fd: pw.Fd()})
+	c.HandleZwpPrimarySelectionSourceV1Send(wlr.ZwpPrimarySelectionSourceV1SendEvent{MimeType: transfer.MimeText, Fd: pw.Fd()})
 	pw.Close()
 
 	want := map[string]string{"clipboard": "clipboard payload", "primary": "primary payload"}
