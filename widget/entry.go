@@ -407,6 +407,14 @@ func (e *Entry) ReadOnly() bool { return e.readOnly }
 // one deliberate exception.
 func (e *Entry) editable() bool { return e.Enabled() && !e.readOnly }
 
+// rejectEdit rings the error bell for an edit a read-only field
+// refused (a disabled one takes no input at all).
+func (e *Entry) rejectEdit() {
+	if e.Enabled() && e.readOnly {
+		ErrorBell(e)
+	}
+}
+
 // CursorName reports the text caret shape while hovered.
 func (e *Entry) CursorName() string { return "xterm" }
 
@@ -565,6 +573,7 @@ func (e *Entry) splice(s string) {
 // one undo entry. Blocked while disabled or read-only.
 func (e *Entry) Insert(s string) {
 	if !e.editable() {
+		e.rejectEdit()
 		return
 	}
 	before := e.snapshot()
@@ -1296,6 +1305,7 @@ func (e *Entry) SelectAll() {
 // breaks the run. Blocked while disabled or read-only.
 func (e *Entry) InsertRune(r rune) {
 	if !e.editable() {
+		e.rejectEdit()
 		return
 	}
 	before := e.snapshot()
