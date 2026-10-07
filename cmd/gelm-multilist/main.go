@@ -108,6 +108,7 @@ func run() error {
 				Title:  "modal dialog",
 				Width:  320,
 				Height: 110,
+				Modal:  true,
 				Content: widget.NewLabel(tf, 13,
 					"input to the parent window is blocked while I am open",
 					widget.Current().Text),

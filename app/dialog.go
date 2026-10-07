@@ -18,11 +18,28 @@ import (
 	"github.com/stubbedev/gelm/widget"
 )
 
-// DialogButton is one button in a dialog's button row.
+// DialogButton is one button in a dialog's button row. Role, when
+// set, decides the keyboard mapping explicitly: ButtonRoleDefault
+// binds Enter, ButtonRoleCancel binds Escape. Without roles the
+// positional fallbacks apply - first button default, last cancel.
 type DialogButton struct {
 	Label    string
 	Response string
+	Role     DialogButtonRole
 }
+
+// DialogButtonRole is the keyboard role a dialog button opts into.
+type DialogButtonRole uint8
+
+// Button roles.
+const (
+	// ButtonRoleNormal is a plain button: no key bound.
+	ButtonRoleNormal DialogButtonRole = iota
+	// ButtonRoleDefault binds Enter.
+	ButtonRoleDefault
+	// ButtonRoleCancel binds Escape.
+	ButtonRoleCancel
+)
 
 // DialogConfig declares a dialog: content widget plus a button row.
 // Esc responds with CancelResponse, Enter with DefaultResponse (either
@@ -43,6 +60,12 @@ type DialogConfig struct {
 	// OnResponse on every Respond, including the Esc and Enter keys.
 	ValidateResponse func(response string) bool
 	OnResponse       func(response string)
+	// Modal blocks every other window's input while the dialog is
+	// open (and, with an xdg parent, asks the compositor to block the
+	// parent itself). False - the GTK default - leaves the
+	// application fully interactive under the dialog; the preset
+	// dialogs set it themselves.
+	Modal bool
 	// Bare makes Content the whole window: no button row, no card,
 	// Background as the window's clear color. The content carries its
 	// own buttons (styled by the application's stylesheet) and answers
@@ -65,10 +88,25 @@ type Dialog struct {
 	responded bool
 }
 
+// DialogParent is what a dialog can be parented to: a toplevel
+// Window carries the xdg parent link and the modality hint, a
+// LayerWindow parents at the application level only (layer surfaces
+// have no xdg parent), and nil makes an application-level dialog.
+type DialogParent interface {
+	dialogWindow() *Window
+}
+
+// dialogWindow implements DialogParent.
+func (w *Window) dialogWindow() *Window { return w }
+
+// dialogWindow implements DialogParent; layer surfaces have no xdg
+// window to parent to.
+func (l *LayerWindow) dialogWindow() *Window { return nil }
+
 // NewDialog opens a dialog parented to a window of this application.
 // A nil parent makes an application-level dialog that blocks every
-// other window while open.
-func (a *Application) NewDialog(parent *Window, cfg DialogConfig) (*Dialog, error) {
+// other window while open (when Modal).
+func (a *Application) NewDialog(parent DialogParent, cfg DialogConfig) (*Dialog, error) {
 	if cfg.Content == nil {
 		return nil, errors.New("app: dialog needs content")
 	}
@@ -98,9 +136,13 @@ func (a *Application) NewDialog(parent *Window, cfg DialogConfig) (*Dialog, erro
 					break
 				}
 			}
-			if len(a.dialogs) == 0 {
-				a.blockAll(false)
+			// Recompute the block from what is still open: a modal closing
+			// over a non-modal must unblock, not wait for the last dialog.
+			modal := false
+			for _, x := range a.dialogs {
+				modal = modal || x.cfg.Modal
 			}
+			a.blockAll(modal)
 		},
 	}
 	// Dialogs animate: KindDialog gives the child window a fade-in on
@@ -120,9 +162,14 @@ func (a *Application) NewDialog(parent *Window, cfg DialogConfig) (*Dialog, erro
 	}
 	d = &Dialog{app: a, win: w, cfg: cfg}
 	a.dialogs = append(a.dialogs, d)
-	a.blockAll(true)
-	if parent != nil && parent.win != nil {
-		w.win.SetParent(parent.win)
+	if cfg.Modal {
+		a.blockAll(true)
+	}
+	if pw := parent.dialogWindow(); pw != nil && pw.win != nil {
+		w.win.SetParent(pw.win)
+		if !cfg.Modal {
+			return d, nil
+		}
 		// Window-level modality where the compositor offers it: the hint
 		// rides the dialog's first commit, and the compositor blocks input
 		// to the parent itself. Without the protocol this is a silent
@@ -184,54 +231,62 @@ func (a *Application) blockAll(blocked bool) {
 	}
 }
 
-// customPalette is the process session's color picks: every color a
-// ColorChooserDialog confirms lands here (deduped, most recent first,
-// capped), and every later dialog offers them back as swatches.
-var customPalette []render.Color
+// customPalette is this application's color picks: every color a
+// ColorChooserDialog confirms lands here (deduped, most recent
+// first, capped), and every later chooser offers them back as
+// swatches. Scoped per Application (#84): two apps in one process
+// never swap palettes.
+type appPalette struct {
+	colors []render.Color
+}
 
-// paletteCap bounds the session palette.
+// paletteCap bounds the palette.
 const paletteCap = 16
 
-// rememberPick records a confirmed color in the session palette.
-func rememberPick(col render.Color) {
-	for i, c := range customPalette {
+// remember records a confirmed color, most recent first.
+func (p *appPalette) remember(col render.Color) {
+	for i, c := range p.colors {
 		if c == col {
-			customPalette = append(customPalette[:i], customPalette[i+1:]...)
+			p.colors = append(p.colors[:i], p.colors[i+1:]...)
 			break
 		}
 	}
-	customPalette = append([]render.Color{col}, customPalette...)
-	if len(customPalette) > paletteCap {
-		customPalette = customPalette[:paletteCap]
+	p.colors = append([]render.Color{col}, p.colors...)
+	if len(p.colors) > paletteCap {
+		p.colors = p.colors[:paletteCap]
 	}
 }
 
 // ColorChooserDialog opens a modal color picker (#72): an SV square,
-// hue and alpha strips, a hex entry, theme-derived presets, and the
-// session's custom palette. Confirming responds "ok" and fires
-// onColor with the exact picked color (and the pick joins the session
+// hue and alpha strips, a hex entry, theme-derived presets, and this
+// application's custom palette. Confirming responds "ok" and fires
+// onColor with the exact picked color (and the pick joins the
 // palette); Esc responds "cancel".
 func (a *Application) ColorChooserDialog(parent *Window, initial render.Color, onColor func(render.Color)) (*Dialog, error) {
 	face := a.resolveFace(nil)
 	if face == nil {
-		return nil, errors.New("app: color chooser text face unavailable: no configured tooltip face and the system has no sans font")
+		return nil, ErrNoDialogFace
 	}
 	chooser := widget.NewColorChooser(face, 13, initial)
-	chooser.SetPaletteSource(func() []render.Color { return customPalette }, rememberPick)
+	chooser.SetPaletteSource(func() []render.Color { return a.palette.colors }, a.palette.remember)
+	if a.eyedropperAvailable() {
+		chooser.SetEyedropper(func() { a.startEyedrop(chooser) })
+	}
 	return a.NewDialog(parent, DialogConfig{
 		Title:   "Pick a color",
 		Width:   300,
 		Height:  310,
 		Content: chooser,
+		Modal:   true,
 		Buttons: []DialogButton{
-			{Label: "Cancel", Response: "cancel"},
-			{Label: "Select", Response: "ok"},
+			{Label: "Cancel", Response: "cancel", Role: ButtonRoleCancel},
+			{Label: "Select", Response: "ok", Role: ButtonRoleDefault},
 		},
 		DefaultResponse: "ok",
 		CancelResponse:  "cancel",
 		OnResponse: func(resp string) {
 			if resp == "ok" {
-				rememberPick(chooser.Color())
+				a.palette.remember(chooser.Color())
 				if onColor != nil {
 					onColor(chooser.Color())
 				}
@@ -286,7 +341,7 @@ func (m *fontRowModel) Row(i int) widget.Widget {
 func (a *Application) FontChooserDialog(parent *Window, initialFamily string, initialSize float64, onFont func(family string, size float64)) (*Dialog, error) {
 	face := a.resolveFace(nil)
 	if face == nil {
-		return nil, errors.New("app: font chooser text face unavailable: no configured tooltip face and the system has no sans font")
+		return nil, ErrNoDialogFace
 	}
 	families, err := sysfont.Families()
 	if err != nil {
@@ -376,9 +431,10 @@ func (a *Application) FontChooserDialog(parent *Window, initialFamily string, in
 		Width:   380,
 		Height:  420,
 		Content: root,
+		Modal:   true,
 		Buttons: []DialogButton{
-			{Label: "Cancel", Response: "cancel"},
-			{Label: "Select", Response: "ok"},
+			{Label: "Cancel", Response: "cancel", Role: ButtonRoleCancel},
+			{Label: "Select", Response: "ok", Role: ButtonRoleDefault},
 		},
 		DefaultResponse: "ok",
 		CancelResponse:  "cancel",
@@ -403,7 +459,7 @@ func (a *Application) FontChooserDialog(parent *Window, initialFamily string, in
 func (a *Application) CalendarDialog(parent *Window, initial time.Time, onSelect func(time.Time)) (*Dialog, error) {
 	face := a.resolveFace(nil)
 	if face == nil {
-		return nil, errors.New("app: calendar dialog text face unavailable: no configured tooltip face and the system has no sans font")
+		return nil, ErrNoDialogFace
 	}
 	cal := widget.NewCalendar(face, 13, initial)
 	var d *Dialog
@@ -421,7 +477,8 @@ func (a *Application) CalendarDialog(parent *Window, initial time.Time, onSelect
 		Width:          260,
 		Height:         240,
 		Content:        cal,
-		Buttons:        []DialogButton{{Label: "Cancel", Response: "cancel"}},
+		Modal:          true,
+		Buttons:        []DialogButton{{Label: "Cancel", Response: "cancel", Role: ButtonRoleCancel}},
 		CancelResponse: "cancel",
 	})
 	return d, err
@@ -432,7 +489,7 @@ func (a *Application) CalendarDialog(parent *Window, initial time.Time, onSelect
 func (a *Application) MessageBox(parent *Window, kind MessageKind, title, text string, buttons []DialogButton) (*Dialog, error) {
 	face := a.resolveFace(nil)
 	if face == nil {
-		return nil, errors.New("app: message box text face unavailable: no configured tooltip face and the system has no sans font")
+		return nil, ErrNoDialogFace
 	}
 	body := widget.NewBox(widget.Row, 16, 0)
 	body.Append(newMessageGlyph(kind, 40), false)
@@ -443,6 +500,7 @@ func (a *Application) MessageBox(parent *Window, kind MessageKind, title, text s
 		Height:          160,
 		Content:         body,
 		Buttons:         buttons,
+		Modal:           true,
 		DefaultResponse: defaultResponse(buttons),
 		CancelResponse:  cancelResponse(buttons),
 	}
@@ -455,15 +513,17 @@ type MessageKind uint8
 // Message kinds.
 const (
 	Info MessageKind = iota
+	Question
 	Warning
 	Error
 )
 
 // messageColors maps each kind to its icon color.
 var messageColors = map[MessageKind]render.Color{
-	Info:    render.RGB(0x50, 0xa0, 0xe0),
-	Warning: render.RGB(0xf0, 0xc0, 0x40),
-	Error:   render.RGB(0xe0, 0x50, 0x50),
+	Info:     render.RGB(0x50, 0xa0, 0xe0),
+	Question: render.RGB(0x60, 0xc0, 0x90),
+	Warning:  render.RGB(0xf0, 0xc0, 0x40),
+	Error:    render.RGB(0xe0, 0x50, 0x50),
 }
 
 // newMessageGlyph paints a colored disc marking the message kind.
@@ -504,16 +564,28 @@ func (g *messageGlyph) HitTest(p widget.Point) widget.Widget {
 
 func (g *messageGlyph) Bounds() render.Rect { return g.bounds }
 
-// defaultResponse is the response of the first button.
+// defaultResponse is the response Enter fires: the button marked
+// ButtonRoleDefault, else the first button (the positional fallback).
 func defaultResponse(buttons []DialogButton) string {
+	for _, b := range buttons {
+		if b.Role == ButtonRoleDefault {
+			return b.Response
+		}
+	}
 	if len(buttons) > 0 {
 		return buttons[0].Response
 	}
 	return ""
 }
 
-// cancelResponse is the response of the last button.
+// cancelResponse is the response Escape fires: the button marked
+// ButtonRoleCancel, else the last button (the positional fallback).
 func cancelResponse(buttons []DialogButton) string {
+	for _, b := range buttons {
+		if b.Role == ButtonRoleCancel {
+			return b.Response
+		}
+	}
 	if len(buttons) > 0 {
 		return buttons[len(buttons)-1].Response
 	}

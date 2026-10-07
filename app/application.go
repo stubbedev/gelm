@@ -94,6 +94,13 @@ type Application struct {
 	// recentFiles (filedialog.go) lazily owns the desktop's shared
 	// recently-used list; nil until a file dialog with Recents runs.
 	recentFiles *recentfiles.Manager
+	// palette (dialog.go) is this application's color-chooser picks,
+	// scoped per process instead of a process global (#84).
+	palette appPalette
+	// eyedrop (eyedropper.go): the once-checked screencopy
+	// availability for the color chooser's pick-from-screen button.
+	eyedropChecked bool
+	eyedropOK      bool
 	// sessionLock is the lock this application holds (sessionlock.go);
 	// while it exists the loop runs on with no window mapped.
 	sessionLock *SessionLock

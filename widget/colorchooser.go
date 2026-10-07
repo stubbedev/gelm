@@ -37,9 +37,13 @@ type ColorChooser struct {
 	hex       *Entry
 	mirroring bool // the entry's text is our own mirror, not typing
 	addTo     *Button
-	presets   []render.Color
-	custom    func() []render.Color
-	addPick   func(render.Color)
+	// eyedrop, when SetEyedropper wired a screen-pick source, runs on
+	// the pick-from-screen button; pickFrom is that button.
+	eyedrop  func()
+	pickFrom *Button
+	presets  []render.Color
+	custom   func() []render.Color
+	addPick  func(render.Color)
 
 	// svRect/hueRect/alphaRect are the control rects inside the last
 	// arranged bounds.
@@ -72,6 +76,19 @@ func NewColorChooser(face render.Font, sizePx float64, initial render.Color) *Co
 // empty and the button is hidden.
 func (c *ColorChooser) SetPaletteSource(colors func() []render.Color, add func(render.Color)) {
 	c.custom, c.addPick = colors, add
+	c.InvalidateLayout()
+}
+
+// SetEyedropper wires the pick-from-screen button: start begins a
+// screen color pick (the application's captured-screen flow, #84);
+// without it the button stays hidden - swatches-only.
+func (c *ColorChooser) SetEyedropper(start func()) {
+	c.eyedrop = start
+	if start != nil && c.pickFrom == nil {
+		th := Current()
+		c.pickFrom = NewButton(NewLabel(c.face, c.sizePx, "⌖", th.OnAccent), 6, 4)
+		c.pickFrom.SetCursorName("crosshair")
+	}
 	c.InvalidateLayout()
 }
 
@@ -214,6 +231,9 @@ func (c *ColorChooser) Measure(con Constraints) Size {
 	}
 	lineH := c.face.Shape("lg", c.sizePx).LineHeight()
 	w := 160 + 8 + 24 + 8 + 24 + 16
+	if c.pickFrom != nil {
+		w += 8 + 24
+	}
 	h := 160 + 8 + lineH + 12 + 8 + (lineH+10)*2 + 12
 	return c.measureStore(con, clampSize(Size{W: w, H: h}, con))
 }
@@ -228,36 +248,53 @@ func (c *ColorChooser) Arrange(r render.Rect) {
 	entryY := c.sv.Y + c.sv.H + 8
 	entryH := lineH + 10
 	c.hex.Arrange(render.Rect{X: c.sv.X, Y: entryY, W: 160 + 8 + 24, H: entryH})
+	btnX := c.hex.Bounds().X + c.hex.Bounds().W + 8
 	if c.custom != nil {
 		nat := c.addTo.Measure(Constraints{Max: Size{W: 1 << 20, H: 1 << 20}})
-		c.addTo.Arrange(render.Rect{X: c.hex.Bounds().X + c.hex.Bounds().W + 8, Y: entryY, W: nat.W, H: entryH})
+		c.addTo.Arrange(render.Rect{X: btnX, Y: entryY, W: nat.W, H: entryH})
 		c.addTo.OnClick = func() {
 			if c.addPick != nil {
 				c.addPick(c.Color())
 			}
 		}
+		btnX = c.addTo.Bounds().X + c.addTo.Bounds().W + 8
+	}
+	if c.eyedrop != nil {
+		nat := c.pickFrom.Measure(Constraints{Max: Size{W: 1 << 20, H: 1 << 20}})
+		c.pickFrom.Arrange(render.Rect{X: btnX, Y: entryY, W: nat.W, H: entryH})
+		c.pickFrom.OnClick = c.eyedrop
 	}
 	setParents(c, c.hex)
 	if c.custom != nil {
 		setParents(c, c.addTo)
 	}
-}
-
-// Children exposes the entry (and the + button when the palette source
-// is wired) for focus traversal.
-func (c *ColorChooser) Children() []Widget {
-	if c.custom != nil {
-		return []Widget{c.hex, c.addTo}
+	if c.eyedrop != nil {
+		setParents(c, c.pickFrom)
 	}
-	return []Widget{c.hex}
 }
 
-// appendChildren appends the entry and optional + button, matching
+// Children exposes the entry (and the + and pick buttons when their
+// sources are wired) for focus traversal.
+func (c *ColorChooser) Children() []Widget {
+	kids := []Widget{c.hex}
+	if c.custom != nil {
+		kids = append(kids, c.addTo)
+	}
+	if c.eyedrop != nil {
+		kids = append(kids, c.pickFrom)
+	}
+	return kids
+}
+
+// appendChildren appends the entry and optional buttons, matching
 // Children.
 func (c *ColorChooser) appendChildren(buf []Widget) []Widget {
 	buf = append(buf, c.hex)
 	if c.custom != nil {
 		buf = append(buf, c.addTo)
+	}
+	if c.eyedrop != nil {
+		buf = append(buf, c.pickFrom)
 	}
 	return buf
 }
