@@ -240,3 +240,35 @@ func TestIMEReset(t *testing.T) {
 	}
 	_ = e
 }
+
+// While a popover holds the keyboard the input method follows its
+// router: its Entry enables text input, batches land in it (not in the
+// window's), the popover repaints, and dismissal hands text input back
+// to the window's focus - disabling it when that is not editable.
+func TestIMEFollowsPopover(t *testing.T) {
+	wire := &fakeIMEWire{available: true}
+	popRouter, popEntry := imeRouter(t)
+	op, surf, _, _ := newLoopPopover(popEntry)
+	op.router = popRouter
+	label := widget.NewLabel(testFace(t), 14, "w", render.RGB(255, 255, 255))
+	win := &hostWindow{router: &widget.Router{Root: label}}
+	a := &Application{sess: &wlsession.Session{}, ime: newIMEController(wire), windows: []*hostWindow{win}, openPopovers: []*openPopover{op}}
+
+	a.ime.sync(a.keyboardRouter(), true)
+	if len(wire.updates) != 1 || !wire.updates[0].Enabled || wire.updates[0].Surrounding != "ab" {
+		t.Fatalf("popover entry did not enable text input: %+v", wire.updates)
+	}
+	a.imeEvent(wlsession.IMEEvent{Commit: "中"})
+	if popEntry.Text() != "ab中" {
+		t.Errorf("commit landed as %q, want it in the popover entry", popEntry.Text())
+	}
+	if surf.frames == 0 || win.dirty {
+		t.Errorf("repaint: popover frames %d, window dirty %v", surf.frames, win.dirty)
+	}
+
+	surf.dismissed = true
+	a.ime.sync(a.keyboardRouter(), true)
+	if last := wire.updates[len(wire.updates)-1]; last.Enabled {
+		t.Error("dismissing the popover left text input enabled over a label")
+	}
+}

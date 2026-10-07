@@ -651,8 +651,8 @@ func (a *Application) tick(step func() error, now time.Time) error {
 	// surrounding text and caret as it types, and disables on
 	// focus moving elsewhere. The previous dispatch's changes are
 	// picked up here, one event later.
-	if w := a.focused(); w != nil {
-		a.ime.sync(w.router, true)
+	if r := a.keyboardRouter(); r != nil {
+		a.ime.sync(r, true)
 	}
 	animating := anim.Active()
 	if animating {
@@ -852,18 +852,37 @@ func captureKey(sess keyTranslator, capture func(Accel) bool, keycode uint32, mo
 	return capture(Accel{Sym: normalizeSym(sess.KeySym(keycode)), Mods: mods &^ wlsession.ModCapsLock})
 }
 
-// imeEvent applies one input-method batch into the focused window's
-// focused widget and repaints; the controller re-pushes state when the
-// batch was current.
+// imeEvent applies one input-method batch into the focused widget of
+// whatever holds the keyboard and repaints it; the controller re-pushes
+// state when the batch was current.
 func (a *Application) imeEvent(ev wlsession.IMEEvent) {
-	target := a.focused()
-	if target == nil {
+	r := a.keyboardRouter()
+	if r == nil {
 		return
 	}
-	a.ime.deliver(target.router, ev)
+	a.ime.deliver(r, ev)
+	if op := a.keyPopover(); op != nil {
+		op.pop.MarkFrame()
+		return
+	}
 	for _, w := range a.windows {
 		w.dirty = true
 	}
+}
+
+// keyboardRouter is the router keyboard input lands in: the topmost open popover's while one holds the seat
+// keyboard (its xdg_popup grab, the same rule deliverKey follows),
+// else the focused window's. The input method follows it, so a
+// popover Entry (a menu search, a dropdown entry) gets preedit and
+// commit like a window's.
+func (a *Application) keyboardRouter() *widget.Router {
+	if op := a.keyPopover(); op != nil {
+		return op.router
+	}
+	if w := a.focused(); w != nil {
+		return w.router
+	}
+	return nil
 }
 
 // focused picks the window that should receive keyboard input: the one
