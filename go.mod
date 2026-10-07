@@ -5,6 +5,7 @@ go 1.27.1
 require (
 	github.com/go-text/typesetting v0.3.5
 	github.com/godbus/dbus/v5 v5.2.2
+	github.com/kettek/apng v0.0.0-20250827064933-2bb5f5fcf253
 	github.com/neurlang/wayland v0.4.4
 	github.com/rivo/uniseg v0.4.7
 	github.com/srwiley/oksvg v0.0.0-20221011165216-be6e8873101c

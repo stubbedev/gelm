@@ -1,14 +1,10 @@
 package widget
 
 import (
-	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"image"
-	_ "image/gif"
-	_ "image/jpeg"
-	_ "image/png"
 	"io"
 	"net/http"
 	"os"
@@ -161,6 +157,9 @@ type Image struct {
 	loaded  bool
 	loading bool
 	gen     uint64
+
+	// play steps an animated source (image_anim.go).
+	play imagePlayback
 }
 
 // NewImage returns an image widget around a decoded image. The widget
@@ -235,6 +234,7 @@ func (im *Image) setSource(src imageSource) {
 		})
 		im.img, im.loadErr, im.loaded = img, err, true
 	}
+	im.restartPlayback()
 	im.InvalidateLayout()
 }
 
@@ -302,7 +302,8 @@ func (im *Image) Paint(cv *render.Canvas) {
 		return
 	}
 	box := cv.MapRect(im.bounds)
-	b := im.img.Bounds()
+	pic, frame := im.currentFrame()
+	b := pic.Bounds()
 	srcRect, dw, dh := render.ScaleRect(b.Dx(), b.Dy(), box.W, box.H, im.scale)
 	if dw <= 0 || dh <= 0 {
 		return
@@ -312,7 +313,7 @@ func (im *Image) Paint(cv *render.Canvas) {
 	if srcRect.Dx() == dw && srcRect.Dy() == dh {
 		// Natural pixels land one-to-one (ImageNone, a fitting
 		// ImageScaleDown, any 1:1 fit); no resample, no cache entry.
-		if sub, ok := im.img.(interface {
+		if sub, ok := pic.(interface {
 			SubImage(r image.Rectangle) image.Image
 		}); ok {
 			cv.DrawImageDevice(sub.SubImage(srcRect), dx, dy)
@@ -320,16 +321,17 @@ func (im *Image) Paint(cv *render.Canvas) {
 		}
 	}
 	if im.src.key == "" {
-		cv.DrawImageDevice(render.Resample(im.img, srcRect, dw, dh), dx, dy)
+		cv.DrawImageDevice(render.Resample(pic, srcRect, dw, dh), dx, dy)
 		return
 	}
 	raster := imgcache.Default().Raster(imgcache.RasterKey{
 		Source: im.src.key,
+		Frame:  frame,
 		Src:    srcRect,
 		W:      dw,
 		H:      dh,
 	}, func() *image.RGBA {
-		return render.Resample(im.img, srcRect, dw, dh)
+		return render.Resample(pic, srcRect, dw, dh)
 	})
 	cv.DrawImageDevice(raster, dx, dy)
 }
@@ -371,6 +373,7 @@ func (im *Image) applyPaste(gen uint64, img image.Image, err error) {
 		return
 	}
 	im.img, im.loadErr, im.loaded, im.loading = img, err, true, false
+	im.restartPlayback()
 	if err == nil && im.OnPasteImage != nil {
 		im.OnPasteImage(img)
 	}
@@ -418,6 +421,7 @@ func (im *Image) applyLoad(gen uint64, key string, img image.Image, err error) {
 	im.loaded = true
 	im.src.key = key
 	im.img, im.loadErr = img, err
+	im.restartPlayback()
 	// The natural size may have appeared or changed: drop the measure
 	// caches up the tree and owe the frame a repaint.
 	im.InvalidateLayout()
@@ -467,10 +471,10 @@ func fetchURL(url string) ([]byte, error) {
 	return data, nil
 }
 
-// decodeImageData decodes png, jpeg, or gif bytes. The decoders
-// register themselves through the blank imports above.
+// decodeImageData decodes image bytes - PNG, JPEG, GIF, WebP, and
+// animated GIF and APNG as a render.Animation (render.DecodeImage).
 func decodeImageData(data []byte, name string) (image.Image, error) {
-	img, _, err := image.Decode(bytes.NewReader(data))
+	img, err := render.DecodeImage(data)
 	if err != nil {
 		return nil, fmt.Errorf("image: decode %s: %w", name, err)
 	}
