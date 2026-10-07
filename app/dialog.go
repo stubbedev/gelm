@@ -520,6 +520,11 @@ func cancelResponse(buttons []DialogButton) string {
 	return ""
 }
 
+// ErrNoDialogFace reports a system with no usable text face - no
+// configured tooltip face and no system sans font. Every dialog
+// builder (message boxes, file dialogs, about) returns it.
+var ErrNoDialogFace = errors.New("app: dialog text face unavailable: no configured tooltip face and the system has no sans font")
+
 // dialogRoot builds the dialog window's root: the content in the
 // toolkit's card above a button row, or, Bare, the content alone.
 func (a *Application) dialogRoot(cfg DialogConfig, respond func(string)) (widget.Widget, render.Color, error) {
@@ -534,7 +539,7 @@ func (a *Application) dialogRoot(cfg DialogConfig, respond func(string)) (widget
 	// system without any usable font surfaces as an error here.
 	face := a.resolveFace(nil)
 	if face == nil {
-		return nil, 0, errors.New("app: dialog text face unavailable: no configured tooltip face and the system has no sans font")
+		return nil, 0, ErrNoDialogFace
 	}
 	buttons := widget.NewBox(widget.Row, 8, 0)
 	buttons.Append(widget.NewSpacer(0, 0), true)
