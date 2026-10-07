@@ -136,6 +136,11 @@ type Window struct {
 	// means every close request is accepted.
 	onCloseRequest func() bool
 
+	// caps is the compositor's window-management capabilities
+	// (wm_capabilities, toplevel v5); OnCapabilities hears changes.
+	caps           Capabilities
+	OnCapabilities func(Capabilities)
+
 	closed     bool
 	configured bool
 	width      uint32
@@ -168,6 +173,7 @@ func New(wmBase *xdg.WmBase, surf *wl.Surface, cfg Config) (*Window, error) {
 	xdgSurf.AddConfigureHandler(w)
 	tl.AddConfigureHandler(w)
 	tl.AddCloseHandler(w)
+	tl.AddWmCapabilitiesHandler(w)
 
 	if err := tl.SetTitle(cfg.Title); err != nil {
 		return nil, fmt.Errorf("window: set_title: %w", err)
@@ -223,6 +229,48 @@ func (w *Window) HandleToplevelConfigure(ev xdg.ToplevelConfigureEvent) {
 	if state != w.state {
 		w.state = state
 		debug.Log("shell", "toplevel state %s, %dx%d", state, w.width, w.height)
+	}
+}
+
+// Capabilities is what the compositor's window management offers a
+// toplevel. Known is false until the compositor said (wm_capabilities,
+// toplevel v5); until then every capability counts as available, the
+// protocol's rule.
+type Capabilities struct {
+	Known                                      bool
+	WindowMenu, Maximize, Fullscreen, Minimize bool
+}
+
+// all is the assumed set before the compositor speaks.
+func (c Capabilities) all() Capabilities {
+	if c.Known {
+		return c
+	}
+	return Capabilities{WindowMenu: true, Maximize: true, Fullscreen: true, Minimize: true}
+}
+
+// Capabilities reports the compositor's window-management offer.
+func (w *Window) Capabilities() Capabilities { return w.caps.all() }
+
+// HandleToplevelWmCapabilities records the compositor's offer.
+func (w *Window) HandleToplevelWmCapabilities(ev xdg.ToplevelWmCapabilitiesEvent) {
+	c := Capabilities{Known: true}
+	for _, v := range ev.Capabilities {
+		switch v {
+		case xdg.ToplevelWmCapabilitiesWindowMenu:
+			c.WindowMenu = true
+		case xdg.ToplevelWmCapabilitiesMaximize:
+			c.Maximize = true
+		case xdg.ToplevelWmCapabilitiesFullscreen:
+			c.Fullscreen = true
+		case xdg.ToplevelWmCapabilitiesMinimize:
+			c.Minimize = true
+		}
+	}
+	w.caps = c
+	debug.Log("shell", "wm capabilities %+v", c)
+	if w.OnCapabilities != nil {
+		w.OnCapabilities(c)
 	}
 }
 

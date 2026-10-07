@@ -48,22 +48,29 @@ func (w *Window) ToggleMaximize() {
 }
 
 // AttachHeader wires a HeaderBar to its window: close, minimize, and
-// maximize controls shown and hooked, the double-press mapped to
+// maximize controls hooked, the double-press mapped to
 // maximize/restore. The press-to-move grab needs no wiring - the input
 // pipeline routes any WindowMover press into xdg_toplevel.move. The
-// buttons are shown unconditionally: minimize and maximize are hints
-// a compositor is free to ignore, and a hidden button cannot be
-// discovered while an ignored one simply does nothing - the honest
-// degradation GTK ships too.
+// minimize and maximize buttons follow the compositor's
+// wm_capabilities: shown until it says otherwise (a compositor that
+// never says - toplevel before v5 - offers everything), hidden, and
+// the double-press inert, for what it declares it cannot do.
 func (a *Application) AttachHeader(win *Window, bar *widget.HeaderBar) {
 	controls := bar.Controls()
 	controls.ShowClose(true)
-	controls.ShowMinimize(true)
-	controls.ShowMaximize(true)
 	controls.OnClose = win.Close
 	controls.OnMinimize = win.Minimize
 	controls.OnMaximize = win.ToggleMaximize
-	bar.OnDoubleClick = win.ToggleMaximize
+	apply := func(c WMCapabilities) {
+		controls.ShowMinimize(c.Minimize)
+		controls.ShowMaximize(c.Maximize)
+		bar.OnDoubleClick = nil
+		if c.Maximize {
+			bar.OnDoubleClick = win.ToggleMaximize
+		}
+	}
+	apply(win.Capabilities())
+	win.OnCapabilities(apply)
 }
 
 // AttachMenuBar wires a MenuBar's roots to their popovers: activating

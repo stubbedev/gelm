@@ -355,3 +355,29 @@ applies; a theme is never rejected for its colors.
 - **No color picker, calendar, or font chooser** — superseded
   (#72–#74): `ColorChooser`, `Calendar`, `FontChooserDialog`. The full
   capability map lives in [completeness.md](completeness.md).
+- **No single-pixel buffers** (wp_single_pixel_buffer_v1) — a
+  single-pixel buffer only pays off as its own surface, and gelm draws
+  each window into one buffer per surface (no subsurfaces): spacers
+  and dividers are a rectangle fill inside damage, with no SHM arena
+  traffic to save.
+- **No commit timing** (wp_commit_timing_v1, wp_fifo_v1) — frame
+  callbacks already pace every commit (rule 3) and no measurable
+  pacing win appeared without a video or game presentation path.
+- **No subsurfaces** (wl_subsurface) — same-buffer overlays (popover
+  shadows, drag icons through the DnD icon surface, the fader) cover
+  every need so far; one buffer per surface keeps damage and pacing
+  one problem.
+- **No security context** (wp_security_context_v1) — it is for
+  sandbox launchers handing out restricted connections, which gelm
+  does not ship.
+- **No toplevel drag** (xdg_toplevel_drag_v1) — it only matters for
+  detachable tabs; it is folded into that decision rather than bound
+  ahead of a use.
+
+Implemented from the same review (#110): content-type hints
+(`WindowConfig.ContentType`, `Window.SetContentType`), live surface
+opacity (`Window.SetOpacity`, wp_alpha_modifier_v1), the error bell
+(`widget.ErrorBell`, xdg_system_bell_v1 - a read-only Entry refusing a
+key, a SpinButton refusing text that does not parse), and
+wm_capabilities (`Window.Capabilities`; `AttachHeader` hides the
+buttons the compositor declares it cannot honor).

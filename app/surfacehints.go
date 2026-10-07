@@ -1,0 +1,119 @@
+package app
+
+import (
+	"github.com/neurlang/wayland/wl"
+
+	"github.com/stubbedev/gelm/internal/window"
+	"github.com/stubbedev/gelm/internal/wlsession"
+	"github.com/stubbedev/gelm/widget"
+)
+
+// ContentType hints what a surface shows (wp_content_type_v1), so the
+// compositor may tune for it: a photo viewer, a video, a game.
+type ContentType = wlsession.ContentType
+
+// Content types.
+const (
+	ContentNone  = wlsession.ContentNone
+	ContentPhoto = wlsession.ContentPhoto
+	ContentVideo = wlsession.ContentVideo
+	ContentGame  = wlsession.ContentGame
+)
+
+// WMCapabilities is what the compositor's window management offers a
+// window; Known is false until it said, and until then everything
+// counts as available.
+type WMCapabilities = window.Capabilities
+
+// SetContentType hints the window's content kind; it applies with the
+// next frame. Fails when the compositor lacks the protocol.
+func (w *Window) SetContentType(ct ContentType) error {
+	err := w.app.sess.SetContentType(w.win.WLSurface, ct)
+	w.requestFrame()
+	return err
+}
+
+// SetOpacity sets the opacity the compositor applies to the whole
+// window (0..1) - a fade with no repaint (wp_alpha_modifier_v1). It
+// applies with the next frame; fails when the compositor lacks the
+// protocol.
+func (w *Window) SetOpacity(alpha float64) error {
+	err := w.app.sess.SetSurfaceAlpha(w.win.WLSurface, alpha)
+	w.requestFrame()
+	return err
+}
+
+// Capabilities reports the compositor's window-management offer.
+func (w *Window) Capabilities() WMCapabilities { return w.win.Capabilities() }
+
+// requestFrame marks the window for a frame (the commit that applies
+// surface state).
+func (w *Window) requestFrame() {
+	if hw := w.app.hostOf(w); hw != nil {
+		hw.dirty = true
+	}
+}
+
+// SetContentType hints the layer surface's content kind.
+func (l *LayerWindow) SetContentType(ct ContentType) error {
+	err := l.app.sess.SetContentType(l.ls.WLSurface, ct)
+	l.requestFrame()
+	return err
+}
+
+// SetOpacity sets the opacity the compositor applies to the layer
+// surface (a panel fading out, no repaint).
+func (l *LayerWindow) SetOpacity(alpha float64) error {
+	err := l.app.sess.SetSurfaceAlpha(l.ls.WLSurface, alpha)
+	l.requestFrame()
+	return err
+}
+
+// requestFrame marks the layer surface for a frame.
+func (l *LayerWindow) requestFrame() {
+	if hw := l.app.hostOfLayer(l); hw != nil {
+		hw.dirty = true
+	}
+}
+
+// Bell rings the system bell for host (nil: the application's).
+func (a *Application) Bell(host Host) error {
+	if host == nil {
+		return a.sess.Bell(nil)
+	}
+	return a.sess.Bell(host.HostSurface())
+}
+
+// ringFor is the widget error bell: it rings the window holding w.
+func (a *Application) ringFor(w widget.Widget) {
+	root := widget.RootOf(w)
+	for _, hw := range a.windows {
+		if hw.router != nil && hw.router.Root == root {
+			_ = a.sess.Bell(hw.host.HostSurface())
+			return
+		}
+	}
+	_ = a.sess.Bell(nil)
+}
+
+// initialHints applies a config's surface hints before the initial
+// commit; a compositor without the protocol just doesn't get them.
+func (a *Application) initialHints(surf *wl.Surface, ct ContentType) {
+	if ct != ContentNone {
+		_ = a.sess.SetContentType(surf, ct)
+	}
+}
+
+// OnCapabilities adds fn to what hears the compositor's
+// window-management offer change (each wm_capabilities event); the
+// window repaints after.
+func (w *Window) OnCapabilities(fn func(WMCapabilities)) {
+	prev := w.win.OnCapabilities
+	w.win.OnCapabilities = func(c WMCapabilities) {
+		if prev != nil {
+			prev(c)
+		}
+		fn(c)
+		w.requestFrame()
+	}
+}

@@ -133,6 +133,12 @@ type Session struct {
 	// idleNotifier watches the seat's idleness (idlenotify.go).
 	idleNotifier        *wlr.ExtIdleNotifierV1
 	idleNotifierVersion uint32
+	// The per-surface hints and the bell (surfacehints.go).
+	contentTypeMgr      *wlr.WpContentTypeManagerV1
+	contentTypes        map[*wl.Surface]*wlr.WpContentTypeV1
+	alphaMgr            *wlr.WpAlphaModifierV1
+	alphaSurfaces       map[*wl.Surface]*wlr.WpAlphaModifierSurfaceV1
+	bell                *wlr.XdgSystemBellV1
 	wmBase              *xdg.WmBase
 	wmBaseVersion       uint32
 	compositorVersion   uint32
@@ -494,6 +500,8 @@ func (s *Session) HandleRegistryGlobal(ev wl.RegistryGlobalEvent) {
 		s.bindRelativePointer(ev)
 	case "ext_idle_notifier_v1":
 		s.bindIdleNotifier(ev)
+	case "wp_content_type_manager_v1", "wp_alpha_modifier_v1", "xdg_system_bell_v1":
+		s.bindSurfaceHint(ev)
 	case "zwp_keyboard_shortcuts_inhibit_manager_v1":
 		s.bindShortcutsInhibitManager(ev)
 	case "zxdg_output_manager_v1":
@@ -830,6 +838,7 @@ func (s *Session) keyboardLost() {
 func (s *Session) SetSurfaceInput(surf *wl.Surface, h SurfacePointerHandler) {
 	if h == nil {
 		s.releaseConstraint(surf)
+		s.releaseSurfaceHints(surf)
 		delete(s.surfaceHandlers, surf)
 		return
 	}

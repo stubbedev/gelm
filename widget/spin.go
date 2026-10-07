@@ -126,6 +126,9 @@ func (s *SpinButton) stepBy(n int) {
 func (s *SpinButton) commit() {
 	v, err := strconv.ParseFloat(strings.TrimSpace(s.Text()), 64)
 	if err != nil || math.IsNaN(v) {
+		if text := strings.TrimSpace(s.Text()); text != s.format(s.value) {
+			ErrorBell(s)
+		}
 		s.SetText(s.format(s.value))
 		return
 	}

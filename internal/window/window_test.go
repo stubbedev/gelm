@@ -292,3 +292,24 @@ func TestCloseRequestVeto(t *testing.T) {
 		}
 	})
 }
+
+// Until the compositor says, every capability counts as offered; its
+// wm_capabilities replaces that and is announced.
+func TestWmCapabilities(t *testing.T) {
+	w := &Window{}
+	if c := w.Capabilities(); c.Known || !c.Maximize || !c.Minimize || !c.Fullscreen || !c.WindowMenu {
+		t.Errorf("unknown caps = %+v, want all offered", c)
+	}
+	var heard []Capabilities
+	w.OnCapabilities = func(c Capabilities) { heard = append(heard, c) }
+	w.HandleToplevelWmCapabilities(xdg.ToplevelWmCapabilitiesEvent{
+		Capabilities: []int32{xdg.ToplevelWmCapabilitiesFullscreen},
+	})
+	c := w.Capabilities()
+	if !c.Known || c.Maximize || c.Minimize || c.WindowMenu || !c.Fullscreen {
+		t.Errorf("caps = %+v, want fullscreen only", c)
+	}
+	if len(heard) != 1 || heard[0] != c {
+		t.Errorf("heard %+v", heard)
+	}
+}

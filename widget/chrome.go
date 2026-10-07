@@ -193,6 +193,11 @@ func (c *WindowControls) ShowMaximize(on bool) {
 	c.toggle(&c.maxBtn, SymbolMaximize, &c.OnMaximize, on)
 }
 
+// Shown reports which buttons are shown.
+func (c *WindowControls) Shown() (closeBtn, minimize, maximize bool) {
+	return c.closeBtn != nil, c.minBtn != nil, c.maxBtn != nil
+}
+
 // toggle adds or removes one button.
 func (c *WindowControls) toggle(slot **Button, glyph SymbolKind, hook *func(), on bool) {
 	if on == (*slot != nil) {
@@ -212,8 +217,20 @@ func (c *WindowControls) toggle(slot **Button, glyph SymbolKind, hook *func(), o
 			(*hook)()
 		}
 	}
+	// A button shown again (the compositor's capabilities changed)
+	// returns to its own place: the row keeps close, minimize,
+	// maximize order whatever order they were shown in.
+	at := 0
+	for _, s := range [...]**Button{&c.closeBtn, &c.minBtn, &c.maxBtn} {
+		if s == slot {
+			break
+		}
+		if *s != nil {
+			at++
+		}
+	}
 	*slot = btn
-	c.row.Append(btn, false)
+	c.row.InsertAt(at, btn, false)
 	c.InvalidateLayout()
 }
 

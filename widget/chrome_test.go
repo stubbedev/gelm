@@ -1,6 +1,7 @@
 package widget
 
 import (
+	"slices"
 	"testing"
 
 	"golang.org/x/image/font/gofont/goregular"
@@ -171,4 +172,25 @@ func TestGoldenChrome(t *testing.T) {
 
 	bar := NewMenuBar(face, 13, "File", "Edit", "View")
 	NewGolden(t, bar, "menubar", goldenTheme(th), goldenFrame(240, 36))
+}
+
+// Buttons hidden and shown again (capabilities changing at runtime)
+// keep close, minimize, maximize order.
+func TestWindowControlsKeepOrder(t *testing.T) {
+	c := NewWindowControls(testFace(t), 14)
+	c.ShowMaximize(true)
+	c.ShowClose(true)
+	c.ShowMinimize(true)
+	want := []Widget{c.closeBtn, c.minBtn, c.maxBtn}
+	if got := c.row.Children(); !slices.Equal(got, want) {
+		t.Fatalf("order = %v, want close, minimize, maximize", got)
+	}
+	c.ShowMinimize(false)
+	if got := c.row.Children(); len(got) != 2 || c.minBtn != nil {
+		t.Fatalf("hidden minimize left %d buttons", len(got))
+	}
+	c.ShowMinimize(true)
+	if got := c.row.Children(); got[1] != c.minBtn {
+		t.Error("minimize did not return between close and maximize")
+	}
 }

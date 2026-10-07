@@ -198,6 +198,9 @@ func NewApplication(sess *wlsession.Session) *Application {
 	// on a ghost (tooltipCtl opens and closes on the router's hover).
 	// One hook per process, like SetInvoker; it covers the window
 	// routers — popups run transient routers over short-lived trees.
+	// Rejected input (a key into a read-only field, a value that does
+	// not parse) rings the system bell for the widget's window.
+	widget.SetErrorBell(a.ringFor)
 	widget.SetRemovedHook(func(w widget.Widget) {
 		for _, win := range a.windows {
 			win.router.Forget(w)
@@ -309,6 +312,10 @@ type WindowConfig struct {
 	// Opaque forces the opaque region even though Background is
 	// translucent; see app.Config.Opaque.
 	Opaque bool
+	// ContentType hints what the window shows (a photo viewer, a video
+	// player, a game) so the compositor may tune for it; ignored where
+	// the compositor lacks wp_content_type_v1.
+	ContentType ContentType
 	// OnPress fires after the router recorded a press (chrome drag,
 	// context menus).
 	OnPress func(button uint32, serial uint32, over widget.Widget)
@@ -371,6 +378,8 @@ type LayerConfig struct {
 	// Opaque forces the opaque region even though Background is
 	// translucent; see app.Config.Opaque.
 	Opaque bool
+	// ContentType mirrors WindowConfig.
+	ContentType ContentType
 	// OnPress, OnPointerMove, OnKey, KeyCapture mirror WindowConfig.
 	OnPress       func(button uint32, serial uint32, over widget.Widget)
 	OnPointerMove func(x, y float64)
@@ -421,6 +430,7 @@ func (a *Application) newWindowWindow(cfg WindowConfig, animKind surfx.Kind) (*W
 		keyCapture: cfg.KeyCapture,
 	}, cfg.OnClosed, animKind)
 	hw.win = w
+	a.initialHints(surf, cfg.ContentType)
 	if err := surf.Commit(); err != nil {
 		return nil, fmt.Errorf("app: initial commit: %w", err)
 	}
@@ -472,6 +482,7 @@ func (a *Application) NewLayer(cfg LayerConfig) (*LayerWindow, error) {
 	if cfg.Output != nil && cfg.Output.Transform != 0 && hw.sc != nil {
 		_ = hw.sc.SetTransform(cfg.Output.Transform)
 	}
+	a.initialHints(surf, cfg.ContentType)
 	if err := surf.Commit(); err != nil {
 		return nil, fmt.Errorf("app: initial commit: %w", err)
 	}
