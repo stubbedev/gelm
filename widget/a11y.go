@@ -184,6 +184,8 @@ func Describe(w Widget) A11yState {
 		st.Checked = v.Checked()
 	case *ProgressBar:
 		st.Min, st.Max, st.Value = 0, 1, v.Value()
+	case *LevelBar:
+		st.Min, st.Max, st.Value = 0, 1, v.Value()
 	case *Scroll:
 		st.Role = RoleScrollArea
 	case *List:

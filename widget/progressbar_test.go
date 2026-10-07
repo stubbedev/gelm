@@ -22,11 +22,11 @@ func TestProgressBarNodes(t *testing.T) {
 	if got := tv.Background; got != render.RGB(0x01, 0x02, 0x03) {
 		t.Errorf("trough background %v, want the trough rule", got)
 	}
-	pv := p.trough.progress.style(&p.trough.progress)
+	pv := p.trough.fill.style(&p.trough.fill)
 	if got := pv.Background; got != render.RGB(0x0a, 0x0b, 0x0c) {
 		t.Errorf("progress background %v, want the progress rule", got)
 	}
-	if fr := p.trough.progress.Bounds(); fr.W*2 != p.trough.Bounds().W || fr.H != 8 {
+	if fr := p.trough.fill.Bounds(); fr.W*2 != p.trough.Bounds().W || fr.H != 8 {
 		t.Errorf("fill rect %+v, want half the trough wide at min-height 8", fr)
 	}
 }
@@ -43,11 +43,11 @@ func TestProgressBarUnstyledDefaults(t *testing.T) {
 	if got := p.troughFill(th); got != th.Surface {
 		t.Errorf("trough fallback %v, want the theme surface", got)
 	}
-	if got := p.progressFill(th); got != th.Accent {
+	if got := p.fillFill(th); got != th.Accent {
 		t.Errorf("progress fallback %v, want the theme accent", got)
 	}
 	p.Fill, p.Trough = render.RGB(1, 2, 3), render.RGB(4, 5, 6)
-	if got := p.progressFill(th); got != render.RGB(1, 2, 3) {
+	if got := p.fillFill(th); got != render.RGB(1, 2, 3) {
 		t.Errorf("programmatic fill %v, want the set color", got)
 	}
 	if got := p.troughFill(th); got != render.RGB(4, 5, 6) {

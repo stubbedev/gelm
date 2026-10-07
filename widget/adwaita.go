@@ -108,6 +108,15 @@ var classRules = [][2]string{
 	{css.Toolbar, "padding: 6px;"},
 }
 
+// partRules style widget parts whose default paint is a named color:
+// the level bar's trough and offset classes.
+var partRules = [][2]string{
+	{"levelbar trough", "background-color: @view_bg_color;"},
+	{"levelbar block." + LevelBarOffsetLow, "background-color: @warning_bg_color;"},
+	{"levelbar block." + LevelBarOffsetHigh, "background-color: @accent_bg_color;"},
+	{"levelbar block." + LevelBarOffsetFull, "background-color: @success_bg_color;"},
+}
+
 // themeCSS renders the theme layer for t.
 func themeCSS(t *Theme) string {
 	var b strings.Builder
@@ -116,6 +125,9 @@ func themeCSS(t *Theme) string {
 	}
 	for _, r := range classRules {
 		fmt.Fprintf(&b, ".%s { %s }\n", r[0], r[1])
+	}
+	for _, r := range partRules {
+		fmt.Fprintf(&b, "%s { %s }\n", r[0], r[1])
 	}
 	return b.String()
 }
