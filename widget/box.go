@@ -318,8 +318,67 @@ func (b *Box) Measure(con Constraints) Size {
 				total -= spacing
 			}
 		}
+		if above, below, ok := b.baselineGroup(); ok {
+			cross = max(cross, above+below)
+		}
 		return b.withMain(Size{W: cross, H: cross}, total)
 	}))
+}
+
+// baselineGroup spans a row's baseline-aligned children: the most any
+// reaches above the shared baseline and below it.
+func (b *Box) baselineGroup() (above, below int, ok bool) {
+	if b.axis != Row {
+		return 0, 0, false
+	}
+	for _, c := range b.child {
+		if c.cross != AlignBaseline || !IsVisible(c.w) {
+			continue
+		}
+		if base, has := baselineOf(c.w); has {
+			above, below, ok = max(above, base), max(below, c.nat.H-base), true
+		}
+	}
+	return above, below, ok
+}
+
+// Baseline implements Baseliner. A row's is its baseline group's,
+// centered across the row as Arrange places it, else its first child
+// with a baseline where its alignment puts it; a column's is its first
+// child's.
+func (b *Box) Baseline() (int, bool) {
+	top := b.box(b.style(b)).outer().Top
+	cross := 0
+	for _, c := range b.child {
+		if IsVisible(c.w) {
+			cross = max(cross, b.crossOf(c.nat))
+		}
+	}
+	if above, below, ok := b.baselineGroup(); ok {
+		cross = max(cross, above+below)
+		return top + (cross-above-below)/2 + above, true
+	}
+	for _, c := range b.child {
+		if !IsVisible(c.w) {
+			continue
+		}
+		base, ok := baselineOf(c.w)
+		if b.axis == Column {
+			return top + base, ok
+		}
+		if !ok {
+			continue
+		}
+		switch c.cross {
+		case AlignStart:
+		case AlignEnd:
+			base += cross - c.nat.H
+		default: // stretched or centered text sits centered
+			base += (cross - c.nat.H) / 2
+		}
+		return top + base, true
+	}
+	return 0, false
 }
 
 // box is the box's resolved CSS box: the stylesheet's padding where
@@ -409,6 +468,8 @@ func (b *Box) Arrange(r render.Rect) {
 
 	pos := 0
 	rtl := b.axis == Row && b.dir == DirectionRTL
+	above, below, grouped := b.baselineGroup()
+	groupTop := inner.Y + (inner.H-above-below)/2
 	for i, c := range b.child {
 		if !IsVisible(c.w) {
 			c.w.Arrange(render.Rect{})
@@ -429,8 +490,17 @@ func (b *Box) Arrange(r render.Rect) {
 				x = inner.X + inner.W - pos - size // the row flows from the right edge
 			}
 			rect = render.Rect{X: x, Y: inner.Y, W: size, H: inner.H}
-			if c.cross != AlignFill {
-				rect = alignRect(rect, Size{W: size, H: min(c.nat.H, inner.H)}, AlignFill, c.cross)
+			natural := Size{W: size, H: min(c.nat.H, inner.H)}
+			switch c.cross {
+			case AlignFill:
+			case AlignBaseline:
+				if base, ok := baselineOf(c.w); grouped && ok {
+					rect.Y, rect.H = groupTop+above-base, natural.H
+				} else {
+					rect = alignRect(rect, natural, AlignFill, AlignCenter)
+				}
+			default:
+				rect = alignRect(rect, natural, AlignFill, c.cross)
 			}
 		} else {
 			rect = render.Rect{X: inner.X, Y: inner.Y + pos, W: inner.W, H: size}

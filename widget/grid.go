@@ -22,6 +22,10 @@ const (
 	// AlignEnd pins the child to the cell's trailing edge at its
 	// natural size.
 	AlignEnd
+	// AlignBaseline lines a row Box's child up on the row's shared text
+	// baseline at its natural height (GTK's valign baseline); children
+	// with no baseline center, and across a column it pins to the start.
+	AlignBaseline
 )
 
 // gridChild is one Grid child: the widget, the cell it is attached to,
