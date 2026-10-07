@@ -75,7 +75,13 @@ func requireEnv(t *testing.T) {
 // the client itself traced after mapping.
 func startShowcase(t *testing.T) (*Client, *LogWatcher, map[string][2]int) {
 	t.Helper()
-	c, err := testEnv.StartShowcase(testBin, "client-"+t.Name())
+	return startShowcaseEnv(t)
+}
+
+// startShowcaseEnv is startShowcase with extra client environment.
+func startShowcaseEnv(t *testing.T, env ...string) (*Client, *LogWatcher, map[string][2]int) {
+	t.Helper()
+	c, err := testEnv.StartClientEnv(testBin, "client-"+strings.ReplaceAll(t.Name(), "/", "-"), "input,frame,demo,seat,wire,shell", env)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1002,5 +1008,32 @@ func TestHeadlessNestedMenuPopover(t *testing.T) {
 		if _, err := w.Wait("demo", "menu depth 0", traceTimeout); err != nil {
 			t.Fatal(err)
 		}
+	}
+}
+
+// Both cursor paths: with cursor-shape-v1 (the compositor draws) a
+// text field's caret cursor is one set_shape; with the protocol turned
+// off it comes from the client theme.
+func TestHeadlessCursorShapePaths(t *testing.T) {
+	requireEnv(t)
+	for _, tc := range []struct {
+		name string
+		env  []string
+		want string
+	}{
+		{"protocol", nil, `cursor shape "xterm"`},
+		{"theme", []string{"GELM_NO_CURSOR_SHAPE=1"}, `cursor "xterm"`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, w, centers := startShowcaseEnv(t, tc.env...)
+			in := newInput(t)
+			entry := centers["entry"]
+			if err := in.MoveTo(entry[0], entry[1]); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := w.Wait("input", tc.want, traceTimeout); err != nil {
+				t.Errorf("hovering the entry never traced %s: %v", tc.want, err)
+			}
+		})
 	}
 }

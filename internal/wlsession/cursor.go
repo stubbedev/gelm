@@ -188,6 +188,10 @@ func (s *Session) applyCursor() error {
 		debug.Log("input", "cursor surface %d created", surf.Id())
 	}
 	c.gen++
+	if s.applyShapeLocked(c.desired) {
+		c.shown, c.cur = c.desired, nil
+		return nil
+	}
 	if c.desired == CursorHidden {
 		c.shown, c.cur = CursorHidden, nil
 		return s.pushCursorLocked(nil)
