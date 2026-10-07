@@ -112,6 +112,9 @@ type Application struct {
 	// launcher (launcher.go): the OpenURL/OpenPath transport state.
 	launchState launcher
 	launchOnce  sync.Once
+	// shortcuts (globalshortcuts_portal.go): the lazily created portal
+	// GlobalShortcuts session, the fallback transport.
+	shortcuts portalShortcuts
 	// sessionLock is the lock this application holds (sessionlock.go);
 	// while it exists the loop runs on with no window mapped.
 	sessionLock *SessionLock
@@ -585,6 +588,7 @@ func (a *Application) Run() error {
 			a.appearance.Close()
 		}
 		a.closeNotifier()
+		a.shortcuts.shutdown()
 	}()
 	a.sess.OnKey = a.routeKey
 	a.sess.OnKeyUp = a.rep.release
