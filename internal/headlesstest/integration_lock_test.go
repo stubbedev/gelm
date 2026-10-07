@@ -110,7 +110,7 @@ func TestSessionLockLifecycle(t *testing.T) {
 			return
 		}
 		unlocked = true
-		holder.onLoop(func() {
+		ran := holder.onLoop(func() {
 			l := holder.app.SessionLock()
 			if l == nil {
 				return
@@ -125,6 +125,12 @@ func TestSessionLockLifecycle(t *testing.T) {
 				t.Errorf("second Unlock = %v, want ErrLockEnded", err)
 			}
 		})
+		// A lock left behind breaks every later test on the shared
+		// compositor (no keyboard focus while locked): an unlock that
+		// never ran is a failure here, not a silent pass.
+		if !ran {
+			t.Error("the unlock never ran: the holder's loop was gone, the session may stay locked")
+		}
 	}
 	// Whatever fails below, never leave the shared compositor locked.
 	t.Cleanup(unlock)

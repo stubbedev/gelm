@@ -105,6 +105,30 @@ func (w *LogWatcher) Wait(category, substr string, timeout time.Duration) (Trace
 	}
 }
 
+// WaitEver waits until a trace in category containing substr has
+// arrived at any point since the watcher attached - lines earlier
+// Waits already passed included - and consumes nothing: for state that
+// holds once reached (a window's keyboard focus) rather than an event
+// in a sequence.
+func (w *LogWatcher) WaitEver(category, substr string, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	for {
+		w.readNew()
+		w.mu.Lock()
+		for _, tr := range w.seen {
+			if (category == "" || tr.Category == category) && strings.Contains(tr.Message, substr) {
+				w.mu.Unlock()
+				return nil
+			}
+		}
+		w.mu.Unlock()
+		if time.Now().After(deadline) {
+			return fmt.Errorf("timeout (%s): [%s] %q never arrived; log tail:\n%s", timeout, category, substr, w.Tail(25))
+		}
+		time.Sleep(pollInterval)
+	}
+}
+
 // WaitAll is Wait for a set: it waits until each substr has arrived
 // (one trace per substr, in ANY order) since this call began. State
 // transitions produce two racing traces - the confirmed-state line and
