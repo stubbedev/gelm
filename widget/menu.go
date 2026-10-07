@@ -86,11 +86,18 @@ func MenuSeparator() MenuItem { return MenuItem{Kind: ItemSeparator} }
 // :disabled, check and radio rows :checked while on.
 type Menu struct {
 	node
-	face      render.Font
-	sizePx    float64
-	dir       Direction
-	items     []MenuItem
-	hovered   int
+	face    render.Font
+	sizePx  float64
+	dir     Direction
+	items   []MenuItem
+	hovered int
+	// keyed marks a highlight the keyboard made: a pointer that is
+	// over no row (the popup's shadow gutter, a separator, outside)
+	// does not take it away - only pointing at a row does. A
+	// compositor reports such pointer events on its own when a popup
+	// maps under a resting cursor, which must not undo arrow-key
+	// navigation.
+	keyed     bool
 	itemH     int
 	OnDismiss func()
 	// OnSubmenu fires when a row with nested Items is activated; the
@@ -485,7 +492,7 @@ func (m *Menu) HitTest(p Point) Widget { return m.HitLeaf(m, p) }
 
 // SetHovered clears row hover when the pointer leaves the menu.
 func (m *Menu) SetHovered(on bool) {
-	if !on && m.hovered != -1 {
+	if !on && m.hovered != -1 && !m.keyed {
 		m.hovered = -1
 		m.invalidateState(style.Hover)
 		m.syncHovered()
@@ -498,7 +505,14 @@ func (m *Menu) HoverMove(p Point) {
 	if !IsEnabled(m) {
 		return
 	}
-	if i := m.itemAt(p); i != m.hovered {
+	i := m.itemAt(p)
+	if i < 0 && m.keyed {
+		return
+	}
+	if i >= 0 {
+		m.keyed = false
+	}
+	if i != m.hovered {
 		m.moveHover(i)
 		if i >= 0 && m.OnHover != nil {
 			m.OnHover(i)
@@ -623,6 +637,10 @@ func (m *Menu) step(dir int) {
 func (m *Menu) KeyAction(a KeyAction, mods Mods) {
 	if !IsEnabled(m) {
 		return
+	}
+	switch a {
+	case KeyDown, KeyUp, KeyHome, KeyEnd:
+		m.keyed = true
 	}
 	switch a {
 	case KeyDown:

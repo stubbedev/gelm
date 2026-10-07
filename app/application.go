@@ -21,6 +21,7 @@ import (
 	"github.com/stubbedev/gelm/internal/appearance"
 	"github.com/stubbedev/gelm/internal/clipboard"
 	"github.com/stubbedev/gelm/internal/datacontrol"
+	"github.com/stubbedev/gelm/internal/debug"
 	"github.com/stubbedev/gelm/internal/dragdrop"
 	"github.com/stubbedev/gelm/internal/icons"
 	"github.com/stubbedev/gelm/internal/inspect"
@@ -650,6 +651,7 @@ func (a *Application) Run() error {
 	a.wireSession()
 	for {
 		if a.done() {
+			a.settleWire()
 			return ErrClosed
 		}
 		if err := a.tick(a.stepFn(), time.Now()); err != nil {
@@ -660,6 +662,23 @@ func (a *Application) Run() error {
 			}
 			return err
 		}
+	}
+}
+
+// settleWire round-trips the display once as Run ends normally, so the
+// compositor has processed every request the application made before
+// the process can exit: libwayland-server destroys a client that hangs
+// up without reading what is still in its socket, and an unlock that
+// ended the loop (the last lock, no window left) would otherwise be
+// lost - leaving the session locked for good, as the protocol demands
+// of a lock client that vanished. A closed session has nothing to
+// settle.
+func (a *Application) settleWire() {
+	if a.sess == nil || a.sess.Display == nil || a.sess.Closed() {
+		return
+	}
+	if err := a.sess.Roundtrip(); err != nil {
+		debug.Log("wire", "app: final roundtrip: %v", err)
 	}
 }
 
