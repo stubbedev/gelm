@@ -272,7 +272,7 @@ pkgs.testers.nixosTest {
             f"for f in {runtime_dir}/client-*.log; do echo \"== $f\"; "
             "grep -E 'keymap|keyboard|popover key|wire key|modifiers|demo: key' $f | head -n 16; done"
           )[1])
-          print(machine.execute(f"grep -niE 'sessionlock|session lock|lockdead|refusing|unlock' {runtime_dir}/hypr/{hypr_sig}/hyprland.log | head -n 80")[1])
+          print(machine.execute(f"grep -niE 'session_lock|sessionlock|unlock|refusing' {runtime_dir}/hypr/{hypr_sig}/hyprland.log | head -n 120")[1])
           raise Exception("compositor-in-the-loop suite failed on Hyprland")
       print(machine.succeed("tail -n 200 /tmp/gelmtest/suite.log"))
     '';

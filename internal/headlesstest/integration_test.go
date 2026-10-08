@@ -191,6 +191,22 @@ func waitPresented(t *testing.T, w *LogWatcher) {
 	}
 }
 
+// pollSize asks the states client for its confirmed state (the p
+// chord) and returns the size it reports.
+func pollSize(t *testing.T, tap func(...rune), w *LogWatcher) string {
+	t.Helper()
+	for range 4 {
+		tap('p')
+		if tr, err := w.Wait("demo", "polled ", attemptTimeout); err == nil {
+			if i := strings.LastIndexByte(tr.Message, ' '); i >= 0 {
+				return tr.Message[i+1:]
+			}
+		}
+	}
+	t.Fatalf("the poll never answered: %s", tailTraces(w, 15))
+	return ""
+}
+
 // waitKeyboard waits until the client holds keyboard focus: keys sent
 // before the compositor focused the window go nowhere (Hyprland
 // activates a new window a beat after its first frame; sway's headless
@@ -684,24 +700,6 @@ func TestHeadlessWindowStates(t *testing.T) {
 		// (requests are hints); the poll below reads whatever holds.
 		tapUntil('n', "requested unmaximize")
 	}
-	// The size unfullscreen must come back to: what is confirmed now
-	// (sway: the pinned float, 420x280).
-	restore := ""
-	for attempt := 0; restore == "" && attempt < 4; attempt++ {
-		tap('p')
-		if tr, err := w.Wait("demo", "polled ", attemptTimeout); err == nil {
-			if i := strings.LastIndexByte(tr.Message, ' '); i >= 0 {
-				restore = tr.Message[i+1:]
-			}
-		}
-	}
-	if restore == "" {
-		t.Fatalf("the poll never answered: %s", tailTraces(w, 15))
-	}
-	if !honored && restore != fmt.Sprintf("%dx%d", statesW, statesH) {
-		t.Errorf("confirmed size %s, want the pinned %dx%d", restore, statesW, statesH)
-	}
-
 	// Fullscreen from floating: the output-sized configure is a REAL
 	// relayout (420x280 -> 1280x800), so the first frame drawn at the
 	// fullscreen size is the live proof of the syncSize path.
@@ -712,8 +710,18 @@ func TestHeadlessWindowStates(t *testing.T) {
 	default:
 	}
 
-	// Unfullscreen restores the size confirmed before it.
-	tapUntil('g', "fullscreen=false "+restore)
+	// Unfullscreen: the size the window comes back to is compositor
+	// policy (sway restores the pinned float; Hyprland its float
+	// geometry, keeping a confirmed maximize flag) - what the client
+	// owes is laying out and drawing at whatever is confirmed.
+	tapUntil('g', "fullscreen=false")
+	size := pollSize(t, tap, w)
+	if testEnv.Compositor().Name() == "sway" && size != fmt.Sprintf("%dx%d", statesW, statesH) {
+		t.Errorf("unfullscreen confirmed %s, want sway's pinned %dx%d", size, statesW, statesH)
+	}
+	if err := w.WaitEver("frame", "draw "+size, traceTimeout); err != nil {
+		t.Errorf("never drew at the confirmed %s after unfullscreen: %v", size, err)
+	}
 
 	// Close while fullscreen: fullscreen again, then the COMPOSITOR
 	// closes the window (sway kill, the real xdg_toplevel.close event).

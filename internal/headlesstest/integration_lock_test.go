@@ -27,6 +27,8 @@ type lockRun struct {
 	finished chan struct{}
 	closed   chan *app.Output
 	done     chan struct{} // closed when Run returned
+	// runErr is what Run returned, set before done closes.
+	runErr error
 }
 
 // startLock connects, requests the session lock, and starts the loop.
@@ -59,7 +61,7 @@ func startLock(t *testing.T) *lockRun {
 		sess.Close()
 		t.Fatalf("LockSession: %v", err)
 	}
-	go func() { _ = r.app.Run(); close(r.done) }()
+	go func() { r.runErr = r.app.Run(); close(r.done) }()
 	t.Cleanup(func() {
 		r.app.Invoke(r.app.Quit)
 		select {
@@ -154,15 +156,8 @@ func TestSessionLockLifecycle(t *testing.T) {
 		// The rival runs in its own process: the wayland binding keys
 		// proxy user data process-wide, so one process holds one
 		// connection.
-		ctx, cancel := context.WithTimeout(context.Background(), 2*lockTimeout)
-		defer cancel()
-		cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestSessionLockRivalHelper$", "-test.v")
-		cmd.Env = append(privateEnv("GELM_HEADLESS=", "WAYLAND_DISPLAY="+testEnv.Display, "XDG_RUNTIME_DIR="+testEnv.Dir), rivalEnv+"=1")
-		out, err := cmd.CombinedOutput()
-		if err != nil {
-			t.Fatalf("rival helper: %v\n%s", err, out)
-		}
-		if !strings.Contains(string(out), "rival: finished") {
+		out := runLockHelper(t, "refused")
+		if !strings.Contains(out, "rival: finished") {
 			t.Fatalf("the rival lock was not refused:\n%s", out)
 		}
 		t.Logf("rival helper:\n%s", out)
@@ -221,21 +216,74 @@ func TestSessionLockLifecycle(t *testing.T) {
 	case <-time.After(lockTimeout):
 		t.Error("the loop outlived its unlocked lock with no window left")
 	}
+
+	// The compositor's side: a session it really unlocked grants the
+	// next lock (one it still holds refuses it). A lock left behind
+	// would take keyboard focus from every later test on the shared
+	// compositor, so this is checked, not assumed.
+	if out := runLockHelper(t, "granted"); !strings.Contains(out, "probe: locked") {
+		t.Errorf("the session was still locked after Unlock - a fresh lock was refused:\n%s", out)
+	}
+}
+
+// runLockHelper runs TestSessionLockRivalHelper in a child process in
+// mode ("refused": a rival expecting the compositor to refuse it;
+// "granted": a probe expecting the lock, then unlocking) and returns
+// its output. Its own process: the wayland binding keys proxy user
+// data process-wide, so one process holds one connection.
+func runLockHelper(t *testing.T, mode string) string {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*lockTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestSessionLockRivalHelper$", "-test.v")
+	cmd.Env = append(privateEnv("GELM_HEADLESS=", "WAYLAND_DISPLAY="+testEnv.Display, "XDG_RUNTIME_DIR="+testEnv.Dir), rivalEnv+"="+mode,
+		// The helper's lock lifecycle, when the suite is built with the
+		// gelmdebug tag (a no-op otherwise).
+		"GOELM_DEBUG=shell,wire")
+	out, err := cmd.CombinedOutput()
+	t.Logf("lock helper (%s):\n%s", mode, out)
+	if err != nil {
+		t.Fatalf("lock helper (%s): %v\n%s", mode, err, out)
+	}
+	return string(out)
 }
 
 // rivalEnv switches TestSessionLockRivalHelper on in a child process.
 const rivalEnv = "GELM_LOCK_RIVAL"
 
-// TestSessionLockRivalHelper is the rival lock client of
-// TestSessionLockLifecycle, run in a child process: it requests a
-// lock while another client holds one and reports the compositor's
-// verdict. Its loop must end on its own after the refusal - no lock
-// and no window are left.
+// TestSessionLockRivalHelper is TestSessionLockLifecycle's child
+// lock client (runLockHelper): as the rival it requests a lock while
+// another holds one and reports the refusal; as the probe it takes the
+// lock a released session grants and unlocks again. Either way its
+// loop must end on its own - no lock and no window are left.
 func TestSessionLockRivalHelper(t *testing.T) {
-	if os.Getenv(rivalEnv) == "" {
+	mode := os.Getenv(rivalEnv)
+	if mode == "" {
 		t.Skip("helper process for TestSessionLockLifecycle")
 	}
 	r := startLock(t)
+	if mode == "granted" {
+		select {
+		case <-r.locked:
+			fmt.Println("probe: locked")
+		case <-r.finished:
+			t.Fatal("probe: the compositor refused the lock - the session is still locked")
+		case <-time.After(lockTimeout):
+			t.Fatal("probe: no verdict")
+		}
+		var unlockErr error
+		if !r.onLoop(func() { unlockErr = r.app.SessionLock().Unlock() }) {
+			t.Fatal("probe: the unlock never ran")
+		}
+		fmt.Println("probe: unlock returned", unlockErr)
+		select {
+		case <-r.done:
+			fmt.Println("probe: loop ended:", r.runErr)
+		case <-time.After(lockTimeout):
+			t.Error("probe: the loop outlived its unlocked lock")
+		}
+		return
+	}
 	select {
 	case <-r.finished:
 		fmt.Println("rival: finished")
