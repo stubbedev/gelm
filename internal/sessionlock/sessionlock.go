@@ -24,6 +24,7 @@ import (
 
 	"github.com/neurlang/wayland/wl"
 
+	"github.com/stubbedev/gelm/internal/debug"
 	"github.com/stubbedev/gelm/wlr"
 )
 
@@ -252,6 +253,7 @@ func (l *Lock) Unlock() error {
 	if err := l.req.UnlockAndDestroy(); err != nil {
 		return fmt.Errorf("sessionlock: unlock_and_destroy: %w", err)
 	}
+	debug.Log("shell", "session lock: unlock_and_destroy sent")
 	l.state = Unlocked
 	l.closeSurfaces()
 	return nil

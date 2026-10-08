@@ -622,6 +622,12 @@ func outputWire(o *wlsession.Output) *wl.Output {
 func (a *Application) Run() error {
 	widget.MarkLoop()
 	defer func() {
+		// Every exit but a dead connection settles the wire first:
+		// requests the loop's last pass made (an unlock, a destroy)
+		// must reach the compositor before the process can exit.
+		if !a.disconnectOnce.Load() {
+			a.settleWire()
+		}
 		widget.UnmarkLoop()
 		// Discard queued invokes and stop the pollers: nothing will run
 		// them, and later Invokes drop instead of accumulating. This runs
@@ -651,7 +657,6 @@ func (a *Application) Run() error {
 	a.wireSession()
 	for {
 		if a.done() {
-			a.settleWire()
 			return ErrClosed
 		}
 		if err := a.tick(a.stepFn(), time.Now()); err != nil {
@@ -665,7 +670,7 @@ func (a *Application) Run() error {
 	}
 }
 
-// settleWire round-trips the display once as Run ends normally, so the
+// settleWire round-trips the display once as Run ends, so the
 // compositor has processed every request the application made before
 // the process can exit: libwayland-server destroys a client that hangs
 // up without reading what is still in its socket, and an unlock that
@@ -679,7 +684,9 @@ func (a *Application) settleWire() {
 	}
 	if err := a.sess.Roundtrip(); err != nil {
 		debug.Log("wire", "app: final roundtrip: %v", err)
+		return
 	}
+	debug.Log("wire", "app: final roundtrip done")
 }
 
 // wireSession installs the application's hooks on its session - at
