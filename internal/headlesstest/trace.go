@@ -129,6 +129,28 @@ func (w *LogWatcher) WaitEver(category, substr string, timeout time.Duration) er
 	}
 }
 
+// Mark is a position in the watcher's history, for SeenSince.
+func (w *LogWatcher) Mark() int {
+	w.readNew()
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return len(w.seen)
+}
+
+// SeenSince reports whether a trace in category containing substr
+// arrived after mark, without consuming anything.
+func (w *LogWatcher) SeenSince(mark int, category, substr string) bool {
+	w.readNew()
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	for _, tr := range w.seen[min(mark, len(w.seen)):] {
+		if (category == "" || tr.Category == category) && strings.Contains(tr.Message, substr) {
+			return true
+		}
+	}
+	return false
+}
+
 // WaitAll is Wait for a set: it waits until each substr has arrived
 // (one trace per substr, in ANY order) since this call began. State
 // transitions produce two racing traces - the confirmed-state line and
