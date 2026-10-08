@@ -150,11 +150,18 @@ func newPointerOnlyInput(t *testing.T) *VirtualInput {
 // honest: the effect shows up exactly once, on the attempt that lands.
 func clickUntil(w *LogWatcher, in *VirtualInput, category string, x, y int, button uint32, want string) error {
 	for range 3 {
+		mark := w.Mark()
 		if err := in.ClickAt(x, y, button); err != nil {
 			return fmt.Errorf("click: %w", err)
 		}
 		if err := w.WaitAll(category, attemptTimeout, want); err == nil {
 			return nil
+		}
+		// Re-click only a press the client never saw: once it saw the
+		// press, the action is merely slow, and clicking again would
+		// repeat it - toggling a row back out, closing what it opened.
+		if w.SeenSince(mark, "input", "press at") {
+			return w.WaitEver(category, want, traceTimeout)
 		}
 	}
 	return fmt.Errorf("no trace [%s] %q after 3 attempts; last tail:\n%s", category, want, w.Tail(25))
@@ -171,9 +178,16 @@ func stopAndReport(t *testing.T, c *Client) {
 			return
 		}
 		if data, err := os.ReadFile(c.LogPath); err == nil {
-			lines := strings.Split(strings.TrimRight(string(data), "\n"), "\n")
-			if len(lines) > 120 {
-				lines = lines[len(lines)-120:]
+			// The idle frame trace (every pass, nothing to paint) would
+			// push everything else out of the tail.
+			var lines []string
+			for line := range strings.SplitSeq(strings.TrimRight(string(data), "\n"), "\n") {
+				if !strings.Contains(line, "draw skipped: nothing damaged") {
+					lines = append(lines, line)
+				}
+			}
+			if len(lines) > 160 {
+				lines = lines[len(lines)-160:]
 			}
 			t.Logf("client log tail:\n\t%s", strings.Join(lines, "\n\t"))
 		}
