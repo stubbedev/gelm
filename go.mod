@@ -18,7 +18,7 @@ require (
 
 require (
 	github.com/neurlang/wayland v0.4.4 // indirect
-	golang.org/x/net v0.45.0 // indirect
+	golang.org/x/net v0.55.0 // indirect
 )
 
 tool github.com/neurlang/wayland/cmd/wayland-scanner
