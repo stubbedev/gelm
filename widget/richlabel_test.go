@@ -491,3 +491,45 @@ func TestRichLabelA11yAndRole(t *testing.T) {
 		t.Errorf("a11y state text/name = %q/%q, want the decoded text", st.Text, st.Name)
 	}
 }
+
+// A <u> run paints a line under its glyphs, an <s> run one through
+// them; a plain run neither.
+func TestRichLabelDecorationRuns(t *testing.T) {
+	face := testFace(t)
+	white := render.RGB(255, 255, 255)
+	inkRows := func(markup string) map[int]bool {
+		l := NewRichLabel(face, richPx, markup, white)
+		size := l.Measure(Constraints{Max: Size{W: 500, H: 100}})
+		l.Arrange(render.Rect{W: size.W, H: size.H})
+		stride := render.Stride(size.W)
+		data := make([]byte, stride*size.H)
+		cv := render.New(data, stride, size.W, size.H)
+		l.Paint(cv)
+		rows := map[int]bool{}
+		for y := range size.H {
+			n := 0
+			for x := range size.W {
+				if data[y*stride+x*4+3] > 0 {
+					n++
+				}
+			}
+			// A decoration spans the run; glyph rows do not.
+			if n >= size.W*9/10 {
+				rows[y] = true
+			}
+		}
+		return rows
+	}
+	if rows := inkRows("l l l l l l"); len(rows) != 0 {
+		t.Errorf("plain text has full-width rows %v", rows)
+	}
+	under, through := inkRows("<u>l l l l l l</u>"), inkRows("<s>l l l l l l</s>")
+	if len(under) == 0 || len(through) == 0 {
+		t.Fatalf("underline rows %v, strike rows %v; want a full-width line each", under, through)
+	}
+	for y := range under {
+		if through[y] {
+			t.Errorf("underline and strikethrough share row %d", y)
+		}
+	}
+}
