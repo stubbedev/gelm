@@ -51,6 +51,32 @@ func TestRealAtSpi2Core(t *testing.T) {
 	eventually(t, "org.a11y.Bus", func() bool {
 		return sess.Object(busName, busPath).Call("org.a11y.Bus.GetAddress", 0).Store(&a11yAddr) == nil
 	})
+	// Start the registry daemon directly: on a host running a systemd
+	// user manager the accessibility bus activates it through systemd
+	// (SystemdService=), which serves the desktop session's unit, not
+	// this private bus - the activation fails ("unit failed"). The
+	// daemon finds the accessibility bus through org.a11y.Bus, as on a
+	// desktop.
+	registryd := exec.Command(filepath.Join(libexec, "at-spi2-registryd"))
+	registryd.Env = append(os.Environ(), "XDG_RUNTIME_DIR="+runtime, "DBUS_SESSION_BUS_ADDRESS="+session)
+	if err := registryd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = registryd.Process.Kill()
+		_ = registryd.Wait()
+	})
+	at, err := dbus.Connect(a11yAddr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = at.Close() })
+	// The bridge embeds once, at Serve: the registry must own its name
+	// by then, as it does long before any application on a desktop.
+	eventually(t, "the registry on the accessibility bus", func() bool {
+		var has bool
+		return at.BusObject().Call("org.freedesktop.DBus.NameHasOwner", 0, "org.a11y.atspi.Registry").Store(&has) == nil && has
+	})
 
 	// The desktop switch: turning IsEnabled on reaches WatchStatus.
 	got := make(chan bool, 4)
@@ -88,11 +114,6 @@ func TestRealAtSpi2Core(t *testing.T) {
 	defer br.Stop()
 	br.Refresh()
 
-	at, err := dbus.Connect(a11yAddr)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = at.Close() })
 	var owner string
 	if err := at.BusObject().Call("org.freedesktop.DBus.GetNameOwner", 0, br.name).Store(&owner); err != nil {
 		t.Fatal(err)
