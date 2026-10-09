@@ -167,6 +167,14 @@ func (s *Stack) SetHomogeneous(h bool) {
 // easing (GTK's interpolate-size); off, the size jumps.
 func (s *Stack) SetInterpolateSize(on bool) { s.interpolate = on }
 
+// Homogeneous reports whether the stack is as large as its largest
+// page (SetHomogeneous).
+func (s *Stack) Homogeneous() bool { return !s.heterogeneous }
+
+// InterpolateSize reports whether a switch tweens the stack's size
+// (SetInterpolateSize).
+func (s *Stack) InterpolateSize() bool { return s.interpolate }
+
 // Order returns the page names in add order.
 func (s *Stack) Order() []string { return slices.Clone(s.order) }
 
