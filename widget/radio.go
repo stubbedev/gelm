@@ -33,6 +33,8 @@ func (g *radioGroup) activated(m radioMember) {
 // :checked. In a group (SetGroup) it behaves as a radio: activating it
 // releases the others and a click on the active one keeps it active.
 // The embedded Button's OnClick drives the toggle; observe OnToggled.
+// Assistive technology reads it as a toggle button, pressed while
+// active.
 type ToggleButton struct {
 	Button
 	active bool
@@ -89,13 +91,9 @@ func (t *ToggleButton) setActive(on, notify bool) {
 		return
 	}
 	t.active = on
+	// :checked selects the stylesheet's fill; without a rule the
+	// button paints the theme's selected shade (Button.Paint).
 	t.SetState(StateChecked, on)
-	t.BgExplicit = on
-	t.Bg, t.BgHover, t.BgPressed = 0, 0, 0
-	if on {
-		th := Current()
-		t.Bg, t.BgHover, t.BgPressed = th.SurfaceHover, th.SurfaceHover, th.SurfacePressed
-	}
 	t.Invalidate()
 	if on && t.group != nil {
 		t.group.activated(t)
@@ -107,6 +105,9 @@ func (t *ToggleButton) setActive(on, notify bool) {
 
 // radioClear implements radioMember.
 func (t *ToggleButton) radioClear() { t.SetActive(false) }
+
+// Role implements Roleer.
+func (t *ToggleButton) Role() Role { return RoleToggleButton }
 
 // SetGroup makes c a radio button in other's group: drawn as a round
 // `radio` indicator, checking it unchecks the others, and a click on

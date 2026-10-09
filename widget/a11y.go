@@ -36,6 +36,9 @@ const (
 	RoleCalendar
 	RoleColorChooser
 	RoleScrollBar
+	// RoleToggleButton is a button that stays pressed (GTK's
+	// toggle-button role); A11yState.Pressed carries its state.
+	RoleToggleButton
 )
 
 // String returns the lowercase role name.
@@ -77,6 +80,8 @@ func (r Role) String() string {
 		return "color-chooser"
 	case RoleScrollBar:
 		return "scroll-bar"
+	case RoleToggleButton:
+		return "toggle-button"
 	default:
 		return "none"
 	}
@@ -115,6 +120,8 @@ type A11yState struct {
 	HasSelection     bool
 	// Checked is the Switch and CheckButton state.
 	Checked bool
+	// Pressed is a ToggleButton's active state.
+	Pressed bool
 	// Min, Max, and Value carry the ranged roles (slider, progress
 	// bar); Step is the keyboard increment (slider only, 0 when the
 	// slider divides the range itself).
@@ -155,6 +162,9 @@ func Describe(w Widget) A11yState {
 	// behavior) keeps the name GTK would give it.
 	if n, ok := w.(a11yNamer); ok && st.Name == "" {
 		st.Name = n.a11yName()
+	}
+	if p, ok := w.(a11yPresser); ok {
+		st.Pressed = p.a11yPressed()
 	}
 	switch v := w.(type) {
 	case *Label:
@@ -205,6 +215,12 @@ func (l *RichLabel) a11yName() string { return l.Text() }
 
 // A button is named by the label it wraps.
 func (b *Button) a11yName() string { return labelText(b.child) }
+
+// a11yPresser is a toggle reporting its pressed state, promoted like
+// a11yNamer to the types that embed one.
+type a11yPresser interface{ a11yPressed() bool }
+
+func (t *ToggleButton) a11yPressed() bool { return t.active }
 
 // A combo box's accessible name is its current selection.
 func (d *Dropdown) a11yName() string { return d.Selection() }

@@ -99,6 +99,10 @@ func (b *Button) Paint(cv *render.Canvas) {
 		bg, prog = t.PressedSurface(), b.BgPressed
 	case b.Hovered:
 		bg, prog = t.HoverSurface(), b.BgHover
+	case b.HasState(StateChecked):
+		// A checked toggle rests in the selected shade unless a
+		// :checked rule paints it.
+		bg, prog = t.HoverSurface(), b.Bg
 	default:
 		bg, prog = t.Surface, b.Bg
 	}

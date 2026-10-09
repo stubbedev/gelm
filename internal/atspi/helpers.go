@@ -136,6 +136,9 @@ func (b *Bridge) statesOf(tr *tree, id int32) []uint32 {
 	if n.st.Checked {
 		states = append(states, stateChecked)
 	}
+	if n.st.Pressed {
+		states = append(states, statePressed)
+	}
 	if n.st.Editable {
 		states = append(states, stateEditable)
 	}
