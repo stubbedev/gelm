@@ -55,6 +55,7 @@ const (
 	rolePageTabList  uint32 = 38
 	roleSwitch       uint32 = 130
 	roleText         uint32 = 61
+	roleToggleButton uint32 = 62
 	roleTextArea     uint32 = 60 // terminal; multi-line text in gelm
 	roleWindow       uint32 = 69
 )
@@ -68,6 +69,7 @@ const (
 	stateFocusable  uint32 = 11
 	stateFocused    uint32 = 12
 	stateMultiLine  uint32 = 17
+	statePressed    uint32 = 20
 	stateSensitive  uint32 = 24
 	stateShowing    uint32 = 25
 	stateSingleLine uint32 = 26
@@ -91,6 +93,8 @@ func atspiRole(r widget.Role) uint32 {
 		return roleSwitch
 	case widget.RoleCheckBox:
 		return roleCheckBox
+	case widget.RoleToggleButton:
+		return roleToggleButton
 	case widget.RoleProgressBar:
 		return roleProgressBar
 	case widget.RoleScrollArea:
@@ -449,7 +453,7 @@ func (b *Bridge) buildFrom(w widget.Widget, parent *anode, index int, tr *tree) 
 		st:     st,
 		w:      w,
 		text:   st.Role == widget.RoleLabel || st.Role == widget.RoleEntry || st.Role == widget.RoleTextArea,
-		action: st.Role == widget.RoleButton || st.Role == widget.RoleSwitch || st.Role == widget.RoleCheckBox,
+		action: st.Role == widget.RoleButton || st.Role == widget.RoleToggleButton || st.Role == widget.RoleSwitch || st.Role == widget.RoleCheckBox,
 		value:  st.Role == widget.RoleSlider || st.Role == widget.RoleProgressBar,
 	}
 	tr.nodes[id] = n
@@ -538,6 +542,9 @@ func diff(old, cur *tree, busName string) []event {
 		}
 		if now.st.Checked != before.st.Checked {
 			out = append(out, stateEvent(now, "checked", now.st.Checked))
+		}
+		if now.st.Pressed != before.st.Pressed {
+			out = append(out, stateEvent(now, "pressed", now.st.Pressed))
 		}
 		if now.st.Enabled != before.st.Enabled {
 			// AT-SPI carries both: enabled is the application state,

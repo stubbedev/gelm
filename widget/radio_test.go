@@ -1,6 +1,10 @@
 package widget
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/stubbedev/gelm/render"
+)
 
 // TestRadioCheckButtons pins the radio contract: checking one unchecks
 // its peers (each firing its own OnChanged), a click on the checked
@@ -67,4 +71,49 @@ func TestGoldenRadio(t *testing.T) {
 	row.Append(on, false)
 	row.Append(off, false)
 	NewGolden(t, row, "radio", goldenTheme(th))
+}
+
+// A checked toggle's fill is the stylesheet's :checked rule when one
+// exists (no programmatic color outranks it), else the theme's
+// selected shade; an inactive one rests on the plain surface. It reads
+// as a pressed toggle button to assistive technology.
+func TestToggleButtonCheckedFillAndA11y(t *testing.T) {
+	face := chromeFace(t)
+	th := DarkTheme()
+	prev := Current()
+	SetTheme(th)
+	t.Cleanup(func() { SetTheme(prev) })
+	paintAt := func(b *ToggleButton) render.Color {
+		b.Measure(Constraints{Max: Size{W: 60, H: 30}})
+		b.Arrange(render.Rect{W: 60, H: 30})
+		stride := render.Stride(60)
+		data := make([]byte, stride*30)
+		cv := render.New(data, stride, 60, 30)
+		b.Paint(cv)
+		o := 15*stride + 2*4
+		return render.RGB(data[o+2], data[o+1], data[o])
+	}
+	tg := NewToggleButton(NewLabel(face, 14, "", th.Text), 6, 0)
+	if got := paintAt(tg); got != th.Surface {
+		t.Errorf("inactive fill %#08x, want the surface %#08x", got, th.Surface)
+	}
+	tg.SetActive(true)
+	if got := paintAt(tg); got != th.HoverSurface() {
+		t.Errorf("active fill %#08x, want the selected shade %#08x", got, th.HoverSurface())
+	}
+	st := Describe(tg)
+	if st.Role != RoleToggleButton || !st.Pressed {
+		t.Errorf("a11y = %s pressed %v, want a pressed toggle button", st.Role, st.Pressed)
+	}
+	loadCSS(t, `button:checked { background-color: #ff0000; }`)
+	if got := paintAt(tg); got != render.RGB(0xff, 0, 0) {
+		t.Errorf("styled active fill %#08x, want the :checked rule's red", got)
+	}
+	tg.SetActive(false)
+	if Describe(tg).Pressed {
+		t.Error("an inactive toggle reads pressed")
+	}
+	if got := paintAt(tg); got == render.RGB(0xff, 0, 0) {
+		t.Error("the :checked rule painted an inactive toggle")
+	}
 }

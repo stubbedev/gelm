@@ -286,9 +286,10 @@ func TestGoldenAdaptive(t *testing.T) {
 	NewGolden(t, c, "carousel", goldenTheme(th), goldenFrame(220, 90))
 }
 
-// TestViewSwitcherCheckedFill pins the unstyled selection mark: the
-// visible page's button carries the selected fill and :checked, and a
-// switch moves both - the old button returns to the unset fill.
+// TestViewSwitcherCheckedFill pins the selection mark: the visible
+// page's button carries :checked (the stylesheet's rule, else the
+// theme's selected shade, paints it), and a switch moves it; no
+// programmatic fill is left behind to outrank a stylesheet.
 func TestViewSwitcherCheckedFill(t *testing.T) {
 	face := adaptiveFace(t)
 	th := DarkTheme()
@@ -296,15 +297,15 @@ func TestViewSwitcherCheckedFill(t *testing.T) {
 	stack.Add("a", NewLabel(face, 14, "a", th.Text))
 	stack.Add("b", NewLabel(face, 14, "b", th.Text))
 	v := NewViewSwitcher(face, 14, stack, nil, nil)
-	if !v.buttons[0].HasState(StateChecked) || v.buttons[0].Bg == 0 {
-		t.Fatal("the visible page's button is not marked")
+	if !v.buttons[0].HasState(StateChecked) || v.buttons[0].Bg != 0 || v.buttons[0].BgExplicit {
+		t.Fatal("the visible page's button is not marked by state alone")
 	}
 	stack.Show("b")
 	v.ReflectVisible()
 	if v.buttons[0].HasState(StateChecked) || v.buttons[0].Bg != 0 || v.buttons[0].BgExplicit {
 		t.Error("the old button kept its mark")
 	}
-	if !v.buttons[1].HasState(StateChecked) || v.buttons[1].Bg == 0 {
+	if !v.buttons[1].HasState(StateChecked) {
 		t.Error("the new button is not marked")
 	}
 }
