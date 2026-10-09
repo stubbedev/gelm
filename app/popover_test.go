@@ -97,3 +97,15 @@ func TestPopupParentOf(t *testing.T) {
 		t.Error("no host carried a popup")
 	}
 }
+
+// An autohide popover holds the bar's keyboard exclusively; a
+// NoAutohide one (GTK autohide=false) only on demand, leaving other
+// windows their keys.
+func TestPopoverKeyboardFollowsAutohide(t *testing.T) {
+	if got := popoverKeyboard(PopoverConfig{}); got != KeyboardExclusive {
+		t.Errorf("autohide popover holds %v, want exclusive", got)
+	}
+	if got := popoverKeyboard(PopoverConfig{NoAutohide: true}); got != KeyboardOnDemand {
+		t.Errorf("no-autohide popover holds %v, want on demand", got)
+	}
+}
