@@ -52,21 +52,32 @@ type NotifyOptions struct {
 // returned handle.
 func (a *Application) Notify(title, body string, opts NotifyOptions) {
 	n := a.notifier()
-	id := n.Notify(notify.Notification{
-		Title:         title,
-		Body:          body,
-		Icon:          opts.Icon,
-		Priority:      opts.Urgency,
-		Timeout:       opts.Timeout,
-		DefaultAction: notify.Action(opts.DefaultAction),
-		HasDefault:    opts.DefaultAction.Key != "",
-	})
+	id := n.Notify(notification(title, body, opts))
 	a.notifyMu.Lock()
 	if a.notifyOpts == nil {
 		a.notifyOpts = map[string]NotifyOptions{}
 	}
 	a.notifyOpts[id] = opts
 	a.notifyMu.Unlock()
+}
+
+// notification is the transport's form of a Notify call, the action
+// buttons included.
+func notification(title, body string, opts NotifyOptions) notify.Notification {
+	actions := make([]notify.Action, 0, len(opts.Actions))
+	for _, act := range opts.Actions {
+		actions = append(actions, notify.Action(act))
+	}
+	return notify.Notification{
+		Title:         title,
+		Body:          body,
+		Icon:          opts.Icon,
+		Priority:      opts.Urgency,
+		Timeout:       opts.Timeout,
+		Actions:       actions,
+		DefaultAction: notify.Action(opts.DefaultAction),
+		HasDefault:    opts.DefaultAction.Key != "",
+	}
 }
 
 // notifier starts (once, off the loop) the desktop notifier and wires

@@ -62,3 +62,22 @@ func TestNotifyInertWithoutBus(t *testing.T) {
 		t.Errorf("registered %d notifications, want 1", n)
 	}
 }
+
+// The action buttons reach the transport (they were once dropped on
+// the way, leaving OnAction nothing to answer); a plain notification
+// carries none and no default.
+func TestNotifyCarriesItsActions(t *testing.T) {
+	n := notification("t", "b", NotifyOptions{
+		Actions:       []NotifyAction{{Key: "reply", Label: "Reply"}, {Key: "mute", Label: "Mute"}},
+		DefaultAction: NotifyAction{Key: "open", Label: "Open"},
+	})
+	if len(n.Actions) != 2 || n.Actions[0].Key != "reply" || n.Actions[1].Label != "Mute" {
+		t.Errorf("actions = %+v, want both buttons in order", n.Actions)
+	}
+	if !n.HasDefault || n.DefaultAction.Key != "open" {
+		t.Errorf("default = %+v (%v), want open", n.DefaultAction, n.HasDefault)
+	}
+	if plain := notification("t", "b", NotifyOptions{}); len(plain.Actions) != 0 || plain.HasDefault {
+		t.Errorf("plain = %+v, want no actions and no default", plain)
+	}
+}
