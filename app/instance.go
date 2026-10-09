@@ -233,7 +233,10 @@ func (ins *Instance) receive(inv Invocation) {
 
 // accept serves secondaries until the listener closes: one forwarded
 // invocation per connection, acknowledged after queueing so the
-// secondary can tell a forward from a dead socket.
+// secondary can tell a forward from a dead socket. The order matters:
+// once the secondary holds the ack the invocation must already be in
+// the mailbox, or a Bind or pump that the ack happens-before can miss
+// it and the hooks fire a loop iteration late.
 func (ins *Instance) accept() {
 	for {
 		conn, err := ins.ln.Accept()
@@ -242,12 +245,10 @@ func (ins *Instance) accept() {
 		}
 		inv, err := readInvocation(conn)
 		if err == nil {
+			ins.receive(inv)
 			_, _ = conn.Write([]byte{'k'})
 		}
 		_ = conn.Close()
-		if err == nil {
-			ins.receive(inv)
-		}
 	}
 }
 
