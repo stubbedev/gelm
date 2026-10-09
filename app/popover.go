@@ -57,12 +57,30 @@ type PopoverConfig struct {
 	// the popover closes with its parent. A parent holds one child at a
 	// time: opening another closes the one before.
 	Parent *Popover
+	// NoAutohide is GTK's autohide=false: the popover takes no seat
+	// grab, so a click elsewhere does not close it - only Dismiss (a
+	// re-click on its button, a click in its own empty area) does - and
+	// a bar-style host holds the keyboard on demand rather than
+	// exclusively, leaving other windows their keys. A nested popover
+	// always grabs.
+	NoAutohide bool
 	// MaxWidth and MaxHeight cap the content when measured, in place
 	// of the default ceilings (the host's width; 600px tall) - a tall
 	// dropdown clamping to the monitor less a margin, the way a GTK
 	// popover stays on the output; a wide one wrapping its text. Zero
 	// keeps the default.
 	MaxWidth, MaxHeight int
+}
+
+// popoverKeyboard is the keyboard mode a bar-style host holds while a
+// root popover is open: exclusive under a grabbing popover (its Esc,
+// menus and entries need the keys whatever was clicked), on demand
+// under a NoAutohide one, which must not take other windows' keys.
+func popoverKeyboard(cfg PopoverConfig) KeyboardMode {
+	if cfg.NoAutohide {
+		return KeyboardOnDemand
+	}
+	return KeyboardExclusive
 }
 
 // AnchorAt is an anchor at a point in the host's coordinates - a
@@ -349,6 +367,7 @@ func (a *Application) OpenPopover(host Host, cfg PopoverConfig) (*Popover, error
 		Gutter:  gutter,
 		Gravity: cfg.Gravity,
 		Serial:  cfg.Serial,
+		NoGrab:  cfg.NoAutohide && parent == nil,
 	}
 	switch {
 	case parent != nil:
@@ -375,7 +394,7 @@ func (a *Application) OpenPopover(host Host, cfg PopoverConfig) (*Popover, error
 	// on its root's.
 	restoreKeys := func() {}
 	if km, ok := host.(keyboardModer); ok && parent == nil && km.KeyboardMode() == KeyboardNone {
-		if err := km.holdKeyboard(KeyboardExclusive); err == nil {
+		if err := km.holdKeyboard(popoverKeyboard(cfg)); err == nil {
 			restoreKeys = func() { _ = km.holdKeyboard(KeyboardNone) }
 		}
 	}
