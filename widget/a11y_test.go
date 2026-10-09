@@ -141,6 +141,23 @@ func TestDescribeValueAndState(t *testing.T) {
 		if got := Describe(lbl).Name; got != "a caption" {
 			t.Errorf("label name = %q, want the text", got)
 		}
+		// A type embedding a Button keeps the button's name, and its
+		// tooltip still wins.
+		type toggle struct{ *Button }
+		tg := toggle{NewButton(NewBox(Row, 0, 0).Append(
+			NewBox(Row, 0, 0), false).Append(
+			NewLabel(face, 12, "12:30", render.RGB(0, 0, 0)), false), 0, 0)}
+		if got := Describe(tg).Name; got != "12:30" {
+			t.Errorf("embedded button name = %q, want the nested label text", got)
+		}
+		tg.SetTooltip("clock")
+		if got := Describe(tg).Name; got != "clock" {
+			t.Errorf("embedded button name = %q, want the tooltip", got)
+		}
+		// A container names nothing by itself.
+		if got := Describe(NewBox(Row, 0, 0).Append(lbl, false)).Name; got != "" {
+			t.Errorf("box name = %q, want none", got)
+		}
 	})
 
 	t.Run("focusable mirrors the tab traversal set", func(t *testing.T) {

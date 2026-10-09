@@ -150,22 +150,17 @@ func Describe(w Widget) A11yState {
 	if b, ok := w.(Boundser); ok {
 		st.Bounds = b.Bounds()
 	}
+	// The derived name goes through an interface, not the type switch
+	// below, so a consumer type embedding a Button (a toggle that adds
+	// behavior) keeps the name GTK would give it.
+	if n, ok := w.(a11yNamer); ok && st.Name == "" {
+		st.Name = n.a11yName()
+	}
 	switch v := w.(type) {
 	case *Label:
 		st.Text = v.Text()
-		// A bare label's text is its accessible name.
-		if st.Name == "" {
-			st.Name = v.Text()
-		}
 	case *RichLabel:
 		st.Text = v.Text()
-		if st.Name == "" {
-			st.Name = v.Text()
-		}
-	case *Button:
-		if st.Name == "" {
-			st.Name = labelText(v.child)
-		}
 	case *Entry:
 		st.Editable = v.editable()
 		st.Text = v.Text()
@@ -194,14 +189,25 @@ func Describe(w Widget) A11yState {
 		st.Role = RoleMenu
 	case *Notebook:
 		st.Role = RoleTabList
-	case *Dropdown:
-		// A combo box's accessible name is its current selection.
-		if st.Name == "" {
-			st.Name = v.Selection()
-		}
 	}
 	return st
 }
+
+// a11yNamer is a widget whose accessible name derives from its own
+// content when no tooltip names it. The method is unexported, so only
+// gelm's widgets implement it - and every type embedding one.
+type a11yNamer interface{ a11yName() string }
+
+// A bare label's text is its accessible name.
+func (l *Label) a11yName() string { return l.Text() }
+
+func (l *RichLabel) a11yName() string { return l.Text() }
+
+// A button is named by the label it wraps.
+func (b *Button) a11yName() string { return labelText(b.child) }
+
+// A combo box's accessible name is its current selection.
+func (d *Dropdown) a11yName() string { return d.Selection() }
 
 // isFocusable reports whether Tab traversal can land on w: it handles
 // key actions and is enabled — a disabled widget is skipped by
