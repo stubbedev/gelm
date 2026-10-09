@@ -3,11 +3,10 @@ package app
 import (
 	"testing"
 
-	"github.com/neurlang/wayland/wl"
-	"github.com/neurlang/wayland/xdg"
-
 	"github.com/stubbedev/gelm/internal/window"
 	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/gelm/third_party/neurlang-wayland/wl"
+	"github.com/stubbedev/gelm/third_party/neurlang-wayland/xdg"
 	"github.com/stubbedev/gelm/widget"
 )
 

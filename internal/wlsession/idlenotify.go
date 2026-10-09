@@ -4,9 +4,8 @@ import (
 	"errors"
 	"time"
 
-	"github.com/neurlang/wayland/wl"
-
 	"github.com/stubbedev/gelm/internal/debug"
+	"github.com/stubbedev/gelm/third_party/neurlang-wayland/wl"
 	"github.com/stubbedev/gelm/wlr"
 )
 

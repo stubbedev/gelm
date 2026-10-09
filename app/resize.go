@@ -5,11 +5,10 @@
 package app
 
 import (
-	"github.com/neurlang/wayland/wl"
-	"github.com/neurlang/wayland/wlcursor"
-	"github.com/neurlang/wayland/xdg"
-
 	"github.com/stubbedev/gelm/internal/window"
+	"github.com/stubbedev/gelm/third_party/neurlang-wayland/wl"
+	"github.com/stubbedev/gelm/third_party/neurlang-wayland/wlcursor"
+	"github.com/stubbedev/gelm/third_party/neurlang-wayland/xdg"
 )
 
 // resizer is the interactive-resize slice of a toplevel host; layer

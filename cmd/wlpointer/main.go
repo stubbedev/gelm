@@ -25,8 +25,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/neurlang/wayland/wl"
-	"github.com/neurlang/wayland/wlclient"
+	"github.com/stubbedev/gelm/third_party/neurlang-wayland/wl"
+	"github.com/stubbedev/gelm/third_party/neurlang-wayland/wlclient"
 )
 
 // btnLeft is the linux-evdev code wl_pointer uses for the primary button.

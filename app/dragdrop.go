@@ -5,7 +5,6 @@
 package app
 
 import (
-	"github.com/neurlang/wayland/wl"
 	"github.com/unxed/xkb-go"
 
 	"github.com/stubbedev/gelm/internal/buffer"
@@ -14,6 +13,7 @@ import (
 	"github.com/stubbedev/gelm/internal/scale"
 	"github.com/stubbedev/gelm/internal/wlsession"
 	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/gelm/third_party/neurlang-wayland/wl"
 	"github.com/stubbedev/gelm/transfer"
 	"github.com/stubbedev/gelm/widget"
 )

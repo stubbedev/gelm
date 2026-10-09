@@ -3,7 +3,7 @@ package wlsession
 import (
 	"testing"
 
-	"github.com/neurlang/wayland/wl"
+	"github.com/stubbedev/gelm/third_party/neurlang-wayland/wl"
 )
 
 // recordingHandler captures the pointer callbacks one surface received.

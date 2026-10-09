@@ -8,10 +8,10 @@ import (
 	"time"
 
 	"github.com/godbus/dbus/v5"
-	"github.com/neurlang/wayland/wl"
 
 	"github.com/stubbedev/gelm/internal/debug"
 	"github.com/stubbedev/gelm/internal/logutil"
+	"github.com/stubbedev/gelm/third_party/neurlang-wayland/wl"
 	"github.com/stubbedev/gelm/transfer"
 )
 

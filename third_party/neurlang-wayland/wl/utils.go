@@ -10,15 +10,13 @@ type BytePool struct {
 	sync.Pool
 }
 
-var (
-	bytePool = &BytePool{
-		sync.Pool{
-			New: func() interface{} {
-				return make([]byte, 16)
-			},
+var bytePool = &BytePool{
+	sync.Pool{
+		New: func() interface{} {
+			return make([]byte, 16)
 		},
-	}
-)
+	},
+}
 
 // Take (BytePool Take) takes a specific number of bytes from the pool
 func (bp *BytePool) Take(n int) []byte {
@@ -41,7 +39,7 @@ func float64bits(f float64) uint64     { return math.Float64bits(f) }
 
 // FixedToFloat converts a fixed precision Wayland decimal encoded as int32 to a float64
 func FixedToFloat(fixed int32) float64 {
-	dat := ((int64(1023 + 44)) << 52) + (1 << 51) + int64(fixed)
+	dat := (int64(1023+44) << 52) + (1 << 51) + int64(fixed)
 	return float64frombits(uint64(dat)) - float64(3<<43)
 }
 

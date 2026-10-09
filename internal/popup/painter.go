@@ -10,14 +10,13 @@ import (
 	"errors"
 	"sync/atomic"
 
-	"github.com/neurlang/wayland/wl"
-	"github.com/neurlang/wayland/wlclient"
-
 	"github.com/stubbedev/gelm/internal/buffer"
 	"github.com/stubbedev/gelm/internal/debug"
 	"github.com/stubbedev/gelm/internal/scale"
 	"github.com/stubbedev/gelm/internal/wlsession"
 	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/gelm/third_party/neurlang-wayland/wl"
+	"github.com/stubbedev/gelm/third_party/neurlang-wayland/wlclient"
 	"github.com/stubbedev/gelm/widget"
 )
 

@@ -4,7 +4,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/neurlang/wayland/wl"
+	"github.com/stubbedev/gelm/third_party/neurlang-wayland/wl"
 )
 
 // fakeIdleInhibitor records one inhibitor's requests.

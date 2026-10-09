@@ -3,7 +3,7 @@ package wlsession
 import (
 	"testing"
 
-	text "github.com/neurlang/wayland/unstable/text-input-v3"
+	text "github.com/stubbedev/gelm/third_party/neurlang-wayland/unstable/text-input-v3"
 )
 
 func TestTextInputIsOptional(t *testing.T) {

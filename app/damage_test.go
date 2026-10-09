@@ -8,11 +8,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/neurlang/wayland/wl"
-
 	"github.com/stubbedev/gelm/internal/buffer"
 	"github.com/stubbedev/gelm/internal/scale"
 	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/gelm/third_party/neurlang-wayland/wl"
 	"github.com/stubbedev/gelm/widget"
 )
 

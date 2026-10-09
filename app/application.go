@@ -15,8 +15,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/neurlang/wayland/wl"
-
 	"github.com/stubbedev/gelm/internal/anim"
 	"github.com/stubbedev/gelm/internal/appearance"
 	"github.com/stubbedev/gelm/internal/clipboard"
@@ -33,6 +31,7 @@ import (
 	"github.com/stubbedev/gelm/internal/window"
 	"github.com/stubbedev/gelm/internal/wlsession"
 	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/gelm/third_party/neurlang-wayland/wl"
 	"github.com/stubbedev/gelm/widget"
 )
 

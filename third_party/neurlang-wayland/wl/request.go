@@ -5,8 +5,9 @@ import (
 	"net"
 	"reflect"
 
-	"github.com/neurlang/wayland/os"
 	"github.com/yalue/native_endian"
+
+	"github.com/stubbedev/gelm/third_party/neurlang-wayland/os"
 )
 
 // Request is the request message from your program to the Wayland compositor
@@ -137,7 +138,7 @@ func (r *Request) PutFloat32(f float32) {
 
 // PutString (Request PutString) writes a string argument to the compositor
 func (r *Request) PutString(s string) {
-	tail := 4 - ((len(s)) & 0x3)
+	tail := 4 - (len(s) & 0x3)
 	r.PutUint32(uint32(len(s) + 1))
 	r.data = append(r.data, []byte(s)...)
 	// if padding required

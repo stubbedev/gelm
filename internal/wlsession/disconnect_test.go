@@ -9,9 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/neurlang/wayland/wl"
-
 	"github.com/stubbedev/gelm/internal/headlesstest"
+	"github.com/stubbedev/gelm/third_party/neurlang-wayland/wl"
 )
 
 // deadSocketSession returns a Session wired to a real unix socket whose

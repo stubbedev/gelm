@@ -3,10 +3,10 @@ package wlsession
 import (
 	"testing"
 
-	"github.com/neurlang/wayland/wl"
 	"github.com/unxed/xkb-go"
 
 	"github.com/stubbedev/gelm/internal/compose"
+	"github.com/stubbedev/gelm/third_party/neurlang-wayland/wl"
 )
 
 // sessionWithCompose builds a session whose seat uses the shared

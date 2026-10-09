@@ -8,8 +8,7 @@ import (
 	"sync"
 	"time"
 
-	sys "github.com/neurlang/wayland/os"
-	//"reflect"
+	sys "github.com/stubbedev/gelm/third_party/neurlang-wayland/os"
 )
 
 // Context wraps the wayland connection together with the map of all Context objects (proxies)
@@ -168,8 +167,8 @@ func Connect(addr string) (ret *Display, err error) {
 		c.conn.Close()
 		return nil, err
 	}
-	//DON'T dispatch events in separate goroutine
-	//go c.Run()
+	// DON'T dispatch events in separate goroutine
+	// go c.Run()
 	return NewDisplay(c), nil
 }
 

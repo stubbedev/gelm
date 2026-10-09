@@ -10,9 +10,8 @@ package buffer
 import (
 	"testing"
 
-	"github.com/neurlang/wayland/wl"
-
 	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/gelm/third_party/neurlang-wayland/wl"
 )
 
 // TestFormatIsArgb8888NotXrgb pins the format constant: flipping it to
