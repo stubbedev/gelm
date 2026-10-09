@@ -223,3 +223,29 @@ func TestEntryWidthChars(t *testing.T) {
 		t.Errorf("unset: %d, want the text's width back", w)
 	}
 }
+
+// SetColor's ink outranks the stylesheet; zero hands the text back to
+// the text node's rule - a SearchEntry, born with the theme's ink,
+// takes the application's stylesheet that way.
+func TestEntrySetColorYieldsToTheStylesheetAtZero(t *testing.T) {
+	loadCSS(t, entryNodesCSS)
+	blue := render.RGB(0, 0, 0xff)
+	s := NewSearchEntry(entryFace(t), 14, "")
+	s.SetText("abc")
+	s.SetColor(blue)
+	if s.Color() != blue {
+		t.Fatalf("color = %#08x, want blue", s.Color())
+	}
+	data, stride, sz := entryShot(t, s.Entry)
+	if _, n := inked(data, stride, sz, blue); n == 0 {
+		t.Error("the programmatic blue does not paint the text")
+	}
+	if _, n := inked(data, stride, sz, render.RGB(0xff, 0, 0)); n != 0 {
+		t.Error("the stylesheet's red painted over the programmatic ink")
+	}
+	s.SetColor(0)
+	data, stride, sz = entryShot(t, s.Entry)
+	if _, n := inked(data, stride, sz, render.RGB(0xff, 0, 0)); n == 0 {
+		t.Error("with no programmatic ink the text node's red does not paint")
+	}
+}

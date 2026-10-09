@@ -136,6 +136,22 @@ func NewEntry(face render.Font, sizePx float64, color render.Color) *Entry {
 	return e
 }
 
+// SetColor sets the programmatic text ink; zero hands the color back
+// to the stylesheet (the text node's, else the entry's color), as a
+// Label's does. A preset built on Entry (SearchEntry) starts from the
+// theme's text ink, so a styled application clears it here.
+func (e *Entry) SetColor(c render.Color) {
+	if e.color == c {
+		return
+	}
+	e.color = c
+	e.Invalidate()
+}
+
+// Color returns the programmatic text ink, zero when the stylesheet
+// decides.
+func (e *Entry) Color() render.Color { return e.color }
+
 // entryText is GtkText's node under an entry (`entry > text`): its
 // margin, border and padding inset the text, its color paints the
 // text, and its placeholder and selection children (`text >
