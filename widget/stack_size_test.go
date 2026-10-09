@@ -97,3 +97,16 @@ func TestStackFloorsFollowWhatPagesGiveUp(t *testing.T) {
 		t.Errorf("homogeneous gives %d, want down to the form's 150", got)
 	}
 }
+
+// The size settings read back as set.
+func TestStackSizeSettingsReadBack(t *testing.T) {
+	s := sizedStack()
+	if !s.Homogeneous() || s.InterpolateSize() {
+		t.Errorf("defaults: homogeneous %v interpolate %v, want true/false", s.Homogeneous(), s.InterpolateSize())
+	}
+	s.SetHomogeneous(false)
+	s.SetInterpolateSize(true)
+	if s.Homogeneous() || !s.InterpolateSize() {
+		t.Errorf("set: homogeneous %v interpolate %v, want false/true", s.Homogeneous(), s.InterpolateSize())
+	}
+}
