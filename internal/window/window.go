@@ -9,12 +9,11 @@ import (
 	"fmt"
 	"strings"
 
-	xdeco "github.com/neurlang/wayland/unstable/xdg-decoration-v1"
-	"github.com/neurlang/wayland/wl"
-	"github.com/neurlang/wayland/xdg"
-
 	"github.com/stubbedev/gelm/internal/debug"
 	"github.com/stubbedev/gelm/internal/wlnull"
+	xdeco "github.com/stubbedev/gelm/third_party/neurlang-wayland/unstable/xdg-decoration-v1"
+	"github.com/stubbedev/gelm/third_party/neurlang-wayland/wl"
+	"github.com/stubbedev/gelm/third_party/neurlang-wayland/xdg"
 	"github.com/stubbedev/gelm/wlr"
 )
 

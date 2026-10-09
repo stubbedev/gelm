@@ -3,13 +3,12 @@ package app
 import (
 	"time"
 
-	"github.com/neurlang/wayland/xdg"
-
 	"github.com/stubbedev/gelm/internal/debug"
 	"github.com/stubbedev/gelm/internal/popup"
 	"github.com/stubbedev/gelm/internal/surfx"
 	"github.com/stubbedev/gelm/internal/wlsession"
 	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/gelm/third_party/neurlang-wayland/xdg"
 	"github.com/stubbedev/gelm/widget"
 )
 

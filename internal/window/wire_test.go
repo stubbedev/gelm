@@ -10,10 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/neurlang/wayland/wl"
-	"github.com/neurlang/wayland/xdg"
-
 	"github.com/stubbedev/gelm/internal/headlesstest"
+	"github.com/stubbedev/gelm/third_party/neurlang-wayland/wl"
+	"github.com/stubbedev/gelm/third_party/neurlang-wayland/xdg"
 	"github.com/stubbedev/gelm/wlr"
 )
 

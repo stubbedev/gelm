@@ -1,11 +1,13 @@
 package xdg
 
 import (
-	"github.com/neurlang/wayland/wl"
-	xdgshell "github.com/neurlang/wayland/xdg"
+	"github.com/stubbedev/gelm/third_party/neurlang-wayland/wl"
+	xdgshell "github.com/stubbedev/gelm/third_party/neurlang-wayland/xdg"
 )
 
-type BaseProxy = wl.BaseProxy
-type Context = wl.Context
-type Event = wl.Event
-type Toplevel = xdgshell.Toplevel
+type (
+	BaseProxy = wl.BaseProxy
+	Context   = wl.Context
+	Event     = wl.Event
+	Toplevel  = xdgshell.Toplevel
+)

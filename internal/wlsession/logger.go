@@ -10,9 +10,8 @@ package wlsession
 import (
 	"log/slog"
 
-	"github.com/neurlang/wayland/wl"
-
 	"github.com/stubbedev/gelm/internal/logutil"
+	"github.com/stubbedev/gelm/third_party/neurlang-wayland/wl"
 )
 
 // SetLogger installs the library-wide logger: protocol-level warnings

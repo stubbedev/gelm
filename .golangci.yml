@@ -46,6 +46,9 @@ linters:
         - name: exported
   exclusions:
     generated: lax
+    # Upstream code carried verbatim (third_party/*/README.gelm.md).
+    paths:
+      - third_party/
     rules:
       - path: _test\.go
         linters:
@@ -69,3 +72,5 @@ formatters:
         - prefix(github.com/stubbedev/gelm)
   exclusions:
     generated: lax
+    paths:
+      - third_party/

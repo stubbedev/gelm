@@ -4,8 +4,9 @@ import (
 	"bytes"
 	"errors"
 
-	"github.com/neurlang/wayland/os"
 	"github.com/yalue/native_endian"
+
+	"github.com/stubbedev/gelm/third_party/neurlang-wayland/os"
 )
 
 // Event is the Wayland event (e.g. a response) from the compositor
@@ -113,7 +114,7 @@ func (ev *Event) FD() (uintptr, error) {
 	if err != nil {
 		return 0, ErrUnableToParseUnixRights
 	}
-	//TODO: is this required??????????????
+	// TODO: is this required??????????????
 	ev.ctx.scms = ev.ctx.scms[1:]
 	return uintptr(fds[0]), nil
 }
@@ -158,7 +159,7 @@ func (ev *Event) String() string {
 		return ""
 	}
 	ret := string(bytes.TrimRight(buf, "\x00"))
-	//padding to 32 bit boundary
+	// padding to 32 bit boundary
 	if (l & 0x3) != 0 {
 		ev.next(4 - (l & 0x3))
 	}

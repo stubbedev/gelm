@@ -7,7 +7,7 @@ package buffer
 import (
 	"strconv"
 
-	"github.com/neurlang/wayland/wl"
+	"github.com/stubbedev/gelm/third_party/neurlang-wayland/wl"
 )
 
 // FormatName describes the shm pixel format every gelm buffer uses:

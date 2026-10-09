@@ -15,12 +15,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/neurlang/wayland/wl"
-
 	"github.com/stubbedev/gelm/internal/anim"
 	"github.com/stubbedev/gelm/internal/buffer"
 	"github.com/stubbedev/gelm/internal/headlesstest"
 	"github.com/stubbedev/gelm/internal/wlsession"
+	"github.com/stubbedev/gelm/third_party/neurlang-wayland/wl"
 	"github.com/stubbedev/gelm/widget"
 )
 

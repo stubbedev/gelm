@@ -14,7 +14,6 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/neurlang/wayland/wl"
 	"github.com/unxed/xkb-go"
 
 	"github.com/stubbedev/gelm/internal/clipboard"
@@ -25,6 +24,7 @@ import (
 	"github.com/stubbedev/gelm/internal/touchinput"
 	"github.com/stubbedev/gelm/internal/wlsession"
 	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/gelm/third_party/neurlang-wayland/wl"
 	"github.com/stubbedev/gelm/widget"
 )
 

@@ -16,14 +16,13 @@ import (
 	"os"
 	"time"
 
-	"github.com/neurlang/wayland/wl"
-	"github.com/neurlang/wayland/wlclient"
-
 	"github.com/stubbedev/gelm/internal/buffer"
 	"github.com/stubbedev/gelm/internal/layersurface"
 	"github.com/stubbedev/gelm/internal/sysfont"
 	"github.com/stubbedev/gelm/internal/wlsession"
 	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/gelm/third_party/neurlang-wayland/wl"
+	"github.com/stubbedev/gelm/third_party/neurlang-wayland/wlclient"
 	"github.com/stubbedev/gelm/widget"
 )
 

@@ -6,10 +6,9 @@ import (
 	"os"
 	"strconv"
 
-	sys "github.com/neurlang/wayland/os"
-	"github.com/neurlang/wayland/wl"
-
-	"github.com/neurlang/wayland/wlcursor/xcursor"
+	sys "github.com/stubbedev/gelm/third_party/neurlang-wayland/os"
+	"github.com/stubbedev/gelm/third_party/neurlang-wayland/wl"
+	"github.com/stubbedev/gelm/third_party/neurlang-wayland/wlcursor/xcursor"
 )
 
 // Image is a wlCursor cursor image
@@ -148,7 +147,6 @@ func (t *Theme) grow(size int32) error {
 
 // Destroy destroys a Theme
 func (t *Theme) Destroy() (err error) {
-
 	err = t.Pool.Destroy()
 	if err != nil {
 		t.File.Close()
@@ -344,6 +342,7 @@ func (b *ImageBuffer) Destroy() error {
 
 // PointerSetCursor sets Cursor of Pointer
 func PointerSetCursor(p *wl.Pointer, serial uint32, pointerSurface *wl.Surface,
-	hotspotX int32, hotspotY int32) error {
+	hotspotX int32, hotspotY int32,
+) error {
 	return p.SetCursor(serial, pointerSurface, hotspotX, hotspotY)
 }

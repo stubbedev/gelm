@@ -1,9 +1,8 @@
 package popup
 
 import (
-	"github.com/neurlang/wayland/xdg"
-
 	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/gelm/third_party/neurlang-wayland/xdg"
 )
 
 // placement is one xdg_positioner setup: the anchor rect, which point

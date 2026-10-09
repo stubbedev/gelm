@@ -3,7 +3,7 @@ package wlsession
 import (
 	"testing"
 
-	"github.com/neurlang/wayland/wl"
+	"github.com/stubbedev/gelm/third_party/neurlang-wayland/wl"
 )
 
 // TestOutputTransform tracks the geometry event's transform, which

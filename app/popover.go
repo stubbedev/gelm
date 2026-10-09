@@ -6,8 +6,6 @@ import (
 	"slices"
 	"sync"
 
-	"github.com/neurlang/wayland/wl"
-	"github.com/neurlang/wayland/xdg"
 	"github.com/unxed/xkb-go"
 
 	"github.com/stubbedev/gelm/internal/debug"
@@ -15,6 +13,8 @@ import (
 	"github.com/stubbedev/gelm/internal/scale"
 	"github.com/stubbedev/gelm/internal/wlsession"
 	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/gelm/third_party/neurlang-wayland/wl"
+	"github.com/stubbedev/gelm/third_party/neurlang-wayland/xdg"
 	"github.com/stubbedev/gelm/widget"
 	"github.com/stubbedev/gelm/wlr"
 )

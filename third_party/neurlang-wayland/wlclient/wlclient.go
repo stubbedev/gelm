@@ -2,13 +2,14 @@
 package wlclient
 
 import (
-	"github.com/neurlang/wayland/wl"
-	"github.com/neurlang/wayland/xdg"
+	"github.com/stubbedev/gelm/third_party/neurlang-wayland/wl"
+	"github.com/stubbedev/gelm/third_party/neurlang-wayland/xdg"
 )
 
 func DisplayDispatch(d *wl.Display) error {
 	return d.Context().Run()
 }
+
 func PointerSetUserData(p *wl.Pointer, data interface{}) {
 }
 
@@ -40,26 +41,30 @@ func PointerAddListener(p *wl.Pointer, h PointerListener) {
 	p.AddAxisStopHandler(h)
 	p.AddAxisDiscreteHandler(h)
 	p.AddAxisValue120Handler(h)
-
 }
+
 func PointerDestroy(p *wl.Pointer) {
 	wl.DeleteUserData(p)
 	//p.Destroy()
 	p.Unregister()
 }
+
 func ShmDestroy(p *wl.Shm) {
 	wl.DeleteUserData(p)
 	//p.Destroy()
 	p.Unregister()
 }
+
 func RegistryDestroy(p *wl.Registry) {
 	wl.DeleteUserData(p)
 	//p.Destroy()
 	p.Unregister()
 }
+
 func BufferAddListener(b *wl.Buffer, data wl.BufferReleaseHandler) {
 	b.AddReleaseHandler(data)
 }
+
 func CallbackAddListener(c *wl.Callback, data wl.CallbackDoneHandler) {
 	c.AddDoneHandler(data)
 }
@@ -88,6 +93,7 @@ func SeatDestroy(p *wl.Seat) {
 	//p.Destroy()
 	p.Unregister()
 }
+
 func SeatAddListener(s *wl.Seat, data SeatListener) {
 	s.AddCapabilitiesHandler(data)
 	s.AddNameHandler(data)
@@ -102,6 +108,7 @@ func RegistryAddListener(r *wl.Registry, data RegistryListener) {
 	r.AddGlobalHandler(data)
 	r.AddGlobalRemoveHandler(data)
 }
+
 func KeyboardSetUserData(*wl.Keyboard, interface{}) {
 }
 
@@ -122,11 +129,13 @@ func KeyboardAddListener(kb *wl.Keyboard, l KeyboardListener) {
 	kb.AddModifiersHandler(l)
 	kb.AddRepeatInfoHandler(l)
 }
+
 func KeyboardDestroy(p *wl.Keyboard) {
 	wl.DeleteUserData(p)
 	//p.Destroy()
 	p.Unregister()
 }
+
 func TouchSetUserData(*wl.Touch, interface{}) {
 }
 
@@ -149,6 +158,7 @@ func TouchAddListener(to *wl.Touch, tl TouchListener) {
 	to.AddShapeHandler(tl)
 	to.AddOrientationHandler(tl)
 }
+
 func TouchDestroy(p *wl.Touch) {
 	wl.DeleteUserData(p)
 	//p.Destroy()
@@ -181,26 +191,31 @@ func SurfaceAddListener(
 func ShmAddListener(p *wl.Shm, data wl.ShmFormatHandler) {
 	p.AddFormatHandler(data)
 }
+
 func RegionDestroy(p *wl.Region) {
 	wl.DeleteUserData(p)
 	_ = p.Destroy() // Ignore error during cleanup
 	p.Unregister()
 }
+
 func CallbackDestroy(p *wl.Callback) {
 	wl.DeleteUserData(p)
 	//p.Destroy()
 	p.Unregister()
 }
+
 func SubsurfaceDestroy(p *wl.Subsurface) {
 	wl.DeleteUserData(p)
 	_ = p.Destroy() // Ignore error during cleanup
 	p.Unregister()
 }
+
 func DataDeviceDestroy(p *wl.DataDevice) {
 	wl.DeleteUserData(p)
 	//p.Destroy()
 	p.Unregister()
 }
+
 func DataDeviceManagerDestroy(p *wl.DataDeviceManager) {
 	wl.DeleteUserData(p)
 	//d.Destroy()
@@ -236,6 +251,7 @@ func DataOfferDestroy(p *wl.DataOffer) {
 	//d.Destroy()
 	p.Unregister()
 }
+
 func DataOfferAddListener(p *wl.DataOffer, h DataOfferListener) {
 	p.AddOfferHandler(h)
 	p.AddSourceActionsHandler(h)
@@ -270,7 +286,6 @@ func DataSourceRemoveListener(p *wl.DataSource, h DataSourceListener) {
 }
 
 func RegistryBindCompositorInterface(r *wl.Registry, name uint32, version uint32) *wl.Compositor {
-
 	ctx, _ := wl.GetUserData[wl.Context](r)
 
 	c := wl.NewCompositor(ctx)
@@ -327,6 +342,7 @@ func RegistryBindWmBaseInterface(r *wl.Registry, name uint32, version uint32) *x
 func DisplayConnect(name []byte) (*wl.Display, error) {
 	return wl.Connect(string(name))
 }
+
 func DisplayGetRegistry(d *wl.Display) (*wl.Registry, error) {
 	return d.GetRegistry()
 }
@@ -338,6 +354,7 @@ func DisplayRun(d *wl.Display) (err error) {
 	}
 	return err
 }
+
 func DisplayRoundtrip(d *wl.Display) error {
 	cb, err := d.Sync()
 	if err != nil {
@@ -347,6 +364,7 @@ func DisplayRoundtrip(d *wl.Display) error {
 	err = d.Context().RunTill(cb)
 	return err
 }
+
 func DisplayDisconnect(display *wl.Display) {
 	display.Context().Close()
 }

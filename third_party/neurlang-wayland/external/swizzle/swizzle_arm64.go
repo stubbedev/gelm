@@ -10,9 +10,11 @@ package swizzle
 // hard-coded offsets. It can therefore read and write beyond a cursor image
 // buffer. Use BGRA's bounds-safe Go implementation until the assembly
 // implementation is corrected.
-const useBGRA32 = false
-const useBGRA16 = false
-const useBGRA4 = false
+const (
+	useBGRA32 = false
+	useBGRA16 = false
+	useBGRA4  = false
+)
 
 func bgra32([]byte)
 func bgra16([]byte) { return }

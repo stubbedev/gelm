@@ -1,8 +1,21 @@
 # github.com/neurlang/wayland v0.4.4, patched for gelm
 
 A trimmed copy (only the packages gelm imports) of
-github.com/neurlang/wayland v0.4.4, MIT licensed (LICENSE), wired in by
-the `replace` directive in gelm's go.mod.
+github.com/neurlang/wayland v0.4.4, MIT licensed (LICENSE), carried as
+packages of the gelm module itself and imported as
+`github.com/stubbedev/gelm/third_party/neurlang-wayland/...`.
+
+It was first wired in with a go.mod `replace`, but Go ignores a
+dependency's `replace` directives: every consumer of gelm (wayle)
+silently built against the unpatched upstream binding. Folding the
+copy into gelm's module is what makes the fix reach them. The
+upstream module stays required only as the `tool` that `go generate`
+runs for the protocol bindings (wlr/types.go rewrites the generated
+imports to this path).
+
+Local changes beyond the patch: the amd64 swizzle assembly names its
+frame slots after the Go declaration (`p_base`, `p_len`) so go vet's
+asmdecl check passes; no instruction changed.
 
 ## The patch
 
@@ -18,6 +31,6 @@ to the pool (and parses only the `oobn` bytes actually read).
 
 ## Leaving
 
-Drop the copy and the `replace` once upstream carries the fix; gelm's
-headless suites (sway and the Hyprland VM gate) are the regression
-check.
+Drop the copy (rewriting the imports back) once upstream carries the
+fix; gelm's headless suites (sway and the Hyprland VM gate) are the
+regression check.

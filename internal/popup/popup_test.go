@@ -8,12 +8,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/neurlang/wayland/xdg"
-
 	"github.com/stubbedev/gelm/internal/anim"
 	"github.com/stubbedev/gelm/internal/surfx"
 	"github.com/stubbedev/gelm/internal/wlsession"
 	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/gelm/third_party/neurlang-wayland/xdg"
 	"github.com/stubbedev/gelm/widget"
 )
 

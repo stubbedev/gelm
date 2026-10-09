@@ -6,8 +6,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/neurlang/wayland/wl"
 	"github.com/unxed/xkb-go"
+
+	"github.com/stubbedev/gelm/third_party/neurlang-wayland/wl"
 )
 
 // findXKBData locates the system xkeyboard-config data directory; tests
