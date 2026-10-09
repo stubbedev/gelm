@@ -235,3 +235,24 @@ func FuzzParseMarkup(f *testing.F) {
 		}
 	})
 }
+
+// <u> and <s> mark their runs underlined and struck, nesting with the
+// rest; the plain text around them stays plain.
+func TestParseMarkupDecorations(t *testing.T) {
+	runs, ok := ParseMarkup("a<u>b<s>c</s></u><s>d</s>")
+	if !ok {
+		t.Fatal("rejected")
+	}
+	if got := runTexts(runs); strings.Join(got, "|") != "a|b|c|d" {
+		t.Fatalf("runs = %q", got)
+	}
+	want := []TextStyle{{}, {Underline: true}, {Underline: true, Strikethrough: true}, {Strikethrough: true}}
+	for i, w := range want {
+		if runs[i].Style != w {
+			t.Errorf("run %d style = %+v, want %+v", i, runs[i].Style, w)
+		}
+	}
+	if _, ok := ParseMarkup("<u>x</s>"); ok {
+		t.Error("a mismatched decoration close parsed")
+	}
+}

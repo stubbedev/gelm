@@ -711,7 +711,8 @@ func (l *RichLabel) Paint(cv *render.Canvas) {
 }
 
 // paintLine draws the runs on one baseline: each its variant face, its
-// color, and an underline for link runs.
+// color, and its decorations (the stylesheet's, an underline for link
+// and <u> runs, a line through <s> runs).
 func (l *RichLabel) paintLine(cv *render.Canvas, runs []*richRun, lineX float64, baseline int) {
 	css := cssDecoration(l.style(l))
 	x := lineX
@@ -723,8 +724,11 @@ func (l *RichLabel) paintLine(cv *render.Canvas, runs []*richRun, lineX float64,
 		}
 		r.face.Draw(cv, r.sh, dx, baseline, col)
 		deco := css
-		if r.style.Href != "" {
+		if r.style.Href != "" || r.style.Underline {
 			deco.Lines |= render.Underline
+		}
+		if r.style.Strikethrough {
+			deco.Lines |= render.LineThrough
 		}
 		r.sh.DrawDecoration(cv, dx, baseline, deco, col)
 		x += r.sh.Advance()

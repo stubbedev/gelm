@@ -15,6 +15,9 @@ import (
 type TextStyle struct {
 	// Bold and Italic select the face variant a run shapes with.
 	Bold, Italic bool
+	// Underline and Strikethrough draw the decoration lines over the
+	// run (Pango's <u> and <s>), in the run's color.
+	Underline, Strikethrough bool
 	// Color overrides the label color while non-zero. Premultiplied,
 	// like every render.Color.
 	Color render.Color
@@ -34,7 +37,8 @@ type MarkupRun struct {
 // ParseMarkup parses markup into styled runs. The accepted grammar is
 // a strict allowlist, not HTML:
 //
-//	<b>bold</b>  <i>italic</i>  <span color="#rrggbb">…</span>
+//	<b>bold</b>  <i>italic</i>  <u>underlined</u>  <s>struck</s>
+//	<span color="#rrggbb">…</span>
 //	<a href="https://example.com">link</a>
 //
 // Tags nest and combine (bold italic, colors inheriting into nested
@@ -134,16 +138,21 @@ func (p *markupParser) tag() bool {
 		return false
 	}
 	switch name {
-	case "b", "i":
+	case "b", "i", "u", "s":
 		if !p.endTag() {
 			return false
 		}
 		p.flush()
 		p.stack = append(p.stack, markupFrame{name, p.style})
-		if name == "b" {
+		switch name {
+		case "b":
 			p.style.Bold = true
-		} else {
+		case "i":
 			p.style.Italic = true
+		case "u":
+			p.style.Underline = true
+		default:
+			p.style.Strikethrough = true
 		}
 	case "span":
 		return p.spanTag()
