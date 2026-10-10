@@ -340,6 +340,18 @@ func (b *ActionRowBuilder) WatchRevealed(get func() bool) *ActionRowBuilder {
 	return b
 }
 
+// Searchable calls (*widget.ActionRow).SetSearchable.
+func (b *ActionRowBuilder) Searchable(on bool) *ActionRowBuilder {
+	b.do(func(s *Scope, w *widget.ActionRow) { w.SetSearchable(on) })
+	return b
+}
+
+// WatchSearchable re-applies SetSearchable with get's value after every update.
+func (b *ActionRowBuilder) WatchSearchable(get func() bool) *ActionRowBuilder {
+	b.watch(func(w *widget.ActionRow) { w.SetSearchable(get()) })
+	return b
+}
+
 // Selected calls (*widget.ActionRow).SetSelected.
 func (b *ActionRowBuilder) Selected(on bool) *ActionRowBuilder {
 	b.do(func(s *Scope, w *widget.ActionRow) { w.SetSelected(on) })
@@ -822,6 +834,18 @@ func (b *ButtonRowBuilder) Revealed(on bool) *ButtonRowBuilder {
 // WatchRevealed re-applies SetRevealed with get's value after every update.
 func (b *ButtonRowBuilder) WatchRevealed(get func() bool) *ButtonRowBuilder {
 	b.watch(func(w *widget.ButtonRow) { w.SetRevealed(get()) })
+	return b
+}
+
+// Searchable calls (*widget.ButtonRow).SetSearchable.
+func (b *ButtonRowBuilder) Searchable(on bool) *ButtonRowBuilder {
+	b.do(func(s *Scope, w *widget.ButtonRow) { w.SetSearchable(on) })
+	return b
+}
+
+// WatchSearchable re-applies SetSearchable with get's value after every update.
+func (b *ButtonRowBuilder) WatchSearchable(get func() bool) *ButtonRowBuilder {
+	b.watch(func(w *widget.ButtonRow) { w.SetSearchable(get()) })
 	return b
 }
 
@@ -1531,6 +1555,18 @@ func (b *ComboRowBuilder) WatchRevealed(get func() bool) *ComboRowBuilder {
 	return b
 }
 
+// Searchable calls (*widget.ComboRow).SetSearchable.
+func (b *ComboRowBuilder) Searchable(on bool) *ComboRowBuilder {
+	b.do(func(s *Scope, w *widget.ComboRow) { w.SetSearchable(on) })
+	return b
+}
+
+// WatchSearchable re-applies SetSearchable with get's value after every update.
+func (b *ComboRowBuilder) WatchSearchable(get func() bool) *ComboRowBuilder {
+	b.watch(func(w *widget.ComboRow) { w.SetSearchable(get()) })
+	return b
+}
+
 // Subtitle calls (*widget.ComboRow).SetSubtitle.
 func (b *ComboRowBuilder) Subtitle(text string) *ComboRowBuilder {
 	b.do(func(s *Scope, w *widget.ComboRow) { w.SetSubtitle(text) })
@@ -2220,6 +2256,18 @@ func (b *EntryRowBuilder) WatchRevealed(get func() bool) *EntryRowBuilder {
 	return b
 }
 
+// Searchable calls (*widget.EntryRow).SetSearchable.
+func (b *EntryRowBuilder) Searchable(on bool) *EntryRowBuilder {
+	b.do(func(s *Scope, w *widget.EntryRow) { w.SetSearchable(on) })
+	return b
+}
+
+// WatchSearchable re-applies SetSearchable with get's value after every update.
+func (b *EntryRowBuilder) WatchSearchable(get func() bool) *EntryRowBuilder {
+	b.watch(func(w *widget.EntryRow) { w.SetSearchable(get()) })
+	return b
+}
+
 // Selected calls (*widget.EntryRow).SetSelected.
 func (b *EntryRowBuilder) Selected(on bool) *EntryRowBuilder {
 	b.do(func(s *Scope, w *widget.EntryRow) { w.SetSelected(on) })
@@ -2391,6 +2439,18 @@ func (b *ExpanderRowBuilder) Revealed(on bool) *ExpanderRowBuilder {
 // WatchRevealed re-applies SetRevealed with get's value after every update.
 func (b *ExpanderRowBuilder) WatchRevealed(get func() bool) *ExpanderRowBuilder {
 	b.watch(func(w *widget.ExpanderRow) { w.SetRevealed(get()) })
+	return b
+}
+
+// Searchable calls (*widget.ExpanderRow).SetSearchable.
+func (b *ExpanderRowBuilder) Searchable(on bool) *ExpanderRowBuilder {
+	b.do(func(s *Scope, w *widget.ExpanderRow) { w.SetSearchable(on) })
+	return b
+}
+
+// WatchSearchable re-applies SetSearchable with get's value after every update.
+func (b *ExpanderRowBuilder) WatchSearchable(get func() bool) *ExpanderRowBuilder {
+	b.watch(func(w *widget.ExpanderRow) { w.SetSearchable(get()) })
 	return b
 }
 
@@ -3926,6 +3986,64 @@ func (b *PreferencesPageBuilder) Add(child Node) *PreferencesPageBuilder {
 	return b
 }
 
+// IconName calls (*widget.PreferencesPage).SetIconName.
+func (b *PreferencesPageBuilder) IconName(name string) *PreferencesPageBuilder {
+	b.do(func(s *Scope, w *widget.PreferencesPage) { w.SetIconName(name) })
+	return b
+}
+
+// WatchIconName re-applies SetIconName with get's value after every update.
+func (b *PreferencesPageBuilder) WatchIconName(get func() string) *PreferencesPageBuilder {
+	b.watch(func(w *widget.PreferencesPage) { w.SetIconName(get()) })
+	return b
+}
+
+// Title calls (*widget.PreferencesPage).SetTitle.
+func (b *PreferencesPageBuilder) Title(t string) *PreferencesPageBuilder {
+	b.do(func(s *Scope, w *widget.PreferencesPage) { w.SetTitle(t) })
+	return b
+}
+
+// WatchTitle re-applies SetTitle with get's value after every update.
+func (b *PreferencesPageBuilder) WatchTitle(get func() string) *PreferencesPageBuilder {
+	b.watch(func(w *widget.PreferencesPage) { w.SetTitle(get()) })
+	return b
+}
+
+// PreferencesViewBuilder builds a widget.PreferencesView.
+type PreferencesViewBuilder struct {
+	base[*widget.PreferencesView, *PreferencesViewBuilder]
+	face render.Font
+	size float64
+}
+
+// PreferencesView builds a widget.PreferencesView with widget.NewPreferencesView.
+func PreferencesView() *PreferencesViewBuilder {
+	b := &PreferencesViewBuilder{}
+	b.init(b, func(s *Scope) *widget.PreferencesView {
+		return widget.NewPreferencesView(s.face(b.face), s.size(b.size))
+	})
+	return b
+}
+
+// Font overrides the environment's typeface and size for this widget; zero values keep the environment's.
+func (b *PreferencesViewBuilder) Font(face render.Font, sizePx float64) *PreferencesViewBuilder {
+	b.face, b.size = face, sizePx
+	return b
+}
+
+// Add calls (*widget.PreferencesView).Add.
+func (b *PreferencesViewBuilder) Add(p Of[*widget.PreferencesPage]) *PreferencesViewBuilder {
+	b.do(func(s *Scope, w *widget.PreferencesView) { w.Add(buildOf(s, p)) })
+	return b
+}
+
+// PushSubpage calls (*widget.PreferencesView).PushSubpage.
+func (b *PreferencesViewBuilder) PushSubpage(title string, content Node) *PreferencesViewBuilder {
+	b.do(func(s *Scope, w *widget.PreferencesView) { w.PushSubpage(title, build(s, content)) })
+	return b
+}
+
 // ProgressBarBuilder builds a widget.ProgressBar.
 type ProgressBarBuilder struct {
 	base[*widget.ProgressBar, *ProgressBarBuilder]
@@ -4587,6 +4705,30 @@ func (b *ShortcutsViewBuilder) Add(child Node) *ShortcutsViewBuilder {
 	return b
 }
 
+// IconName calls (*widget.ShortcutsView).SetIconName.
+func (b *ShortcutsViewBuilder) IconName(name string) *ShortcutsViewBuilder {
+	b.do(func(s *Scope, w *widget.ShortcutsView) { w.SetIconName(name) })
+	return b
+}
+
+// WatchIconName re-applies SetIconName with get's value after every update.
+func (b *ShortcutsViewBuilder) WatchIconName(get func() string) *ShortcutsViewBuilder {
+	b.watch(func(w *widget.ShortcutsView) { w.SetIconName(get()) })
+	return b
+}
+
+// Title calls (*widget.ShortcutsView).SetTitle.
+func (b *ShortcutsViewBuilder) Title(t string) *ShortcutsViewBuilder {
+	b.do(func(s *Scope, w *widget.ShortcutsView) { w.SetTitle(t) })
+	return b
+}
+
+// WatchTitle re-applies SetTitle with get's value after every update.
+func (b *ShortcutsViewBuilder) WatchTitle(get func() string) *ShortcutsViewBuilder {
+	b.watch(func(w *widget.ShortcutsView) { w.SetTitle(get()) })
+	return b
+}
+
 // SliderBuilder builds a widget.Slider.
 type SliderBuilder struct {
 	base[*widget.Slider, *SliderBuilder]
@@ -4986,6 +5128,18 @@ func (b *SpinRowBuilder) WatchRevealed(get func() bool) *SpinRowBuilder {
 	return b
 }
 
+// Searchable calls (*widget.SpinRow).SetSearchable.
+func (b *SpinRowBuilder) Searchable(on bool) *SpinRowBuilder {
+	b.do(func(s *Scope, w *widget.SpinRow) { w.SetSearchable(on) })
+	return b
+}
+
+// WatchSearchable re-applies SetSearchable with get's value after every update.
+func (b *SpinRowBuilder) WatchSearchable(get func() bool) *SpinRowBuilder {
+	b.watch(func(w *widget.SpinRow) { w.SetSearchable(get()) })
+	return b
+}
+
 // Selected calls (*widget.SpinRow).SetSelected.
 func (b *SpinRowBuilder) Selected(on bool) *SpinRowBuilder {
 	b.do(func(s *Scope, w *widget.SpinRow) { w.SetSelected(on) })
@@ -5339,6 +5493,18 @@ func (b *SwitchRowBuilder) Revealed(on bool) *SwitchRowBuilder {
 // WatchRevealed re-applies SetRevealed with get's value after every update.
 func (b *SwitchRowBuilder) WatchRevealed(get func() bool) *SwitchRowBuilder {
 	b.watch(func(w *widget.SwitchRow) { w.SetRevealed(get()) })
+	return b
+}
+
+// Searchable calls (*widget.SwitchRow).SetSearchable.
+func (b *SwitchRowBuilder) Searchable(on bool) *SwitchRowBuilder {
+	b.do(func(s *Scope, w *widget.SwitchRow) { w.SetSearchable(on) })
+	return b
+}
+
+// WatchSearchable re-applies SetSearchable with get's value after every update.
+func (b *SwitchRowBuilder) WatchSearchable(get func() bool) *SwitchRowBuilder {
+	b.watch(func(w *widget.SwitchRow) { w.SetSearchable(get()) })
 	return b
 }
 

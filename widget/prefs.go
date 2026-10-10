@@ -82,6 +82,35 @@ type PreferencesPage struct {
 	composite
 	column *Box
 	scroll *Scroll
+	title  string
+	icon   string
+	reveal Widget
+}
+
+// SetTitle names the page for a PreferencesView's switcher and search.
+func (p *PreferencesPage) SetTitle(t string) { p.title = t }
+
+// Title returns the page name.
+func (p *PreferencesPage) Title() string { return p.title }
+
+// SetIconName sets the page's switcher icon by theme name.
+func (p *PreferencesPage) SetIconName(name string) { p.icon = name }
+
+// Reveal scrolls the page so w is in view at the next layout.
+func (p *PreferencesPage) Reveal(w Widget) {
+	p.reveal = w
+	p.InvalidateLayout()
+}
+
+// Arrange lays the page out, then brings a pending Reveal into view.
+func (p *PreferencesPage) Arrange(r render.Rect) {
+	p.composite.Arrange(r)
+	if w := p.reveal; w != nil {
+		p.reveal = nil
+		if b, ok := w.(interface{ Bounds() render.Rect }); ok {
+			RevealRect(w, b.Bounds())
+		}
+	}
 }
 
 // NewPreferencesPage returns an empty page.

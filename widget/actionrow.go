@@ -36,6 +36,18 @@ type ActionRow struct {
 	activatable bool
 	selected    bool
 	pressed     bool
+	unsearched  bool
+}
+
+// SetSearchable includes or excludes the row from a PreferencesView
+// search; rows are searchable by default.
+func (r *ActionRow) SetSearchable(on bool) { r.unsearched = !on }
+
+// Subtitle returns the subtitle's text.
+func (r *ActionRow) Subtitle() string { return r.subtitle.Text() }
+
+func (r *ActionRow) searchTerms() (title, subtitle string, ok bool) {
+	return r.Title(), r.Subtitle(), !r.unsearched
 }
 
 // NewActionRow returns a row with a title and an optional subtitle

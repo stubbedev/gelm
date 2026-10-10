@@ -643,3 +643,36 @@ func (a *Application) dialogRoot(cfg DialogConfig, respond func(string)) (widget
 	root, background := dialogCard(content)
 	return root, background, nil
 }
+
+// Window returns the dialog's own window, for toasts and popovers
+// inside the dialog.
+func (d *Dialog) Window() *Window { return d.win }
+
+// PreferencesDialog is libadwaita's AdwPreferencesDialog: a dialog
+// around a widget.PreferencesView whose toasts show inside it.
+type PreferencesDialog struct {
+	*Dialog
+	View *widget.PreferencesView
+}
+
+// PreferencesDialog opens view in a dialog over parent titled title,
+// closed by its Close button or Esc.
+func (a *Application) PreferencesDialog(parent *Window, title string, view *widget.PreferencesView) (*PreferencesDialog, error) {
+	d, err := a.NewDialog(parent, DialogConfig{
+		Title:          title,
+		Width:          640,
+		Height:         560,
+		Content:        view,
+		Buttons:        []DialogButton{{Label: widget.Tr("Close"), Response: "close", Role: ButtonRoleCancel}},
+		CancelResponse: "close",
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &PreferencesDialog{Dialog: d, View: view}, nil
+}
+
+// AddToast shows text as a toast inside the dialog.
+func (p *PreferencesDialog) AddToast(text string, timeout time.Duration) (*widget.Toast, error) {
+	return p.app.ShowToast(text, timeout, &ToastConfig{Host: p.win})
+}

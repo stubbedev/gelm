@@ -7,6 +7,12 @@
 - Fix: accelerators with shift+Tab never matched (xkb reports
   ISO_Left_Tab).
 
+- `widget.PreferencesView` and `Application.PreferencesDialog`
+  (AdwPreferencesDialog): page switcher, search across every page's
+  rows (`ActionRow.SetSearchable` opts out) with results that jump to
+  the row, `PushSubpage`, and `AddToast`. Pages gain `SetTitle`,
+  `SetIconName` and `Reveal`; `Dialog.Window` returns the dialog's
+  window.
 - `widget.ToolbarView` (AdwToolbarView): top/bottom bars with sliding
   reveal, flat/raised/raised-border styles, and content extending under
   the bars.

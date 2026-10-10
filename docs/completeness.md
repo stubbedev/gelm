@@ -58,6 +58,7 @@ live in [architecture.md](architecture.md#non-goals).
 | Tooltip | `SetTooltip`, `SetTooltipMarkup`, `SetTooltipOptions` on any widget | widget/widget.go, app/tooltip.go |
 | Spinner, Separator, Image, Icon | `Spinner`, `NewSeparator`, `Image` (fit/cover, async decode, PNG/JPEG/GIF/WebP, animated GIF/APNG), `Icon` (theme, file, SVG, symbolic tint, bundled Lucide fallback) | widget/spinner.go, widget/image.go, widget/icon.go |
 | DrawingArea, GestureStylus | `DrawingArea` (`OnDraw`, `OnStylus`) | widget/drawingarea.go |
+| adw PreferencesDialog | `widget.PreferencesView` (page switcher, search over every searchable row's title and subtitle with jump-to-row results, subpages) in `Application.PreferencesDialog` with `AddToast` | widget/prefsview.go, app/dialog.go |
 | adw PreferencesPage/Group, ActionRow family | `PreferencesPage`, `PreferencesGroup`, `ActionRow`, `SwitchRow`, `SpinRow`, `ComboRow`, `EntryRow`, `ButtonRow`, `ExpanderRow` | widget/prefs.go, widget/actionrow.go, widget/controlrows.go |
 | adw NavigationView, NavigationSplitView, OverlaySplitView, Carousel, ViewSwitcher, StackSwitcher, Clamp, BreakpointBin | the same names; one breakpoint engine | widget/navigation.go, widget/adaptive.go |
 | adw Banner, BottomSheet, StatusPage, Avatar, SplitButton, ButtonContent, ToggleGroup | the same names | widget/adw.go, widget/bottomsheet.go |
