@@ -93,10 +93,9 @@ component's input and output queues coalesce their wakes exactly like
 | `AsyncComponent` | a component implementing `component.Loader` |
 | `FactoryVecDeque` | `component.Factory` of item components, edited in place |
 | `TypedListView` (virtualized) | `widget.List` + `ListModel`, `ColumnView` |
+| `RelmAction`, `RelmActionGroup` | `widget.Action`, `StateAction[S]`, `AddAccel`/`AddScopedAccel` |
 | `glib::timeout_add` | `Application.Every` |
 
-The missing pieces are tracked in
-[#139](https://github.com/stubbedev/gelm/issues/139): typed actions.
 
 ## Tests
 

@@ -27,10 +27,10 @@ func TestChords(t *testing.T) {
 	now := pinAccelClock(t)
 	a := accelApp()
 	var fired []string
-	for _, n := range []string{"save", "top", "quit"} {
-		a.AddAction(n, func() { fired = append(fired, n) })
+	named := func(n string) *widget.Action {
+		return widget.NewAction(n, func() { fired = append(fired, n) })
 	}
-	for keys, action := range map[string]string{"ctrl+x ctrl+s": "save", "g g": "top", "q": "quit"} {
+	for keys, action := range map[string]*widget.Action{"ctrl+x ctrl+s": named("save"), "g g": named("top"), "q": named("quit")} {
 		if err := a.AddAccel(keys, action); err != nil {
 			t.Fatal(err)
 		}
@@ -60,20 +60,20 @@ func TestChords(t *testing.T) {
 // is a prefix or extension of a bound one, in the same scope, errors.
 func TestChordConflicts(t *testing.T) {
 	a := accelApp()
-	a.AddAction("x", func() {})
-	if err := a.AddAccel("ctrl+x ctrl+s", "x"); err != nil {
+	actX := widget.NewAction("x", func() {})
+	if err := a.AddAccel("ctrl+x ctrl+s", actX); err != nil {
 		t.Fatal(err)
 	}
 	for _, keys := range []string{"ctrl+x", "ctrl+x ctrl+s", "ctrl+x ctrl+s ctrl+a"} {
-		if err := a.AddAccel(keys, "x"); err == nil {
+		if err := a.AddAccel(keys, actX); err == nil {
 			t.Errorf("%q bound despite the conflict", keys)
 		}
 	}
 	w := widget.NewSpacer(1, 1)
-	if err := a.AddWidgetAccel(w, "ctrl+x", func() {}); err != nil {
+	if err := a.AddScopedAccel(w, "ctrl+x", testAction(func() {})); err != nil {
 		t.Errorf("another scope conflicted: %v", err)
 	}
-	if err := a.AddAccel("ctrl+x ctrl+c", "x"); err != nil {
+	if err := a.AddAccel("ctrl+x ctrl+c", actX); err != nil {
 		t.Errorf("a sibling chord conflicted: %v", err)
 	}
 }
@@ -82,13 +82,13 @@ func TestChordConflicts(t *testing.T) {
 // in order, with its scope, as a copy.
 func TestAccelsIntrospection(t *testing.T) {
 	a := accelApp()
-	a.AddAction("open", func() {})
+	actOpen := widget.NewAction("open", func() {})
 	w := widget.NewSpacer(1, 1)
-	_ = a.AddAccel("ctrl+o", "open")
-	_ = a.AddWidgetAccel(w, "ctrl+Return", func() {})
-	_ = a.AddAccel("g g", "open")
+	_ = a.AddAccel("ctrl+o", actOpen)
+	_ = a.AddScopedAccel(w, "ctrl+Return", testAction(func() {}))
+	_ = a.AddAccel("g g", actOpen)
 	infos := a.Accels()
-	if len(infos) != 3 || infos[0].Action != "open" || infos[1].Widget != widget.Widget(w) || infos[2].Shortcut.String() != "G G" {
+	if len(infos) != 3 || infos[0].Action != widget.Activatable(actOpen) || infos[1].Scope != widget.Widget(w) || infos[2].Shortcut.String() != "G G" {
 		t.Fatalf("Accels() = %+v", infos)
 	}
 	if infos[0].Shortcut.String() != "Ctrl+O" || infos[1].Shortcut.String() != "Ctrl+Return" {
@@ -105,15 +105,15 @@ func TestAccelsIntrospection(t *testing.T) {
 // General by action name, focus-scoped bindings left out.
 func TestShortcutSections(t *testing.T) {
 	a := accelApp()
-	for _, n := range []string{"open", "save", "reload"} {
-		a.AddAction(n, func() {})
-	}
-	a.DescribeAction("open", "Files", "Open a file")
-	a.DescribeAction("save", "Files", "Save")
-	_ = a.AddAccel("ctrl+o", "open")
-	_ = a.AddAccel("F5", "reload")
-	_ = a.AddAccel("ctrl+x ctrl+s", "save")
-	_ = a.AddWidgetAccel(widget.NewSpacer(1, 1), "ctrl+Return", func() {})
+	actOpen := widget.NewAction("open", func() {})
+	actSave := widget.NewAction("save", func() {})
+	actReload := widget.NewAction("reload", func() {})
+	a.DescribeAction(actOpen, "Files", "Open a file")
+	a.DescribeAction(actSave, "Files", "Save")
+	_ = a.AddAccel("ctrl+o", actOpen)
+	_ = a.AddAccel("F5", actReload)
+	_ = a.AddAccel("ctrl+x ctrl+s", actSave)
+	_ = a.AddScopedAccel(widget.NewSpacer(1, 1), "ctrl+Return", testAction(func() {}))
 	secs := a.accels.sections()
 	if len(secs) != 2 || secs[0].Title != "Files" || secs[1].Title != "General" {
 		t.Fatalf("sections = %+v", secs)
@@ -125,3 +125,5 @@ func TestShortcutSections(t *testing.T) {
 		t.Errorf("General items = %+v", got)
 	}
 }
+
+func testAction(fn func()) *widget.Action { return widget.NewAction("scoped", fn) }

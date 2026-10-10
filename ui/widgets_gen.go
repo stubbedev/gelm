@@ -602,6 +602,12 @@ func Button(child Node, padding int, radius int) *ButtonBuilder {
 	return b
 }
 
+// BindAction calls (*widget.Button).BindAction.
+func (b *ButtonBuilder) BindAction(a widget.Activatable) *ButtonBuilder {
+	b.do(func(s *Scope, w *widget.Button) { s.onShutdown(w.BindAction(a)) })
+	return b
+}
+
 // Bg sets the widget's Bg field.
 func (b *ButtonBuilder) Bg(value render.Color) *ButtonBuilder {
 	b.do(func(_ *Scope, w *widget.Button) { w.Bg = value })
@@ -919,6 +925,12 @@ type CheckButtonBuilder struct {
 func CheckButton(checked bool) *CheckButtonBuilder {
 	b := &CheckButtonBuilder{}
 	b.init(b, func(s *Scope) *widget.CheckButton { return widget.NewCheckButton(checked) })
+	return b
+}
+
+// BindAction calls (*widget.CheckButton).BindAction.
+func (b *CheckButtonBuilder) BindAction(target widget.Checkable) *CheckButtonBuilder {
+	b.do(func(s *Scope, w *widget.CheckButton) { s.onShutdown(w.BindAction(target)) })
 	return b
 }
 
@@ -4778,6 +4790,12 @@ func Switch(on bool) *SwitchBuilder {
 	return b
 }
 
+// BindAction calls (*widget.Switch).BindAction.
+func (b *SwitchBuilder) BindAction(c widget.Checkable) *SwitchBuilder {
+	b.do(func(s *Scope, w *widget.Switch) { s.onShutdown(w.BindAction(c)) })
+	return b
+}
+
 // BindOn calls (*widget.Switch).BindOn.
 func (b *SwitchBuilder) BindOn(binding *widget.Binding[bool]) *SwitchBuilder {
 	b.do(func(s *Scope, w *widget.Switch) { s.onShutdown(w.BindOn(binding)) })
@@ -5200,6 +5218,12 @@ type ToggleButtonBuilder struct {
 func ToggleButton(child Node, padding int, radius int) *ToggleButtonBuilder {
 	b := &ToggleButtonBuilder{}
 	b.init(b, func(s *Scope) *widget.ToggleButton { return widget.NewToggleButton(build(s, child), padding, radius) })
+	return b
+}
+
+// BindAction calls (*widget.ToggleButton).BindAction.
+func (b *ToggleButtonBuilder) BindAction(c widget.Checkable) *ToggleButtonBuilder {
+	b.do(func(s *Scope, w *widget.ToggleButton) { s.onShutdown(w.BindAction(c)) })
 	return b
 }
 

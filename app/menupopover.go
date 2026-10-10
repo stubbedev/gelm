@@ -2,6 +2,7 @@ package app
 
 import (
 	"errors"
+	"slices"
 
 	"github.com/stubbedev/gelm/render"
 	"github.com/stubbedev/gelm/widget"
@@ -77,6 +78,7 @@ type menuLevel struct {
 
 // OpenMenuPopover opens the root level over host.
 func (a *Application) OpenMenuPopover(host Host, cfg MenuPopoverConfig) (*MenuPopover, error) {
+	cfg.Items = a.withAccels(cfg.Items)
 	return openMenuPopover(cfg, func(parent *Popover, anchor widget.Boundser, content widget.Widget, onClosed func()) (*Popover, error) {
 		pc := PopoverConfig{Anchor: anchor, Content: content, OnClosed: onClosed, Parent: parent}
 		if parent == nil {
@@ -120,10 +122,10 @@ func openMenuPopover(cfg MenuPopoverConfig, open menuOpener) (*MenuPopover, erro
 func (m *MenuPopover) rows(items []widget.MenuItem) []widget.MenuItem {
 	rows := make([]widget.MenuItem, len(items))
 	for i, it := range items {
-		if action := it.OnClick; action != nil && len(it.Items) == 0 {
+		if run := it.Run(); run != nil && len(it.Items) == 0 {
 			it.OnClick = func() {
 				m.Dismiss()
-				action()
+				run()
 			}
 		}
 		rows[i] = it
@@ -143,7 +145,7 @@ func (m *MenuPopover) newLevel(depth int, items []widget.MenuItem) *menuLevel {
 	}
 	lvl.menu.OnSubmenu = func(row int, sub []widget.MenuItem) { m.openSubmenu(depth, row, sub) }
 	lvl.menu.OnHover = func(row int) {
-		if sub := lvl.menu.Items()[row].Items; len(sub) > 0 && !lvl.menu.Items()[row].Disabled {
+		if sub := lvl.menu.Items()[row].Items; len(sub) > 0 && lvl.menu.Items()[row].Enabled() {
 			m.openSubmenu(depth, row, sub)
 			return
 		}
@@ -214,7 +216,7 @@ func (m *MenuPopover) SetItems(items ...widget.MenuItem) {
 			return
 		}
 		r := lvl.openRow
-		if r >= len(level) || len(level[r].Items) == 0 || level[r].Disabled {
+		if r >= len(level) || len(level[r].Items) == 0 || !level[r].Enabled() {
 			m.closeBelow(depth)
 			return
 		}
@@ -257,4 +259,17 @@ func (f *menuFrame) KeyAction(a widget.KeyAction, mods widget.Mods) {
 	if root := f.m.Level(0); root != nil {
 		root.KeyAction(a, mods)
 	}
+}
+
+func (a *Application) withAccels(items []widget.MenuItem) []widget.MenuItem {
+	out := slices.Clone(items)
+	for i := range out {
+		if out[i].Accel == "" && out[i].Action != nil {
+			out[i].Accel = a.accels.keysFor(out[i].Action)
+		}
+		if len(out[i].Items) > 0 {
+			out[i].Items = a.withAccels(out[i].Items)
+		}
+	}
+	return out
 }

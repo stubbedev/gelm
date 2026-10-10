@@ -1,6 +1,7 @@
 package app
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/unxed/xkb-go"
@@ -113,8 +114,8 @@ func TestAccelFiresBeforeTextRouting(t *testing.T) {
 	f := newAccelFixture(t)
 	f.tr.text[25], f.tr.syms[25] = "p", xkb.Keysym('p')
 	fired := 0
-	f.app.AddAction("print", func() { fired++ })
-	if err := f.app.AddAccel("ctrl+p", "print"); err != nil {
+	actPrint := widget.NewAction("print", func() { fired++ })
+	if err := f.app.AddAccel("ctrl+p", actPrint); err != nil {
 		t.Fatal(err)
 	}
 	if onKey := f.press(25, wlsession.ModCtrl); !onKey {
@@ -144,8 +145,8 @@ func TestShiftIsTextCtrlShiftIsAccel(t *testing.T) {
 	f.tr.syms[30] = xkb.Keysym('A') // shift re-keys the letter
 	f.tr.text[30] = "A"
 	fired := 0
-	f.app.AddAction("mark", func() { fired++ })
-	if err := f.app.AddAccel("ctrl+shift+a", "mark"); err != nil {
+	actMark := widget.NewAction("mark", func() { fired++ })
+	if err := f.app.AddAccel("ctrl+shift+a", actMark); err != nil {
 		t.Fatal(err)
 	}
 	// shift+a stays text: exact mods match, so the binding does not
@@ -182,8 +183,8 @@ func TestBuiltinsPrecedeAccels(t *testing.T) {
 	f := newAccelFixture(t)
 	f.tr.syms[30] = xkb.Keysym('a')
 	fired := 0
-	f.app.AddAction("mark", func() { fired++ })
-	if err := f.app.AddAccel("ctrl+a", "mark"); err != nil {
+	actMark := widget.NewAction("mark", func() { fired++ })
+	if err := f.app.AddAccel("ctrl+a", actMark); err != nil {
 		t.Fatal(err)
 	}
 	f.entry.SetText("abc")
@@ -201,11 +202,11 @@ func TestWidgetAccelFiresOnlyWhenFocused(t *testing.T) {
 	other := newAccelFixture(t)
 	f.tr.syms[28], other.tr.syms[28] = xkb.KeyReturn, xkb.KeyReturn
 	widgetFired, appFired := 0, 0
-	f.app.AddAction("app-act", func() { appFired++ })
-	if err := f.app.AddWidgetAccel(f.entry, "ctrl+Return", func() { widgetFired++ }); err != nil {
+	actAppAct := widget.NewAction("app-act", func() { appFired++ })
+	if err := f.app.AddScopedAccel(f.entry, "ctrl+Return", testAction(func() { widgetFired++ })); err != nil {
 		t.Fatal(err)
 	}
-	if err := f.app.AddAccel("ctrl+Return", "app-act"); err != nil {
+	if err := f.app.AddAccel("ctrl+Return", actAppAct); err != nil {
 		t.Fatal(err)
 	}
 
@@ -227,23 +228,23 @@ func TestWidgetAccelFiresOnlyWhenFocused(t *testing.T) {
 func TestAccelConflictIsRegistrationError(t *testing.T) {
 	a := accelApp()
 	quit, other := 0, 0
-	a.AddAction("quit", func() { quit++ })
-	a.AddAction("other", func() { other++ })
-	if err := a.AddAccel("ctrl+q", "quit"); err != nil {
+	actQuit := widget.NewAction("quit", func() { quit++ })
+	actOther := widget.NewAction("other", func() { other++ })
+	if err := a.AddAccel("ctrl+q", actQuit); err != nil {
 		t.Fatalf("first registration: %v", err)
 	}
 	// A second binding on the same accelerator errors and the first
 	// one keeps the key.
-	if err := a.AddAccel("ctrl+q", "other"); err == nil {
+	if err := a.AddAccel("ctrl+q", actOther); err == nil {
 		t.Error("conflicting AddAccel succeeded, want error")
 	}
-	if err := a.AddAccel("Ctrl+Q", "quit"); err == nil {
+	if err := a.AddAccel("Ctrl+Q", actQuit); err == nil {
 		t.Error("re-registration under the label form succeeded, want error")
 	}
-	if err := a.AddAccel("ctrl+w", "missing"); err == nil {
-		t.Error("binding an unregistered action succeeded, want error")
+	if err := a.AddAccel("ctrl+w", nil); err == nil {
+		t.Error("binding no action succeeded, want error")
 	}
-	if err := a.AddAccel("bogus", "quit"); err == nil {
+	if err := a.AddAccel("bogus", actQuit); err == nil {
 		t.Error("binding malformed keys succeeded, want error")
 	}
 	r := newAccelFixture(t)
@@ -256,17 +257,17 @@ func TestAccelConflictIsRegistrationError(t *testing.T) {
 	}
 	// Widget-scoped: same keys on a different widget is fine; the same
 	// widget again errors.
-	if err := a.AddWidgetAccel(r.entry, "ctrl+q", func() {}); err != nil {
+	if err := a.AddScopedAccel(r.entry, "ctrl+q", testAction(func() {})); err != nil {
 		t.Errorf("widget binding on distinct scope: %v", err)
 	}
-	if err := a.AddWidgetAccel(r.entry, "ctrl+q", func() {}); err == nil {
+	if err := a.AddScopedAccel(r.entry, "ctrl+q", testAction(func() {})); err == nil {
 		t.Error("duplicate widget binding succeeded, want error")
 	}
-	if err := a.AddWidgetAccel(nil, "ctrl+q", func() {}); err == nil {
+	if err := a.AddScopedAccel(nil, "ctrl+q", testAction(func() {})); err == nil {
 		t.Error("nil-widget binding succeeded, want error")
 	}
-	if err := a.AddWidgetAccel(r.entry, "ctrl+q", nil); err == nil {
-		t.Error("nil-handler binding succeeded, want error")
+	if err := a.AddScopedAccel(r.entry, "ctrl+w", nil); err == nil {
+		t.Error("a binding without an action succeeded, want error")
 	}
 }
 
@@ -274,8 +275,8 @@ func TestRemoveAccel(t *testing.T) {
 	f := newAccelFixture(t)
 	f.tr.syms[24] = xkb.Keysym('q')
 	fired := 0
-	f.app.AddAction("quit", func() { fired++ })
-	if err := f.app.AddAccel("ctrl+q", "quit"); err != nil {
+	actQuit := widget.NewAction("quit", func() { fired++ })
+	if err := f.app.AddAccel("ctrl+q", actQuit); err != nil {
 		t.Fatal(err)
 	}
 	f.press(24, wlsession.ModCtrl)
@@ -300,8 +301,8 @@ func TestSuperChordsAreShortcuts(t *testing.T) {
 	f := newAccelFixture(t)
 	f.tr.text[25], f.tr.syms[25] = "p", xkb.Keysym('p')
 	fired := 0
-	f.app.AddAction("launch", func() { fired++ })
-	if err := f.app.AddAccel("super+p", "launch"); err != nil {
+	actLaunch := widget.NewAction("launch", func() { fired++ })
+	if err := f.app.AddAccel("super+p", actLaunch); err != nil {
 		t.Fatal(err)
 	}
 	f.press(25, wlsession.ModSuper)
@@ -312,5 +313,66 @@ func TestSuperChordsAreShortcuts(t *testing.T) {
 	f.press(26, wlsession.ModSuper)
 	if f.entry.Text() != "" {
 		t.Errorf("an unbound super+q typed %q", f.entry.Text())
+	}
+}
+
+func TestScopedAccelCoversItsSubtreeAndInnerScopesWin(t *testing.T) {
+	face, err := render.LoadFont(goregular.TTF)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry := widget.NewEntry(face, 13, render.RGB(255, 255, 255))
+	pane := widget.NewBox(widget.Column, 0, 0)
+	pane.Append(entry, false)
+	window := widget.NewBox(widget.Column, 0, 0)
+	window.Append(pane, false)
+	window.Measure(widget.Constraints{Max: widget.Size{W: 200, H: 60}})
+	window.Arrange(render.Rect{W: 200, H: 60})
+	r := &widget.Router{Root: window}
+	r.Press(widget.BTNLeft, widget.Point{X: 5, Y: 5})
+	r.Release(widget.BTNLeft, widget.Point{X: 5, Y: 5})
+	if r.Focused() != widget.Widget(entry) {
+		t.Fatalf("focus is on %v, want the entry", r.Focused())
+	}
+
+	a := accelApp()
+	var fired []string
+	act := func(n string) *widget.Action { return widget.NewAction(n, func() { fired = append(fired, n) }) }
+	paneFind := act("pane-find")
+	if err := a.AddScopedAccel(window, "ctrl+f", act("window-find")); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.AddScopedAccel(pane, "ctrl+f", paneFind); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.AddScopedAccel(window, "ctrl+w", act("window-close")); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.AddAccel("ctrl+w", act("app-close")); err != nil {
+		t.Fatal(err)
+	}
+	a.accels.fire(r, 'f', wlsession.ModCtrl)
+	a.accels.fire(r, 'w', wlsession.ModCtrl)
+	if !slices.Equal(fired, []string{"pane-find", "window-close"}) {
+		t.Errorf("fired %v, want the innermost scope holding each key", fired)
+	}
+	paneFind.SetEnabled(false)
+	if a.accels.fire(r, 'f', wlsession.ModCtrl) {
+		t.Error("a disabled action's accelerator consumed the key")
+	}
+}
+
+func TestMenuRowsShowTheirActionsAccelerators(t *testing.T) {
+	a := accelApp()
+	save := widget.NewAction("save", func() {})
+	if err := a.AddAccel("ctrl+s", save); err != nil {
+		t.Fatal(err)
+	}
+	items := a.withAccels([]widget.MenuItem{
+		{Label: "File", Items: []widget.MenuItem{widget.ActionItem("Save", save), {Label: "Explicit", Action: save, Accel: "F2"}}},
+	})
+	sub := items[0].Items
+	if sub[0].Accel != "Ctrl+S" || sub[1].Accel != "F2" {
+		t.Errorf("accel labels %q %q, want the registry's Ctrl+S and the explicit F2", sub[0].Accel, sub[1].Accel)
 	}
 }

@@ -260,6 +260,40 @@ component. The `WorkerController` has the same `Send`, `Sender`,
 On shutdown, queued input is dropped and the update in progress
 finishes. An optional `Shutdown()` then runs on the worker's goroutine.
 
+## Actions
+
+Actions are typed values (relm4's `RelmAction`) that menu items,
+buttons, toggles and accelerators bind to:
+
+```go
+save := widget.NewAction("save", func() { cx.Input(Save) })
+wrap := widget.NewStateAction("wrap", true, func(on bool) { cx.Input(WrapChanged(on)) })
+theme := widget.NewStateAction("theme", "dark", func(s string) { cx.Input(ThemeChanged(s)) })
+
+application.AddAccel("ctrl+s", save)
+application.DescribeAction(save, "Files", "Save the document")
+
+menu := []widget.MenuItem{
+	widget.ActionItem("Save", save),
+	widget.CheckItem("Wrap lines", widget.Toggle(wrap)),
+	widget.RadioItem("Dark", theme.Target("dark")),
+	widget.RadioItem("Light", theme.Target("light")),
+}
+ui.Button(ui.Label("Save"), 8, 6).BindAction(save)
+```
+
+- A disabled action (`SetEnabled(false)`) disables every proxy: menu
+  rows grey out, buttons disable, and its accelerator lets the key
+  through.
+- A `StateAction[S]`'s state shows on every proxy. `Toggle` (bool) and
+  `Target(v)` (radio) are the checkable views of it.
+- Menus opened through the application show each action row's
+  accelerator from the registry.
+- `AddAccel(keys, action)` binds app-wide, and
+  `AddScopedAccel(scope, keys, action)` binds within a subtree (a
+  window's root, a pane, one entry). The innermost scope holding the
+  keys wins.
+
 ## Messaging
 
 - `cx.Input(msg)` and `Sender.Send(msg)` work from any goroutine. A

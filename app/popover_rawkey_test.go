@@ -30,8 +30,8 @@ func newAccelFixtureFace(t *testing.T) render.Font {
 func TestPopoverRawKeyAgreesWithRouteKey(t *testing.T) {
 	f := newAccelFixture(t)
 	fired := 0
-	f.app.AddAction("count", func() { fired++ })
-	if err := f.app.AddAccel("ctrl+q", "count"); err != nil {
+	actCount := widget.NewAction("count", func() { fired++ })
+	if err := f.app.AddAccel("ctrl+q", actCount); err != nil {
 		t.Fatal(err)
 	}
 
@@ -90,8 +90,8 @@ func TestPopoverRawKeyAgreesWithRouteKey(t *testing.T) {
 func TestPopoverRawKeyMnemonicBeforeAccel(t *testing.T) {
 	f := newAccelFixture(t)
 	accels := 0
-	f.app.AddAction("altthing", func() { accels++ })
-	if err := f.app.AddAccel("alt+o", "altthing"); err != nil {
+	actAltthing := widget.NewAction("altthing", func() { accels++ })
+	if err := f.app.AddAccel("alt+o", actAltthing); err != nil {
 		t.Fatal(err)
 	}
 	menuFired := 0
