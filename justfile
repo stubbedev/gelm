@@ -95,17 +95,16 @@ goldens:
 build:
     go build -o /dev/null ./cmd/gelm-bar
 
-# Format every Go source in place with gofumpt (stricter gofmt).
-# The Go sources gelm formats: everything but third_party/, upstream
-# code carried verbatim (see third_party/*/README.gelm.md).
-go_sources := "$(find . -name '*.go' -not -path './third_party/*' -not -path './.devenv/*' -not -path './.git/*' -not -name '*.xml.go')"
-
+# Format every Go source in place: gofumpt and gci as configured in
+# .golangci.yml, which also excludes third_party/ (upstream code carried
+# verbatim) and generated files.
 fmt:
-    gofumpt -w {{go_sources}}
+    golangci-lint fmt ./...
 
-# The formatting gate: fail when any source is not gofumpt-clean.
+# The formatting gate: fail, showing the diff, when any source is not
+# formatted.
 fmt-check:
-    test -z "$(gofumpt -l {{go_sources}})" || { echo 'not gofumpt-clean:'; gofumpt -l {{go_sources}}; exit 1; }
+    golangci-lint fmt --diff ./...
 
 # Run the widget showcase (gelm-hello): clicks, drag, tooltips, menu, Tab focus.
 demo:

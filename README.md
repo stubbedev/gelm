@@ -80,7 +80,7 @@ This program is kept compiling as `ExampleApplication` in
 ## Development
 
 ```sh
-devenv shell       # pinned Go, gopls, golangci-lint, gofumpt, just, sway; CGO_ENABLED=0
+devenv shell       # pinned Go, gopls, golangci-lint, just, sway; CGO_ENABLED=0
 just demo          # the gelm-hello showcase
 just check         # vet, lint, test, build: the release gates
 just headless      # the compositor-in-the-loop suite on a private headless sway
