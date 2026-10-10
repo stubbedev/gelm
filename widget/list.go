@@ -83,6 +83,12 @@ type List struct {
 	// list); cols is how many cells the arranged width fits.
 	cellW int
 	cols  int
+	// minCols and maxCols bound a grid's column count; zero leaves the
+	// side open.
+	minCols, maxCols int
+	// rowElement names the row proxies' CSS node when the list is not
+	// a plain listview (a GridView's cells are `child`).
+	rowElement string
 
 	viewW, viewH int
 	offY         int
@@ -134,15 +140,18 @@ func (a modelAdapter[W]) row(i int) Widget { return a.m.Row(i) }
 // NewList wraps a model with a uniform row height in pixels; zero
 // derives the height from measuring the first row.
 func NewList[W Widget](model ListModel[W], rowHeight int) *List {
-	l := &List{
-		model: modelAdapter[W]{m: model},
-		rowH:  rowHeight,
-		autoH: rowHeight <= 0,
-		hover: -1,
-		rows:  make(map[int]*listRow),
-	}
-	l.initSelection(l, SelectionSingle)
+	l := &List{}
+	initList(l, model, rowHeight)
 	return l
+}
+
+func initList[W Widget](l *List, model ListModel[W], rowHeight int) {
+	l.model = modelAdapter[W]{m: model}
+	l.rowH = rowHeight
+	l.autoH = rowHeight <= 0
+	l.hover = -1
+	l.rows = make(map[int]*listRow)
+	l.initSelection(l, SelectionSingle)
 }
 
 // SetCellWidth switches the list into a grid: items flow left to
@@ -171,7 +180,11 @@ func (l *List) fitColumns(w int) int {
 	if l.cellW <= 0 {
 		return 1
 	}
-	return max(1, w/l.cellW)
+	c := max(1, w/l.cellW, l.minCols)
+	if l.maxCols > 0 {
+		c = min(c, max(l.maxCols, l.minCols, 1))
+	}
+	return c
 }
 
 // cellRect is item i's rect in root coordinates; the last column
@@ -365,6 +378,9 @@ func (l *List) visible() (first, last int) {
 // checkbox row in multiple mode and syncing it to membership.
 func (l *List) newRow(i int) *listRow {
 	r := &listRow{list: l, idx: i, row: l.model.row(i)}
+	if l.rowElement != "" {
+		r.SetElement(l.rowElement)
+	}
 	if l.isSelected(i) {
 		r.flags = StateSelected // seeded pre-style; syncSelected carries the flips
 	}

@@ -4,6 +4,11 @@
 
 ### Parity, fifth pass
 
+- `widget.GridView`, GTK's virtualized grid: only visible cells exist,
+  columns fit between `SetMinColumns`/`SetMaxColumns` (1 to 7 by
+  default), List's selection, rubber band and 2D keyboard motion, and
+  `gridview` > `child` CSS nodes. `List` gains the column bounds it
+  shares.
 - Per-widget layout properties: `SetHExpand`/`SetVExpand` (GTK's
   computed expand, propagating from children and cached),
   `SetHAlign`/`SetVAlign` and `SetMargin`, on every widget and builder,

@@ -61,7 +61,7 @@ box.AttachStylesheet(widget.NewStylesheet(css, widget.StylePriorityApplication))
   specificity.
 - **Element names.** These are GTK's CSS node names where gelm has the
   GTK widget (`button`, `label`, `entry`, `scale`, `scrolledwindow`,
-  `textview`, `listview`, `row`, `flowboxchild`, ...), and otherwise
+  `textview`, `listview`, `row`, `gridview`, `child`, `flowboxchild`, ...), and otherwise
   the Go type lowercased. Sub-nodes are named too: `entry > text`,
   `checkbutton > check`, `notebook > header > tabs > tab`,
   `progressbar > trough > progress`, `paned > separator`, and menus as
