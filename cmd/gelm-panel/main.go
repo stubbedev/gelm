@@ -9,7 +9,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"image"
 	"image/png"
 	"log"
 	"os"
@@ -143,15 +142,7 @@ func dumpFrame(path string) error {
 }
 
 func writePNG(data []byte, w, h int, path string) error {
-	img := image.NewNRGBA(image.Rect(0, 0, w, h))
-	for y := range h {
-		for x := range w {
-			c := render.ColorFromBytes(data[y*render.Stride(w)+x*4 : y*render.Stride(w)+x*4+4])
-			straight := c.Straight()
-			i := img.PixOffset(x, y)
-			img.Pix[i], img.Pix[i+1], img.Pix[i+2], img.Pix[i+3] = straight[0], straight[1], straight[2], straight[3]
-		}
-	}
+	img := render.NRGBA(data, render.Stride(w), w, h)
 	var buf bytes.Buffer
 	if err := png.Encode(&buf, img); err != nil {
 		return err
