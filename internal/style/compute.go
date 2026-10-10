@@ -15,8 +15,17 @@ type Env struct {
 	// FontPx is the font size a node computes when nothing in its
 	// ancestry sets one (CSS's `medium`); zero means Rem.
 	FontPx float64
+	// Font is the node's face metrics the ch, ex, cap, ic and lh units
+	// resolve against, as ratios of the font size (render.Font.Metrics).
+	// The zero value falls back to the CSS default ratios.
+	Font FontMetrics
+	// RootLineHeight is what 1rlh is; zero falls back to the natural
+	// line height of Font at Rem.
+	RootLineHeight float64
 	// Media is what @media conditions evaluate against (the viewport
 	// and appearance state); the zero value is a 0×0 viewport at 96dpi.
+	// Its Width and Height also resolve the vw/vh unit family and its
+	// Dark flag picks light-dark()'s half.
 	Media Media
 }
 
@@ -71,7 +80,17 @@ func (sc *Scratch) computeAll(layers []Layer, n Node, parent, old *Values, env E
 
 	// The context lives in the scratch: the parsers are function values,
 	// so a stack ctx would escape and allocate per compute.
-	sc.cx = ctx{rem: env.Rem, em: env.FontPx, weight: 400, self: &sc.self}
+sc.cx = ctx{
+	rem: env.Rem, em: env.FontPx, weight: 400, self: &sc.self,
+	vpW: env.Media.Width, vpH: env.Media.Height,
+		font: env.Font, rlh: env.RootLineHeight, dark: env.Media.Dark,
+	}
+	if sc.cx.rlh == 0 {
+		sc.cx.rlh = fontRatio(env.Font.LineHeight, fallbackLH) * env.Rem
+	}
+	if an, ok := n.(attrNode); ok {
+		sc.cx.attrs = an
+	}
 	cx := &sc.cx
 	if pv.Has(PropFontSize) {
 		cx.em = pv.FontSize
@@ -82,10 +101,14 @@ func (sc *Scratch) computeAll(layers []Layer, n Node, parent, old *Values, env E
 	if pv.Has(PropColor) {
 		cx.color = pv.Color
 	}
+	if pv.Has(PropLineHeight) {
+		cx.lh = pv.LineHeight
+	}
 	sc.parsed = sc.parsed[:0]
 
 	// font-size first: em lengths everywhere else resolve against it.
 	// color next: currentColor everywhere else resolves against it.
+	// line-height third: the lh unit reads it.
 	var blocked PropSet
 	blocked |= sc.computeProp(PropFontSize, v, pv, cx)
 	if v.Has(PropFontSize) {
@@ -95,8 +118,15 @@ func (sc *Scratch) computeAll(layers []Layer, n Node, parent, old *Values, env E
 	if v.Has(PropColor) {
 		cx.color = v.Color
 	}
+	blocked |= sc.computeProp(PropLineHeight, v, pv, cx)
+	if v.Has(PropLineHeight) {
+		cx.lh = v.LineHeight
+	}
+	if cx.lh == 0 {
+		cx.lh = fontRatio(cx.font.LineHeight, fallbackLH) * cx.em
+	}
 	for p := range numProps {
-		if p == PropFontSize || p == PropColor {
+		if p == PropFontSize || p == PropColor || p == PropLineHeight {
 			continue
 		}
 		blocked |= sc.computeProp(p, v, pv, cx)

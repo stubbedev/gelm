@@ -51,6 +51,37 @@ func TestNamedColorsFollowTheme(t *testing.T) {
 	}
 }
 
+// TestSystemColorsFollowTheme pins the CSS system color keywords
+// against the active theme: Canvas tracks the theme background across
+// SetTheme, and Highlight the accent, the same re-derivation the named
+// colors get.
+func TestSystemColorsFollowTheme(t *testing.T) {
+	defer SetTheme(nil)
+	face := chromeFace(t)
+	lbl := NewLabel(face, 14, "x", DarkTheme().Text)
+	root := NewBox(Row, 0, 0)
+	root.Append(lbl, false)
+	loadCSS(t, `label { background-color: Canvas; color: Highlight; }`)
+	paint := func() (render.Color, render.Color) {
+		arrangeTree(t, root, 200, 40)
+		v := lbl.style(lbl)
+		return v.Background, v.Color
+	}
+
+	SetTheme(LightTheme())
+	bg, hl := paint()
+	if bg != LightTheme().Bg {
+		t.Errorf("Canvas = %08x, want the theme bg %08x", uint32(bg), uint32(LightTheme().Bg))
+	}
+	if hl != LightTheme().Accent {
+		t.Errorf("Highlight = %08x, want the accent %08x", uint32(hl), uint32(LightTheme().Accent))
+	}
+	SetTheme(DarkTheme())
+	if bg, _ = paint(); bg != DarkTheme().Bg {
+		t.Errorf("dark Canvas = %08x, want the theme bg %08x", uint32(bg), uint32(DarkTheme().Bg))
+	}
+}
+
 // TestStatusColorsDerive pins the status fallbacks: explicit values
 // win, zero derives the Adwaita default for the palette's polarity.
 func TestStatusColorsDerive(t *testing.T) {

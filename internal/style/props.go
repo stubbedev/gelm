@@ -1143,7 +1143,11 @@ func transformPrim(name string, args [][]token, cx *ctx) (render.Affine, XformPa
 		if len(comps) != 1 {
 			return 0, false
 		}
-		return angleOf(comps[0][0])
+		n, ok := evalNumeric(comps[0], cx)
+		if !ok || (n.kind != numAngle && (n.kind != numNumber || n.v != 0)) {
+			return 0, false
+		}
+		return n.v, true
 	}
 	switch name {
 	case "scale":

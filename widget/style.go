@@ -29,6 +29,7 @@ import (
 	"time"
 
 	"github.com/stubbedev/gelm/internal/style"
+	"github.com/stubbedev/gelm/internal/sysfont"
 	"github.com/stubbedev/gelm/render"
 )
 
@@ -342,17 +343,44 @@ func SetMediaResolution(dpi float64) {
 	markDamage()
 }
 
+// defaultFontMetrics loads the system sans face's metrics once; the
+// ch/ex/cap/ic/lh units resolve against them (per-font-size ratios,
+// so one face serves every size), falling back to the CSS default
+// ratios when the desktop has no font.
+var defaultFontMetrics = sync.OnceValue(func() style.FontMetrics {
+	face, err := sysfont.Sans()
+	if err != nil {
+		return style.FontMetrics{}
+	}
+	m := face.Metrics()
+	return style.FontMetrics{Ch: m.Ch, Ex: m.Ex, Cap: m.Cap, Ic: m.Ic, LineHeight: m.LineHeight}
+})
+
 // envNow is the compute environment: the unit state plus the @media
 // environment, its appearance half derived from the active Theme
 // (prefers-color-scheme from the palette's polarity, reduced motion
 // from the animation gate) so a theme swap re-evaluates every
 // prefers-* rule.
 func envNow() style.Env {
-	return style.Env{Rem: styleEnv.Rem, FontPx: styleEnv.FontPx, Media: style.Media{
+	m := defaultFontMetrics()
+	env := style.Env{Rem: styleEnv.Rem, FontPx: styleEnv.FontPx, Font: m, Media: style.Media{
 		Width: float64(mediaViewport.w), Height: float64(mediaViewport.h),
 		DPI: mediaDPI, Dark: current.IsDark(), HighContrast: mediaContrast,
 		ReducedMotion: !current.Animations,
 	}}
+	if env.RootLineHeight == 0 {
+		env.RootLineHeight = env.Rem * ratioOr(m.LineHeight, 1.2)
+	}
+	return env
+}
+
+// ratioOr falls back to the CSS default ratio when the face reports
+// none.
+func ratioOr(v, fallback float64) float64 {
+	if v <= 0 {
+		return fallback
+	}
+	return v
 }
 
 // styleFile is one loaded stylesheet file: what the hot-reload poll

@@ -24,11 +24,38 @@ type numeric struct {
 	kind numKind
 }
 
+// FontMetrics is a face's font-relative unit bases as ratios of the
+// font size: what one ch, ex, cap, ic and lh of the node's font is,
+// per em. A zero field falls back to the CSS default ratio. The
+// widget layer fills it from the resolved face (render.Font.Metrics).
+type FontMetrics struct {
+	Ch, Ex, Cap, Ic, LineHeight float64
+}
+
+// cssFontFallbacks are the ratios the spec prescribes when the face
+// does not report a metric: half an em for ch and ex, one em for ic,
+// and 1.2 for the natural line height.
+const (
+	fallbackCh  = 0.5
+	fallbackEx  = 0.5
+	fallbackCap = 0.5
+	fallbackIc  = 1
+	fallbackLH  = 1.2
+)
+
+// attrNode is the optional Node interface attr() resolves against:
+// the node's own attribute store, one name at a time.
+type attrNode interface {
+	StyleAttr(name string) (string, bool)
+}
+
 // ctx is the unit-resolution context of one node's compute: the rem
 // base, the font size em resolves against, the inherited weight bolder
-// and lighter step from, and the node's color for currentColor. dep
-// records whether a parse read any node-dependent input, so a value
-// that read none can be cached on its declaration.
+// and lighter step from, the node's color for currentColor, the
+// viewport the vw/vh family reads, the node's font metrics and line
+// height, the scheme light-dark() picks by, and the node's attributes
+// for attr(). dep records whether a parse read any node-dependent
+// input, so a value that read none can be cached on its declaration.
 type ctx struct {
 	rem    float64
 	em     float64
@@ -43,12 +70,27 @@ type ctx struct {
 	// usedRem records a rem read: a cached value is only valid under
 	// the base it was computed with.
 	usedRem bool
+
+	vpW, vpH float64
+	font     FontMetrics
+	lh, rlh  float64
+	dark     bool
+	attrs    attrNode
 }
 
 // emPx returns the em base, noting the node dependence.
 func (cx *ctx) emPx() float64 {
 	cx.dep = true
 	return cx.em
+}
+
+// fontRatio returns metric's ratio to the font size, applying the CSS
+// fallback when the face does not report it.
+func fontRatio(v, fallback float64) float64 {
+	if v <= 0 {
+		return fallback
+	}
+	return v
 }
 
 // wt returns the inherited font weight, noting the node dependence.
@@ -81,6 +123,36 @@ func (cx *ctx) unitScale(unit string) (numKind, float64, bool) {
 		return numLength, cx.rem, true
 	case "em":
 		return numLength, cx.emPx(), true
+	case "ch":
+		cx.dep = true
+		return numLength, fontRatio(cx.font.Ch, fallbackCh) * cx.em, true
+	case "ex":
+		cx.dep = true
+		return numLength, fontRatio(cx.font.Ex, fallbackEx) * cx.em, true
+	case "cap":
+		cx.dep = true
+		return numLength, fontRatio(cx.font.Cap, fallbackCap) * cx.em, true
+	case "ic":
+		cx.dep = true
+		return numLength, fontRatio(cx.font.Ic, fallbackIc) * cx.em, true
+	case "lh":
+		cx.dep = true
+		return numLength, cx.lh, true
+	case "rlh":
+		cx.dep = true
+		return numLength, cx.rlh, true
+	case "vw":
+		cx.dep = true
+		return numLength, cx.vpW / 100, true
+	case "vh":
+		cx.dep = true
+		return numLength, cx.vpH / 100, true
+	case "vmin":
+		cx.dep = true
+		return numLength, math.Min(cx.vpW, cx.vpH) / 100, true
+	case "vmax":
+		cx.dep = true
+		return numLength, math.Max(cx.vpW, cx.vpH) / 100, true
 	case "pt":
 		return numLength, 96.0 / 72, true
 	case "pc":
@@ -131,6 +203,9 @@ type calcParser struct {
 	ts  []token
 	pos int
 	cx  *ctx
+	// refs, when set, resolves channel keywords (relative color
+	// syntax) to the origin color's channel values.
+	refs map[string]numeric
 }
 
 func (p *calcParser) skipWS() {
@@ -172,51 +247,331 @@ func (p *calcParser) term() (numeric, bool) {
 		end := blockEnd(p.ts, p.pos)
 		args := funcArgs(p.ts[p.pos:end])
 		p.pos = end
-		return mathFunc(t.s, args, p.cx)
+		return mathFunc(t.s, args, p.cx, p.refs)
+	case tkIdent:
+		if n, ok := p.refs[t.s]; ok {
+			p.pos++
+			return n, true
+		}
 	}
 	return numeric{}, false
 }
 
-// mathFunc evaluates calc(), min(), max(), and clamp().
-func mathFunc(name string, args []token, cx *ctx) (numeric, bool) {
+// mathNums evaluates a comma-separated argument list, each argument
+// a full math expression; every value must share the first's kind.
+func mathNums(args []token, cx *ctx, refs map[string]numeric, kinds ...numKind) ([]numeric, bool) {
+	parts := splitTop(args, tkComma)
+	if len(parts) == 0 {
+		return nil, false
+	}
+	out := make([]numeric, 0, len(parts))
+	for _, a := range parts {
+		sub := calcParser{ts: a, cx: cx, refs: refs}
+		sub.skipWS()
+		n, ok := sub.sum()
+		sub.skipWS()
+		if !ok || sub.pos != len(a) {
+			return nil, false
+		}
+		if len(out) > 0 && out[0].kind != n.kind {
+			return nil, false
+		}
+		out = append(out, n)
+	}
+	if len(kinds) > 0 {
+		ok := false
+		for _, k := range kinds {
+			if out[0].kind == k {
+				ok = true
+			}
+		}
+		if !ok {
+			return nil, false
+		}
+	}
+	return out, true
+}
+
+// mathOne evaluates one single-argument math function.
+func mathOne(args []token, cx *ctx, refs map[string]numeric) (numeric, bool) {
+	ns, ok := mathNums(args, cx, refs)
+	if !ok || len(ns) != 1 {
+		return numeric{}, false
+	}
+	return ns[0], true
+}
+
+// mathFunc evaluates calc(), min(), max(), clamp() and the CSS Values 4
+// math functions over them. refs, when set, resolves the channel
+// keywords relative color syntax substitutes.
+func mathFunc(name string, args []token, cx *ctx, refs map[string]numeric) (numeric, bool) {
 	switch name {
 	case "calc":
-		sub := calcParser{ts: args, cx: cx}
+		sub := calcParser{ts: args, cx: cx, refs: refs}
 		sub.skipWS()
 		n, ok := sub.sum()
 		sub.skipWS()
 		return n, ok && sub.pos == len(args)
 	case "min", "max", "clamp":
-		var vals []numeric
-		for _, a := range splitTop(args, tkComma) {
-			sub := calcParser{ts: a, cx: cx}
-			sub.skipWS()
-			n, ok := sub.sum()
-			sub.skipWS()
-			if !ok || sub.pos != len(a) || len(vals) > 0 && vals[0].kind != n.kind {
-				return numeric{}, false
-			}
-			vals = append(vals, n)
-		}
-		if len(vals) == 0 || name == "clamp" && len(vals) != 3 {
+		ns, ok := mathNums(args, cx, refs)
+		if !ok || len(ns) == 0 || name == "clamp" && len(ns) != 3 {
 			return numeric{}, false
 		}
-		out := vals[0]
+		out := ns[0]
 		switch name {
 		case "min":
-			for _, v := range vals[1:] {
+			for _, v := range ns[1:] {
 				out.v = math.Min(out.v, v.v)
 			}
 		case "max":
-			for _, v := range vals[1:] {
+			for _, v := range ns[1:] {
 				out.v = math.Max(out.v, v.v)
 			}
 		case "clamp":
-			out.v = math.Max(vals[0].v, math.Min(vals[1].v, vals[2].v))
+			out.v = math.Max(ns[0].v, math.Min(ns[1].v, ns[2].v))
 		}
 		return out, true
+	case "round":
+		args = trimWS(args)
+		strategy := "nearest"
+		if len(args) > 0 && args[0].kind == tkIdent {
+			switch args[0].s {
+			case "nearest", "up", "down", "to-zero":
+				strategy = args[0].s
+				args = args[indexOfIdent(args):]
+				if len(args) > 0 && args[0].kind == tkComma {
+					args = args[1:]
+				}
+			default:
+				return numeric{}, false
+			}
+		}
+		ns, ok := mathNums(args, cx, refs)
+		if !ok {
+			return numeric{}, false
+		}
+		if len(ns) == 1 {
+			ns = append(ns, numeric{v: 1, kind: ns[0].kind})
+		}
+		if len(ns) != 2 || ns[1].v == 0 {
+			return numeric{}, false
+		}
+		q := ns[0].v / ns[1].v
+		switch strategy {
+		case "up":
+			q = math.Ceil(q)
+		case "down":
+			q = math.Floor(q)
+		case "to-zero":
+			q = math.Trunc(q)
+		default:
+			q = math.Round(q)
+		}
+		return numeric{v: q * ns[1].v, kind: ns[1].kind}, true
+	case "mod", "rem":
+		ns, ok := mathNums(args, cx, refs, numNumber, numLength, numAngle, numTime, numPercent)
+		if !ok || len(ns) != 2 || ns[1].v == 0 {
+			return numeric{}, false
+		}
+		q := ns[0].v / ns[1].v
+		if name == "mod" {
+			q = math.Floor(q)
+		} else {
+			q = math.Trunc(q)
+		}
+		return numeric{v: ns[0].v - ns[1].v*q, kind: ns[0].kind}, true
+	case "abs":
+		n, ok := mathOne(args, cx, refs)
+		if !ok {
+			return numeric{}, false
+		}
+		n.v = math.Abs(n.v)
+		return n, true
+	case "sign":
+		n, ok := mathOne(args, cx, refs)
+		if !ok {
+			return numeric{}, false
+		}
+		return numeric{v: signOf(n.v), kind: numNumber}, true
+	case "sin", "cos", "tan":
+		n, ok := mathOne(args, cx, refs)
+		if !ok || (n.kind != numNumber && n.kind != numAngle) {
+			return numeric{}, false
+		}
+		a := n.v
+		if n.kind != numAngle {
+			a *= 180 / math.Pi
+		}
+		a *= math.Pi / 180
+		var v float64
+		switch name {
+		case "sin":
+			v = math.Sin(a)
+		case "cos":
+			v = math.Cos(a)
+		default:
+			v = math.Tan(a)
+		}
+		return numeric{v: v, kind: numNumber}, true
+	case "asin", "acos", "atan", "atan2":
+		ns, ok := mathNums(args, cx, refs)
+		if !ok {
+			return numeric{}, false
+		}
+		var a float64
+		switch name {
+		case "asin":
+			if len(ns) != 1 || ns[0].kind != numNumber {
+				return numeric{}, false
+			}
+			a = math.Asin(ns[0].v)
+		case "acos":
+			if len(ns) != 1 || ns[0].kind != numNumber {
+				return numeric{}, false
+			}
+			a = math.Acos(ns[0].v)
+		case "atan":
+			if len(ns) != 1 || ns[0].kind != numNumber {
+				return numeric{}, false
+			}
+			a = math.Atan(ns[0].v)
+		default:
+			if len(ns) != 2 || ns[0].kind != numNumber || ns[1].kind != numNumber {
+				return numeric{}, false
+			}
+			a = math.Atan2(ns[0].v, ns[1].v)
+		}
+		return numeric{v: a * 180 / math.Pi, kind: numAngle}, true
+	case "pow", "log":
+		ns, ok := mathNums(args, cx, refs, numNumber)
+		if !ok || len(ns) < 1 || len(ns) > 2 {
+			return numeric{}, false
+		}
+		if name == "pow" {
+			if len(ns) != 2 {
+				return numeric{}, false
+			}
+			return numeric{v: math.Pow(ns[0].v, ns[1].v), kind: numNumber}, true
+		}
+		if len(ns) == 2 {
+			return numeric{v: math.Log(ns[0].v) / math.Log(ns[1].v), kind: numNumber}, true
+		}
+		return numeric{v: math.Log(ns[0].v), kind: numNumber}, true
+	case "sqrt", "exp":
+		n, ok := mathOne(args, cx, refs)
+		if !ok || n.kind != numNumber {
+			return numeric{}, false
+		}
+		if name == "sqrt" {
+			return numeric{v: math.Sqrt(n.v), kind: numNumber}, true
+		}
+		return numeric{v: math.Exp(n.v), kind: numNumber}, true
+	case "hypot":
+		ns, ok := mathNums(args, cx, refs, numNumber)
+		if !ok || len(ns) == 0 {
+			return numeric{}, false
+		}
+		sq := 0.0
+		for _, n := range ns {
+			sq += n.v * n.v
+		}
+		return numeric{v: math.Sqrt(sq), kind: numNumber}, true
+	case "env":
+		return envFunc(args)
+	case "attr":
+		return attrNumeric(args, cx)
 	}
 	return numeric{}, false
+}
+
+func signOf(v float64) float64 {
+	switch {
+	case v > 0:
+		return 1
+	case v < 0:
+		return -1
+	}
+	return 0
+}
+
+// indexOfIdent returns the index past a leading strategy ident: the
+// round() args slice holds it as its first token.
+func indexOfIdent(args []token) int {
+	for i, t := range args {
+		if t.kind == tkWS {
+			continue
+		}
+		if t.kind == tkIdent {
+			return i + 1
+		}
+		return 0
+	}
+	return 0
+}
+
+// envNames are the environment variables the engine answers: the
+// safe-area and keyboard inset family, zero on a desktop compositor.
+var envNames = map[string]bool{
+	"safe-area-inset-top": true, "safe-area-inset-right": true,
+	"safe-area-inset-bottom": true, "safe-area-inset-left": true,
+	"titlebar-area-height": true, "titlebar-area-width": true,
+	"keyboard-inset-top": true, "keyboard-inset-right": true,
+	"keyboard-inset-bottom": true, "keyboard-inset-left": true,
+	"keyboard-inset-height": true, "keyboard-inset-width": true,
+}
+
+// envFunc evaluates env(): every supported variable is a zero length
+// on the desktop; an unknown name is invalid.
+func envFunc(args []token) (numeric, bool) {
+	parts := splitTop(args, tkComma)
+	if len(parts) != 1 {
+		return numeric{}, false
+	}
+	name := trimWS(parts[0])
+	if len(name) != 1 || name[0].kind != tkIdent || !envNames[name[0].s] {
+		return numeric{}, false
+	}
+	return numeric{v: 0, kind: numLength}, true
+}
+
+// attrNumeric evaluates typed attr(name px), reading the node's
+// attribute and parsing it as the named unit's value.
+func attrNumeric(args []token, cx *ctx) (numeric, bool) {
+	comps := components(args)
+	if len(comps) < 1 || len(comps) > 2 {
+		return numeric{}, false
+	}
+	if len(comps[0]) != 1 || comps[0][0].kind != tkIdent {
+		return numeric{}, false
+	}
+	if len(comps) == 2 && (len(comps[1]) != 1 || comps[1][0].kind != tkIdent) {
+		return numeric{}, false
+	}
+	val, ok := cx.attrOf(comps[0][0].s)
+	if !ok {
+		return numeric{}, false
+	}
+	n, ok := evalNumeric(tokenize(val), cx)
+	if !ok {
+		return numeric{}, false
+	}
+	if len(comps) == 2 {
+		kind, f, ok := cx.unitScale(comps[1][0].s)
+		if !ok || n.kind != numNumber {
+			return numeric{}, false
+		}
+		n = numeric{v: n.v * f, kind: kind}
+	}
+	return n, true
+}
+
+// attrOf reads one node attribute, marking the node dependence.
+func (cx *ctx) attrOf(name string) (string, bool) {
+	cx.dep = true
+	if cx.attrs == nil {
+		return "", false
+	}
+	return cx.attrs.StyleAttr(name)
 }
 
 // sum parses product (('+'|'-') product)*. CSS requires whitespace

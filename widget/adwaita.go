@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/stubbedev/gelm/internal/style"
 	"github.com/stubbedev/gelm/render"
 	"github.com/stubbedev/gelm/widget/css"
 )
@@ -20,12 +21,30 @@ var themeSheet *Stylesheet
 
 // syncThemeSheet (re)generates the theme layer from t.
 func syncThemeSheet(t *Theme) {
+	syncSystemColors(t)
 	src := themeCSS(t)
 	if themeSheet == nil {
 		themeSheet = AddStylesheet(src, StylePriorityTheme)
 		return
 	}
 	themeSheet.Load(src)
+}
+
+// syncSystemColors maps the CSS system color keywords onto the theme,
+// the same re-derivation a palette swap gives the named colors.
+func syncSystemColors(t *Theme) {
+	gray := Color(0)
+	if a := t.Text.Straight(); a[3] > 0 {
+		gray = render.RGBA(a[0], a[1], a[2], a[3]/2)
+	}
+	style.SetSystemColors(style.SystemColors{
+		Canvas: t.Bg, CanvasText: t.Text,
+		LinkText: t.Accent, VisitedText: t.Accent, GrayText: gray,
+		Highlight: t.Accent, HighlightText: t.OnAccent,
+		Mark: t.Accent, MarkText: t.OnAccent,
+		ButtonFace: t.Surface, ButtonText: t.Text, ButtonBorder: t.Border,
+		Field: t.Surface, FieldText: t.Text,
+	})
 }
 
 // namedColors maps each Adwaita named color to its value under t.
