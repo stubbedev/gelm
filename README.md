@@ -132,15 +132,26 @@ toolchain. Pushing a `v*` tag releases the demo binaries
 | `cmd/gelm-hello` | the showcase as a component: core widgets, a context menu on typed actions, tooltips, Tab focus, drag-to-move |
 | `cmd/gelm-bar` | a layer-shell top bar repainting only what changed each second |
 | `cmd/gelm-panel` | a right-anchored layer-shell panel with live widgets |
+| `cmd/gelm-launcher` | the M5 launcher: a keyboard-exclusive overlay, a filtered app grid, live toplevel thumbnails through `capture` |
+| `cmd/gelm-osd` | the M5 OSD: a transient layer-shell volume/brightness popup over the overlay layer |
+| `cmd/gelm-lock` | the M5 lock screen: one ext-session-lock surface per output with an auth entry |
 | `cmd/gelm-multi` | one loop: per-output layer bars, on-demand windows, close-request veto |
 | `cmd/gelm-invoke` | a lifetime-bound spawned command and `Every` feeding a component |
 | `cmd/gelm-messages` | the typed messaging layer and single-instance forwarding |
-| `cmd/gelm-settings` | a preferences app over typed persisted settings |
+| `cmd/gelm-settings` | the M5 settings app: PreferencesView rows, the adaptive shell, typed persisted settings |
 | `cmd/gelm-columns` | ten thousand sorted, filtered rows; the tree view; drag-to-reorder |
+| `cmd/gelm-dialogs` | every dialog constructor: message, prompt, color, font, calendar, file, adaptive, about |
+| `cmd/gelm-dnd` | cross-window drag-and-drop: swatches that drag and drop between two toplevels |
+| `cmd/gelm-draw` | custom painting: a DrawingArea animating straight onto the Canvas |
+| `cmd/gelm-ime` | IME composition: preedit and commit mirrored from an entry and a text area |
+| `cmd/gelm-a11y` | a labeled form served over AT-SPI; builds with `-tags atspi` to force the bridge on |
+| `cmd/gelm-capture` | the capture consumer: list, screenshot, and monitor outputs and windows to PNG |
 | `cmd/gelm-gpu` | a GPUArea paced by its own frame callbacks, with gelm drawing over it |
 | `cmd/gelm-video` | a video with its controls: a file through ffmpeg, or a generated clip decoded in pure Go |
 | `cmd/gelm-i18n` | a gettext .po catalog (plurals included) localizing built-in and app strings |
-| `cmd/gelm-states`, `cmd/gelm-multilist`, `cmd/gelm-popover` | the clients the headless suite drives: window states, multi-select, popovers |
+| `cmd/gelm-states` | the window-state client the headless suite drives: xdg state chords, mirrored from what the compositor confirms |
+| `cmd/gelm-multilist` | the multi-select client the headless suite drives: a multiple-selection list with keyboard and rubber-band selection |
+| `cmd/gelm-popover` | the popover client the headless suite drives: popup grabs, live repaints, nested menus |
 | `cmd/wlpointer`, `cmd/zz-vpclick` | synthetic input for the headless suite |
 
 ## Dependencies
