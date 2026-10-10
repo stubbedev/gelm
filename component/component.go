@@ -119,6 +119,10 @@ func (cx *Context[In, Out]) Watch(fn func()) {
 	fn()
 }
 
+// Shutdown stops the component from inside, as its controller's
+// Shutdown does: a dialog or window component closing itself.
+func (cx *Context[In, Out]) Shutdown() { cx.shutdown() }
+
 // OnShutdown registers fn to run when the component shuts down, in
 // reverse registration order.
 func (cx *Context[In, Out]) OnShutdown(fn func()) {

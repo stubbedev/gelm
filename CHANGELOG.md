@@ -4,6 +4,11 @@
 
 ### Parity, fifth pass
 
+- `component.Dialog` and `component.Popover` run a component as a
+  surface's content with a two-way lifetime; `DialogResponder` hears
+  responses; `Context.Shutdown` stops a component from inside.
+  `DialogConfig.OnClosed` and `Dialog.Close` (close without a
+  response) are new.
 - `component.KeyedFactory[K, C, In, Out]`, relm4's `FactoryHashMap`:
   items addressed by key (`Insert` replaces in place, `Get`, `Has`,
   `Remove`, `Send`), ordered iteration, `SortFunc`/`Sort`, outputs

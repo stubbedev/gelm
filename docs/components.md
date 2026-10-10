@@ -132,6 +132,14 @@ component becomes the root of a toplevel or layer surface and shuts
 down when it closes. `component.Launch(loop, c)` starts a component without a
 window, for embedding its widget yourself.
 
+`component.Dialog(a, parent, cfg, c)` and `component.Popover(a, host,
+cfg, c)` run a component as a dialog's or popover's content. The
+component shuts down when the surface closes, and shutting the
+component down (`ctrl.Shutdown()`, or `cx.Shutdown()` from inside)
+closes the surface. A dialog component that implements
+`DialogResponder` hears the response in `OnResponse(cx, response)`
+before it shuts down, so it can still emit outputs.
+
 A `*Controller[In, Out]` gives you:
 
 | method | meaning |

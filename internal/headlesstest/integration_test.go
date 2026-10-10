@@ -953,6 +953,9 @@ func TestHeadlessDialogModality(t *testing.T) {
 	if _, err := w.Wait("demo", "dialog response ok", traceTimeout); err != nil {
 		t.Fatalf("Enter never responded to the dialog: %v", err)
 	}
+	if _, err := w.Wait("demo", "dialog component shut down", traceTimeout); err != nil {
+		t.Errorf("the dialog's component outlived the dialog: %v", err)
+	}
 
 	// The block is gone: the same row click that died while modal now
 	// lands, and d opens a second dialog.
