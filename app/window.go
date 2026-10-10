@@ -142,10 +142,10 @@ type hostWindow struct {
 	// lastDamage mirrors the rects the last frame damaged; tests and
 	// traces read it.
 	lastDamage []render.Rect
-	// opaqueW, opaqueH are the device-pixel size the opaque region was
-	// last set at; opaqueSet records that it went out at all. The
-	// region only changes on resize/rescale, so the wire call runs once
-	// per size change, never per frame.
+	// opaqueW, opaqueH are the logical size the opaque region was last
+	// set at; opaqueSet records that it went out at all. The region only
+	// changes on resize, so the wire call runs once per size change,
+	// never per frame.
 	opaqueSet        bool
 	opaqueW, opaqueH int
 }
@@ -493,8 +493,8 @@ type surfaceHandle interface {
 	// Frame arms the compositor callback that fires ready once the
 	// frame may be followed by another.
 	Frame(ready *bool) error
-	// SetOpaqueRegion promises the full w x h rect (device pixels)
-	// holds opaque content, so the compositor can skip blending behind
+	// SetOpaqueRegion promises the full w x h rect (surface-local,
+	// logical pixels) holds opaque content, so the compositor can skip blending behind
 	// the surface. Double-buffered state like the scale: it applies at
 	// the next commit and only needs re-sending when the size changes.
 	SetOpaqueRegion(w, h int) error
@@ -576,8 +576,9 @@ func (w *hostWindow) frameOwed(animating bool, now time.Time) bool {
 }
 
 // syncOpaque publishes the surface's opaque region when it can have
-// changed: the full device rect on the first draw and after every
-// resize or rescale, and nothing in between - the region is surface
+// changed: the full surface rect, in the protocol's surface-local
+// (logical) coordinates, on the first draw and after every resize, and
+// nothing in between - the region is surface
 // state that tracks the buffer size, not per-frame traffic. Opaque
 // windows only: a translucent background must stay blendable, so it
 // never sets a region (opaqueFor). A failed set leaves the state
@@ -586,16 +587,15 @@ func (w *hostWindow) syncOpaque(bw, bh int) {
 	if !w.cfg.opaque || bw <= 0 || bh <= 0 {
 		return
 	}
-	dw, dh := scale.DeviceSize(bw, w.frac120), scale.DeviceSize(bh, w.frac120)
-	if w.opaqueSet && dw == w.opaqueW && dh == w.opaqueH {
+	if w.opaqueSet && bw == w.opaqueW && bh == w.opaqueH {
 		return
 	}
-	if err := w.surf.SetOpaqueRegion(dw, dh); err != nil {
+	if err := w.surf.SetOpaqueRegion(bw, bh); err != nil {
 		debug.Log("frame", "opaque region: %v", err)
 		return
 	}
-	w.opaqueSet, w.opaqueW, w.opaqueH = true, dw, dh
-	debug.Log("frame", "opaque region %dx%d", dw, dh)
+	w.opaqueSet, w.opaqueW, w.opaqueH = true, bw, bh
+	debug.Log("frame", "opaque region %dx%d", bw, bh)
 }
 
 // draw paints one frame: resize check, acquire, cached measure, arrange,

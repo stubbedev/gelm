@@ -6,6 +6,8 @@
 
 - Fix: accelerators with shift+Tab never matched (xkb reports
   ISO_Left_Tab).
+- Fix: the window's opaque region went out in buffer pixels; it is in
+  surface coordinates now, as the protocol defines it.
 - Fix: a paint-only change inside a composite or a button (an icon
   swap, a label repaint) was not repainted until something else damaged
   the area.

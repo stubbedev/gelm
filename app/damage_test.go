@@ -33,7 +33,7 @@ type fakeSurface struct {
 	// calls is the request order ("frame", "commit").
 	calls  []string
 	damage []render.Rect
-	// opaque records the SetOpaqueRegion device rects in call order;
+	// opaque records the SetOpaqueRegion surface rects in call order;
 	// an opaque window sets one per size change, translucent ones
 	// never.
 	opaque []render.Rect
