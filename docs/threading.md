@@ -85,6 +85,7 @@ component's input and output queues coalesce their wakes exactly like
 | `Component`, `SimpleComponent` | `component.Component[In, Out]`, launched with `component.Launch`/`Window`/`Layer` or `Context.Launch` |
 | `ComponentSender::input`/`output` | `Context.Input`/`Output`, `Sender[M]` |
 | `Controller`, `Connector::forward` | `component.Controller` with `Forward`/`ForwardTo`/`Detach` |
+| `tracker`, `#[watch]`, `#[track]` | `Context.Tracked`, `Watch`, `Track` |
 | `MessageBroker` | a `Stream` in a package variable |
 | `SharedState` | `app.SharedState[T]` |
 | `Worker` | a goroutine whose results `Invoke` back |
@@ -94,7 +95,7 @@ component's input and output queues coalesce their wakes exactly like
 
 The missing pieces are tracked in
 [#139](https://github.com/stubbedev/gelm/issues/139): typed view
-builders, change tracking, factories, lifetime-bound commands, async
+builders, factories, lifetime-bound commands, async
 components, workers, and typed actions.
 
 ## Tests
