@@ -2,6 +2,8 @@ module github.com/stubbedev/gelm
 
 go 1.27.1
 
+toolchain go1.27.2
+
 require (
 	github.com/go-text/typesetting v0.3.5
 	github.com/godbus/dbus/v5 v5.2.2
