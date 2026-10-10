@@ -27,9 +27,8 @@ type Accel struct {
 // ParseAccel parses an accelerator string: modifier names and one key
 // name joined with "+" ("ctrl+p", "Ctrl+Shift+Return", "F5"), or in
 // GTK's angle-bracket form ("<Control>p", "<Control><Shift>p").
-// Modifiers (case-insensitive) are ctrl/control, shift, and alt/mod1;
-// super/logo and friends are rejected because gelm tracks no bit for
-// them. Key names are XKB keysym names ("p", "Return", "Escape",
+// Modifiers (case-insensitive) are ctrl/control, shift, alt/mod1, and
+// super/mod4/logo; any other modifier name is an error. Key names are XKB keysym names ("p", "Return", "Escape",
 // "F5", "space") plus the aliases esc, enter, del, bksp, ins, pgup,
 // and pgdn. widget.Menu paints Accel labels from the same strings, so
 // Accel.String output feeds a menu item unchanged.
