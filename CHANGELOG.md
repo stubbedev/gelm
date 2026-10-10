@@ -4,6 +4,11 @@
 
 ### Parity, fifth pass
 
+- relm4-components' `OpenButton`: `app.NewOpenButton` composes the open
+  button and a recent-files dropdown (most recent first, bounded,
+  persisted through the desktop's shared recents) over the file dialog
+  family, with folder mode and filters; a choice - dialog or dropdown -
+  records and delivers one path.
 - `Controller.State()` (relm4's `Controller::state`): a `StateWatcher`
   whose `Subscribe` runs a callback on the component's loop after
   every batch of updates with the live, typed model - no copy, read
