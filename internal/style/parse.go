@@ -1091,7 +1091,7 @@ func (p *parser) declaration(ts []token) (decl, bool) {
 // takeImportant strips a trailing `!important` from a value; a nil
 // return marks a malformed `!`.
 func takeImportant(ts []token) ([]token, bool) {
-	for i := len(ts) - 1; i >= 0; i-- {
+	for i := range slices.Backward(ts) {
 		if !ts[i].is('!') {
 			continue
 		}

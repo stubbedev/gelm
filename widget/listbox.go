@@ -8,6 +8,13 @@ import (
 	"github.com/stubbedev/gelm/widget/css"
 )
 
+// ListBox is a non-virtualized list of rows: every row is a child
+// widget kept in the tree, measured and painted in order, so it is
+// for short lists where a List's viewport recycling would be overhead.
+// Selection is pointer and keyboard driven through the embedded
+// selection model; OnSelectionChanged fires once per gesture, OnActivate
+// on row activation (a double-click or a single click when
+// SetSingleClickActivate is on).
 type ListBox struct {
 	node
 	selection
@@ -24,6 +31,8 @@ type ListBox struct {
 	OnActivate         func(i int)
 }
 
+// ListBoxRow is one row in a ListBox: a child widget with an optional
+// header, selectable and activatable flags, and the row's own CSS box.
 type ListBoxRow struct {
 	node
 	box         *ListBox
@@ -35,6 +44,8 @@ type ListBoxRow struct {
 	activatable bool
 }
 
+// NewListBox returns an empty single-select ListBox styled as a
+// boxed list (CSS class boxedList).
 func NewListBox() *ListBox {
 	l := &ListBox{singleClick: true}
 	l.SetElement("list")
@@ -43,6 +54,8 @@ func NewListBox() *ListBox {
 	return l
 }
 
+// SetSingleClickActivate toggles whether a plain click activates a
+// row (on by default); off means activation needs a double-click.
 func (l *ListBox) SetSingleClickActivate(on bool) { l.singleClick = on }
 
 func (l *ListBox) count() int { return len(l.rows) }
@@ -74,8 +87,11 @@ func (l *ListBox) activate(i int) {
 	}
 }
 
+// Append adds w as a new row at the end and returns the row.
 func (l *ListBox) Append(w Widget) *ListBoxRow { return l.Insert(len(l.rows), w) }
 
+// Insert adds w as a new row at position i (clamped to the ends) and
+// returns the row.
 func (l *ListBox) Insert(i int, w Widget) *ListBoxRow {
 	r := &ListBoxRow{box: l, child: w, selectable: true, activatable: true}
 	r.SetElement("row")
@@ -96,6 +112,8 @@ func (l *ListBox) Insert(i int, w Widget) *ListBoxRow {
 	return r
 }
 
+// RemoveAt removes the row at position i, doing nothing when i is
+// out of range.
 func (l *ListBox) RemoveAt(i int) {
 	if i < 0 || i >= len(l.rows) {
 		return
@@ -114,6 +132,8 @@ func (l *ListBox) RemoveAt(i int) {
 	restyleChildren(l)
 }
 
+// Move relocates the row at from to position to (both clamped to the
+// row range), adjusting the selection to follow.
 func (l *ListBox) Move(from, to int) {
 	if from < 0 || from >= len(l.rows) {
 		return
@@ -126,13 +146,15 @@ func (l *ListBox) Move(from, to int) {
 	l.rows = slices.Insert(slices.Delete(l.rows, from, from+1), to, r)
 	h := l.hidden[from]
 	l.hidden = slices.Insert(slices.Delete(l.hidden, from, from+1), to, h)
-	l.selection.moved(from, to)
+	l.moved(from, to)
 	l.recompute()
 	restyleChildren(l)
 }
 
+// Len returns the number of rows.
 func (l *ListBox) Len() int { return len(l.rows) }
 
+// RowAt returns the row at position i, or nil when i is out of range.
 func (l *ListBox) RowAt(i int) *ListBoxRow {
 	if i < 0 || i >= len(l.rows) {
 		return nil
@@ -140,6 +162,7 @@ func (l *ListBox) RowAt(i int) *ListBoxRow {
 	return l.rows[i]
 }
 
+// Rows returns every row widget in order.
 func (l *ListBox) Rows() []Widget {
 	out := make([]Widget, len(l.rows))
 	for i, r := range l.rows {
@@ -148,6 +171,8 @@ func (l *ListBox) Rows() []Widget {
 	return out
 }
 
+// SetPlaceholder sets a widget shown when no row is visible, replacing
+// any previous placeholder.
 func (l *ListBox) SetPlaceholder(w Widget) {
 	if l.ph != nil {
 		clearParents(l.ph)
@@ -159,25 +184,35 @@ func (l *ListBox) SetPlaceholder(w Widget) {
 	l.InvalidateLayout()
 }
 
+// SetFilterFunc installs a filter: rows where keep returns false are
+// hidden, and the list is recomputed. A nil keep clears the filter.
 func (l *ListBox) SetFilterFunc(keep func(*ListBoxRow) bool) {
 	l.filterFn = keep
 	l.recompute()
 }
 
+// SetSortFunc installs a sort comparator and recomputes the row
+// order. A nil cmp clears the sort, restoring insertion order.
 func (l *ListBox) SetSortFunc(cmp func(a, b *ListBoxRow) int) {
 	l.sortFn = cmp
 	l.recompute()
 }
 
+// SetHeaderFunc installs a header builder: fn is called per row to
+// produce its header widget (nil for none), and the headers are
+// rerun. A nil fn clears all headers.
 func (l *ListBox) SetHeaderFunc(fn func(*ListBoxRow) Widget) {
 	l.headerFn = fn
 	l.rerunHeaders()
 }
 
+// InvalidateFilter re-runs the filter and relayouts.
 func (l *ListBox) InvalidateFilter() { l.recompute() }
 
+// InvalidateSort re-runs the sort and relayouts.
 func (l *ListBox) InvalidateSort() { l.recompute() }
 
+// InvalidateHeaders reruns every row's header builder and relayouts.
 func (l *ListBox) InvalidateHeaders() { l.rerunHeaders() }
 
 func (l *ListBox) recompute() {
@@ -278,6 +313,8 @@ func (l *ListBox) rowClick(i int) {
 	}
 }
 
+// KeyAction forwards a keyboard action to the selection model when
+// the list is enabled.
 func (l *ListBox) KeyAction(a KeyAction, mods Mods) {
 	if IsEnabled(l) {
 		l.key(a, mods, l.navigate)
@@ -310,6 +347,8 @@ func (l *ListBox) navigate(from int, a KeyAction) (int, bool) {
 	return from, true
 }
 
+// Measure reports the offered width by the total height of the
+// visible rows (or the placeholder), clamped to the constraints.
 func (l *ListBox) Measure(con Constraints) Size {
 	if sz, ok := l.measureHit(con); ok {
 		return sz
@@ -333,6 +372,7 @@ func (l *ListBox) Measure(con Constraints) Size {
 	}))
 }
 
+// Arrange lays out the visible rows top to bottom inside the box.
 func (l *ListBox) Arrange(r render.Rect) {
 	border, inner := boxRects(boxOf(l.style(l), render.Insets{}), r)
 	l.node.Arrange(border)
@@ -351,6 +391,8 @@ func (l *ListBox) Arrange(r render.Rect) {
 	}
 }
 
+// Paint draws the box background, the row separators, and the
+// visible rows in order.
 func (l *ListBox) Paint(cv *render.Canvas) {
 	paintCSSBox(cv, l.style(l), l.bounds)
 	th := Current()
@@ -372,6 +414,8 @@ func (l *ListBox) Paint(cv *render.Canvas) {
 	}
 }
 
+// HitTest returns the topmost visible row under p, or the
+// placeholder when it is shown, or the list itself.
 func (l *ListBox) HitTest(p Point) Widget {
 	for _, i := range l.order {
 		r := l.rows[i]
@@ -388,10 +432,14 @@ func (l *ListBox) HitTest(p Point) Widget {
 	return l.HitLeaf(l, p)
 }
 
+// Child returns the row's content widget.
 func (r *ListBoxRow) Child() Widget { return r.child }
 
+// Header returns the row's header widget, or nil when it has none.
 func (r *ListBoxRow) Header() Widget { return r.header }
 
+// Index returns the row's position in its ListBox, or -1 when
+// detached.
 func (r *ListBoxRow) Index() int {
 	if r.box != nil {
 		return slices.Index(r.box.rows, r)
@@ -399,10 +447,16 @@ func (r *ListBoxRow) Index() int {
 	return -1
 }
 
+// SetSelectable toggles whether the row responds to selection
+// gestures.
 func (r *ListBoxRow) SetSelectable(on bool) { r.selectable = on }
 
+// Selectable reports whether the row responds to selection gestures.
 func (r *ListBoxRow) Selectable() bool { return r.selectable }
 
+// SetActivatable toggles whether the row can be activated (firing
+// the list's OnActivate); it also sets the cursor and activatable CSS
+// class accordingly.
 func (r *ListBoxRow) SetActivatable(on bool) {
 	if r.activatable == on {
 		return
@@ -418,8 +472,11 @@ func (r *ListBoxRow) SetActivatable(on bool) {
 	r.Invalidate()
 }
 
+// Activatable reports whether the row can be activated.
 func (r *ListBoxRow) Activatable() bool { return r.activatable }
 
+// Measure reports the offered width by the header plus child
+// natural height, clamped to the constraints.
 func (r *ListBoxRow) Measure(con Constraints) Size {
 	if sz, ok := r.measureHit(con); ok {
 		return sz
@@ -444,6 +501,7 @@ func (r *ListBoxRow) Measure(con Constraints) Size {
 	}))
 }
 
+// Arrange lays out the header (if any) on top and the child below it.
 func (r *ListBoxRow) Arrange(rct render.Rect) {
 	border, inner := boxRects(boxOf(r.style(r), render.Insets{}), rct)
 	r.node.Arrange(border)
@@ -455,6 +513,8 @@ func (r *ListBoxRow) Arrange(rct render.Rect) {
 	arrangeChild(r.child, inner)
 }
 
+// Paint draws the selected tint when the row is selected and the
+// stylesheet did not set a background, then the box, header, and child.
 func (r *ListBoxRow) Paint(cv *render.Canvas) {
 	v := r.style(r)
 	if r.HasState(StateSelected) && !v.Declares(style.PropBackgroundColor) {
@@ -467,6 +527,8 @@ func (r *ListBoxRow) Paint(cv *render.Canvas) {
 	PaintChild(cv, r.child)
 }
 
+// HitTest returns the child or header widget under p when it can
+// handle the hit, or the row itself.
 func (r *ListBoxRow) HitTest(p Point) Widget {
 	if hit := r.child.HitTest(p); hit != nil && (r.box == nil || r.box.mode == SelectionNone || !r.selectable || interactiveWithin(hit, r)) {
 		return hit
@@ -479,20 +541,25 @@ func (r *ListBoxRow) HitTest(p Point) Widget {
 	return r.HitLeaf(r, p)
 }
 
+// ClickAt forwards a click to the list's row click handler.
 func (r *ListBoxRow) ClickAt(Point) { r.box.rowClick(r.Index()) }
 
+// DoubleClickAt activates the row when single-click activation is off.
 func (r *ListBoxRow) DoubleClickAt(Point) {
 	if !r.box.singleClick && r.box.mode != SelectionNone && r.activatable {
 		r.box.activate(r.Index())
 	}
 }
 
+// SetPressed holds the list's selection press while on.
 func (r *ListBoxRow) SetPressed(on bool) {
 	if on {
 		r.box.hold()
 	}
 }
 
+// DragMove moves the selection to the row under p in single and
+// browse mode (pointer-follows-selection).
 func (r *ListBoxRow) DragMove(p Point) {
 	b := r.box
 	if b.mode != SelectionSingle && b.mode != SelectionBrowse {
@@ -503,12 +570,16 @@ func (r *ListBoxRow) DragMove(p Point) {
 	}
 }
 
+// PressEnd releases the list's selection press.
 func (r *ListBoxRow) PressEnd() { r.box.release() }
 
+// KeyAction forwards a keyboard action to the list's selection model.
 func (r *ListBoxRow) KeyAction(a KeyAction, mods Mods) { r.box.KeyAction(a, mods) }
 
+// SelectAll selects every row through the list's selection model.
 func (r *ListBoxRow) SelectAll() { r.box.SelectAll() }
 
+// Children returns the header (if any) and the child widget.
 func (r *ListBoxRow) Children() []Widget {
 	if r.header == nil {
 		return []Widget{r.child}

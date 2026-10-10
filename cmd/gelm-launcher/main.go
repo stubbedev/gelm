@@ -138,7 +138,7 @@ func loadThumbnails(application *app.Application, face *render.Typeface, theme *
 		if err != nil {
 			return
 		}
-		defer client.Close()
+		defer func() { _ = client.Close() }()
 		if !client.HasToplevelCapture() {
 			return
 		}

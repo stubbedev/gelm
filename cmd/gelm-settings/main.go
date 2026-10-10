@@ -40,7 +40,7 @@ func (p *prefs) Init(cx *component.Context[struct{}, struct{}]) widget.Widget {
 	if dir, err := os.UserConfigDir(); err == nil {
 		path = filepath.Join(dir, "dev.stubbe.gelm.settings", "settings.json")
 	}
-	face := p.env.Face.(render.Font)
+	face := p.env.Face
 	root := widget.NewBox(widget.Column, 12, 12)
 	root.Append(p.buildPages(face), true)
 	root.Append(widget.NewLabel(face, 12, "edits persist to "+path+"; restart to see them; Escape quits", widget.Current().TextMuted), false)

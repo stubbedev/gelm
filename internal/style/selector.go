@@ -1,6 +1,7 @@
 package style
 
 import (
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -612,7 +613,7 @@ func (p *selParser) hasArgs(args []token) ([]hasArg, bool) {
 // :nth-child(an+b of S)) this engine does not support yet, so the
 // an+b microsyntax reads clean text.
 func nthArg(ts []token) []token {
-	for i := len(ts) - 1; i >= 0; i-- {
+	for i := range slices.Backward(ts) {
 		if ts[i].ident("of") && i+1 < len(ts) {
 			return ts[:i]
 		}

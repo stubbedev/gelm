@@ -10,6 +10,9 @@ import (
 
 const openButtonDefaultRecents = 5
 
+// OpenButtonConfig declares an open button: the label, the starting
+// directory, file filters, whether it picks folders, how many recent
+// files to show, and the OnOpen callback for the chosen path.
 type OpenButtonConfig struct {
 	Label    string
 	StartDir string
@@ -19,6 +22,9 @@ type OpenButtonConfig struct {
 	OnOpen   func(path string)
 }
 
+// OpenButton is a button that opens a file dialog and a dropdown of
+// recent files; choosing either fires OnOpen with the path. It embeds
+// the composite Widget (button plus recents dropdown).
 type OpenButton struct {
 	widget.Widget
 	app     *Application
@@ -29,6 +35,8 @@ type OpenButton struct {
 	paths   []string
 }
 
+// NewOpenButton returns an open button parented to parent. It needs a
+// resolved face; when the application has none it returns ErrNoDialogFace.
 func (a *Application) NewOpenButton(parent *Window, cfg OpenButtonConfig) (*OpenButton, error) {
 	face := a.resolveFace(nil)
 	if face == nil {
@@ -49,12 +57,15 @@ func (a *Application) NewOpenButton(parent *Window, cfg OpenButtonConfig) (*Open
 	return ob, nil
 }
 
+// Recents returns a copy of the recent file paths the dropdown shows.
 func (ob *OpenButton) Recents() []string {
 	out := make([]string, len(ob.paths))
 	copy(out, ob.paths)
 	return out
 }
 
+// RefreshRecents rebuilds the recents dropdown from the recent-files
+// manager, keeping at most cfg.Recents entries that still exist on disk.
 func (ob *OpenButton) RefreshRecents() {
 	size := ob.cfg.recentSize()
 	paths := ob.paths[:0]

@@ -526,7 +526,7 @@ func (s *Stylesheet) pollFile() {
 	if fi.Size() == f.size && fi.ModTime().Equal(f.mod) {
 		return
 	}
-	b, err := os.ReadFile(f.path) //nolint:gosec // path is the app's stylesheet argument
+	b, err := os.ReadFile(f.path)
 	if err != nil {
 		style.Warn(fmt.Sprintf("hot reload: read %s: %v", f.path, err))
 		return
