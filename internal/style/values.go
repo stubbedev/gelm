@@ -373,6 +373,15 @@ type Values struct {
 	// Decoration is text-decoration: its lines, style, and color.
 	Decoration render.Decoration
 
+	// Content is a pseudo-element's resolved content (::before,
+	// ::after): the strings, attr() values, and counter readings joined;
+	// HasContent reports a content declaration won at all.
+	Content    string
+	HasContent bool
+	// Counters is the node's counter environment (counter-reset,
+	// counter-increment): nil when no sheet counts anything.
+	Counters *CounterScope
+
 	// Vars is the node's custom-property environment: its own
 	// declarations over the inherited chain. Nodes that declare none
 	// share their parent's pointer, so equality stays cheap.

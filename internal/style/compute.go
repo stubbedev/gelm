@@ -1,6 +1,7 @@
 package style
 
 import (
+	"slices"
 	"strconv"
 	"strings"
 
@@ -30,6 +31,19 @@ const maxVarDepth = 32
 // non-nil, is the node's previous result: an unchanged custom-property
 // environment keeps its old pointer so equality stays cheap.
 func Compute(layers []Layer, n Node, parent, old *Values, env Env, sc *Scratch, v *Values) {
+	sc.pseudo = ""
+	sc.computeAll(layers, n, parent, old, env, v)
+}
+
+// ComputePseudo is Compute for one pseudo-element (::before, ::after)
+// of n: only the rules addressing that pseudo-element cascade, and the
+// result inherits from parent, the element's own computed style.
+func ComputePseudo(layers []Layer, n Node, parent *Values, env Env, sc *Scratch, v *Values, name string) {
+	sc.pseudo = name
+	sc.computeAll(layers, n, parent, nil, env, v)
+}
+
+func (sc *Scratch) computeAll(layers []Layer, n Node, parent, old *Values, env Env, v *Values) {
 	*v = Values{}
 	if env.Rem <= 0 {
 		env.Rem = 16
@@ -57,7 +71,7 @@ func Compute(layers []Layer, n Node, parent, old *Values, env Env, sc *Scratch, 
 
 	// The context lives in the scratch: the parsers are function values,
 	// so a stack ctx would escape and allocate per compute.
-	sc.cx = ctx{rem: env.Rem, em: env.FontPx, weight: 400}
+	sc.cx = ctx{rem: env.Rem, em: env.FontPx, weight: 400, self: &sc.self}
 	cx := &sc.cx
 	if pv.Has(PropFontSize) {
 		cx.em = pv.FontSize
@@ -97,6 +111,8 @@ func Compute(layers []Layer, n Node, parent, old *Values, env Env, sc *Scratch, 
 			v.Set |= 1 << p
 		}
 	}
+	sc.applyMeta(v, pv, cx)
+	sc.prevCounters = nil
 	resolveKeyframes(v, layers)
 	mergeAnimSlots(v)
 }
@@ -196,6 +212,207 @@ func (sc *Scratch) parse(d *decl, vars *Vars, cx *ctx) (*Values, bool) {
 		e.ok = d.parse(ts, cx, &e.v)
 	}
 	return &e.v, e.ok
+}
+
+// applyMeta resolves the winning content/counter-reset/
+// counter-increment declarations — the meta declarations, which
+// cascade outside the longhand table. The counter scope derives from
+// the previous sibling's (the widget layer supplies it through
+// sc.prevCounters when counters are in play) over the parent's, per
+// CSS's document-order counting; content resolves against the node's
+// own target (attr()) and counters.
+func (sc *Scratch) applyMeta(v, pv *Values, cx *ctx) {
+	v.Counters = sc.prevCounters
+	if v.Counters == nil {
+		v.Counters = pv.Counters
+	}
+	if len(sc.metas) == 0 {
+		return
+	}
+	var reset, incr, content *decl
+	for i := range sc.metas {
+		switch sc.metas[i].d.name {
+		case "counter-reset":
+			reset = sc.metas[i].d
+		case "counter-increment":
+			incr = sc.metas[i].d
+		case "content":
+			content = sc.metas[i].d
+		}
+	}
+	if reset != nil || incr != nil {
+		v.Counters = &CounterScope{parent: v.Counters}
+		if reset != nil {
+			if ts, ok := sc.metaTokens(reset, v.Vars); ok {
+				v.Counters.apply(ts, true)
+			}
+		}
+		if incr != nil {
+			if ts, ok := sc.metaTokens(incr, v.Vars); ok {
+				v.Counters.apply(ts, false)
+			}
+		}
+	}
+	if content == nil {
+		return
+	}
+	ts, ok := sc.metaTokens(content, v.Vars)
+	if !ok {
+		return
+	}
+	cx.counters = v.Counters
+	if s, ok := parseContentTokens(ts, cx); ok {
+		v.Content, v.HasContent = s, true
+	}
+}
+
+// metaTokens substitutes a meta declaration's var() references.
+func (sc *Scratch) metaTokens(d *decl, vars *Vars) ([]token, bool) {
+	if !d.hasVar {
+		return d.val, true
+	}
+	ts, ok := substitute(d.val, func(name string) ([]token, bool) { return sc.lookup(vars, name) }, 0)
+	ts = trimWS(ts)
+	return ts, ok && len(ts) > 0
+}
+
+// CounterEntry is one counter's value at one scope level.
+type CounterEntry struct {
+	Name  string
+	Value int
+}
+
+// CounterScope is a node's counter environment: its own entries over
+// the chain above (the parent's, or the previous sibling's — CSS
+// counts in document order).
+type CounterScope struct {
+	parent *CounterScope
+	own    []CounterEntry
+}
+
+// get returns the counter's innermost value.
+func (cs *CounterScope) get(name string) int {
+	for ; cs != nil; cs = cs.parent {
+		for i := range cs.own {
+			if cs.own[i].Name == name {
+				return cs.own[i].Value
+			}
+		}
+	}
+	return 0
+}
+
+// chain returns the counter's values from the outermost scope in.
+func (cs *CounterScope) chain(name string) []int {
+	var out []int
+	for ; cs != nil; cs = cs.parent {
+		for i := range cs.own {
+			if cs.own[i].Name == name {
+				out = append(out, cs.own[i].Value)
+			}
+		}
+	}
+	slices.Reverse(out)
+	return out
+}
+
+// apply folds one counter-reset/counter-increment declaration into
+// the scope.
+func (cs *CounterScope) apply(ts []token, reset bool) {
+	for i := 0; i < len(ts); i++ {
+		if ts[i].kind != tkIdent {
+			continue
+		}
+		name := ts[i].s
+		n := 0
+		if !reset {
+			n = 1
+		}
+		j := i + 1
+		for j < len(ts) && (ts[j].kind == tkWS || ts[j].kind == tkComma) {
+			j++
+		}
+		if j < len(ts) && ts[j].kind == tkNumber {
+			n = int(ts[j].num)
+			i = j
+		} else {
+			i = j - 1
+		}
+		if !reset {
+			n += cs.get(name)
+		}
+		replaced := false
+		for k := range cs.own {
+			if cs.own[k].Name == name {
+				cs.own[k].Value = n
+				replaced = true
+			}
+		}
+		if !replaced {
+			cs.own = append(cs.own, CounterEntry{Name: name, Value: n})
+		}
+	}
+}
+
+// parseContentTokens resolves a content value: strings, attr(),
+// counter() and counters(). Anything else is invalid at
+// computed-value time and drops the declaration.
+func parseContentTokens(ts []token, cx *ctx) (string, bool) {
+	if len(ts) == 1 && ts[0].kind == tkIdent {
+		switch strings.ToLower(ts[0].s) {
+		case "none", "normal":
+			return "", true
+		}
+		return "", false
+	}
+	var b strings.Builder
+	for i := 0; i < len(ts); i++ {
+		t := ts[i]
+		switch {
+		case t.kind == tkString:
+			b.WriteString(t.s)
+		case t.kind == tkFunc && t.s == "attr" && cx.self != nil:
+			end := blockEnd(ts, i)
+			if a := trimWS(funcArgs(ts[i:end])); len(a) > 0 && a[0].kind == tkIdent {
+				if v, ok := cx.self.attrValue(a[0].s); ok {
+					b.WriteString(v)
+				}
+			}
+			i = end - 1
+		case t.kind == tkFunc && (t.s == "counter" || t.s == "counters"):
+			end := blockEnd(ts, i)
+			a := splitTop(trimWS(funcArgs(ts[i:end])), tkComma)
+			if len(a) > 0 && trimWS(a[0]) != nil && trimWS(a[0])[0].kind == tkIdent {
+				name := trimWS(a[0])[0].s
+				if t.s == "counter" || len(a) < 2 {
+					b.WriteString(cx.counterValue(name, ""))
+				} else if sep := trimWS(a[1]); len(sep) == 1 && sep[0].kind == tkString {
+					b.WriteString(cx.counterValue(name, sep[0].s))
+				}
+			}
+			i = end - 1
+		case t.kind == tkWS || t.kind == tkComma:
+		default:
+			return "", false
+		}
+	}
+	return b.String(), true
+}
+
+// counterValue renders counter(name) or counters(name, sep).
+func (cx *ctx) counterValue(name, sep string) string {
+	if cx.counters == nil {
+		return "0"
+	}
+	if sep == "" {
+		return strconv.Itoa(cx.counters.get(name))
+	}
+	vals := cx.counters.chain(name)
+	parts := make([]string, len(vals))
+	for i, v := range vals {
+		parts[i] = strconv.Itoa(v)
+	}
+	return strings.Join(parts, sep)
 }
 
 // lookup resolves a var() reference: the node's inherited custom

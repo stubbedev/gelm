@@ -159,12 +159,14 @@ type node struct {
 	styleRoot bool
 
 	// style identity: the element name (a constructor-set override and
-	// the type-derived default, resolved once), the `#id`, and the
-	// classes `.name` selectors match.
+	// the type-derived default, resolved once), the `#id`, the classes
+	// `.name` selectors match, and the app-set data attributes [name]
+	// selectors test.
 	element  string
 	elemName string
 	id       string
 	classes  []string
+	attrs    []style.Attr
 	// focused is the router's focus bit for :focus matching; hover and
 	// press stay in each widget's own fields, which the router already
 	// drives. focusVisible marks a focus that arrived by keyboard
@@ -210,9 +212,21 @@ type node struct {
 	// arranging container, so a state flip can walk its own subtree.
 	self Widget
 	// sibs is this node's filtered child list as the sibling selectors
-	// read it, memoized per damage generation (visibleSiblings).
-	sibs    []Widget
-	sibsGen uint64
+	// read it, memoized per damage generation (visibleSiblings); kids
+	// are this node's own children as :has()/:empty walk them, adapters
+	// and all, memoized the same way (kidsAdaps are their reused
+	// targeters).
+	sibs      []Widget
+	sibsGen   uint64
+	kids      []style.Node
+	kidsAdaps []*styleTargeter
+	kidsGen   uint64
+
+	// pseudo holds the computed ::before/::after styles (stylepart
+	// pseudo-elements style through the parts themselves), stamped with
+	// the cascade generation.
+	pseudo    [2]style.Values
+	pseudoGen uint64
 
 	// disabled is the widget's own half of the enable state: false (the
 	// zero value) means enabled, so plain widgets accept input without

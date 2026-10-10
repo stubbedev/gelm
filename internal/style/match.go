@@ -2,7 +2,15 @@ package style
 
 import (
 	"slices"
+	"strings"
 )
+
+// Attr is one app-set data attribute a widget carries: attribute
+// selectors test it by name.
+type Attr struct {
+	Name  string
+	Value string
+}
 
 // Target is one node's selector-relevant facts, filled by the widget
 // layer for the node being styled and for each node a combinator walk
@@ -12,11 +20,57 @@ type Target struct {
 	ID      string
 	Classes []string
 	State   State
+	// Role is the node's semantic role name (a11y), the [role=...]
+	// selector's value.
+	Role string
+	// Attrs are the app-set data attributes (SetAttr), [name] and
+	// [name=value] selectors' subject.
+	Attrs []Attr
 	// Inline is the node's own declaration block (a widget-scoped style,
 	// GTK's per-widget provider), applied at InlinePriority. It is read
 	// only for the node being styled.
 	Inline         *Block
 	InlinePriority int
+}
+
+// attrValue reads one attribute, the built-in names (id, class, role)
+// included.
+func (t *Target) attrValue(name string) (string, bool) {
+	switch name {
+	case "id":
+		return t.ID, t.ID != ""
+	case "class":
+		return strings.Join(t.Classes, " "), len(t.Classes) > 0
+	case "role":
+		return t.Role, t.Role != ""
+	}
+	for i := range t.Attrs {
+		if t.Attrs[i].Name == name {
+			return t.Attrs[i].Value, true
+		}
+	}
+	return "", false
+}
+
+// nodeIDer is the optional identity a Node can expose when one
+// widget is wrapped in several adapters: identity then compares by
+// it, not by adapter pointer.
+type nodeIDer interface{ StyleID() any }
+
+// sameNode reports whether two Node values wrap the same node.
+func sameNode(a, b Node) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	if a == b {
+		return true
+	}
+	ai, ok := a.(nodeIDer)
+	if !ok {
+		return false
+	}
+	bi, ok := b.(nodeIDer)
+	return ok && ai.StyleID() == bi.StyleID()
 }
 
 // Node is one node of the widget tree as the matcher sees it.
@@ -30,6 +84,13 @@ type Node interface {
 	// StylePosition returns the node's 1-based index among its visible
 	// siblings and their count; a root reports (1, 1).
 	StylePosition() (index, count int)
+	// StyleTypedPosition returns the 1-based index among the visible
+	// siblings of element name and their count (:nth-of-type and
+	// friends).
+	StyleTypedPosition(element string) (index, count int)
+	// StyleChildren returns the visible children, or nil for a leaf;
+	// :empty and :has() read it.
+	StyleChildren() []Node
 }
 
 // Layer is one stylesheet in a cascade with its priority: GTK's
@@ -68,12 +129,32 @@ func rank(prio int, sp spec, layer, sheet, order int, imp bool) uint64 {
 	return r
 }
 
+// maxHasBudget bounds the :has() work of one compute: node visits a
+// relational argument may spend before it stops matching
+// (conservatively false). :has is the one selector that walks down
+// into subtrees, so without a budget a sheet could make matching
+// quadratic in tree size; with it, one compute stays O(rules +
+// budget).
+const maxHasBudget = 4096
+
 // Scratch holds one matcher's reusable buffers. Style work runs on the
 // event-loop goroutine, so one Scratch per process serves every
 // compute; it is not safe for concurrent use.
 type Scratch struct {
 	self Target
-	anc  Target
+	// bufs are the nested-matching targets: one per functional
+	// pseudo-class nesting level (:is inside :has inside ...), so a
+	// nested evaluation never clobbers the target it runs within.
+	bufs [maxPseudoDepth + 2]Target
+	// hasBudget is the remaining :has() node visits of this compute.
+	hasBudget int
+	// pseudo, when not empty, restricts the compute to the rules of
+	// that pseudo-element (::before, ::after) instead of the element's
+	// own rules.
+	pseudo string
+	// prevCounters is the previous sibling's counter scope the widget
+	// layer supplies when counters are in play (Compute resets it).
+	prevCounters *CounterScope
 	// media is the environment the sheets' @media conditions evaluate
 	// against, copied from the compute's Env.
 	media Media
@@ -91,12 +172,23 @@ type Scratch struct {
 	customs []customWin
 	byName  map[string]int
 
+	// metas are the winning content/counter-reset/counter-increment
+	// declarations (metaByName their index), which apply outside the
+	// longhand cascade.
+	metas      []customWin
+	metaByName map[string]int
+
 	parsed []parsedDecl
 	cx     ctx
 	// layers is the compute's cascade input, kept for the define
 	// fallback of var() lookups.
 	layers []Layer
 }
+
+// SetPrevCounters supplies the previous sibling's counter scope, the
+// widget layer's half of CSS's document-order counting; Compute
+// consumes and clears it.
+func (sc *Scratch) SetPrevCounters(cs *CounterScope) { sc.prevCounters = cs }
 
 // customWin is the winning declaration of one custom property.
 type customWin struct {
@@ -123,10 +215,16 @@ func (sc *Scratch) collect(layers []Layer, n Node) {
 	clear(sc.winLow[:])
 	clear(sc.lowLayer[:])
 	sc.customs = sc.customs[:0]
+	sc.metas = sc.metas[:0]
+	sc.hasBudget = maxHasBudget
 	if sc.byName == nil {
 		sc.byName = map[string]int{}
 	}
 	clear(sc.byName)
+	if sc.metaByName == nil {
+		sc.metaByName = map[string]int{}
+	}
+	clear(sc.metaByName)
 	n.StyleTarget(&sc.self)
 	for li, l := range layers {
 		s := l.Sheet
@@ -148,12 +246,14 @@ func (sc *Scratch) collect(layers []Layer, n Node) {
 			}
 		}
 	}
-	if b := sc.self.Inline; b != nil {
-		// Inline declarations match the node itself with no specificity,
-		// like a `*` rule in a widget-scoped provider; they rank as the
-		// last layer at their priority.
-		for i := range b.decls {
-			sc.offer(&b.decls[i], rank(sc.self.InlinePriority, spec{}, 255, 63, b.decls[i].order, b.decls[i].important), 255)
+	if sc.pseudo == "" {
+		if b := sc.self.Inline; b != nil {
+			// Inline declarations match the node itself with no specificity,
+			// like a `*` rule in a widget-scoped provider; they rank as the
+			// last layer at their priority.
+			for i := range b.decls {
+				sc.offer(&b.decls[i], rank(sc.self.InlinePriority, spec{}, 255, 63, b.decls[i].order, b.decls[i].important), 255)
+			}
 		}
 	}
 }
@@ -166,6 +266,9 @@ func (sc *Scratch) bucket(rules []int32, s *Sheet, prio, layer int, n Node) {
 	for _, idx := range rules {
 		r := &s.rules[idx]
 		if r.mq >= 0 && !mediaMatches(s.mediaQs[r.mq], &sc.media) {
+			continue
+		}
+		if r.pseudo != sc.pseudo {
 			continue
 		}
 		if !sc.selectorMatches(&r.sel, n) {
@@ -182,6 +285,17 @@ func (sc *Scratch) bucket(rules []int32, s *Sheet, prio, layer int, n Node) {
 // tracking also the best declaration below the winner's cascade layer
 // (the revert-layer fallback).
 func (sc *Scratch) offer(d *decl, rk uint64, layer uint8) {
+	if d.meta {
+		if i, ok := sc.metaByName[d.name]; ok {
+			if rk >= sc.metas[i].rank {
+				sc.metas[i] = customWin{d: d, rank: rk}
+			}
+			return
+		}
+		sc.metaByName[d.name] = len(sc.metas)
+		sc.metas = append(sc.metas, customWin{d: d, rank: rk})
+		return
+	}
 	if d.custom {
 		if i, ok := sc.byName[d.name]; ok {
 			if rk >= sc.customs[i].rank {
@@ -217,51 +331,75 @@ func (sc *Scratch) offer(d *decl, rk uint64, layer uint8) {
 // against the node itself, then the combinators right to left, with
 // backtracking so `.a > .b .c` tries every `.b` ancestor.
 func (sc *Scratch) selectorMatches(sel *selector, n Node) bool {
-	last := len(sel.parts) - 1
-	if !sc.compoundMatches(&sel.parts[last], &sc.self, n) {
+	if !sc.compoundMatches(&sel.parts[len(sel.parts)-1], &sc.self, 0, n) {
 		return false
 	}
-	return sc.matchFrom(sel, last, n)
+	_, ok := sc.matchFrom(sel, len(sel.parts)-1, 0, n)
+	return ok
 }
 
-// matchFrom checks parts[:i] given that parts[i] matched n.
-func (sc *Scratch) matchFrom(sel *selector, i int, n Node) bool {
+// matchFrom checks parts[:i] given that parts[i] matched n, returning
+// the node the leftmost compound matched.
+func (sc *Scratch) matchFrom(sel *selector, i, d int, n Node) (Node, bool) {
 	if i == 0 {
-		return true
+		return n, true
 	}
 	part := &sel.parts[i-1]
 	switch sel.combs[i-1] {
 	case '>':
 		p := n.StyleParent()
-		return p != nil && sc.nodeMatches(part, p) && sc.matchFrom(sel, i-1, p)
+		if p == nil || !sc.nodeMatches(part, d, p) {
+			return nil, false
+		}
+		return sc.matchFrom(sel, i-1, d, p)
 	case '+':
 		p := n.StylePrev()
-		return p != nil && sc.nodeMatches(part, p) && sc.matchFrom(sel, i-1, p)
+		if p == nil || !sc.nodeMatches(part, d, p) {
+			return nil, false
+		}
+		return sc.matchFrom(sel, i-1, d, p)
 	case '~':
 		for p := n.StylePrev(); p != nil; p = p.StylePrev() {
-			if sc.nodeMatches(part, p) && sc.matchFrom(sel, i-1, p) {
-				return true
+			if sc.nodeMatches(part, d, p) {
+				if root, ok := sc.matchFrom(sel, i-1, d, p); ok {
+					return root, true
+				}
 			}
 		}
-		return false
+		return nil, false
 	default: // descendant
 		for p := n.StyleParent(); p != nil; p = p.StyleParent() {
-			if sc.nodeMatches(part, p) && sc.matchFrom(sel, i-1, p) {
-				return true
+			if sc.nodeMatches(part, d, p) {
+				if root, ok := sc.matchFrom(sel, i-1, d, p); ok {
+					return root, true
+				}
 			}
 		}
-		return false
+		return nil, false
 	}
 }
 
 // nodeMatches fills the ancestor buffer for n and tests part.
-func (sc *Scratch) nodeMatches(part *compound, n Node) bool {
-	n.StyleTarget(&sc.anc)
-	return sc.compoundMatches(part, &sc.anc, n)
+func (sc *Scratch) nodeMatches(part *compound, d int, n Node) bool {
+	n.StyleTarget(&sc.bufs[d])
+	return sc.compoundMatches(part, &sc.bufs[d], d, n)
+}
+
+// matchesSub evaluates a nested selector list member (:not, :is,
+// :where) against a target already filled for n.
+func (sc *Scratch) matchesSub(sel *selector, t *Target, d int, n Node) bool {
+	if d+1 >= len(sc.bufs) {
+		return false
+	}
+	if !sc.compoundMatches(&sel.parts[len(sel.parts)-1], t, d+1, n) {
+		return false
+	}
+	_, ok := sc.matchFrom(sel, len(sel.parts)-1, d+1, n)
+	return ok
 }
 
 // compoundMatches tests one compound against a filled target.
-func (sc *Scratch) compoundMatches(c *compound, t *Target, n Node) bool {
+func (sc *Scratch) compoundMatches(c *compound, t *Target, d int, n Node) bool {
 	if c.element != "" && c.element != t.Element {
 		return false
 	}
@@ -276,30 +414,242 @@ func (sc *Scratch) compoundMatches(c *compound, t *Target, n Node) bool {
 	if t.State&c.state != c.state {
 		return false
 	}
+	if len(c.attrs) > 0 && !attrsMatch(c.attrs, t) {
+		return false
+	}
 	if c.structs != 0 || len(c.nths) > 0 {
-		if c.structs&structRoot != 0 && n.StyleParent() != nil {
+		if !sc.structsMatch(c, t, n) {
 			return false
 		}
-		idx, cnt := n.StylePosition()
-		if c.structs&structFirst != 0 && idx != 1 {
+	}
+	for i := range c.not {
+		if sc.matchesSub(&c.not[i], t, d, n) {
 			return false
 		}
-		if c.structs&structLast != 0 && idx != cnt {
+	}
+	for i := range c.isLists {
+		ok := false
+		for j := range c.isLists[i].sels {
+			if sc.matchesSub(&c.isLists[i].sels[j], t, d, n) {
+				ok = true
+				break
+			}
+		}
+		if !ok {
 			return false
 		}
-		if c.structs&structOnly != 0 && cnt != 1 {
+	}
+	for i := range c.has {
+		if sc.hasMatches(&c.has[i], d, n) {
+			return true
+		}
+	}
+	return len(c.has) == 0
+}
+
+// attrsMatch tests the compound's attribute selectors.
+func attrsMatch(attrs []attrTest, t *Target) bool {
+	for _, a := range attrs {
+		v, ok := t.attrValue(a.name)
+		if !ok {
 			return false
 		}
-		for _, x := range c.nths {
-			if !x.matches(idx, cnt) {
+		if a.op == 0 {
+			continue
+		}
+		want, got := a.val, v
+		if a.ci {
+			want, got = strings.ToLower(want), strings.ToLower(got)
+		}
+		switch a.op {
+		case '=':
+			if got != want {
+				return false
+			}
+		case '~':
+			if !slices.Contains(strings.Fields(got), want) || want == "" {
+				return false
+			}
+		case '|':
+			if got != want && !strings.HasPrefix(got, want+"-") {
+				return false
+			}
+		case '^':
+			if want == "" || !strings.HasPrefix(got, want) {
+				return false
+			}
+		case '$':
+			if want == "" || !strings.HasSuffix(got, want) {
+				return false
+			}
+		case '*':
+			if want == "" || !strings.Contains(got, want) {
 				return false
 			}
 		}
 	}
-	for i := range c.not {
-		if sc.compoundMatches(&c.not[i], t, n) {
+	return true
+}
+
+// structsMatch tests the structural pseudo-classes and an+b tests.
+func (sc *Scratch) structsMatch(c *compound, t *Target, n Node) bool {
+	st := c.structs
+	if st&structRoot != 0 && n.StyleParent() != nil {
+		return false
+	}
+	if st&structEnabled != 0 && t.State&Disabled != 0 {
+		return false
+	}
+	if st&structReadWrite != 0 && t.State&ReadOnly != 0 {
+		return false
+	}
+	if st&structEmpty != 0 {
+		if kids := n.StyleChildren(); len(kids) != 0 {
+			return false
+		}
+	}
+	if st&(structFirst|structLast|structOnly) != 0 || hasPlainNth(c.nths) {
+		idx, cnt := n.StylePosition()
+		if !positionOk(st, idx, cnt) || !nthsMatch(c.nths, idx, cnt, false) {
+			return false
+		}
+	}
+	if st&(structFirstOf|structLastOf|structOnlyOf) != 0 || hasTypeNth(c.nths) {
+		idx, cnt := n.StyleTypedPosition(t.Element)
+		if !positionOk(st>>5, idx, cnt) || !nthsMatch(c.nths, idx, cnt, true) {
 			return false
 		}
 	}
 	return true
+}
+
+func hasPlainNth(nths []nth) bool {
+	for _, x := range nths {
+		if !x.ofType {
+			return true
+		}
+	}
+	return false
+}
+
+func hasTypeNth(nths []nth) bool {
+	for _, x := range nths {
+		if x.ofType {
+			return true
+		}
+	}
+	return false
+}
+
+// positionOk tests the positional bits of st (already shifted to the
+// of-type group when needed) against a 1-based index and count.
+func positionOk(st structural, idx, cnt int) bool {
+	if st&structFirst != 0 && idx != 1 {
+		return false
+	}
+	if st&structLast != 0 && idx != cnt {
+		return false
+	}
+	if st&structOnly != 0 && cnt != 1 {
+		return false
+	}
+	return true
+}
+
+func nthsMatch(nths []nth, idx, cnt int, ofType bool) bool {
+	for _, x := range nths {
+		if x.ofType != ofType {
+			continue
+		}
+		if !x.matches(idx, cnt) {
+			return false
+		}
+	}
+	return true
+}
+
+// hasMatches evaluates one :has() argument against its element n.
+func (sc *Scratch) hasMatches(ha *hasArg, d int, n Node) bool {
+	if d+1 >= len(sc.bufs) {
+		return false
+	}
+	sel := &ha.sel
+	visit := func(m Node) bool {
+		if sc.hasBudget <= 0 {
+			return false
+		}
+		sc.hasBudget--
+		m.StyleTarget(&sc.bufs[d+1])
+		if !sc.compoundMatches(&sel.parts[len(sel.parts)-1], &sc.bufs[d+1], d+1, m) {
+			return false
+		}
+		root, ok := sc.matchFrom(sel, len(sel.parts)-1, d+1, m)
+		return ok && sc.relates(ha.comb, root, n)
+	}
+	var walk func(kids []Node) bool
+	walk = func(kids []Node) bool {
+		for _, k := range kids {
+			if visit(k) {
+				return true
+			}
+			if sc.hasBudget <= 0 {
+				return false
+			}
+			if walk(k.StyleChildren()) {
+				return true
+			}
+		}
+		return false
+	}
+	switch ha.comb {
+	case '+', '~':
+		for sib := nextSibling(n); sib != nil; sib = nextSibling(sib) {
+			if visit(sib) || (sc.hasBudget > 0 && walk(sib.StyleChildren())) {
+				return true
+			}
+		}
+		return false
+	default:
+		return walk(n.StyleChildren())
+	}
+}
+
+// relates reports whether anchor stands in comb's relation to scope,
+// the :has element.
+func (sc *Scratch) relates(comb byte, anchor, scope Node) bool {
+	switch comb {
+	case '>':
+		return sameNode(anchor.StyleParent(), scope)
+	case '+':
+		return sameNode(anchor.StylePrev(), scope)
+	case '~':
+		for p := anchor.StylePrev(); p != nil; p = p.StylePrev() {
+			if sameNode(p, scope) {
+				return true
+			}
+		}
+		return false
+	default:
+		for p := anchor.StyleParent(); p != nil; p = p.StyleParent() {
+			if sameNode(p, scope) {
+				return true
+			}
+		}
+		return false
+	}
+}
+
+// nextSibling returns the following visible sibling, or nil.
+func nextSibling(n Node) Node {
+	p := n.StyleParent()
+	if p == nil {
+		return nil
+	}
+	kids := p.StyleChildren()
+	for i, k := range kids {
+		if sameNode(k, n) && i+1 < len(kids) {
+			return kids[i+1]
+		}
+	}
+	return nil
 }
