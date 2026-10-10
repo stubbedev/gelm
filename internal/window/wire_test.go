@@ -472,3 +472,49 @@ func TestDialogModalityRequests(t *testing.T) {
 		}
 	})
 }
+
+func wireString(s string) []byte {
+	n := len(s) + 1
+	b := make([]byte, 4+(n+3)/4*4)
+	binary.NativeEndian.PutUint32(b, uint32(n))
+	copy(b[4:], s)
+	return b
+}
+
+func TestExportRequestsAHandleAndDropsItOnClose(t *testing.T) {
+	frames := startWireServer(t)
+	w := newWireWindow(t, Config{Title: "t"})
+	exp := wlr.NewZxdgExporterV2(w.WLSurface.Context())
+	exp.Unregister()
+	if err := w.Export(exp); err != nil {
+		t.Fatal(err)
+	}
+	f := waitForFrame(t, frames, "export_toplevel", func(f wireFrame) bool {
+		return f.obj == uint32(exp.Id()) && f.opcode == 1
+	})
+	if len(f.body) != 8 || word(f.body, 1) != int32(w.WLSurface.Id()) {
+		t.Fatalf("export_toplevel payload %v, want the new id and the window's wl_surface", f.body)
+	}
+	if w.ExportHandle() != "" {
+		t.Error("a handle before the compositor sent one")
+	}
+	w.exported.Dispatch(&wl.Event{Opcode: 0, Data: wireString("f00d-handle")})
+	if got := w.ExportHandle(); got != "f00d-handle" {
+		t.Errorf("handle %q after the handle event", got)
+	}
+	first := w.exported
+	if err := w.Export(exp); err != nil || w.exported != first {
+		t.Error("a second Export replaced the first")
+	}
+	w.Toplevel.Dispatch(&wl.Event{Opcode: 1})
+	waitForFrame(t, frames, "destroy on close", func(f wireFrame) bool {
+		return f.obj == uint32(first.Id()) && f.opcode == 0
+	})
+	if w.ExportHandle() != "" {
+		t.Error("a closed window kept its handle")
+	}
+	other := newWireWindow(t, Config{Title: "u"})
+	if err := other.Export(nil); err != nil || other.exported != nil {
+		t.Error("a nil exporter exported")
+	}
+}

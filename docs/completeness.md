@@ -93,7 +93,7 @@ live in [architecture.md](architecture.md#non-goals).
 | fractional scale | wp_viewporter + wp_fractional_scale_v1, live rescale; integer fallback | internal/scale |
 | clipboard | wl_data_device + primary selection; text, images, URIs, HTML | app/clipboard.go, transfer/ |
 | clipboard managers | ext-data-control-v1, wlr-data-control fallback | app/datacontrol.go |
-| taskbars, launchers | wlr-foreign-toplevel-management, xdg-activation, `OpenURL`/`OpenPath` (portal, xdg-open fallback) | internal/wlsession, app/launcher.go |
+| taskbars, launchers | wlr-foreign-toplevel-management, xdg-activation, `OpenURL`/`OpenPath` (portal, xdg-open fallback); xdg-foreign v2 exports every toplevel so portal dialogs parent to it | internal/wlsession, app/launcher.go |
 | idle | idle inhibit, ext-idle-notify-v1 (`OnIdle`) | app/application.go |
 | shortcuts | keyboard-shortcuts-inhibit, GlobalShortcuts portal | internal/wlsession, app/globalshortcuts.go |
 | printing (GtkPrintDialog, GtkPrintOperation) | `Application.Print` through the Print portal, `ExportPDF`; pages painted as rasters into a PDF by `pdf` | app/print.go, pdf/ |

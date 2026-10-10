@@ -6,6 +6,9 @@
 
 - Fix: accelerators with shift+Tab never matched (xkb reports
   ISO_Left_Tab).
+- Fix: portal dialogs (open URI, print) were unparented: gelm passed a
+  wl_surface proxy id as `parent_window`. Toplevels are now exported
+  through xdg-foreign v2 and portals get `wayland:<handle>`.
 - Fix: the GlobalShortcuts portal session token held a `-`, which is
   not a valid object path element, so a real portal refused it.
 

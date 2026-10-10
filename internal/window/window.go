@@ -130,6 +130,8 @@ type Window struct {
 	// window unsets and destroys it.
 	dialog         *wlr.DialogV1
 	dialogModalled bool
+	exported       *wlr.ZxdgExportedV2
+	exportHandle   string
 
 	// onCloseRequest vetoes the compositor's close request when it
 	// returns false (an unsaved-changes prompt, for instance); nil
@@ -452,8 +454,7 @@ func (w *Window) HandleToplevelClose(ev xdg.ToplevelCloseEvent) {
 	if w.onCloseRequest != nil && !w.onCloseRequest() {
 		return
 	}
-	w.teardownDialog()
-	w.closed = true
+	w.Close()
 }
 
 // EnsureUsable gates drawing: the window must have completed the first
@@ -475,6 +476,7 @@ func (w *Window) Closed() bool { return w.closed }
 // instance). The next loop check exits.
 func (w *Window) Close() {
 	w.teardownDialog()
+	w.teardownExport()
 	w.closed = true
 }
 
@@ -538,6 +540,44 @@ func (w *Window) SetModal(mgr *wlr.WmDialogV1, modal bool) error {
 	}
 	w.dialogModalled = false
 	return w.dialog.UnsetModal()
+}
+
+// Export publishes the toplevel through xdg-foreign so other clients,
+// xdg-desktop-portal above all, can name it. The compositor answers
+// with the handle asynchronously; ExportHandle reports it once it has
+// arrived. A nil exporter (no xdg-foreign v2) is a no-op, and a second
+// call keeps the first export.
+func (w *Window) Export(exp *wlr.ZxdgExporterV2) error {
+	if exp == nil || w.exported != nil {
+		return nil
+	}
+	e, err := exp.ExportToplevel(w.WLSurface)
+	if err != nil {
+		return fmt.Errorf("window: export_toplevel: %w", err)
+	}
+	e.AddHandleHandler(exportHandler{w})
+	w.exported = e
+	return nil
+}
+
+// ExportHandle returns the toplevel's xdg-foreign handle, or "" before
+// the compositor sent it or without an export.
+func (w *Window) ExportHandle() string { return w.exportHandle }
+
+type exportHandler struct{ w *Window }
+
+func (h exportHandler) HandleZxdgExportedV2Handle(ev wlr.ZxdgExportedV2HandleEvent) {
+	h.w.exportHandle = ev.Handle
+	debug.Log("shell", "toplevel exported as %q", ev.Handle)
+}
+
+func (w *Window) teardownExport() {
+	if w.exported == nil {
+		return
+	}
+	_ = w.exported.Destroy()
+	w.exported = nil
+	w.exportHandle = ""
 }
 
 // ModalHinted reports whether the xdg-dialog modality hint is set on
