@@ -189,3 +189,39 @@ func TestOnStopRunsHooksInReverseOnce(t *testing.T) {
 		t.Error("a hook registered after the loop ended did not run at once")
 	}
 }
+
+type counterMsg int
+
+func TestReducerNotifiesOnlyOnChange(t *testing.T) {
+	a := testApp(nil)
+	r := NewReducer(a, 0, func(n *int, m counterMsg) bool {
+		if m == 0 {
+			return false
+		}
+		*n += int(m)
+		return true
+	})
+	var seen []int
+	r.Subscribe(func(n int) { seen = append(seen, n) })
+	done := make(chan struct{})
+	go func() {
+		for _, m := range []counterMsg{1, 0, 2, 0, 3} {
+			r.Emit(m)
+		}
+		close(done)
+	}()
+	<-done
+	if got := a.queues.pending(); got != 1 {
+		t.Errorf("five emits queued %d invokes, want 1", got)
+	}
+	a.pump(time.Now())
+	if !slices.Equal(seen, []int{1, 3, 6}) || r.Get() != 6 {
+		t.Errorf("seen %v state %d, want [1 3 6] and 6", seen, r.Get())
+	}
+	r.Close()
+	r.Emit(5)
+	a.pump(time.Now())
+	if r.Get() != 6 {
+		t.Error("a closed reducer reduced")
+	}
+}
