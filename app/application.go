@@ -131,6 +131,10 @@ type Application struct {
 	// shortcuts (globalshortcuts_portal.go): the lazily created portal
 	// GlobalShortcuts session, the fallback transport.
 	shortcuts portalShortcuts
+	// portals is the Inhibit/Background portal client, created on
+	// first use (portals.go).
+	portals     *desktopPortals
+	portalsOnce sync.Once
 	// sessionLock is the lock this application holds (sessionlock.go);
 	// while it exists the loop runs on with no window mapped.
 	sessionLock *SessionLock
@@ -655,6 +659,9 @@ func (a *Application) Run() error {
 		}
 		a.closeNotifier()
 		a.shortcuts.shutdown()
+		if a.portals != nil {
+			a.portals.close()
+		}
 	}()
 	a.startAccessibility()
 	a.wireSession()
