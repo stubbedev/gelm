@@ -268,22 +268,22 @@ func (p *Paned) placePanes() {
 	case p.start == nil && p.end == nil:
 		return
 	case p.start == nil:
-		p.end.Arrange(r)
+		arrangeChild(p.end, r)
 		setParents(p, p.end)
 		return
 	case p.end == nil:
-		p.start.Arrange(r)
+		arrangeChild(p.start, r)
 		setParents(p, p.start)
 		return
 	}
 	if p.axis == Column {
 		slot := p.sepSlot()
-		p.start.Arrange(render.Rect{X: r.X, Y: r.Y, W: r.W, H: p.arranged})
-		p.end.Arrange(render.Rect{X: r.X, Y: r.Y + p.arranged + slot, W: r.W, H: max(0, r.H-p.arranged-slot)})
+		arrangeChild(p.start, render.Rect{X: r.X, Y: r.Y, W: r.W, H: p.arranged})
+		arrangeChild(p.end, render.Rect{X: r.X, Y: r.Y + p.arranged + slot, W: r.W, H: max(0, r.H-p.arranged-slot)})
 	} else {
 		slot := p.sepSlot()
-		p.start.Arrange(render.Rect{X: r.X, Y: r.Y, W: p.arranged, H: r.H})
-		p.end.Arrange(render.Rect{X: r.X + p.arranged + slot, Y: r.Y, W: max(0, r.W-p.arranged-slot), H: r.H})
+		arrangeChild(p.start, render.Rect{X: r.X, Y: r.Y, W: p.arranged, H: r.H})
+		arrangeChild(p.end, render.Rect{X: r.X + p.arranged + slot, Y: r.Y, W: max(0, r.W-p.arranged-slot), H: r.H})
 	}
 	setParents(p, p.start, p.end)
 }

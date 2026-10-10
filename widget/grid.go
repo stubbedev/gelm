@@ -427,7 +427,7 @@ func (g *Grid) Arrange(r render.Rect) {
 		x, cw := trackExtent(g.colW, g.colSpacing, c.col, c.colSpan)
 		y, ch := trackExtent(g.rowH, g.rowSpacing, c.row, c.rowSpan)
 		cell := render.Rect{X: r.X + x, Y: r.Y + y, W: cw, H: ch}
-		c.w.Arrange(alignRect(cell, c.nat, c.hAlign, c.vAlign))
+		arrangeChild(c.w, alignRect(cell, c.nat, c.hAlign, c.vAlign))
 	}
 	setParents(g, g.Children()...)
 }

@@ -68,6 +68,7 @@ a test fails when the generated file is stale).
 | `#[name = "x"]` | `.Ref(&field)` |
 | child widgets | constructor and adder arguments take nodes: `ui.Button(ui.Label("+"), 8, 6)`, `.PackStart(n)`, `.AppendTab("t", n)` |
 | `gtk::Box` children | `ui.Column(...)`, `ui.Row(...)` with `ui.Expand(n)` and `ui.Aligned(n, a)` |
+| `set_hexpand`, `set_halign`, `set_margin_all` | `.HExpand(true)`, `.HAlign(widget.AlignCenter)`, `.Margin(render.UniformInsets(12))` on every builder |
 | `if` / `match` in a view | `ui.If(cond, then, else)`, `ui.Match(key, ui.When(k, n)...)` (Stack-backed, re-checked after every update) |
 | `#[iterate]` over static data | `ui.Each(seq, fn)` |
 | `#[local_ref]` | `ui.Use(w)` for a widget built elsewhere, such as a child's root |

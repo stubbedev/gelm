@@ -152,7 +152,7 @@ func (e *Elevation) Measure(con Constraints) Size { return measureChild(e, e.chi
 // blur.
 func (e *Elevation) Arrange(r render.Rect) {
 	e.node.Arrange(r)
-	e.child.Arrange(r)
+	arrangeChild(e.child, r)
 	setParents(e, e.child)
 	_, blur := effShadow(e, Current())
 	e.ring.syncRing(&e.node, ringFor(e.bounds, blur))

@@ -214,6 +214,8 @@ func (b *Box) Move(from, to int) {
 	restyleChildren(b)
 }
 
+func (b *Box) expands(c *childEntry) bool { return c.expand || WantsExpand(c.w, b.axis) }
+
 // SetEnabled turns the box's subtree on or off: the per-query enable
 // walk (IsEnabled) folds the box's flag into every descendant, whose
 // own flag stays untouched — re-enabling the box never resurrects a
@@ -475,7 +477,7 @@ func (b *Box) Arrange(r render.Rect) {
 	free := avail - spacing*(shown-1) - sum
 	expanders := 0
 	for _, c := range b.child {
-		if c.expand && IsVisible(c.w) {
+		if b.expands(c) && IsVisible(c.w) {
 			expanders++
 		}
 	}
@@ -493,7 +495,7 @@ func (b *Box) Arrange(r render.Rect) {
 			continue
 		}
 		size := b.main(c.nat)
-		if c.expand {
+		if b.expands(c) {
 			size += extra
 		}
 		if takes != nil {
@@ -524,7 +526,7 @@ func (b *Box) Arrange(r render.Rect) {
 				rect = alignRect(rect, Size{W: min(c.nat.W, inner.W), H: size}, c.cross, AlignFill)
 			}
 		}
-		c.w.Arrange(rect)
+		arrangeChild(c.w, rect)
 		setParents(b, c.w)
 		pos += size + spacing
 	}

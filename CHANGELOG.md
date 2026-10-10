@@ -4,6 +4,11 @@
 
 ### Parity, fifth pass
 
+- Per-widget layout properties: `SetHExpand`/`SetVExpand` (GTK's
+  computed expand, propagating from children and cached),
+  `SetHAlign`/`SetVAlign` and `SetMargin`, on every widget and builder,
+  honored by Box, Grid, Overlay, Stack, Scroll, Paned, CenterBox,
+  FlowBox, Button, Notebook, Expander, Revealer and the wrappers.
 - New `i18n` package, gettext in pure Go: `.mo` (both byte orders) and
   `.po` parsing, a safe Plural-Forms evaluator, contexts, `Locales()`
   from LANGUAGE/LC_ALL/LC_MESSAGES/LANG, and `Load` over any `fs.FS` or

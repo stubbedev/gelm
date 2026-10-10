@@ -268,7 +268,7 @@ func (s *Stack) Measure(con Constraints) Size {
 func (s *Stack) Arrange(r render.Rect) {
 	s.ArrangeRoot(r)
 	for _, name := range s.order {
-		s.kids[name].Arrange(r)
+		arrangeChild(s.kids[name], r)
 		setParents(s, s.kids[name])
 	}
 }
@@ -378,10 +378,10 @@ func (o *Overlay) Arrange(r render.Rect) {
 	for i, k := range o.kids {
 		cell := r
 		if a := o.aligns[i]; a != [2]Align{} {
-			nat := k.Measure(Constraints{Max: Size{W: r.W, H: r.H}})
+			nat := measureChild(o, k, Constraints{Max: Size{W: r.W, H: r.H}})
 			cell = alignRect(r, nat, a[0], a[1])
 		}
-		k.Arrange(cell)
+		arrangeChild(k, cell)
 		setParents(o, k)
 	}
 }
@@ -776,7 +776,7 @@ func (s *Scroll) Arrange(r render.Rect) {
 	s.childX, s.childY = childX, childY
 
 	if s.child != nil {
-		s.child.Arrange(render.Rect{
+		arrangeChild(s.child, render.Rect{
 			X: r.X + childX - s.offX,
 			Y: r.Y + childY - s.offY,
 			W: childW,

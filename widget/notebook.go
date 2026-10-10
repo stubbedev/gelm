@@ -323,7 +323,7 @@ func (n *Notebook) Arrange(r render.Rect) {
 	n.applyReveal()
 	page := render.Rect{X: r.X, Y: r.Y + tabBarHeight, W: r.W, H: max(0, r.H-tabBarHeight)}
 	if n.selected < len(n.tabs) {
-		n.tabs[n.selected].w.Arrange(page)
+		arrangeChild(n.tabs[n.selected].w, page)
 		setParents(n, n.tabs[n.selected].w)
 	}
 }
