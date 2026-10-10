@@ -22,7 +22,7 @@ live in [architecture.md](architecture.md#non-goals).
 | GApplication single instance, `command-line`, `open` | `app.ClaimInstance` + `InstanceConfig` hooks | app/instance.go |
 | GSettings | `app.NewSettings` + typed `Key[T]`, persisted atomically | app/settings.go |
 | gettext for built-in strings | `widget.SetMessageCatalog`, `widget.Tr` | widget/message.go |
-| `RelmAction`, `RelmActionGroup`, `menu!`, `set_accels_for_action` | typed `widget.Action` and `StateAction[S]` (`Toggle`, `Target`); `ActionItem`/`CheckItem`/`RadioItem` menu rows; `BindAction` on buttons and toggles; `AddAccel` (chords) and subtree-scoped `AddScopedAccel` | widget/action.go, app/accel.go |
+| `RelmAction`, `RelmActionGroup`, `menu!`, `set_accels_for_action` | typed `widget.Action`, `ParamAction[P]` and `StateAction[S]` (`Toggle`, `Target`); `ActionItem`/`CheckItem`/`RadioItem` menu rows; `BindAction` on buttons and toggles; `AddAccel` (chords) and subtree-scoped `AddScopedAccel` | widget/action.go, app/accel.go |
 | library logging | injectable `*slog.Logger` (`app.SetLogger`), silent by default | internal/logutil |
 | GTK inspector | `GELM_INSPECT=1`, `Application.SetInspect`, `widget.DumpTree` | app/inspect.go, [inspector.md](inspector.md) |
 

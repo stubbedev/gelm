@@ -150,6 +150,47 @@ func (t stateTarget[S]) Activate() {
 	}
 }
 
+// ParamAction is a named action activated with a value, relm4's
+// stateless action with a target type: one "open-file" action serving
+// every recent-file row. Proxies bind a Target, a value fixed at
+// binding time. The parameter is comparable because targets are
+// compared and keyed by the accelerator registry.
+type ParamAction[P comparable] struct {
+	actionCore
+	activate func(P)
+}
+
+// NewParamAction returns an enabled action running fn with the bound
+// value on activation.
+func NewParamAction[P comparable](name string, fn func(P)) *ParamAction[P] {
+	if fn == nil {
+		panic(fmt.Sprintf("widget: action %q has no function", name))
+	}
+	return &ParamAction[P]{name: name, activate: fn}
+}
+
+// ActivateWith runs the action with p unless it is disabled.
+func (a *ParamAction[P]) ActivateWith(p P) {
+	if !a.disabled {
+		a.activate(p)
+	}
+}
+
+// Target is the Activatable that runs the action with p.
+func (a *ParamAction[P]) Target(p P) Activatable { return paramTarget[P]{action: a, value: p} }
+
+type paramTarget[P comparable] struct {
+	action *ParamAction[P]
+	value  P
+}
+
+func (t paramTarget[P]) Name() string  { return fmt.Sprintf("%s(%v)", t.action.name, t.value) }
+func (t paramTarget[P]) Enabled() bool { return t.action.Enabled() }
+func (t paramTarget[P]) Activate()     { t.action.ActivateWith(t.value) }
+func (t paramTarget[P]) Subscribe(fn func()) (cancel func()) {
+	return t.action.Subscribe(fn)
+}
+
 // Toggle is the Checkable that flips a bool action: a check item, a
 // toggle button.
 func Toggle(a *StateAction[bool]) Checkable { return toggleTarget{action: a} }

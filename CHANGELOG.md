@@ -4,6 +4,8 @@
 
 ### Parity, fifth pass
 
+- `widget.ParamAction[P]`: actions activated with a value, bound
+  through `Target(p)` like the other actions.
 - `Context.Await(work)` and `Busy()`: an awaiting update step whose
   result applies on the loop while later input waits, cancelled at
   shutdown.

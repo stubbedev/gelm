@@ -123,3 +123,26 @@ func TestMenuRowsFollowTheirActions(t *testing.T) {
 		t.Error("the check row's :checked state did not follow the action")
 	}
 }
+
+func TestParamActionTargetsBindValues(t *testing.T) {
+	var opened []string
+	open := NewParamAction("open-file", func(path string) { opened = append(opened, path) })
+	a, b := open.Target("/a.txt"), open.Target("/b.txt")
+	m := NewMenu(testFace(t), 12, ActionItem("a.txt", a), ActionItem("b.txt", b))
+	m.activate(1)
+	a.Activate()
+	if len(opened) != 2 || opened[0] != "/b.txt" || opened[1] != "/a.txt" {
+		t.Errorf("opened %v, want [/b.txt /a.txt]", opened)
+	}
+	if b.Name() != "open-file(/b.txt)" || a != open.Target("/a.txt") {
+		t.Errorf("target name %q, or equal targets compare unequal", b.Name())
+	}
+	open.SetEnabled(false)
+	if a.Enabled() || m.Items()[0].Enabled() {
+		t.Error("a disabled param action left its targets enabled")
+	}
+	a.Activate()
+	if len(opened) != 2 {
+		t.Error("a disabled param action ran")
+	}
+}
