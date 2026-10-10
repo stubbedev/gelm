@@ -27,7 +27,9 @@ goroutine a few frames ahead and hands frames over through channels
 that the Stream drains on the loop's frame clock. Its sound plays on
 the audio client's goroutine, which shares only an atomic counter of
 frames played. Every Stream method, and every subscriber it calls,
-runs on the loop.
+runs on the loop. A `widget.GPUArea`'s `OnFrame` runs on the loop too.
+An application that renders on its own thread hands the finished
+buffer back through `Invoke` and presents it there.
 
 A tree may be built before `Run` starts, on the goroutine that will
 call `Run`. After `Run` returns, the guard disarms and teardown may

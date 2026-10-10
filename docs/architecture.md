@@ -324,11 +324,19 @@ applies; a theme is never rejected for its colors.
   palette, not even on a system dark/light change. The preference is
   offered as a signal (`Application.OnColorSchemeChange`), and the app
   decides whether to call `SetTheme` ([appearance.md](appearance.md)).
-- **No subsurfaces and no single-pixel buffers.** gelm draws each
-  window into one buffer per surface. Overlays (popover shadows, drag
-  icons, the fader) are painted into that buffer, and spacers are
-  rectangle fills inside the damage, so damage and pacing stay one
-  problem per window.
+- **One kind of subsurface: GPUArea's. No single-pixel buffers.** gelm
+  draws each window into one buffer per surface. Overlays (popover
+  shadows, drag icons, the fader) are painted into that buffer, and
+  spacers are rectangle fills inside the damage, so damage and pacing
+  stay one problem per window. The one exception is `widget.GPUArea`,
+  whose pixels the application renders outside gelm. Each area gets one
+  desynchronized subsurface placed *below* its window, so everything
+  gelm draws over the area stays on top. The surface shows through a
+  transparent hole the area paints, which is also cut out of the opaque
+  region. It has an empty input region, so the window keeps routing
+  input, and a viewport sized to the area's bounds. Its frames pace
+  themselves by the subsurface's own frame callbacks and leave the
+  window's damage and pacing alone. No other widget gets a subsurface.
 - **No commit timing** (wp_commit_timing_v1, wp_fifo_v1). Frame
   callbacks already pace every commit (rule 3). Revisit for a video or
   game presentation path.

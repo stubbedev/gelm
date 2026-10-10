@@ -222,6 +222,9 @@ func NewApplication(sess *wlsession.Session) *Application {
 	// Rejected input (a key into a read-only field, a value that does
 	// not parse) rings the system bell for the widget's window.
 	widget.SetErrorBell(a.ringFor)
+	// A GPUArea arranged on screen asks for its presentation surface: a
+	// subsurface of its window (gpuarea.go).
+	widget.SetGPUHost(a.gpuSurfaceFor)
 	widget.SetRemovedHook(func(w widget.Widget) {
 		for _, win := range a.windows {
 			win.router.Forget(w)

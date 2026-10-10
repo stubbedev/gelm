@@ -21,6 +21,7 @@ package app
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"sync/atomic"
 	"time"
 
@@ -148,6 +149,10 @@ type hostWindow struct {
 	// never per frame.
 	opaqueSet        bool
 	opaqueW, opaqueH int
+	opaqueHoles      []render.Rect
+	// gpu are the GPUArea surfaces under this window, in creation
+	// order; their bounds are the opaque region's holes.
+	gpu []*gpuSurface
 }
 
 // windowHooks are the app-visible callbacks one window carries.
@@ -278,6 +283,9 @@ func newHostWindow(sess *wlsession.Session, host Host, initialScale int, root wi
 // arena (held buffers wait for the compositor's release), so closing
 // windows leaves no fds, mappings, or slots behind.
 func (w *hostWindow) release() {
+	if w.router != nil {
+		widget.DetachGPUAreas(w.router.Root)
+	}
 	if w.sess != nil {
 		w.sess.SetSurfaceInput(w.host.HostSurface(), nil)
 	}
@@ -468,6 +476,9 @@ func (w *hostWindow) rescale(frac120 uint32) {
 	}
 	w.scaleApplied = true
 	w.pool.Resize(w.allocator())
+	for _, g := range w.gpu {
+		g.rescaled()
+	}
 	// The logical layout is unchanged, so widgets owe no damage - but
 	// the screen must still be fully repainted at the new device size.
 	// Queue the whole window; the fresh buffers' full staleness covers
@@ -493,11 +504,11 @@ type surfaceHandle interface {
 	// Frame arms the compositor callback that fires ready once the
 	// frame may be followed by another.
 	Frame(ready *bool) error
-	// SetOpaqueRegion promises the full w x h rect (surface-local,
-	// logical pixels) holds opaque content, so the compositor can skip blending behind
+	// SetOpaqueRegion promises the w x h rect (surface-local, logical
+	// pixels) less holes holds opaque content, so the compositor can skip blending behind
 	// the surface. Double-buffered state like the scale: it applies at
 	// the next commit and only needs re-sending when the size changes.
-	SetOpaqueRegion(w, h int) error
+	SetOpaqueRegion(w, h int, holes []render.Rect) error
 }
 
 // wireSurface is the production surfaceHandle over a wl_surface.
@@ -537,7 +548,7 @@ func (s wireSurface) Frame(ready *bool) error {
 // object carries the full rect, the surface keeps a copy at
 // set_opaque_region, and the region dies right after - it is a
 // set-once-per-size message, not a long-lived proxy.
-func (s wireSurface) SetOpaqueRegion(w, h int) error {
+func (s wireSurface) SetOpaqueRegion(w, h int, holes []render.Rect) error {
 	region, err := s.comp.CreateRegion()
 	if err != nil {
 		return fmt.Errorf("app: create region: %w", err)
@@ -545,6 +556,12 @@ func (s wireSurface) SetOpaqueRegion(w, h int) error {
 	if err := region.Add(0, 0, int32(w), int32(h)); err != nil {
 		_ = region.Destroy()
 		return fmt.Errorf("app: region add: %w", err)
+	}
+	for _, r := range holes {
+		if err := region.Subtract(int32(r.X), int32(r.Y), int32(r.W), int32(r.H)); err != nil {
+			_ = region.Destroy()
+			return fmt.Errorf("app: region subtract: %w", err)
+		}
 	}
 	if err := s.wl.SetOpaqueRegion(region); err != nil {
 		_ = region.Destroy()
@@ -587,15 +604,16 @@ func (w *hostWindow) syncOpaque(bw, bh int) {
 	if !w.cfg.opaque || bw <= 0 || bh <= 0 {
 		return
 	}
-	if w.opaqueSet && bw == w.opaqueW && bh == w.opaqueH {
+	holes := w.gpuHoles()
+	if w.opaqueSet && bw == w.opaqueW && bh == w.opaqueH && slices.Equal(holes, w.opaqueHoles) {
 		return
 	}
-	if err := w.surf.SetOpaqueRegion(bw, bh); err != nil {
+	if err := w.surf.SetOpaqueRegion(bw, bh, holes); err != nil {
 		debug.Log("frame", "opaque region: %v", err)
 		return
 	}
-	w.opaqueSet, w.opaqueW, w.opaqueH = true, bw, bh
-	debug.Log("frame", "opaque region %dx%d", bw, bh)
+	w.opaqueSet, w.opaqueW, w.opaqueH, w.opaqueHoles = true, bw, bh, holes
+	debug.Log("frame", "opaque region %dx%d less %d holes", bw, bh, len(holes))
 }
 
 // draw paints one frame: resize check, acquire, cached measure, arrange,
@@ -620,11 +638,6 @@ func (w *hostWindow) draw() bool {
 			w.scaleApplied = true
 		}
 	}
-	// Same surface-state shape as the scale: the opaque region tracks
-	// the size and goes out once per size change, before the commit
-	// that applies it.
-	w.syncOpaque(bw, bh)
-
 	// Measure (cached per widget: a static tree costs nothing) and
 	// arrange; Arrange invalidates the old rect of anything that moved,
 	// so the drain below sees moves from this frame too. All tree
@@ -641,6 +654,10 @@ func (w *hostWindow) draw() bool {
 		w.router.Root.Measure(widget.Constraints{Max: widget.Size{W: bw, H: bh}})
 		w.router.Root.Arrange(render.Rect{X: 0, Y: 0, W: bw, H: bh})
 	}
+	// Same surface-state shape as the scale: the opaque region tracks
+	// the size and the GPUArea holes this layout placed, and goes out
+	// when either changed, before the commit that applies it.
+	w.syncOpaque(bw, bh)
 
 	// Drain invalidations into the pending region. The pending list
 	// survives busy retries (the flags are already drained) and is what

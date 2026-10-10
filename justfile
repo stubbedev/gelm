@@ -60,7 +60,7 @@ headless:
     if [ -n "$GELM_TEST_XCURSOR_PATH" ]; then
         export XCURSOR_PATH="$GELM_TEST_XCURSOR_PATH" XCURSOR_THEME=Vanilla-DMZ
     fi
-    go test ./internal/headlesstest ./capture ./vinput -count=1
+    go test ./internal/headlesstest ./capture ./vinput ./app -count=1
 
 # `check` plus the headless input gate - what CI runs. The gate is
 # required there: GELM_HEADLESS=1 turns every skip into a failure.

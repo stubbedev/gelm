@@ -1220,3 +1220,31 @@ func TestHeadlessVideoPlays(t *testing.T) {
 		t.Errorf("%d frames presented in a second after pausing", n)
 	}
 }
+
+// TestHeadlessGPUAreaPaces pins #150's pacing on a real compositor: the
+// GPU demo's area keeps asking for frames through its subsurface's own
+// frame callbacks and presents each one.
+func TestHeadlessGPUAreaPaces(t *testing.T) {
+	requireEnv(t)
+	bin, err := BuildClient(testEnv.Dir, "./cmd/gelm-gpu", "gelm-gpu")
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := testEnv.StartClient(bin, "client-"+t.Name(), "frame,shell")
+	if err != nil {
+		t.Fatal(err)
+	}
+	stopAndReport(t, c)
+	w, err := c.Watch()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := w.WaitEver("frame", "GPUArea frame committed", traceTimeout); err != nil {
+		t.Fatalf("the GPUArea never presented: %v", err)
+	}
+	mark := w.Mark()
+	time.Sleep(time.Second)
+	if n := w.CountSince(mark, "frame", "GPUArea frame committed"); n < 20 {
+		t.Errorf("%d GPUArea frames in a second, want the compositor's frame rate", n)
+	}
+}

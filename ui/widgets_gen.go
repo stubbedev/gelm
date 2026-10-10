@@ -2813,6 +2813,24 @@ func (b *FrameBuilder) WatchLabel(get func() string) *FrameBuilder {
 	return b
 }
 
+// GPUAreaBuilder builds a widget.GPUArea.
+type GPUAreaBuilder struct {
+	base[*widget.GPUArea, *GPUAreaBuilder]
+}
+
+// GPUArea builds a widget.GPUArea with widget.NewGPUArea.
+func GPUArea() *GPUAreaBuilder {
+	b := &GPUAreaBuilder{}
+	b.init(b, func(s *Scope) *widget.GPUArea { return widget.NewGPUArea() })
+	return b
+}
+
+// OnFrame sets the widget's OnFrame field.
+func (b *GPUAreaBuilder) OnFrame(fn func(f widget.GPUFrame)) *GPUAreaBuilder {
+	b.do(func(_ *Scope, w *widget.GPUArea) { w.OnFrame = fn })
+	return b
+}
+
 // GridBuilder builds a widget.Grid.
 type GridBuilder struct {
 	base[*widget.Grid, *GridBuilder]
