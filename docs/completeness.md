@@ -109,5 +109,6 @@ live in [architecture.md](architecture.md#non-goals).
 
 ## Known gaps
 
-The Hyprland gate is allow-failure until it has been green for a
-sustained window; sway is the required gate.
+None. The Hyprland VM gate was promoted to blocking (#118); sway and
+Hyprland both run the full compositor-in-the-loop suite as required
+CI gates.
