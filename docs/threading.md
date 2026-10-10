@@ -72,9 +72,10 @@ Everything stops when `Run` returns. Delivery is deferred: a `Send`
 from inside a subscriber or update runs on the next pass.
 `cmd/gelm-messages` shows all three.
 
-`internal/appearance` is the background-worker shape: it watches the
-desktop's preferences on its own dbus goroutine and leaves crossing
-onto the loop to its caller ([appearance.md](appearance.md)).
+The desktop-settings monitor is the background-worker shape: it
+watches the portal on its own dbus goroutine, and `Application`
+bridges each change onto the loop through `Invoke`
+([appearance.md](appearance.md)).
 
 ## The relm4 mapping
 

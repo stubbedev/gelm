@@ -322,8 +322,8 @@ applies; a theme is never rejected for its colors.
   stealing; on Wayland that is the compositor's job.
 - **No automatic theme switching.** The toolkit never changes its own
   palette, not even on a system dark/light change. The preference is
-  offered as a signal, and the app decides whether to call `SetTheme`
-  ([appearance.md](appearance.md)).
+  offered as a signal (`Application.OnColorSchemeChange`), and the app
+  decides whether to call `SetTheme` ([appearance.md](appearance.md)).
 - **No subsurfaces and no single-pixel buffers.** gelm draws each
   window into one buffer per surface. Overlays (popover shadows, drag
   icons, the fader) are painted into that buffer, and spacers are

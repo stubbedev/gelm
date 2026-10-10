@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### Public system appearance
+
+- `Application.ColorScheme`, `Accent`, `Contrast` and their
+  `OnColorSchemeChange`, `OnAccentChange`, `OnContrastChange` hooks,
+  delivered on the loop goroutine (each returns `off`). The value types
+  live in the new public `appearance` package; `Accent.Color` converts
+  to a `render.Color`.
+- The portal monitor moved to `internal/portalsettings`, and
+  `internal/appearance` is gone. Apps no longer construct a second
+  monitor or bridge its goroutine themselves.
+
 ### Public animation API
 
 - `anim` is public: `Animate`, `Tween.Easing`, the easing curves

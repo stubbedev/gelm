@@ -89,7 +89,7 @@ live in [architecture.md](architecture.md#non-goals).
 | screen capture | `capture`: wlr-screencopy, ext-image-copy-capture, Hyprland toplevel export, dmabuf import | capture/ |
 | file and fd watching | `WatchFiles`, `WatchFD` on the loop | app/watch.go |
 | compositor restarts | typed disconnect, clean exit code 75, optional reconnect with rebuild | app/disconnect.go, app/reconnect.go |
-| system appearance | color scheme, accent and contrast from xdg-desktop-portal | internal/appearance, [appearance.md](appearance.md) |
+| system appearance (`adw::StyleManager`) | `Application.ColorScheme`, `Accent`, `Contrast` with loop-delivered `On*Change` hooks; types in `appearance` | app/appearance.go, appearance/, [appearance.md](appearance.md) |
 
 ## Known gaps
 
@@ -106,8 +106,6 @@ The component framework relm4 is built around, tracked in
   components;
 - no typed workers;
 - actions are string-keyed, with no state, parameters or groups;
-- the system appearance is only reachable through an `internal/`
-  package;
 - the demos use `internal/` packages.
 
 The Hyprland gate is allow-failure until it has been green for a
