@@ -29,6 +29,16 @@ it hit the keymap fd of most clients - no keymap, every key NoSymbol.
 The patch copies each parsed message's data before the buffer returns
 to the pool (and parses only the `oobn` bytes actually read).
 
+## Server-created buffers
+
+`wl/servercreated.go` adds `NewServerBuffer`, a `Buffer` initialized
+like `NewBuffer`'s but not registered, for ids the compositor creates in
+an event (`zwp_linux_buffer_params_v1.created`). The generated wlr
+binding cannot call the unexported `initBuffer`, and building the
+Buffer bare left its handler map nil, so `AddReleaseHandler` panicked
+(stubbedev/gelm#164). The linux-dmabuf `go:generate` line in
+`wlr/types.go` rewrites the generated constructor to use it.
+
 ## Leaving
 
 Drop the copy (rewriting the imports back) once upstream carries the
