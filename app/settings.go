@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"sync"
 
+	"github.com/stubbedev/gelm/internal/atomicfile"
 	"github.com/stubbedev/gelm/internal/debug"
 	"github.com/stubbedev/gelm/widget"
 )
@@ -185,12 +186,7 @@ func (s *Settings) persist() {
 		debug.Log("config", "settings %s: mkdir: %v", s.path, err)
 		return
 	}
-	tmp := s.path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o600); err != nil {
-		debug.Log("config", "settings %s: write: %v", tmp, err)
-		return
-	}
-	if err := os.Rename(tmp, s.path); err != nil {
-		debug.Log("config", "settings %s: rename: %v", s.path, err)
+	if err := atomicfile.WriteFile(s.path, data, 0o600); err != nil {
+		debug.Log("config", "settings %s: %v", s.path, err)
 	}
 }
