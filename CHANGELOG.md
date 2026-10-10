@@ -9,6 +9,10 @@
 - Fix: the GlobalShortcuts portal session token held a `-`, which is
   not a valid object path element, so a real portal refused it.
 
+- Inhibit and Background portals: `Application.Inhibit` (logout, user
+  switch, suspend, idle) with a release func, `OnSessionStateChange`
+  answering query-end after the hook so it can still object,
+  `RequestBackground` (with autostart) and `SetBackgroundStatus`.
 - `widget.WindowTitle` (AdwWindowTitle) and `Application.AdaptiveDialog`
   (adaptive AdwDialog): floating over a wide parent, a bottom sheet
   inside a narrow one, or forced either way.
