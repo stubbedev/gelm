@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Parity, fifth pass
+
+- `component.KeyedFactory[K, C, In, Out]`, relm4's `FactoryHashMap`:
+  items addressed by key (`Insert` replaces in place, `Get`, `Has`,
+  `Remove`, `Send`), ordered iteration, `SortFunc`/`Sort`, outputs
+  forwarded with the key.
+
 ### Component framework
 
 - New `component` package, relm4's component model:

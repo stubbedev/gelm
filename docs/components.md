@@ -227,6 +227,17 @@ func (l *List) Init(cx *component.Context[ListMsg, struct{}]) widget.Widget {
 - Removed items shut down. A factory owned by a component
   (`cx.NewFactory`) shuts its items down with it.
 
+A `KeyedFactory[K, C, In, Out]` (relm4's `FactoryHashMap`) addresses
+items by an application key instead of a position. `Insert(k, c)`
+replaces an existing item in place, `Get`/`Has`/`Remove`/`Send` take
+the key, `All` yields keys in order, `SortFunc` (or `component.Sort`
+for ordered keys) reorders in place, and outputs forward with the key:
+
+```go
+users := cx.NewKeyedFactory[UserID](component.BoxView[*UserRow](box, false))
+users.Insert(u.ID, &UserRow{user: u})
+```
+
 Views: `BoxView`, `FlowBoxView`, `StackView` (pages named per item),
 `NotebookView` (tabs titled per item) and `GridView` (cells placed by
 index). The container holds only the factory's items. Implement
