@@ -13,6 +13,10 @@
 - Children launched from a context shut down with their parent;
   top-level components shut down when the loop stops.
 - `component/componenttest.Loop` runs components headless in tests.
+- Commands bound to a component's lifetime: `Context.Oneshot`,
+  `Context.Spawn` and `Context.Context()`, cancelled at shutdown, with
+  late results dropped. Async components implement `component.Loader`
+  (`Loading` view, `Load` off the loop, held input).
 - New `ui` package, relm4's `view!` as typed public builders: one
   builder per widget, generated from package widget (`go generate
   ./ui`; a test fails on a stale file). Each builder has a constructor
