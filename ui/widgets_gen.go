@@ -1610,6 +1610,36 @@ func (b *ComboRowBuilder) OnActivate(fn func()) *ComboRowBuilder {
 	return b
 }
 
+// DrawSurfaceBuilder builds a widget.DrawSurface.
+type DrawSurfaceBuilder struct {
+	base[*widget.DrawSurface, *DrawSurfaceBuilder]
+}
+
+// DrawSurface builds a widget.DrawSurface with widget.NewDrawSurface.
+func DrawSurface(arg int, h int) *DrawSurfaceBuilder {
+	b := &DrawSurfaceBuilder{}
+	b.init(b, func(s *Scope) *widget.DrawSurface { return widget.NewDrawSurface(arg, h) })
+	return b
+}
+
+// ContentSize calls (*widget.DrawSurface).SetContentSize.
+func (b *DrawSurfaceBuilder) ContentSize(arg int, h int) *DrawSurfaceBuilder {
+	b.do(func(s *Scope, w *widget.DrawSurface) { w.SetContentSize(arg, h) })
+	return b
+}
+
+// OnResize sets the widget's OnResize field.
+func (b *DrawSurfaceBuilder) OnResize(fn func(cv *render.Canvas)) *DrawSurfaceBuilder {
+	b.do(func(_ *Scope, w *widget.DrawSurface) { w.OnResize = fn })
+	return b
+}
+
+// OnStylus sets the widget's OnStylus field.
+func (b *DrawSurfaceBuilder) OnStylus(fn func(s widget.Stylus)) *DrawSurfaceBuilder {
+	b.do(func(_ *Scope, w *widget.DrawSurface) { w.OnStylus = fn })
+	return b
+}
+
 // DrawingAreaBuilder builds a widget.DrawingArea.
 type DrawingAreaBuilder struct {
 	base[*widget.DrawingArea, *DrawingAreaBuilder]
