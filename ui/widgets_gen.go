@@ -15,6 +15,7 @@ type nodeProps interface {
 	widget.Widget
 	AddClass(names ...string)
 	AttachStylesheet(s *widget.Stylesheet)
+	SetAttr(name string, value string)
 	SetClasses(names ...string)
 	SetCursorName(s string)
 	SetDebugName(name string)
@@ -46,6 +47,12 @@ func (b *base[W, B]) AddClass(names ...string) B {
 // AttachStylesheet calls AttachStylesheet on the widget.
 func (b *base[W, B]) AttachStylesheet(stylesheet *widget.Stylesheet) B {
 	b.do(func(s *Scope, w W) { w.AttachStylesheet(stylesheet) })
+	return b.self
+}
+
+// Attr calls SetAttr on the widget.
+func (b *base[W, B]) Attr(name string, text string) B {
+	b.do(func(s *Scope, w W) { w.SetAttr(name, text) })
 	return b.self
 }
 
