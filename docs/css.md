@@ -21,6 +21,7 @@ b.AddClass("destructive")
 b.SetID("save-button")
 b.SetState(widget.StateSelected, true)          // :selected, :checked, :backdrop, ...
 b.SetInlineStyle("padding: 4px")                // a widget-scoped provider
+b.SetAttr("data-kind", "danger")                // [data-kind="danger"]
 box.AttachStylesheet(widget.NewStylesheet(css, widget.StylePriorityApplication))
 ```
 
@@ -79,16 +80,53 @@ box.AttachStylesheet(widget.NewStylesheet(css, widget.StylePriorityApplication))
 ## Selectors
 
 - **Simple selectors.** Element, `.class`, `#id` and `*`.
+- **Attribute selectors.** `[attr]`, `[attr=v]`, `~=`, `|=`, `^=`,
+  `$=`, `*=`, each with the trailing `i`/`s` case flag. The built-in
+  attributes are `id`, `class` (the class list, so `[class~=x]` and
+  `[class|=x]` work) and `role` (the a11y role's name, `button`,
+  `entry`, `label`, ...); any other name reads an app-set data
+  attribute (`SetAttr`).
 - **Combinators.** ` `, `>`, `+` and `~`.
 - **State pseudo-classes.**
   - `:hover` matches the hovered widget and its ancestors (GTK's rule).
   - `:active`, `:focus`, `:focus-visible` and `:focus-within`.
   - `:disabled`, `:checked`, `:selected`, `:indeterminate` and
     `:backdrop`. These are app-driven through `SetState`.
+  - `:enabled` (the negation of `:disabled`), `:read-only` and
+    `:read-write` (an entry's `SetReadOnly`), and
+    `:placeholder-shown` (an empty entry with a placeholder).
+- **Functional pseudo-classes.** `:is()` and `:where()` with full
+  selector lists — `:is()` counts its most specific argument's
+  specificity, `:where()` counts nothing — and `:not()` with complex
+  selector lists (Level 4). `:has()` takes relative selectors
+  (`:has(.a)`, `:has(> .a)`, `:has(+ .a)`, `:has(~ .a)`, with complex
+  arguments too) and counts its most specific argument; one compute
+  spends at most 4096 node visits on `:has()` walks, after which a
+  `:has()` conservatively stops matching — the budget keeps relational
+  matching linear instead of quadratic in tree size, and a sheet that
+  loads `:has()` selectors also makes descendant class/state changes
+  restyle the ancestors that read them.
 - **Structural pseudo-classes.** `:first-child`, `:last-child`,
   `:only-child`, `:nth-child()`, `:nth-last-child()` (over visible
-  siblings), `:root`, and `:not()` with compound lists and Level 4
-  specificity.
+  siblings), `:nth-of-type()`, `:nth-last-of-type()`,
+  `:first-of-type`, `:last-of-type`, `:only-of-type` (over visible
+  siblings of the same element name), `:root`, `:empty`, and `:not()`
+  with compound lists and Level 4 specificity.
+- **Pseudo-elements.** `::before` and `::after` cascade their own
+  style (inherited from the element's) with `content:` of strings,
+  `attr(name)` (the built-ins and data attributes), `counter(name)`
+  and `counters(name, sep)`; `counter-reset` and
+  `counter-increment` count in document order (through previous
+  siblings). The pseudo-element's box layers and content paint over
+  the widget's background — content at the content start (`::before`)
+  and end (`::after`), in the pseudo-element's own color and
+  font-size — wherever the widget paints box layers (`PaintBoxLayers`)
+  or shapes text (labels and entries today). `widget.PseudoStyle` and
+  `widget.PseudoContent` read the computed values. `::placeholder`,
+  `::selection` and `::marker` desugar onto the existing part
+  machinery: `entry::placeholder` styles the entry's `placeholder`
+  part (as a descendant part selector) and `::selection` its
+  `selection` part; `::marker` matches a `marker` part.
 - **Element names.** These are GTK's CSS node names where gelm has the
   GTK widget (`button`, `label`, `entry`, `scale`, `scrolledwindow`,
   `textview`, `listview`, `row`, `gridview`, `child`, `flowboxchild`, ...), and otherwise
@@ -202,7 +240,11 @@ A viewport or preference change restyles the whole tree — but only
 Style is cached per widget and invalidated, never re-matched per paint:
 
 - Rules are bucketed by their rightmost simple selector.
-- `Sheet.Match` allocates nothing (`TestValuesNoAllocationPerMatch`).
+- `Sheet.Match` allocates nothing (`TestValuesNoAllocationPerMatch`);
+  the new selector forms keep that: attribute tests read the filled
+  target, nested `:is()`/`:not()` reuse a fixed buffer pool per
+  nesting level, and `:has()` is the only downward walk — budgeted
+  (above).
 - A stylesheet load bumps a generation, and widgets recompute lazily by
   stamp compare, so nothing walks the tree.
 - A class, id or state flip restyles the subtree only when a loaded

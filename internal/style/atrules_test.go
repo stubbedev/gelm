@@ -188,7 +188,8 @@ func TestSupports(t *testing.T) {
 		{`@supports (display: grid) or (color: red) { a { color: red; } }`, true},
 		{`@supports ((display: grid) or (color: red)) and (opacity: 0.5) { a { color: red; } }`, true},
 		{`@supports selector(button:hover) { a { color: red; } }`, true},
-		{`@supports selector(button::after) { a { color: red; } }`, false},
+		{`@supports selector(button::after) { a { color: red; } }`, true},
+		{`@supports selector(button::first-line) { a { color: red; } }`, false},
 	} {
 		if _, ok := mediaColor(t, tc.css, Media{}); ok != tc.want {
 			t.Errorf("%s applied = %v, want %v", tc.css, ok, tc.want)

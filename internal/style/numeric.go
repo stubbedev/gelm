@@ -35,6 +35,11 @@ type ctx struct {
 	weight int
 	color  render.Color
 	dep    bool
+	// self is the node being computed, the attr() of a content value
+	// reads its attributes from; nil at parse-time validation.
+	self *Target
+	// counters is the node's counter scope, counter()/counters() read.
+	counters *CounterScope
 	// usedRem records a rem read: a cached value is only valid under
 	// the base it was computed with.
 	usedRem bool

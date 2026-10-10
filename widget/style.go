@@ -83,6 +83,16 @@ type sensitivity struct {
 	// media reports whether any loaded sheet carries @media rules: the
 	// viewport and preference setters restyle only then.
 	media bool
+	// has reports a :has() selector: a descendant or following
+	// sibling's facts feed an ancestor's match, so class and state
+	// changes restyle up the tree too.
+	has bool
+	// pseudo reports a ::before/::after rule: restyle then computes the
+	// pseudo-element styles as well.
+	pseudo bool
+	// counters reports counter-reset/counter-increment in play: restyle
+	// then chains the previous sibling's counter scope.
+	counters bool
 }
 
 // styleGen bumps on every stylesheet (re)load and environment change.
@@ -162,6 +172,9 @@ func relayer() {
 		sn := s.sheet.Sensitivity()
 		sensNow.states |= sn.AncestorStates
 		sensNow.siblings = sensNow.siblings || sn.Siblings
+		sensNow.has = sensNow.has || sn.HasRelational
+		sensNow.pseudo = sensNow.pseudo || sn.Pseudo
+		sensNow.counters = sensNow.counters || sn.Counters
 		for c := range sn.AncestorClasses {
 			if sensNow.classes == nil {
 				sensNow.classes = map[string]bool{}
@@ -733,6 +746,52 @@ func (n *node) SetID(id string) {
 // ID returns the style id, empty when none is set.
 func (n *node) ID() string { return n.id }
 
+// SetAttr sets one data attribute, the `[attr]` and `[attr=value]`
+// selectors' subject — app-attached metadata, GTK has no analog. An
+// empty name is a no-op; an empty value sets a present-but-empty
+// attribute. The change restyles the widget and, conservatively, its
+// subtree.
+func (n *node) SetAttr(name, value string) {
+	checkLoop("SetAttr")
+	if name == "" {
+		return
+	}
+	for i := range n.attrs {
+		if n.attrs[i].Name == name {
+			if n.attrs[i].Value == value {
+				return
+			}
+			n.attrs[i].Value = value
+			n.invalidateScope(true, true)
+			return
+		}
+	}
+	n.attrs = append(n.attrs, style.Attr{Name: name, Value: value})
+	n.invalidateScope(true, true)
+}
+
+// RemoveAttr drops one data attribute; dropping one the widget does
+// not carry is a no-op.
+func (n *node) RemoveAttr(name string) {
+	for i := range n.attrs {
+		if n.attrs[i].Name == name {
+			n.attrs = slices.Delete(n.attrs, i, i+1)
+			n.invalidateScope(true, true)
+			return
+		}
+	}
+}
+
+// Attr returns one data attribute's value and whether it is set.
+func (n *node) Attr(name string) (string, bool) {
+	for i := range n.attrs {
+		if n.attrs[i].Name == name {
+			return n.attrs[i].Value, true
+		}
+	}
+	return "", false
+}
+
 // StyleBackground returns the widget's computed background color, the
 // diagnostic view a paint test reads.
 func StyleBackground(w Widget) render.Color {
@@ -784,6 +843,7 @@ func PaintBoxLayers(cv *render.Canvas, w Widget) {
 	if bg != 0 || hasBoxLayers(v) {
 		paintBoxBehind(cv, v, n.bounds, radii, borderOf(v), bg)
 	}
+	paintPseudos(cv, w, n, v)
 	paintOutline(cv, v, n.bounds, radii)
 }
 
@@ -836,6 +896,8 @@ type styleTargeter struct {
 	prev *styleTargeter // the reused adapter for the previous sibling
 }
 
+func (s *styleTargeter) StyleID() any { return s.n }
+
 func (s *styleTargeter) StyleTarget(t *style.Target) { s.n.fillTarget(t, s.w) }
 
 func (s *styleTargeter) StyleParent() style.Node {
@@ -877,6 +939,61 @@ func (s *styleTargeter) StylePosition() (int, int) {
 		return 1, 1
 	}
 	return idx + 1, len(sib)
+}
+
+func (s *styleTargeter) StyleTypedPosition(element string) (int, int) {
+	sib, idx := visibleSiblings(s.n, s.w)
+	if idx < 0 {
+		return 1, 1
+	}
+	count, mine := 0, 0
+	for i, k := range sib {
+		if kn := nodeOf(k); kn != nil && kn.Element() == element {
+			count++
+			if i == idx {
+				mine = count
+			}
+		}
+	}
+	return mine, count
+}
+
+func (s *styleTargeter) StyleChildren() []style.Node {
+	gen := DamageGeneration()
+	if s.n.kidsGen != gen {
+		var kids []Widget
+		switch t := s.w.(type) {
+		case childBuf:
+			kids = t.appendChildren(kids)
+		case childser:
+			kids = append(kids, t.Children()...)
+		}
+		if cap(s.n.kidsAdaps) < len(kids) {
+			s.n.kidsAdaps = make([]*styleTargeter, len(kids))
+		}
+		adaps := s.n.kidsAdaps[:0]
+		out := s.n.kids[:0]
+		for _, k := range kids {
+			if k == nil {
+				continue
+			}
+			kn := nodeOf(k)
+			if kn == nil || kn.hidden {
+				continue
+			}
+			var a *styleTargeter
+			if len(adaps) < len(s.n.kidsAdaps) && s.n.kidsAdaps[len(adaps)] != nil {
+				a = s.n.kidsAdaps[len(adaps)]
+				a.n, a.w = kn, k
+			} else {
+				a = &styleTargeter{n: kn, w: k}
+			}
+			adaps = append(adaps, a)
+			out = append(out, a)
+		}
+		s.n.kidsAdaps, s.n.kids, s.n.kidsGen = adaps, out, gen
+	}
+	return s.n.kids
 }
 
 // visibleSiblings returns the visible children of n's parent and n's
@@ -939,8 +1056,20 @@ func (n *node) fillTarget(t *style.Target, w Widget) {
 	t.ID = n.id
 	t.Classes = n.classes
 	t.State = n.styleState(w)
+	t.Role = roleAttr(w)
+	t.Attrs = n.attrs
 	t.Inline = n.inline
 	t.InlinePriority = n.inlinePrio
+}
+
+// roleAttr is the widget's semantic role as an attribute value: the
+// a11y role's name, empty for plain containers.
+func roleAttr(w Widget) string {
+	r := RoleOf(w)
+	if r == RoleNone {
+		return ""
+	}
+	return r.String()
 }
 
 // styleState is the widget's interactive state for matching: the
@@ -969,6 +1098,23 @@ func (n *node) styleState(w Widget) style.State {
 		}
 	}
 	s |= hoverActiveOf(w)
+	s |= textStateOf(w)
+	return s
+}
+
+// textStateOf reads the text-field states a stylesheet's :read-only
+// and :placeholder-shown match.
+func textStateOf(w Widget) style.State {
+	var s style.State
+	switch t := w.(type) {
+	case *Entry:
+		if t.readOnly {
+			s |= style.ReadOnly
+		}
+		if t.placeholder != "" && len(t.runes) == 0 && !t.composing() {
+			s |= style.PlaceholderShown
+		}
+	}
 	return s
 }
 
@@ -1115,7 +1261,16 @@ func (n *node) restyle(w Widget) *style.Values {
 			n.elemName = typeElementName(w)
 		}
 		styleSelf.n, styleSelf.w = n, w
+		if sensNow.counters {
+			styleScratch.SetPrevCounters(prevCountersOf(n, w))
+		}
 		style.Compute(layers, &styleSelf, parent, &old, envNow(), &styleScratch, &v)
+		if sensNow.pseudo {
+			n.computePseudos(layers, &v)
+		}
+	} else if n.pseudoGen != styleGen {
+		n.pseudo = [2]style.Values{}
+		n.pseudoGen = styleGen
 	}
 	n.cs = v
 	n.csGen = styleGen
@@ -1144,6 +1299,127 @@ func (n *node) restyle(w Widget) *style.Values {
 		restyleSubtree(w)
 	}
 	return &n.cs
+}
+
+// pseudoNames are the painted pseudo-elements, in cache order.
+var pseudoNames = [2]string{"before", "after"}
+
+// prevCountersOf is the previous visible sibling's counter scope, the
+// document-order link CSS counting walks. Computed lazily like any
+// style read; only reached when counters are in play.
+func prevCountersOf(n *node, w Widget) *style.CounterScope {
+	sib, idx := visibleSiblings(n, w)
+	if idx <= 0 {
+		return nil
+	}
+	pw := sib[idx-1]
+	pn := nodeOf(pw)
+	if pn == nil {
+		return nil
+	}
+	return pn.style(pw).Counters
+}
+
+// computePseudos cascades the ::before/::after rules of this widget,
+// inheriting from its own computed style, and repaints when one moved.
+func (n *node) computePseudos(layers []style.Layer, self *style.Values) {
+	oldPseudo := n.pseudo
+	for i, name := range pseudoNames {
+		var pv style.Values
+		style.ComputePseudo(layers, &styleSelf, self, envNow(), &styleScratch, &pv, name)
+		n.pseudo[i] = pv
+	}
+	n.pseudoGen = styleGen
+	for i := range pseudoNames {
+		if pseudoChanged(&oldPseudo[i], &n.pseudo[i]) {
+			n.Invalidate()
+			break
+		}
+	}
+}
+
+// pseudoChanged is styleChanged plus the pseudo-element-only values.
+func pseudoChanged(a, b *style.Values) bool {
+	return a.HasContent != b.HasContent || a.Content != b.Content || a.Counters != b.Counters || styleChanged(a, b)
+}
+
+// PseudoStyle returns w's computed ::before/::after style — the
+// cascade a `::before`/`::after` rule produced, inheriting from the
+// widget's own. nil when no pseudo-element rules are loaded or the
+// name is not one of the two. The values are fresh only after a
+// restyle; paint paths read them through PaintBoxLayers.
+func PseudoStyle(w Widget, pseudo string) *style.Values {
+	n := nodeOf(w)
+	if n == nil || !sensNow.pseudo {
+		return nil
+	}
+	for i, name := range pseudoNames {
+		if name == pseudo {
+			if n.pseudoGen != styleGen {
+				n.style(w)
+			}
+			return &n.pseudo[i]
+		}
+	}
+	return nil
+}
+
+// PseudoContent returns w's resolved pseudo-element content — the
+// strings, attr() values, and counter readings a `content:` value
+// joined — empty when the pseudo-element declares none.
+func PseudoContent(w Widget, pseudo string) string {
+	if v := PseudoStyle(w, pseudo); v != nil {
+		return v.Content
+	}
+	return ""
+}
+
+// pseudoFacer is implemented by the widgets that shape text and so
+// can paint a pseudo-element's content string: ::before/::after
+// content draws in the widget's face (or the pseudo-element's own
+// font-size when it sets one).
+type pseudoFacer interface {
+	pseudoFace() (render.Font, float64)
+}
+
+// paintPseudos paints the ::before/::after layers over the widget's
+// own background: the pseudo-element's box layers on the padding box,
+// then its content string — before at the content start, after at the
+// content end. Content needs a face; box layers paint for any widget.
+func paintPseudos(cv *render.Canvas, w Widget, n *node, v *style.Values) {
+	if !sensNow.pseudo || n.pseudoGen != styleGen {
+		return
+	}
+	b := boxOf(v, render.Insets{})
+	box := b.padding.Shrink(b.border.Shrink(n.bounds))
+	for i := range pseudoNames {
+		pv := &n.pseudo[i]
+		if !pv.HasContent && !pv.HasAny(style.PropBackgroundColor) && !hasBoxLayers(pv) {
+			continue
+		}
+		if bg := pickc(0, pv, style.PropBackgroundColor, 0); bg != 0 || hasBoxLayers(pv) {
+			paintBoxBehind(cv, pv, box, radiusOr(pv, 0), borderOf(pv), bg)
+		}
+		if pv.Content == "" {
+			continue
+		}
+		f, ok := w.(pseudoFacer)
+		if !ok {
+			continue
+		}
+		face, px := f.pseudoFace()
+		if pv.Has(style.PropFontSize) {
+			px = pv.FontSize
+		}
+		sh := face.Shape(pv.Content, px)
+		x := box.X
+		if i == 1 {
+			x = box.X + max(box.W-int(sh.Advance()), 0)
+		}
+		baseline := box.Y + (box.H-sh.LineHeight())/2 + int(sh.Ascent())
+		col := pickc(0, pv, style.PropColor, v.Color)
+		sh.Draw(cv, x, baseline, col)
+	}
 }
 
 // styleRestyler is the optional per-widget reaction to a changed
@@ -1348,7 +1624,7 @@ func (n *node) invalidateStyle() {
 // widget repaints: its own paint may read the state (a theme hover
 // shade).
 func (n *node) invalidateState(changed style.State) {
-	n.invalidateScope(sensNow.states&changed != 0, sensNow.siblings)
+	n.invalidateScope(sensNow.states&changed != 0 || sensNow.has, sensNow.siblings)
 }
 
 // restyleState is invalidateState for the propagated states — the
@@ -1357,12 +1633,12 @@ func (n *node) invalidateState(changed style.State) {
 func (n *node) restyleState(changed style.State) {
 	n.styleDirty = true
 	markDamage()
-	n.scope(sensNow.states&changed != 0, sensNow.siblings)
+	n.scope(sensNow.states&changed != 0 || sensNow.has, sensNow.siblings)
 }
 
 // invalidateClasses is invalidateState for a class-list change.
 func (n *node) invalidateClasses(changed []string) {
-	anc := false
+	anc := sensNow.has
 	for _, c := range changed {
 		if sensNow.classes[c] {
 			anc = true
@@ -1373,10 +1649,18 @@ func (n *node) invalidateClasses(changed []string) {
 }
 
 // invalidateScope marks n stale, and its subtree when sub, and its
-// parent's other children when sib. A widget that has never been
-// arranged has no subtree links yet: its first restyle happens anyway.
+// parent's other children when sib. Under :has() selectors an
+// ancestor's match reads this node's facts, so its chain goes stale
+// too. A widget that has never been arranged has no subtree links
+// yet: its first restyle happens anyway.
 func (n *node) invalidateScope(sub, sib bool) {
 	n.invalidateStyle()
+	if sensNow.has {
+		for p := parentNodeOf(n); p != nil; p = parentNodeOf(p) {
+			p.styleDirty = true
+		}
+		markDamage()
+	}
 	n.scope(sub, sib)
 }
 

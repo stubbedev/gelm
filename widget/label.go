@@ -461,6 +461,7 @@ func (l *Label) Paint(cv *render.Canvas) {
 	if bg := pickc(0, v, style.PropBackgroundColor, 0); bg != 0 || hasBoxLayers(v) {
 		paintBoxBehind(cv, v, l.bounds, radii, b.border, bg)
 	}
+	paintPseudos(cv, l, nodeOf(l), v)
 	content := b.padding.Shrink(b.border.Shrink(l.bounds))
 	face, px := l.effStyleIn(v)
 	col := l.textColor(v)
@@ -542,6 +543,11 @@ func transformText(s string, t style.TextTransform) string {
 
 // Role implements Roleer.
 func (l *Label) Role() Role { return RoleLabel }
+
+func (l *Label) pseudoFace() (render.Font, float64) {
+	face, px := l.effStyleIn(l.style(l))
+	return face, px
+}
 
 // HitTest returns the label when p is inside its bounds.
 func (l *Label) HitTest(p Point) Widget {

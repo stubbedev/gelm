@@ -71,6 +71,30 @@ func (n *node) StylePosition() (int, int) {
 	return 1, 1
 }
 
+func (n *node) StyleTypedPosition(element string) (int, int) {
+	sib := n.siblings()
+	idx, cnt := 0, 0
+	for _, k := range sib {
+		if k.target.Element == element {
+			cnt++
+			if k == n {
+				idx = cnt
+			}
+		}
+	}
+	return idx, cnt
+}
+
+func (n *node) StyleChildren() []Node {
+	var out []Node
+	for _, k := range n.kids {
+		if !k.hidden {
+			out = append(out, k)
+		}
+	}
+	return out
+}
+
 func el(element string, classes ...string) *node {
 	return &node{target: Target{Element: element, Classes: classes}}
 }
@@ -759,7 +783,7 @@ func TestWarnAndSkipPolicy(t *testing.T) {
 	s := Parse(`
 		button { color: #ff0000; bogus-prop: 12px; background-color: #00ff00; }
 		button:visited { color: #123123; }
-		label::after { color: #456456; }
+		label::first-line { color: #456456; }
 		button { color: #0000ff !important; }
 		.nested { a { color: #111111; } }
 		@import "x.css";
@@ -767,7 +791,7 @@ func TestWarnAndSkipPolicy(t *testing.T) {
 		@media screen { button { color: #222222; } }
 		button { animation: spin 1s; -gtk-icon-transform: rotate(1deg); }
 		entry { padding: 4px; color: #abcdef; }
-		button[flavored] { color: #333333; }
+		button:link { color: #333333; }
 		button { background-color: #445566; `)
 	want := []string{"unknown property", "bad selector", "bad selector", "@import", "bad selector", "unterminated"}
 	if len(*warns) != len(want) {

@@ -68,6 +68,9 @@ const (
 type decl struct {
 	name   string // the property name, or the custom property's --name
 	custom bool
+	// meta marks the declarations that cascade outside the longhand
+	// table: content, counter-reset, counter-increment.
+	meta   bool
 	covers PropSet
 	parse  func([]token, *ctx, *Values) bool
 	val    []token
@@ -163,6 +166,16 @@ type Sensitivity struct {
 	// anywhere: a sibling's add, removal, visibility, class, or state
 	// can then restyle its neighbors.
 	Siblings bool
+	// HasRelational reports a :has() anywhere: a descendant or
+	// following sibling's facts then feed an ancestor's match, so class
+	// and state changes restyle up the tree too.
+	HasRelational bool
+	// Pseudo reports a ::before/::after rule: the widget layer then
+	// computes pseudo-element styles.
+	Pseudo bool
+	// Counters reports counter-reset or counter-increment in play: the
+	// widget layer then chains siblings' counter scopes.
+	Counters bool
 }
 
 // Sensitivity returns the sheet's selector summary.
@@ -198,6 +211,9 @@ type rule struct {
 	block *Block
 	mq    int32
 	layer uint8
+	// pseudo names the ::before/::after pseudo-element this rule
+	// addresses; empty styles the element itself.
+	pseudo string
 }
 
 // Parse compiles css into a Sheet. Malformed declarations and rules are
@@ -1028,6 +1044,10 @@ func (p *parser) declaration(ts []token) (decl, bool) {
 	}
 	lname := strings.ToLower(name)
 	d.name = lname
+	if lname == "content" || lname == "counter-reset" || lname == "counter-increment" {
+		d.meta = true
+		return d, true
+	}
 	if lname == "all" {
 		if d.wide == wideNone {
 			p.warnf("declaration skipped: all: %s", badText(rawText(p.src, val)))
@@ -1130,7 +1150,7 @@ func (p *parser) add(sel selector, block *Block) {
 	}
 	s := &p.sheet
 	idx := int32(len(s.rules))
-	r := rule{sel: sel, spec: sel.spec(), block: block, mq: -1, layer: p.layer}
+	r := rule{sel: sel, spec: sel.spec(), block: block, mq: -1, layer: p.layer, pseudo: sel.parts[len(sel.parts)-1].pseudo}
 	if p.mq != nil {
 		r.mq = int32(len(s.mediaQs))
 		for i, q := range s.mediaQs {
@@ -1144,19 +1164,26 @@ func (p *parser) add(sel selector, block *Block) {
 		}
 	}
 	s.rules = append(s.rules, r)
+	if r.pseudo != "" {
+		s.sens.Pseudo = true
+	}
 	for i := range sel.parts {
 		part := &sel.parts[i]
 		if part.structs != 0 || len(part.nths) > 0 {
 			s.sens.Siblings = true
 		}
-		if i == len(sel.parts)-1 {
-			continue
-		}
-		s.noteAncestor(part)
+		s.noteCompound(part, i == len(sel.parts)-1)
 	}
 	for _, c := range sel.combs {
 		if c == '+' || c == '~' {
 			s.sens.Siblings = true
+		}
+	}
+	for i := range block.decls {
+		if d := &block.decls[i]; d.meta {
+			if d.name == "counter-reset" || d.name == "counter-increment" || counterContent(d.val) {
+				s.sens.Counters = true
+			}
 		}
 	}
 	right := &sel.parts[len(sel.parts)-1]
@@ -1181,6 +1208,29 @@ func (p *parser) add(sel selector, block *Block) {
 	}
 }
 
+// noteCompound records the facts one compound tests: its own facts
+// for a non-rightmost compound (the ancestor sensitivity), and any
+// :has() anywhere (a descendant's facts feed this node's match).
+func (s *Sheet) noteCompound(c *compound, rightmost bool) {
+	if len(c.has) > 0 {
+		s.sens.HasRelational = true
+	}
+	if rightmost {
+		return
+	}
+	s.noteAncestor(c)
+}
+
+// counterContent reports a content value reading counters.
+func counterContent(ts []token) bool {
+	for _, t := range ts {
+		if t.kind == tkFunc && (t.s == "counter" || t.s == "counters") {
+			return true
+		}
+	}
+	return false
+}
+
 // noteAncestor records the facts a non-rightmost compound tests.
 func (s *Sheet) noteAncestor(c *compound) {
 	s.sens.AncestorStates |= c.state
@@ -1191,7 +1241,21 @@ func (s *Sheet) noteAncestor(c *compound) {
 		s.sens.AncestorClasses[cl] = true
 	}
 	for i := range c.not {
-		s.noteAncestor(&c.not[i])
+		for j := range c.not[i].parts {
+			s.noteAncestor(&c.not[i].parts[j])
+		}
+	}
+	for i := range c.isLists {
+		for j := range c.isLists[i].sels {
+			for k := range c.isLists[i].sels[j].parts {
+				s.noteAncestor(&c.isLists[i].sels[j].parts[k])
+			}
+		}
+	}
+	for i := range c.has {
+		for k := range c.has[i].sel.parts {
+			s.noteAncestor(&c.has[i].sel.parts[k])
+		}
 	}
 }
 

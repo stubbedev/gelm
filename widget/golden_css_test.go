@@ -57,6 +57,20 @@ func TestGoldenCSSFontSize(t *testing.T) {
 	cssShot(t, `label { font-size: 20; }`, lbl, "css-label-font-size", goldenTheme(th))
 }
 
+// TestGoldenCSSPseudoElements pins ::before/::after content painting
+// on a label: generated text in the pseudo-element's own color, at
+// the content start and end.
+func TestGoldenCSSPseudoElements(t *testing.T) {
+	face := goldenFace(t)
+	th := DarkTheme()
+	lbl := NewLabel(face, 14, "tagged", th.Text)
+	lbl.AddClass("tag")
+	cssShot(t, `
+		.tag::before { content: "» "; color: #e05561; }
+		.tag::after { content: " «"; color: #3fb68b; }
+	`, lbl, "css-pseudo-elements", goldenTheme(th))
+}
+
 // installFixtureResolver wires the family/weight lookup to the two
 // fixture faces: the Hebrew face stands in for both the "hebrew"
 // family and the bold variant, since the fixture set carries two
