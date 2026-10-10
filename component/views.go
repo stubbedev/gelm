@@ -94,6 +94,44 @@ func (v notebookView[C]) Move(from, to int, _ C, _ widget.Widget) {
 	v.notebook.MoveTab(from, to)
 }
 
+type fixedView[C any] struct {
+	fixed *widget.Fixed
+	place func(i int) (x, y int)
+	cells []widget.Widget
+}
+
+// FixedView renders items into a Fixed, item i at the coordinates
+// place(i) returns, relm4's FixedPosition; items re-place in place as
+// positions shift.
+func FixedView[C any](f *widget.Fixed, place func(i int) (x, y int)) FactoryView[C] {
+	return &fixedView[C]{fixed: f, place: place}
+}
+
+func (v *fixedView[C]) Insert(i int, _ C, w widget.Widget) {
+	v.cells = slices.Insert(v.cells, i, w)
+	v.replace(i+1, len(v.cells))
+	x, y := v.place(i)
+	v.fixed.Put(w, x, y)
+}
+
+func (v *fixedView[C]) Remove(i int, _ C, w widget.Widget) {
+	v.fixed.Remove(w)
+	v.cells = slices.Delete(v.cells, i, i+1)
+	v.replace(i, len(v.cells))
+}
+
+func (v *fixedView[C]) Move(from, to int, _ C, w widget.Widget) {
+	v.cells = slices.Insert(slices.Delete(v.cells, from, from+1), to, w)
+	v.replace(min(from, to), max(from, to)+1)
+}
+
+func (v *fixedView[C]) replace(from, to int) {
+	for i := from; i < to; i++ {
+		x, y := v.place(i)
+		v.fixed.Move(v.cells[i], x, y)
+	}
+}
+
 type gridView[C any] struct {
 	grid  *widget.Grid
 	place func(i int) (col, row, colSpan, rowSpan int)

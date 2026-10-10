@@ -2591,6 +2591,24 @@ func (b *FileChooserBuilder) OnApply(fn func(paths []string)) *FileChooserBuilde
 	return b
 }
 
+// FixedBuilder builds a widget.Fixed.
+type FixedBuilder struct {
+	base[*widget.Fixed, *FixedBuilder]
+}
+
+// Fixed builds a widget.Fixed with widget.NewFixed.
+func Fixed() *FixedBuilder {
+	b := &FixedBuilder{}
+	b.init(b, func(s *Scope) *widget.Fixed { return widget.NewFixed() })
+	return b
+}
+
+// Put calls (*widget.Fixed).Put.
+func (b *FixedBuilder) Put(child Node, x int, y int) *FixedBuilder {
+	b.do(func(s *Scope, w *widget.Fixed) { w.Put(build(s, child), x, y) })
+	return b
+}
+
 // FlowBoxBuilder builds a widget.FlowBox.
 type FlowBoxBuilder struct {
 	base[*widget.FlowBox, *FlowBoxBuilder]

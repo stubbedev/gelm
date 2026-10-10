@@ -22,7 +22,7 @@ import (
 
 const widgetPath = "github.com/stubbedev/gelm/widget"
 
-var mutators = []string{"Set", "Add", "Bind", "Attach", "Append", "Insert", "Pack", "Push"}
+var mutators = []string{"Set", "Add", "Bind", "Attach", "Append", "Insert", "Pack", "Push", "Put"}
 
 var plumbing = map[string]bool{
 	"SetHovered": true, "SetPressed": true, "SetFocused": true, "SetDragOver": true,

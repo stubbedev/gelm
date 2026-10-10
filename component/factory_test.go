@@ -226,6 +226,48 @@ func TestGridViewRePlacesShiftedItems(t *testing.T) {
 	}
 }
 
+func TestFixedViewPositionsItems(t *testing.T) {
+	var loop componenttest.Loop
+	fixed := widget.NewFixed()
+	ff := component.NewFactory(&loop, component.FixedView[*row](fixed, func(i int) (int, int) { return i * 10, i * 5 }))
+	removed := 0
+	widget.SetRemovedHook(func(widget.Widget) { removed++ })
+	defer widget.SetRemovedHook(nil)
+	rows := fill(t, ff, "a", "b", "c")
+
+	placed := func() []render.Rect {
+		t.Helper()
+		nat := fixed.Measure(widget.Constraints{Max: widget.Size{W: 300, H: 300}})
+		fixed.Arrange(render.Rect{X: 0, Y: 0, W: nat.W, H: nat.H})
+		out := make([]render.Rect, len(rows))
+		for i, r := range rows {
+			out[i] = r.label.Bounds()
+		}
+		return out
+	}
+
+	if got := placed(); !slices.EqualFunc(got, []render.Rect{
+		{X: 0, Y: 0}, {X: 10, Y: 5}, {X: 20, Y: 10},
+	}, func(a, b render.Rect) bool { return a.X == b.X && a.Y == b.Y }) {
+		t.Fatalf("positions %v, want a b c at 10px steps", got)
+	}
+
+	ff.Move(2, 0)
+	if got := placed(); !slices.EqualFunc(got, []render.Rect{
+		{X: 10, Y: 5}, {X: 20, Y: 10}, {X: 0, Y: 0},
+	}, func(a, b render.Rect) bool { return a.X == b.X && a.Y == b.Y }) {
+		t.Errorf("after Move(2, 0) positions %v, want c a b at 10px steps", got)
+	}
+	if removed != 0 {
+		t.Errorf("re-placing items detached %d widgets", removed)
+	}
+
+	ff.Remove(2)
+	if got := fixed.Children(); !slices.Equal(got, widgets(rows[0], rows[2])) {
+		t.Errorf("after removing b: fixed %v, want a c", got)
+	}
+}
+
 type asyncRow struct {
 	index *component.Index
 	ready bool
