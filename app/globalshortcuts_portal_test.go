@@ -17,6 +17,7 @@ func TestPortalShortcutsDispatch(t *testing.T) {
 	p := &portalShortcuts{app: a}
 	p.pending = map[string]chan portalResponseData{}
 	p.live = map[string]*GlobalShortcut{}
+	p.onSignal = p.shortcutSignal
 
 	// Response: results ride along, the pending entry is consumed.
 	ch := make(chan portalResponseData, 1)
@@ -89,6 +90,7 @@ func TestPortalDeniedMapsResponseCode(t *testing.T) {
 	p := &portalShortcuts{app: a}
 	p.pending = map[string]chan portalResponseData{}
 	p.live = map[string]*GlobalShortcut{}
+	p.onSignal = p.shortcutSignal
 	p.session = "/org/freedesktop/portal/desktop/session/x"
 	// bindOne waits on call(); without a connection call fails with
 	// ErrGlobalShortcutsUnavailable before any denial, so pin the
