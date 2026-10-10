@@ -79,6 +79,45 @@ func TestColumnViewSortAndFilter(t *testing.T) {
 	}
 }
 
+// TestColumnViewFilterStack pins the shared filter stack: the old
+// SetFilter slot and filters added alongside it compose, toggle, pop
+// and clear together.
+func TestColumnViewFilterStack(t *testing.T) {
+	face := viewFace(t)
+	data := SliceModel[tableRow]{{"a", 1}, {"b", 2}, {"ab", 1}, {"c", 3}}
+	v := NewColumnView(face, 14, data, tableCols(face))
+	v.SetFilter(func(r tableRow) bool { return r.Count != 3 })
+	if v.Rows() != 3 {
+		t.Fatalf("set filter left %d rows, want 3", v.Rows())
+	}
+	a := v.AddFilter(func(r tableRow) bool { return strings.HasPrefix(r.Name, "a") })
+	if v.Rows() != 2 {
+		t.Fatalf("stacked filters left %d rows, want 2", v.Rows())
+	}
+	v.SetFilterStatus(a, false)
+	if v.Rows() != 3 {
+		t.Fatalf("a toggled-off filter still narrowed to %d rows", v.Rows())
+	}
+	v.SetFilterStatus(a, true)
+	v.PopFilter()
+	if v.Rows() != 3 {
+		t.Fatalf("pop touched the SetFilter slot: %d rows", v.Rows())
+	}
+	v.SetFilter(nil)
+	if v.Rows() != 4 {
+		t.Fatalf("clearing the slot left %d rows, want 4", v.Rows())
+	}
+	v.SetFilter(func(r tableRow) bool { return r.Count == 1 })
+	v.ClearFilters()
+	if v.Rows() != 4 {
+		t.Fatalf("clear filters left %d rows, want 4", v.Rows())
+	}
+	v.SetFilter(func(r tableRow) bool { return r.Count == 2 })
+	if v.Rows() != 1 || v.Row(0).Name != "b" {
+		t.Fatalf("the slot came back after a clear: %d rows", v.Rows())
+	}
+}
+
 // TestColumnViewCycleSort pins the header walk: a sortable column
 // cycles ascending, descending, off; a sortless column clears.
 func TestColumnViewCycleSort(t *testing.T) {
@@ -128,21 +167,47 @@ func TestColumnViewVirtualizationBounds(t *testing.T) {
 	}
 }
 
-// TestRowPermutation pins the shared sort/filter layer directly:
-// stability, filtering, and the identity order.
-func TestRowPermutation(t *testing.T) {
-	var p rowPermutation
-	p.rebuild(4, nil, nil)
-	if len(p.order) != 4 || p.order[2] != 2 {
-		t.Fatalf("identity order = %v", p.order)
+// TestViewModel pins the shared sort/filter layer directly: identity
+// and stability, sorting, one filter, and a toggleable stack of them.
+func TestViewModel(t *testing.T) {
+	var vm viewModel[tableRow]
+	vm.setModel(SliceModel[tableRow]{{"b", 2}, {"a", 1}, {"c", 1}})
+	vm.rebuild()
+	if vm.len() != 3 || vm.source(2) != 2 {
+		t.Fatalf("identity order = %v", vm.order)
 	}
-	p.rebuild(4, func(i, j int) int { return j - i }, nil) // reverse by index
-	if p.order[0] != 3 || p.order[3] != 0 {
-		t.Fatalf("reversed order = %v", p.order)
+	vm.setSort(func(a, b tableRow) int { return a.Count - b.Count })
+	vm.rebuild()
+	if vm.source(0) != 1 || vm.source(1) != 2 { // a before c: stable
+		t.Fatalf("sorted order = %v", vm.order)
 	}
-	p.rebuild(6, nil, func(i int) bool { return i%2 == 0 })
-	if len(p.order) != 3 || p.order[2] != 4 {
-		t.Fatalf("filtered order = %v", p.order)
+	odd := vm.addFilter(func(r tableRow) bool { return r.Count%2 == 1 })
+	vm.rebuild()
+	if vm.len() != 2 || vm.visible(0) != -1 {
+		t.Fatalf("filtered order = %v", vm.order)
+	}
+	vm.setFilterStatus(odd, false)
+	big := vm.addFilter(func(r tableRow) bool { return r.Count > 1 })
+	vm.rebuild()
+	if vm.len() != 1 { // odd off: only big narrows
+		t.Fatalf("toggled-off filter still narrowed: %v", vm.order)
+	}
+	vm.setFilterStatus(big, true)
+	vm.setFilterStatus(odd, true)
+	vm.rebuild()
+	if vm.len() != 0 {
+		t.Fatalf("composed filters kept %d rows", vm.len())
+	}
+	vm.popFilter()
+	vm.rebuild()
+	if vm.len() != 2 || vm.at(0).Name != "a" {
+		t.Fatalf("after pop order = %v", vm.order)
+	}
+	vm.clearFilters()
+	vm.setSort(nil)
+	vm.rebuild()
+	if vm.len() != 3 || vm.at(0).Name != "b" {
+		t.Fatalf("source order not restored: %v", vm.order)
 	}
 }
 

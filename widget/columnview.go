@@ -14,22 +14,22 @@ import (
 // for - virtualization, selection, keyboard - through the same model
 // adapter, so a million rows cost about what twenty do.
 //
-// The model layer is the GIO list-model analog: sorting and filtering
-// never touch the source model, they live in a permutation of its row
+// The model layer is the GIO list-model analog, shared with the
+// typed views (#166): sorting and a stack of toggleable filters never
+// touch the source model, they live in a permutation of its row
 // indices - stable (equal rows keep source order), recomputed on
-// SortBy/SetFilter/SetModel, and the source's own order is one call
-// away.
+// SortBy/SetFilter/SetModel/AddFilter/SetFilterStatus/PopFilter/
+// ClearFilters, and the source's own order is one call away.
 type ColumnView[T any] struct {
 	composite
 	face   render.Font
 	sizePx float64
 
 	cols   []TableColumn[T]
-	model  ColumnModel[T]
-	filter func(T) bool
+	vm     viewModel[T]
+	search *ViewFilter[T]
 	sortBy int
 	sortUp bool
-	perm   rowPermutation
 
 	header *Box
 	list   *List
@@ -80,8 +80,9 @@ func NewColumnView[T any](face render.Font, sizePx float64, model ColumnModel[T]
 	face = requireFace("widget.NewColumnView", face)
 	v := &ColumnView[T]{
 		face: face, sizePx: sizePx,
-		cols: cols, model: model, sortBy: -1,
+		cols: cols, sortBy: -1,
 	}
+	v.vm.setModel(model)
 	v.rows = &columnRows[T]{view: v}
 	v.list = NewList(v.rows, int(sizePx)+12)
 	v.header = NewBox(Row, 0, 0)
@@ -100,20 +101,16 @@ func (v *ColumnView[T]) List() *List { return v.list }
 
 // Row returns the data of visible row i (post sort/filter).
 func (v *ColumnView[T]) Row(i int) T {
-	if i < 0 || i >= len(v.perm.order) || v.model == nil {
-		var zero T
-		return zero
-	}
-	return v.model.Row(v.perm.order[i])
+	return v.vm.at(i)
 }
 
 // Rows reports the visible row count.
-func (v *ColumnView[T]) Rows() int { return len(v.perm.order) }
+func (v *ColumnView[T]) Rows() int { return v.vm.len() }
 
 // SetModel replaces the data source and drops the sort/filter
 // permutation back to the source order.
 func (v *ColumnView[T]) SetModel(m ColumnModel[T]) {
-	v.model = m
+	v.vm.setModel(m)
 	v.sortBy = -1
 	v.buildHeader()
 	v.recompute()
@@ -139,9 +136,47 @@ func (v *ColumnView[T]) SortBy(col int, desc bool) {
 func (v *ColumnView[T]) SortedBy() (col int, ascending bool) { return v.sortBy, v.sortUp }
 
 // SetFilter narrows the view to rows keep accepts (nil clears); the
-// source model is untouched and the sort stays.
+// source model is untouched and the sort stays. It is one slot in the
+// filter stack: AddFilter/SetFilterStatus/PopFilter/ClearFilters
+// manage the rest alongside it.
 func (v *ColumnView[T]) SetFilter(keep func(T) bool) {
-	v.filter = keep
+	switch {
+	case keep == nil:
+		v.vm.setFilterStatus(v.search, false)
+	case v.search == nil:
+		v.search = v.vm.addFilter(keep)
+	default:
+		v.search.keep = keep
+		v.search.on = true
+	}
+	v.recompute()
+}
+
+// AddFilter appends a filter to the stack and returns its handle;
+// every enabled filter must accept a row for it to show.
+func (v *ColumnView[T]) AddFilter(keep func(T) bool) *ViewFilter[T] {
+	f := v.vm.addFilter(keep)
+	v.recompute()
+	return f
+}
+
+// SetFilterStatus turns a filter AddFilter returned on or off without
+// dropping it.
+func (v *ColumnView[T]) SetFilterStatus(f *ViewFilter[T], on bool) {
+	v.vm.setFilterStatus(f, on)
+	v.recompute()
+}
+
+// PopFilter drops the most recently added filter.
+func (v *ColumnView[T]) PopFilter() {
+	v.vm.popFilter()
+	v.recompute()
+}
+
+// ClearFilters drops every filter, SetFilter's slot included.
+func (v *ColumnView[T]) ClearFilters() {
+	v.vm.clearFilters()
+	v.search = nil
 	v.recompute()
 }
 
@@ -192,52 +227,23 @@ func (v *ColumnView[T]) cycleSort(col int) {
 
 // recompute rebuilds the permutation and tells the List.
 func (v *ColumnView[T]) recompute() {
-	n := 0
-	if v.model != nil {
-		n = v.model.Len()
-	}
-	var cmp func(i, j int) int
-	if v.sortBy >= 0 && v.sortBy < len(v.cols) && v.cols[v.sortBy].Sort != nil && v.model != nil {
+	var cmp func(a, b T) int
+	if v.sortBy >= 0 && v.sortBy < len(v.cols) && v.cols[v.sortBy].Sort != nil && v.vm.src != nil {
 		less := v.cols[v.sortBy].Sort
 		desc := !v.sortUp
-		cmp = func(i, j int) int {
-			c := less(v.model.Row(i), v.model.Row(j))
+		cmp = func(a, b T) int {
+			c := less(a, b)
 			if desc {
 				return -c
 			}
 			return c
 		}
 	}
-	var keep func(i int) bool
-	if v.filter != nil && v.model != nil {
-		f := v.filter
-		keep = func(i int) bool { return f(v.model.Row(i)) }
-	}
-	v.perm.rebuild(n, cmp, keep)
+	v.vm.setSort(cmp)
+	v.vm.rebuild()
 	v.rows.set()
 	v.list.Reset()
 	v.InvalidateLayout()
-}
-
-// rowPermutation is the sort/filter model layer: a stable ordering of
-// the source indices - SortListModel's shape without the interface
-// ceremony, one slice, rebuilt, indexed.
-type rowPermutation struct {
-	order []int
-}
-
-// rebuild recomputes the visible order of n source rows: keep filters
-// (nil keeps all), cmp sorts (nil keeps source order), stably.
-func (p *rowPermutation) rebuild(n int, cmp func(i, j int) int, keep func(i int) bool) {
-	p.order = p.order[:0]
-	for i := range n {
-		if keep == nil || keep(i) {
-			p.order = append(p.order, i)
-		}
-	}
-	if cmp != nil {
-		slices.SortStableFunc(p.order, cmp)
-	}
 }
 
 // columnRows adapts the view as a ListModel: each visible row builds a
@@ -253,7 +259,7 @@ func (r *columnRows[T]) Len() int { return r.view.Rows() }
 // Row implements ListModel; rows are built once per permutation and
 // cached until the next recompute.
 func (r *columnRows[T]) Row(i int) Widget {
-	if i < 0 || i >= len(r.view.perm.order) {
+	if i < 0 || i >= r.view.vm.len() {
 		return nil
 	}
 	for len(r.built) < i+1 {

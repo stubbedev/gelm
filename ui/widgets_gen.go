@@ -1254,9 +1254,21 @@ func (b *ColumnViewBuilder[T]) Font(face render.Font, sizePx float64) *ColumnVie
 	return b
 }
 
+// AddFilter calls (*widget.ColumnView).AddFilter.
+func (b *ColumnViewBuilder[T]) AddFilter(keep func(T) bool) *ColumnViewBuilder[T] {
+	b.do(func(s *Scope, w *widget.ColumnView[T]) { w.AddFilter(keep) })
+	return b
+}
+
 // Filter calls (*widget.ColumnView).SetFilter.
 func (b *ColumnViewBuilder[T]) Filter(keep func(T) bool) *ColumnViewBuilder[T] {
 	b.do(func(s *Scope, w *widget.ColumnView[T]) { w.SetFilter(keep) })
+	return b
+}
+
+// FilterStatus calls (*widget.ColumnView).SetFilterStatus.
+func (b *ColumnViewBuilder[T]) FilterStatus(f *widget.ViewFilter[T], on bool) *ColumnViewBuilder[T] {
+	b.do(func(s *Scope, w *widget.ColumnView[T]) { w.SetFilterStatus(f, on) })
 	return b
 }
 
@@ -6382,6 +6394,248 @@ func (b *ToolbarViewBuilder) TopBarStyle(toolbarStyle widget.ToolbarStyle) *Tool
 // WatchTopBarStyle re-applies SetTopBarStyle with get's value after every update.
 func (b *ToolbarViewBuilder) WatchTopBarStyle(get func() widget.ToolbarStyle) *ToolbarViewBuilder {
 	b.watch(func(w *widget.ToolbarView) { w.SetTopBarStyle(get()) })
+	return b
+}
+
+// TypedGridBuilder builds a widget.TypedGrid.
+type TypedGridBuilder[T any] struct {
+	base[*widget.TypedGrid[T], *TypedGridBuilder[T]]
+}
+
+// TypedGrid builds a widget.TypedGrid with widget.NewTypedGrid.
+func TypedGrid[T any](model widget.ColumnModel[T], factory widget.TypedFactory[T], cellWidth int, cellHeight int) *TypedGridBuilder[T] {
+	b := &TypedGridBuilder[T]{}
+	b.init(b, func(s *Scope) *widget.TypedGrid[T] {
+		return widget.NewTypedGrid[T](model, factory, cellWidth, cellHeight)
+	})
+	return b
+}
+
+// MaxColumns calls (*widget.TypedGrid).SetMaxColumns.
+func (b *TypedGridBuilder[T]) MaxColumns(n int) *TypedGridBuilder[T] {
+	b.do(func(s *Scope, w *widget.TypedGrid[T]) { w.SetMaxColumns(n) })
+	return b
+}
+
+// WatchMaxColumns re-applies SetMaxColumns with get's value after every update.
+func (b *TypedGridBuilder[T]) WatchMaxColumns(get func() int) *TypedGridBuilder[T] {
+	b.watch(func(w *widget.TypedGrid[T]) { w.SetMaxColumns(get()) })
+	return b
+}
+
+// MinColumns calls (*widget.TypedGrid).SetMinColumns.
+func (b *TypedGridBuilder[T]) MinColumns(n int) *TypedGridBuilder[T] {
+	b.do(func(s *Scope, w *widget.TypedGrid[T]) { w.SetMinColumns(n) })
+	return b
+}
+
+// WatchMinColumns re-applies SetMinColumns with get's value after every update.
+func (b *TypedGridBuilder[T]) WatchMinColumns(get func() int) *TypedGridBuilder[T] {
+	b.watch(func(w *widget.TypedGrid[T]) { w.SetMinColumns(get()) })
+	return b
+}
+
+// AddFilter calls (*widget.TypedGrid).AddFilter.
+func (b *TypedGridBuilder[T]) AddFilter(keep func(T) bool) *TypedGridBuilder[T] {
+	b.do(func(s *Scope, w *widget.TypedGrid[T]) { w.AddFilter(keep) })
+	return b
+}
+
+// FilterStatus calls (*widget.TypedGrid).SetFilterStatus.
+func (b *TypedGridBuilder[T]) FilterStatus(f *widget.ViewFilter[T], on bool) *TypedGridBuilder[T] {
+	b.do(func(s *Scope, w *widget.TypedGrid[T]) { w.SetFilterStatus(f, on) })
+	return b
+}
+
+// Model calls (*widget.TypedGrid).SetModel.
+func (b *TypedGridBuilder[T]) Model(m widget.ColumnModel[T]) *TypedGridBuilder[T] {
+	b.do(func(s *Scope, w *widget.TypedGrid[T]) { w.SetModel(m) })
+	return b
+}
+
+// WatchModel re-applies SetModel with get's value after every update.
+func (b *TypedGridBuilder[T]) WatchModel(get func() widget.ColumnModel[T]) *TypedGridBuilder[T] {
+	b.watch(func(w *widget.TypedGrid[T]) { w.SetModel(get()) })
+	return b
+}
+
+// Sort calls (*widget.TypedGrid).SetSort.
+func (b *TypedGridBuilder[T]) Sort(cmp func(a T, b T) int) *TypedGridBuilder[T] {
+	b.do(func(s *Scope, w *widget.TypedGrid[T]) { w.SetSort(cmp) })
+	return b
+}
+
+// CellWidth calls (*widget.TypedGrid).SetCellWidth.
+func (b *TypedGridBuilder[T]) CellWidth(arg int) *TypedGridBuilder[T] {
+	b.do(func(s *Scope, w *widget.TypedGrid[T]) { w.SetCellWidth(arg) })
+	return b
+}
+
+// WatchCellWidth re-applies SetCellWidth with get's value after every update.
+func (b *TypedGridBuilder[T]) WatchCellWidth(get func() int) *TypedGridBuilder[T] {
+	b.watch(func(w *widget.TypedGrid[T]) { w.SetCellWidth(get()) })
+	return b
+}
+
+// MaxHeight calls (*widget.TypedGrid).SetMaxHeight.
+func (b *TypedGridBuilder[T]) MaxHeight(h int) *TypedGridBuilder[T] {
+	b.do(func(s *Scope, w *widget.TypedGrid[T]) { w.SetMaxHeight(h) })
+	return b
+}
+
+// WatchMaxHeight re-applies SetMaxHeight with get's value after every update.
+func (b *TypedGridBuilder[T]) WatchMaxHeight(get func() int) *TypedGridBuilder[T] {
+	b.watch(func(w *widget.TypedGrid[T]) { w.SetMaxHeight(get()) })
+	return b
+}
+
+// SingleClickActivate calls (*widget.TypedGrid).SetSingleClickActivate.
+func (b *TypedGridBuilder[T]) SingleClickActivate(on bool) *TypedGridBuilder[T] {
+	b.do(func(s *Scope, w *widget.TypedGrid[T]) { w.SetSingleClickActivate(on) })
+	return b
+}
+
+// WatchSingleClickActivate re-applies SetSingleClickActivate with get's value after every update.
+func (b *TypedGridBuilder[T]) WatchSingleClickActivate(get func() bool) *TypedGridBuilder[T] {
+	b.watch(func(w *widget.TypedGrid[T]) { w.SetSingleClickActivate(get()) })
+	return b
+}
+
+// SelectionMode calls (*widget.TypedGrid).SetSelectionMode.
+func (b *TypedGridBuilder[T]) SelectionMode(mode widget.SelectionMode) *TypedGridBuilder[T] {
+	b.do(func(s *Scope, w *widget.TypedGrid[T]) { w.SetSelectionMode(mode) })
+	return b
+}
+
+// WatchSelectionMode re-applies SetSelectionMode with get's value after every update.
+func (b *TypedGridBuilder[T]) WatchSelectionMode(get func() widget.SelectionMode) *TypedGridBuilder[T] {
+	b.watch(func(w *widget.TypedGrid[T]) { w.SetSelectionMode(get()) })
+	return b
+}
+
+// OnSelectionChanged sets the widget's OnSelectionChanged field.
+func (b *TypedGridBuilder[T]) OnSelectionChanged(fn func(items []T)) *TypedGridBuilder[T] {
+	b.do(func(_ *Scope, w *widget.TypedGrid[T]) { w.OnSelectionChanged = fn })
+	return b
+}
+
+// OnActivate sets the widget's OnActivate field.
+func (b *TypedGridBuilder[T]) OnActivate(fn func(item T)) *TypedGridBuilder[T] {
+	b.do(func(_ *Scope, w *widget.TypedGrid[T]) { w.OnActivate = fn })
+	return b
+}
+
+// OnSelect sets the widget's OnSelect field.
+func (b *TypedGridBuilder[T]) OnSelect(fn func(i int)) *TypedGridBuilder[T] {
+	b.do(func(_ *Scope, w *widget.TypedGrid[T]) { w.OnSelect = fn })
+	return b
+}
+
+// TypedListBuilder builds a widget.TypedList.
+type TypedListBuilder[T any] struct {
+	base[*widget.TypedList[T], *TypedListBuilder[T]]
+}
+
+// TypedList builds a widget.TypedList with widget.NewTypedList.
+func TypedList[T any](model widget.ColumnModel[T], factory widget.TypedFactory[T], rowHeight int) *TypedListBuilder[T] {
+	b := &TypedListBuilder[T]{}
+	b.init(b, func(s *Scope) *widget.TypedList[T] { return widget.NewTypedList[T](model, factory, rowHeight) })
+	return b
+}
+
+// AddFilter calls (*widget.TypedList).AddFilter.
+func (b *TypedListBuilder[T]) AddFilter(keep func(T) bool) *TypedListBuilder[T] {
+	b.do(func(s *Scope, w *widget.TypedList[T]) { w.AddFilter(keep) })
+	return b
+}
+
+// FilterStatus calls (*widget.TypedList).SetFilterStatus.
+func (b *TypedListBuilder[T]) FilterStatus(f *widget.ViewFilter[T], on bool) *TypedListBuilder[T] {
+	b.do(func(s *Scope, w *widget.TypedList[T]) { w.SetFilterStatus(f, on) })
+	return b
+}
+
+// Model calls (*widget.TypedList).SetModel.
+func (b *TypedListBuilder[T]) Model(m widget.ColumnModel[T]) *TypedListBuilder[T] {
+	b.do(func(s *Scope, w *widget.TypedList[T]) { w.SetModel(m) })
+	return b
+}
+
+// WatchModel re-applies SetModel with get's value after every update.
+func (b *TypedListBuilder[T]) WatchModel(get func() widget.ColumnModel[T]) *TypedListBuilder[T] {
+	b.watch(func(w *widget.TypedList[T]) { w.SetModel(get()) })
+	return b
+}
+
+// Sort calls (*widget.TypedList).SetSort.
+func (b *TypedListBuilder[T]) Sort(cmp func(a T, b T) int) *TypedListBuilder[T] {
+	b.do(func(s *Scope, w *widget.TypedList[T]) { w.SetSort(cmp) })
+	return b
+}
+
+// CellWidth calls (*widget.TypedList).SetCellWidth.
+func (b *TypedListBuilder[T]) CellWidth(arg int) *TypedListBuilder[T] {
+	b.do(func(s *Scope, w *widget.TypedList[T]) { w.SetCellWidth(arg) })
+	return b
+}
+
+// WatchCellWidth re-applies SetCellWidth with get's value after every update.
+func (b *TypedListBuilder[T]) WatchCellWidth(get func() int) *TypedListBuilder[T] {
+	b.watch(func(w *widget.TypedList[T]) { w.SetCellWidth(get()) })
+	return b
+}
+
+// MaxHeight calls (*widget.TypedList).SetMaxHeight.
+func (b *TypedListBuilder[T]) MaxHeight(h int) *TypedListBuilder[T] {
+	b.do(func(s *Scope, w *widget.TypedList[T]) { w.SetMaxHeight(h) })
+	return b
+}
+
+// WatchMaxHeight re-applies SetMaxHeight with get's value after every update.
+func (b *TypedListBuilder[T]) WatchMaxHeight(get func() int) *TypedListBuilder[T] {
+	b.watch(func(w *widget.TypedList[T]) { w.SetMaxHeight(get()) })
+	return b
+}
+
+// SingleClickActivate calls (*widget.TypedList).SetSingleClickActivate.
+func (b *TypedListBuilder[T]) SingleClickActivate(on bool) *TypedListBuilder[T] {
+	b.do(func(s *Scope, w *widget.TypedList[T]) { w.SetSingleClickActivate(on) })
+	return b
+}
+
+// WatchSingleClickActivate re-applies SetSingleClickActivate with get's value after every update.
+func (b *TypedListBuilder[T]) WatchSingleClickActivate(get func() bool) *TypedListBuilder[T] {
+	b.watch(func(w *widget.TypedList[T]) { w.SetSingleClickActivate(get()) })
+	return b
+}
+
+// SelectionMode calls (*widget.TypedList).SetSelectionMode.
+func (b *TypedListBuilder[T]) SelectionMode(mode widget.SelectionMode) *TypedListBuilder[T] {
+	b.do(func(s *Scope, w *widget.TypedList[T]) { w.SetSelectionMode(mode) })
+	return b
+}
+
+// WatchSelectionMode re-applies SetSelectionMode with get's value after every update.
+func (b *TypedListBuilder[T]) WatchSelectionMode(get func() widget.SelectionMode) *TypedListBuilder[T] {
+	b.watch(func(w *widget.TypedList[T]) { w.SetSelectionMode(get()) })
+	return b
+}
+
+// OnSelectionChanged sets the widget's OnSelectionChanged field.
+func (b *TypedListBuilder[T]) OnSelectionChanged(fn func(items []T)) *TypedListBuilder[T] {
+	b.do(func(_ *Scope, w *widget.TypedList[T]) { w.OnSelectionChanged = fn })
+	return b
+}
+
+// OnActivate sets the widget's OnActivate field.
+func (b *TypedListBuilder[T]) OnActivate(fn func(item T)) *TypedListBuilder[T] {
+	b.do(func(_ *Scope, w *widget.TypedList[T]) { w.OnActivate = fn })
+	return b
+}
+
+// OnSelect sets the widget's OnSelect field.
+func (b *TypedListBuilder[T]) OnSelect(fn func(i int)) *TypedListBuilder[T] {
+	b.do(func(_ *Scope, w *widget.TypedList[T]) { w.OnSelect = fn })
 	return b
 }
 
