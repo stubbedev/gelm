@@ -191,6 +191,18 @@ func receiverName(d *ast.FuncDecl) string {
 	return ""
 }
 
+// embedded strips a generic instantiation off an embedded field's
+// type, so TypedList[T] embeds as TypedList.
+func embedded(t ast.Expr) ast.Expr {
+	switch x := t.(type) {
+	case *ast.IndexExpr:
+		return x.X
+	case *ast.IndexListExpr:
+		return x.X
+	}
+	return t
+}
+
 func (g *gen) embedsNode(name string, seen map[string]bool) bool {
 	if seen[name] {
 		return false
@@ -204,6 +216,7 @@ func (g *gen) embedsNode(name string, seen map[string]bool) bool {
 		if s, ok := t.(*ast.StarExpr); ok {
 			t = s.X
 		}
+		t = embedded(t)
 		id, ok := t.(*ast.Ident)
 		if !ok {
 			continue
@@ -659,6 +672,7 @@ func (g *gen) methodsOf(name string) []*ast.FuncDecl {
 		if s, ok := t.(*ast.StarExpr); ok {
 			t = s.X
 		}
+		t = embedded(t)
 		if id, ok := t.(*ast.Ident); ok && id.Name != "node" && g.src.types[id.Name] != nil {
 			for _, d := range g.methodsOf(id.Name) {
 				if !slices.ContainsFunc(out, func(o *ast.FuncDecl) bool { return o.Name.Name == d.Name.Name }) {
@@ -687,6 +701,7 @@ func (g *gen) fieldsOf(name string) []field {
 		if s, ok := t.(*ast.StarExpr); ok {
 			t = s.X
 		}
+		t = embedded(t)
 		if id, ok := t.(*ast.Ident); ok && id.Name != "node" && g.src.types[id.Name] != nil {
 			promoted = append(promoted, g.fieldsOf(id.Name)...)
 		}

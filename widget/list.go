@@ -128,6 +128,13 @@ type listModel interface {
 	row(i int) Widget
 }
 
+// rowUnbinder is a model that recycles: the List tells it when a row's
+// index left the viewport, so it can unbind the row's item and pool
+// the widget.
+type rowUnbinder interface {
+	unbind(i int)
+}
+
 // modelAdapter binds a typed model to the erased interface.
 type modelAdapter[W Widget] struct {
 	m ListModel[W]
@@ -136,6 +143,12 @@ type modelAdapter[W Widget] struct {
 func (a modelAdapter[W]) len() int { return a.m.Len() }
 
 func (a modelAdapter[W]) row(i int) Widget { return a.m.Row(i) }
+
+func (a modelAdapter[W]) unbind(i int) {
+	if u, ok := any(a.m).(rowUnbinder); ok {
+		u.unbind(i)
+	}
+}
 
 // NewList wraps a model with a uniform row height in pixels; zero
 // derives the height from measuring the first row.
@@ -239,13 +252,29 @@ func (l *List) reveal(i int) {
 	l.scrollTo(i)
 }
 
+// evict drops a cached row and, when the model recycles, releases it
+// back to the model's pool.
+func (l *List) evict(i int) {
+	delete(l.rows, i)
+	if u, ok := l.model.(rowUnbinder); ok {
+		u.unbind(i)
+	}
+}
+
+// evictAll drops every cached row.
+func (l *List) evictAll() {
+	for i := range l.rows {
+		l.evict(i)
+	}
+}
+
 // Changed re-queries the model after its data changed, keeping cached
 // row widgets whose indices still exist.
 func (l *List) Changed() {
 	n := l.model.len()
 	for i := range l.rows {
 		if i >= n {
-			delete(l.rows, i)
+			l.evict(i)
 		}
 	}
 	l.offY = min(l.offY, l.scrollMax())
@@ -259,7 +288,7 @@ func (l *List) Changed() {
 // thumbnail arrived), where Changed would keep showing the cached
 // widgets.
 func (l *List) Refresh() {
-	clear(l.rows)
+	l.evictAll()
 	l.probe = nil
 	l.Changed()
 }
@@ -269,7 +298,7 @@ func (l *List) Refresh() {
 // and the scroll go, and OnSelectionChanged fires when a selection was
 // dropped.
 func (l *List) Reset() {
-	clear(l.rows)
+	l.evictAll()
 	l.probe = nil
 	l.offY, l.hover = 0, -1
 	had := l.clearAll()
@@ -363,7 +392,7 @@ func (l *List) visible() (first, last int) {
 	last = min(n, (line+l.viewH/l.rowH+1)*c)
 	for i := range l.rows {
 		if i < first || i >= last {
-			delete(l.rows, i)
+			l.evict(i)
 		}
 	}
 	for i := first; i < last; i++ {
