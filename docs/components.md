@@ -273,6 +273,17 @@ users := cx.NewKeyedFactory[UserID](component.BoxView[*UserRow](box, false))
 users.Insert(u.ID, &UserRow{user: u})
 ```
 
+An item that implements `Loader` initializes asynchronously (relm4's
+`AsyncFactoryComponent`), through the same path as a standalone async
+component: `Loading()`'s widget shows in the item's slot, `Load(ctx)`
+runs off the loop and may fill in the model, and `Init`'s view replaces
+the loading one in place once it returns. Input sent to the item while
+it loads (`Send`, `Broadcast`) is held and delivered after `Init`.
+`Move` and `Swap` carry the loading widget like any other, so the
+loaded view appears in the item's new position. Removing an item
+mid-load, or shutting the factory down, cancels its `Load` context and
+never runs its `Init`.
+
 Views: `BoxView`, `FlowBoxView`, `StackView` (pages named per item),
 `NotebookView` (tabs titled per item) and `GridView` (cells placed by
 index). The container holds only the factory's items. Implement
