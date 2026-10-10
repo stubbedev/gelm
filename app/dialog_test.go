@@ -166,3 +166,14 @@ func TestDialogRootBare(t *testing.T) {
 		t.Errorf("the default button responded %v, want ok", got)
 	}
 }
+
+func TestDialogCloseSkipsTheResponse(t *testing.T) {
+	app := &Application{}
+	responses := 0
+	d := &Dialog{app: app, win: &Window{app: app}, cfg: DialogConfig{OnResponse: func(string) { responses++ }}}
+	d.Close()
+	d.Respond("ok")
+	if responses != 0 || !d.Closed() {
+		t.Errorf("responses=%d closed=%v after Close, want 0 and closed", responses, d.Closed())
+	}
+}

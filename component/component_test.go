@@ -277,3 +277,22 @@ func TestZeroSenderPanics(t *testing.T) {
 	var s component.Sender[int]
 	s.Send(1)
 }
+
+type selfCloser struct{ stopped bool }
+
+func (s *selfCloser) Init(*component.Context[int, struct{}]) widget.Widget {
+	return widget.NewSpacer(1, 1)
+}
+func (s *selfCloser) Update(cx *component.Context[int, struct{}], _ int) { cx.Shutdown() }
+func (s *selfCloser) Shutdown(*component.Context[int, struct{}])         { s.stopped = true }
+
+func TestContextShutdownStopsTheComponentFromInside(t *testing.T) {
+	var loop componenttest.Loop
+	s := &selfCloser{}
+	ctrl := component.Launch(&loop, s)
+	ctrl.Send(1)
+	loop.Settle()
+	if !s.stopped || ctrl.Alive() {
+		t.Errorf("stopped=%v alive=%v after a self Shutdown", s.stopped, ctrl.Alive())
+	}
+}

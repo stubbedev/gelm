@@ -8,7 +8,10 @@ import (
 
 var _ Loop = (*app.Application)(nil)
 
-var errRootSet = errors.New("component: the config's Root is set; the component provides the root")
+var (
+	errRootSet    = errors.New("component: the config's Root is set; the component provides the root")
+	errContentSet = errors.New("component: the config's Content is set; the component provides the content")
+)
 
 // Window launches c as the root of a new toplevel window: the
 // counterpart of relm4's RelmApp::run. The component shuts down when the

@@ -60,6 +60,10 @@ type DialogConfig struct {
 	// OnResponse on every Respond, including the Esc and Enter keys.
 	ValidateResponse func(response string) bool
 	OnResponse       func(response string)
+	// OnClosed runs once the dialog window closed, after OnResponse when
+	// a response closed it, and also when it closed without one (the
+	// compositor's close, Close).
+	OnClosed func()
 	// Modal blocks every other window's input while the dialog is
 	// open (and, with an xdg parent, asks the compositor to block the
 	// parent itself). False - the GTK default - leaves the
@@ -143,6 +147,9 @@ func (a *Application) NewDialog(parent DialogParent, cfg DialogConfig) (*Dialog,
 				modal = modal || x.cfg.Modal
 			}
 			a.blockAll(modal)
+			if cfg.OnClosed != nil {
+				cfg.OnClosed()
+			}
 		},
 	}
 	// Dialogs animate: KindDialog gives the child window a fade-in on
@@ -203,6 +210,12 @@ func (d *Dialog) Respond(response string) {
 // Closed reports whether the dialog already produced a response or was
 // closed.
 func (d *Dialog) Closed() bool { return d.responded || d.win.Closed() }
+
+// Close closes the dialog without a response; OnResponse does not run.
+func (d *Dialog) Close() {
+	d.responded = true
+	d.win.Close()
+}
 
 // dialogResponseForKey maps Escape and Enter to the dialog's cancel
 // and default responses; an empty response disables the key.

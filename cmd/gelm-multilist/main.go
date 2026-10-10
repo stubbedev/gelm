@@ -16,6 +16,7 @@ import (
 	"github.com/unxed/xkb-go"
 
 	"github.com/stubbedev/gelm/app"
+	"github.com/stubbedev/gelm/component"
 	"github.com/stubbedev/gelm/render"
 	"github.com/stubbedev/gelm/widget"
 )
@@ -101,19 +102,15 @@ func run() error {
 			if dialog != nil && !dialog.Closed() {
 				return
 			}
-			d, err := application.NewDialog(w, app.DialogConfig{
-				Title:  "modal dialog",
-				Width:  320,
-				Height: 110,
-				Modal:  true,
-				Content: widget.NewLabel(tf, 13,
-					"input to the parent window is blocked while I am open",
-					widget.Current().Text),
+			_, d, err := component.Dialog(application, w, app.DialogConfig{
+				Title:           "modal dialog",
+				Width:           320,
+				Height:          110,
+				Modal:           true,
 				Buttons:         []app.DialogButton{{Label: "OK", Response: "ok"}},
 				DefaultResponse: "ok",
 				CancelResponse:  "ok",
-				OnResponse:      func(resp string) { app.Trace("demo", "dialog response %s", resp) },
-			})
+			}, &notice{face: tf})
 			if err != nil {
 				app.Trace("demo", "dialog error %v", err)
 				return
@@ -160,4 +157,22 @@ func (m *rowModel) Len() int { return rows }
 
 func (m *rowModel) Row(i int) widget.Widget {
 	return widget.NewLabel(m.font, 13, "row "+strconv.Itoa(i), widget.Current().Text)
+}
+
+// notice is the modal dialog's content as a component: its response
+// and its shutdown with the dialog are traced for the harness.
+type notice struct{ face render.Font }
+
+func (n *notice) Init(*component.Context[struct{}, struct{}]) widget.Widget {
+	return widget.NewLabel(n.face, 13, "input to the parent window is blocked while I am open", widget.Current().Text)
+}
+
+func (n *notice) Update(*component.Context[struct{}, struct{}], struct{}) {}
+
+func (n *notice) OnResponse(_ *component.Context[struct{}, struct{}], response string) {
+	app.Trace("demo", "dialog response %s", response)
+}
+
+func (n *notice) Shutdown(*component.Context[struct{}, struct{}]) {
+	app.Trace("demo", "dialog component shut down")
 }
