@@ -202,6 +202,7 @@ func NewApplication(sess *wlsession.Session) *Application {
 		step:         sess.Step,
 		windowIcons:  make(map[*Window]*postedIcon),
 		appliedIcons: make(map[*hostWindow]*postedIcon),
+		launchState:  launcher{openPortal: portalOpen, openExternal: xdgOpen},
 	}
 	// Async image loads (widget.Image file/URL sources) deliver through
 	// the loop queue - the only sanctioned bridge (docs/threading.md).

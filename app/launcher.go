@@ -34,8 +34,8 @@ const launchTimeout = 3 * time.Second
 const portalOpenURI = "org.freedesktop.portal.OpenURI.OpenURI"
 
 // launcher is the Application's launch state: the transport seams
-// tests substitute. The defaults are the portal D-Bus call and
-// xdg-open.
+// tests substitute, set once at construction to the portal D-Bus call
+// and xdg-open and only read after.
 type launcher struct {
 	openPortal   func(uri, parentWindow, token string) error
 	openExternal func(uri string) error
@@ -88,7 +88,7 @@ func (a *Application) focusSurface() *wl.Surface {
 // when neither worked. The focused-surface read happens on the
 // caller's side - loop state never leaves the loop goroutine.
 func (a *Application) launchNow(uri, token string) {
-	l := &a.launchState
+	l := a.launchState
 	parent := ""
 	if a.sess != nil {
 		if hw := a.focused(); hw != nil {
@@ -96,18 +96,12 @@ func (a *Application) launchNow(uri, token string) {
 		}
 	}
 	go func() {
-		if l.openPortal == nil {
-			l.openPortal = portalOpen
-		}
 		portalErr := l.openPortal(uri, parent, token)
 		if portalErr == nil {
 			return
 		}
 		if !errors.Is(portalErr, ErrPortalUnavailable) {
 			debug.Log("shell", "open uri: portal: %v", portalErr)
-		}
-		if l.openExternal == nil {
-			l.openExternal = xdgOpen
 		}
 		if err := l.openExternal(uri); err != nil {
 			logutil.L().Debug("open uri failed", "uri", uri, "portal", portalErr, "fallback", err)
