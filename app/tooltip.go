@@ -85,13 +85,21 @@ type tooltipWindow interface {
 	Dismiss()
 }
 
+// tooltipPainter is the frame pipeline slice the tooltip state
+// machine drives: the real popup.Painter and test fakes both satisfy
+// it.
+type tooltipPainter interface {
+	Owes() bool
+	Pass() (bool, error)
+}
+
 // tooltipCtl tracks the hover dwell and the one open tooltip. The
 // open tooltip's painter is driven by the application loop (one Pass
 // per loop pass): tooltips must never run their own dispatcher — one
 // event-loop goroutine owns the connection.
 type tooltipCtl struct {
 	open    tooltipWindow
-	painter *popup.Painter
+	painter tooltipPainter
 	hover   widget.Widget
 	since   time.Time
 	// text is the hovered widget's last tooltip: a widget whose tooltip
@@ -130,7 +138,7 @@ func hoverTooltipText(h widget.Widget) string {
 // update advances the tooltip state to now: reset the dwell on hover
 // change, dismiss stale tooltips, open a due one through opener, and
 // paint the open tooltip's tween frames.
-func (t *tooltipCtl) update(router *widget.Router, now time.Time, opener func(widget.Widget, string) (tooltipWindow, *popup.Painter)) {
+func (t *tooltipCtl) update(router *widget.Router, now time.Time, opener func(widget.Widget, string) (tooltipWindow, tooltipPainter)) {
 	if t.open != nil && t.open.Dismissed() {
 		t.open, t.painter = nil, nil
 	}
@@ -155,7 +163,7 @@ func (t *tooltipCtl) update(router *widget.Router, now time.Time, opener func(wi
 		// rejection) retries after a full delay instead of every loop.
 		t.since = now
 	}
-	if t.painter != nil {
+	if t.painter != nil && t.painter.Owes() {
 		if _, err := t.painter.Pass(); err != nil {
 			debug.Log("frame", "tooltip paint: %v", err)
 			t.painter = nil

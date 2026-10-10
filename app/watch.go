@@ -54,6 +54,10 @@ func (a *Application) WatchFD(fd int, events int16, fn func(revents int16)) (sto
 			a.watchers.remove(id)
 		}()
 		pfds := []unix.PollFd{{Fd: int32(fd), Events: events}, {Fd: int32(wake), Events: unix.POLLIN}}
+		// One ping-pong channel for the watch's life: each readiness
+		// pass drains it before the loop polls again, so the buffered
+		// send never blocks and never reallocates.
+		ran := make(chan struct{}, 1)
 		for {
 			pfds[0].Revents, pfds[1].Revents = 0, 0
 			if _, err := unix.Poll(pfds, -1); err != nil {
@@ -69,15 +73,14 @@ func (a *Application) WatchFD(fd int, events int16, fn func(revents int16)) (sto
 			if revents&unix.POLLNVAL != 0 {
 				return
 			}
-			ran := make(chan struct{})
 			a.Invoke(func() {
-				defer close(ran)
 				mu.Lock()
 				live := !stopped
 				mu.Unlock()
 				if live {
 					fn(revents)
 				}
+				ran <- struct{}{}
 			})
 			// Wait for the loop to run fn (or for the stop): a loop that
 			// ended drops the invoke, and the stop then ends this wait.
@@ -105,7 +108,7 @@ func (a *Application) WatchFiles(paths []string, recursive bool, fn func()) (sto
 	if err != nil {
 		return nil, fmt.Errorf("app: inotify: %w", err)
 	}
-	w := &fileWatch{fd: fd, recursive: recursive, dirs: map[int]string{}}
+	w := &fileWatch{fd: fd, recursive: recursive, dirs: map[int]string{}, buf: make([]byte, 64*(unix.SizeofInotifyEvent+unix.NAME_MAX+1))}
 	for _, p := range paths {
 		w.add(p)
 	}
@@ -136,6 +139,8 @@ type fileWatch struct {
 	fd        int
 	recursive bool
 	dirs      map[int]string
+	// buf is the inotify read buffer, allocated once per watch.
+	buf []byte
 }
 
 // add watches path (and, recursive, its tree).
@@ -165,17 +170,16 @@ func (w *fileWatch) watch(path string) {
 // change, watching directories created inside a recursive tree.
 func (w *fileWatch) drain() bool {
 	changed := false
-	buf := make([]byte, 64*(unix.SizeofInotifyEvent+unix.NAME_MAX+1))
 	for {
-		n, err := unix.Read(w.fd, buf)
+		n, err := unix.Read(w.fd, w.buf)
 		if n <= 0 || err != nil {
 			return changed
 		}
 		for off := 0; off+unix.SizeofInotifyEvent <= n; {
-			wd := int(int32(lenU32(buf[off:])))
-			mask := lenU32(buf[off+4:])
-			nameLen := int(lenU32(buf[off+12:]))
-			name := buf[off+unix.SizeofInotifyEvent : min(n, off+unix.SizeofInotifyEvent+nameLen)]
+			wd := int(int32(lenU32(w.buf[off:])))
+			mask := lenU32(w.buf[off+4:])
+			nameLen := int(lenU32(w.buf[off+12:]))
+			name := w.buf[off+unix.SizeofInotifyEvent : min(n, off+unix.SizeofInotifyEvent+nameLen)]
 			off += unix.SizeofInotifyEvent + nameLen
 			if mask&unix.IN_IGNORED != 0 {
 				delete(w.dirs, wd)

@@ -4,7 +4,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stubbedev/gelm/internal/popup"
 	"github.com/stubbedev/gelm/render"
 	"github.com/stubbedev/gelm/widget"
 )
@@ -106,7 +105,7 @@ func TestTooltipCtlUpdate(t *testing.T) {
 
 	var openStub *stub
 	var openedText string
-	opener := func(w widget.Widget, text string) (tooltipWindow, *popup.Painter) {
+	opener := func(w widget.Widget, text string) (tooltipWindow, tooltipPainter) {
 		openedText = text
 		openStub = &stub{}
 		return openStub, nil
@@ -169,7 +168,7 @@ func TestTooltipGhostOnRemove(t *testing.T) {
 	defer widget.SetRemovedHook(nil)
 
 	var openStub *stub
-	opener := func(w widget.Widget, text string) (tooltipWindow, *popup.Painter) {
+	opener := func(w widget.Widget, text string) (tooltipWindow, tooltipPainter) {
 		openStub = &stub{}
 		return openStub, nil
 	}
@@ -220,7 +219,7 @@ func TestTooltipCtlTextChange(t *testing.T) {
 	router := &widget.Router{Root: target}
 	var opened []string
 	var last *stub
-	opener := func(_ widget.Widget, text string) (tooltipWindow, *popup.Painter) {
+	opener := func(_ widget.Widget, text string) (tooltipWindow, tooltipPainter) {
 		opened = append(opened, text)
 		last = &stub{}
 		return last, nil

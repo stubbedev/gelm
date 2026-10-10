@@ -24,7 +24,6 @@ import (
 	"github.com/stubbedev/gelm/internal/inspect"
 	"github.com/stubbedev/gelm/internal/layersurface"
 	"github.com/stubbedev/gelm/internal/notify"
-	"github.com/stubbedev/gelm/internal/popup"
 	"github.com/stubbedev/gelm/internal/portalsettings"
 	"github.com/stubbedev/gelm/internal/recentfiles"
 	"github.com/stubbedev/gelm/internal/surfx"
@@ -276,6 +275,27 @@ func (a *Application) SetTooltipFace(f *render.Typeface) { a.tooltipFace = f }
 // routing and widget actions.
 func (a *Application) OnKey(fn func(r *widget.Router, keycode uint32, mods wlsession.Mods)) {
 	a.onKey = fn
+	for _, w := range a.windows {
+		w.keyChain = a.combineOnKey(w.cfg.onKey)
+	}
+}
+
+// combineOnKey chains one window's OnKey hook with the app-wide one:
+// whichever is set, else both window-first. Precomputed at window
+// creation and on every OnKey install, so a key press never builds
+// the pair.
+func (a *Application) combineOnKey(window func(r *widget.Router, keycode uint32, mods wlsession.Mods)) func(r *widget.Router, keycode uint32, mods wlsession.Mods) {
+	if window == nil {
+		return a.onKey
+	}
+	if a.onKey == nil {
+		return window
+	}
+	windowKey, appKey := window, a.onKey
+	return func(r *widget.Router, code uint32, m wlsession.Mods) {
+		windowKey(r, code, m)
+		appKey(r, code, m)
+	}
 }
 
 // Quit ends Run at the next loop check, regardless of open windows.
@@ -588,6 +608,7 @@ func (a *Application) newWindow(host Host, scale int, root widget.Widget, hooks 
 	ov := inspect.NewOverlay(root)
 	ov.SetOn(a.inspectOn)
 	w := newHostWindow(a.sess, host, scale, ov, hooks, a.dnd, a.primary, animKind, hostCloser(host))
+	w.keyChain = a.combineOnKey(hooks.onKey)
 	if w.input != nil {
 		w.input.transferError = a.reportTransfer
 		w.input.dismissPopover = func() bool { return a.dismissAutohide(host) }
@@ -867,7 +888,7 @@ func (a *Application) tick(step func() error, now time.Time) error {
 func (a *Application) updateTips(now time.Time) {
 	for _, w := range a.windows {
 		w.tip.delay = a.tooltipOpts.Delay
-		w.tip.update(w.router, now, func(h widget.Widget, text string) (tooltipWindow, *popup.Painter) {
+		w.tip.update(w.router, now, func(h widget.Widget, text string) (tooltipWindow, tooltipPainter) {
 			if a.tooltipFace == nil {
 				return nil, nil
 			}
@@ -911,15 +932,9 @@ func (a *Application) deliverKey(keycode uint32, mods wlsession.Mods) {
 	if target == nil {
 		return
 	}
-	extra := target.cfg.onKey
+	extra := target.keyChain
 	if extra == nil {
-		extra = a.onKey
-	} else if a.onKey != nil {
-		windowKey, appKey := extra, a.onKey
-		extra = func(r *widget.Router, code uint32, m wlsession.Mods) {
-			windowKey(r, code, m)
-			appKey(r, code, m)
-		}
+		extra = a.combineOnKey(target.cfg.onKey)
 	}
 	// The inspector's chords run before everything else - widget
 	// routing, accelerators, and text - but only while it is armed,

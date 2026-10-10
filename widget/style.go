@@ -164,6 +164,7 @@ func relayer() {
 		}
 	}
 	styleGen++
+	markDamage()
 }
 
 // scopedSheets are the stylesheets attached to at least one widget.
@@ -257,6 +258,7 @@ func SetRootFontSize(px float64) {
 	}
 	styleEnv = style.Env{Rem: px, FontPx: px}
 	styleGen++
+	markDamage()
 }
 
 // RootFontSize returns the current root font size.
@@ -893,6 +895,7 @@ func SetStyleRoot(w Widget) {
 	if n := nodeOf(w); n != nil && !n.styleRoot {
 		n.styleRoot = true
 		n.styleDirty = true
+		markDamage()
 	}
 }
 
@@ -1186,6 +1189,7 @@ func restyleSubtree(w Widget) {
 		}
 		restyleSubtree(k)
 	}
+	markDamage()
 }
 
 // styleKids are the widgets that inherit from w: its Children, or what
@@ -1237,6 +1241,7 @@ func (n *node) invalidateState(changed style.State) {
 // the cascade is marked stale, and only a moved value repaints.
 func (n *node) restyleState(changed style.State) {
 	n.styleDirty = true
+	markDamage()
 	n.scope(sensNow.states&changed != 0, sensNow.siblings)
 }
 
@@ -1277,6 +1282,7 @@ func (n *node) scope(sub, sib bool) {
 	// The root (or a widget no container arranged yet): no link to walk
 	// from, so the whole generation goes stale.
 	styleGen++
+	markDamage()
 }
 
 // setHoverChain moves the hover chain from old's ancestry to new's: a

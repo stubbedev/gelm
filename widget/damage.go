@@ -5,7 +5,11 @@
 // wl_surface.damage_buffer.
 package widget
 
-import "github.com/stubbedev/gelm/render"
+import (
+	"sync/atomic"
+
+	"github.com/stubbedev/gelm/render"
+)
 
 // maxDamageRects caps the rect list handed to the frame. Past the cap
 // the remaining rects collapse into the running bounding box: more wire
@@ -41,6 +45,30 @@ type childBuf interface {
 // the process has walked and stays there.
 var walkStack [][]Widget
 
+// damageGen counts every mark that can turn a tree dirty: a widget
+// invalidation, a style or theme generation move, a stale cascade.
+// Draw owners compare it against the generation they last drained at
+// and skip the walk when nothing anywhere was marked since, so pump
+// work that touched no tree costs no CollectDamage pass. The +1 in
+// DamageGeneration keeps zero meaning "never walked".
+var damageGen atomic.Uint64
+
+// damageWalks counts CollectDamage calls; tests use it to pin that a
+// clean tree's walk is skipped.
+var damageWalks atomic.Uint64
+
+// DamageGeneration returns the current damage generation; it is never
+// zero.
+func DamageGeneration() uint64 { return damageGen.Load() + 1 }
+
+// DamageWalks counts the damage walks the process has run; tests use
+// it to pin the idle skip.
+func DamageWalks() uint64 { return damageWalks.Load() }
+
+// markDamage bumps the generation every drain-source flip owes, so no
+// window can skip past a dirty tree.
+func markDamage() { damageGen.Add(1) }
+
 // CollectDamage drains every pending invalidation in the tree and
 // returns the repaint rects in root coordinates plus whether anything
 // is owed. Rects may overlap; the caller can clip painting to their
@@ -51,6 +79,7 @@ func CollectDamage(root Widget) (rects []render.Rect, any bool) {
 	if root == nil {
 		return nil, false
 	}
+	damageWalks.Add(1)
 	bbox := collectInto(root, &rects, 0)
 	if len(rects) > maxDamageRects {
 		rects = rects[:0]

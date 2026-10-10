@@ -95,10 +95,13 @@ type hostWindow struct {
 	scaleApplied bool
 	// dnd is the application's drag-and-drop controller; its Bind
 	// lifetime matches the window's.
-	dnd          *dragdrop.Controller
-	router       *widget.Router
-	input        *surfaceInput
-	tip          *tooltipCtl
+	dnd    *dragdrop.Controller
+	router *widget.Router
+	input  *surfaceInput
+	tip    *tooltipCtl
+	// keyChain is the window's OnKey hook pre-chained with the
+	// application-wide one, so a key press allocates nothing.
+	keyChain     func(r *widget.Router, keycode uint32, mods wlsession.Mods)
 	lastW, lastH int
 	// reportedW and reportedH are the size OnResize last heard.
 	reportedW, reportedH int
@@ -129,6 +132,13 @@ type hostWindow struct {
 	// pendingRects accumulates drained invalidations until they are
 	// painted into an acquired buffer; it survives pool-busy retries.
 	pendingRects []render.Rect
+	// damageSeen is the widget damage generation this tree last drained
+	// at: a draw whose generation matches it skips the CollectDamage
+	// walk, the pump-work check below included.
+	damageSeen uint64
+	// devRects is the scratch the device-space damage rect list is
+	// built in, one backing array per window.
+	devRects     []render.Rect
 	dirty        bool
 	frameReady   bool
 	framePending bool
@@ -666,10 +676,13 @@ func (w *hostWindow) draw() bool {
 	// outside the buffer (an overflowing scroll child), and such rects
 	// must not keep a frame alive.
 	bufBounds := render.Rect{W: bw, H: bh}
-	if rects, _ := widget.CollectDamage(w.router.Root); len(rects) > 0 {
-		for _, r := range rects {
-			if r = r.Intersect(bufBounds); !r.Empty() {
-				w.pendingRects = append(w.pendingRects, r)
+	if gen := widget.DamageGeneration(); gen != w.damageSeen {
+		w.damageSeen = gen
+		if rects, _ := widget.CollectDamage(w.router.Root); len(rects) > 0 {
+			for _, r := range rects {
+				if r = r.Intersect(bufBounds); !r.Empty() {
+					w.pendingRects = append(w.pendingRects, r)
+				}
 			}
 		}
 	}
@@ -701,7 +714,7 @@ func (w *hostWindow) draw() bool {
 	// Everything past this point is in device pixels: pending logical
 	// damage maps outward, stale is tracked in buffer pixels.
 	bufBounds = render.Rect{W: b.Width, H: b.Height}
-	rects := make([]render.Rect, 0, len(w.pendingRects)+1)
+	rects := w.devRects[:0]
 	for _, r := range w.pendingRects {
 		if r = render.MapRect(r, w.devNum(), scale.Denom).Intersect(bufBounds); !r.Empty() {
 			rects = append(rects, r)
@@ -717,6 +730,7 @@ func (w *hostWindow) draw() bool {
 	}
 	region := render.UnionAll(rects)
 	w.pendingRects = w.pendingRects[:0]
+	w.devRects = rects
 	debug.Log("frame", "draw %dx%d at %d/120: %d damage rect(s), region %dx%d",
 		bw, bh, w.frac120, len(rects), region.W, region.H)
 
@@ -736,7 +750,7 @@ func (w *hostWindow) draw() bool {
 	cv.FinishFocus()
 	cv.PopClip(prev)
 	w.paintedPixels = cv.Touched()
-	w.lastDamage = rects
+	w.lastDamage = append(w.lastDamage[:0], rects...)
 
 	if err := w.surf.Attach(b); err != nil {
 		w.drawErr = fmt.Errorf("app: attach: %w", err)

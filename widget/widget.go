@@ -385,6 +385,7 @@ func invalidateTree(self Widget) {
 			n.styleDirty = true
 		}
 	})
+	markDamage()
 }
 
 // Invalidate schedules a repaint of the widget's arranged bounds. Call
@@ -393,6 +394,7 @@ func invalidateTree(self Widget) {
 func (n *node) Invalidate() {
 	checkLoop("Invalidate")
 	n.invalid = true
+	markDamage()
 	n.markSub()
 }
 
@@ -406,6 +408,7 @@ func (n *node) InvalidateRect(r render.Rect) {
 		return
 	}
 	n.extras = append(n.extras, r)
+	markDamage()
 	n.markSub()
 }
 
@@ -430,7 +433,10 @@ func (n *node) markSub() {
 }
 
 // markSubInvalid records a descendant invalidation.
-func (n *node) markSubInvalid() { n.subInvalid = true }
+func (n *node) markSubInvalid() {
+	n.subInvalid = true
+	markDamage()
+}
 
 // InvalidateLayout drops the cached Measure result here and in every
 // ancestor, so the next frame remeasures the affected branch only, and
