@@ -153,6 +153,9 @@ func normalizeSym(sym xkb.Keysym) xkb.Keysym {
 	if sym >= 0x41 && sym <= 0x5a {
 		return sym + 0x20
 	}
+	if sym == xkb.KeyISOLeftTab {
+		return xkb.KeyTab
+	}
 	return sym
 }
 

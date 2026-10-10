@@ -376,3 +376,14 @@ func TestMenuRowsShowTheirActionsAccelerators(t *testing.T) {
 		t.Errorf("accel labels %q %q, want the registry's Ctrl+S and the explicit F2", sub[0].Accel, sub[1].Accel)
 	}
 }
+
+func TestShiftTabAcceleratorsMatchISOLeftTab(t *testing.T) {
+	a := accelApp()
+	fired := 0
+	if err := a.AddAccel("ctrl+shift+Tab", widget.NewAction("prev", func() { fired++ })); err != nil {
+		t.Fatal(err)
+	}
+	if !a.accels.fire(nil, xkb.KeyISOLeftTab, wlsession.ModCtrl|wlsession.ModShift) || fired != 1 {
+		t.Errorf("ctrl+shift+Tab delivered as ISO_Left_Tab fired %d times", fired)
+	}
+}
