@@ -80,6 +80,7 @@ type Context[In, Out any] struct {
 	outputs  mailbox.Box[Out]
 	forward  func(Out)
 	watches  []func()
+	clears   []func()
 	hooks    []func()
 	children []owned
 	release  func()
@@ -173,6 +174,9 @@ func (cx *Context[In, Out]) drainInputs() {
 	}
 	for _, w := range cx.watches {
 		w()
+	}
+	for _, clear := range cx.clears {
+		clear()
 	}
 }
 

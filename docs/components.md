@@ -58,8 +58,30 @@ Optional interfaces:
 - `Shutdown(cx)` runs when the component stops. Outputs sent from it
   are still delivered.
 
-`cx.Watch(fn)` runs `fn` now and again after every batch of updates.
-It is the primitive behind relm4's `#[watch]`.
+## Watching and tracking
+
+- `cx.Watch(fn)` runs `fn` now and again after every batch of updates:
+  relm4's `#[watch]`.
+- `cx.Tracked(v)` creates a `*component.Tracked[T]` owned by the
+  component: relm4's tracker. `Set` and `Update` mark it changed, and
+  `Changed()` reports the mark. The component clears every tracked
+  value it created after each refresh, so there is no manual
+  `reset()`.
+- `cx.Track(fn, deps...)` runs `fn` now, and after a batch only when
+  one of `deps` changed: relm4's `#[track]`.
+
+```go
+func (c *Counter) Init(cx *component.Context[Msg, int]) widget.Widget {
+	c.count = cx.Tracked(0)
+	label := widget.NewLabel(c.face, 15, "", widget.Current().Text)
+	cx.Track(func() { label.SetText(strconv.Itoa(c.count.Get())) }, c.count)
+	...
+}
+```
+
+A refresh runs `UpdateView`, then the watches and tracks in
+registration order, then clears the marks. A mark set by an update is
+visible to every later update in the same batch.
 
 ## Launching and controllers
 

@@ -12,6 +12,7 @@ live in [architecture.md](architecture.md#non-goals).
 | `relm4::Application`, `ApplicationWindow` | `app.Application` (one loop for every window), `app.Window`, `app.LayerWindow` | app/application.go, [application-model.md](application-model.md) |
 | main-thread contract, `glib::timeout_add` | one loop goroutine; `Application.Invoke`, `Every`; the off-loop mutation guard | app/invoke.go, widget/thread.go, [threading.md](threading.md) |
 | `Component`, `Controller`, `RelmApp::run` | `component.Component[In, Out]`, `Context`, `Controller` (`Forward`, `ForwardTo`, `Detach`), `component.Window`/`Layer`; headless tests with `componenttest.Loop` | component/, [components.md](components.md) |
+| `tracker::track`, `#[watch]`, `#[track]` | `Context.Tracked` (`*Tracked[T]`, cleared after each refresh), `Context.Watch`, `Context.Track` | component/tracked.go |
 | `MessageBroker`, `SharedState` | `app.Stream[Msg]`, `app.SharedState[T]` | app/message.go |
 | relm4 `binding` module | `widget.Binding[T]` + the widget `Bind*` connectors | widget/binding.go |
 | GApplication single instance, `command-line`, `open` | `app.ClaimInstance` + `InstanceConfig` hooks | app/instance.go |
@@ -99,7 +100,6 @@ The component framework relm4 is built around, tracked in
 
 - no declarative view: there are no typed public builders, and no
   watch/track refresh;
-- no change tracking over a model;
 - no factory of per-item components with in-place edits;
 - no commands bound to a component's lifetime, and no async
   components;

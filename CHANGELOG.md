@@ -13,6 +13,10 @@
 - Children launched from a context shut down with their parent;
   top-level components shut down when the loop stops.
 - `component/componenttest.Loop` runs components headless in tests.
+- Change tracking: `Context.Tracked(v)` returns a `*Tracked[T]` whose
+  `Changed` mark the component clears after every refresh;
+  `Context.Track(fn, deps...)` re-runs `fn` only when a dependency
+  changed.
 - `Application.OnStop(fn)`: hooks run when `Run` returns, in reverse
   order. The loop's stop set used to iterate a map.
 - Removed `app.Component[Msg]` and `NewComponent`; `component`
