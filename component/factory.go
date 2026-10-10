@@ -30,6 +30,7 @@ type factoryItem[C Component[In, Out], In, Out any] struct {
 type Factory[C Component[In, Out], In, Out any] struct {
 	lifetime
 	loop    Loop
+	surface *surfaceRef
 	view    FactoryView[C]
 	items   []*factoryItem[C, In, Out]
 	forward func(*Index, Out)
@@ -39,7 +40,7 @@ type Factory[C Component[In, Out], In, Out any] struct {
 // NewFactory returns a top-level factory rendering into view, shut down
 // when the loop stops.
 func NewFactory[C Component[In, Out], In, Out any](loop Loop, view FactoryView[C]) *Factory[C, In, Out] {
-	f := &Factory[C, In, Out]{loop: loop, view: view}
+	f := &Factory[C, In, Out]{loop: loop, view: view, surface: &surfaceRef{}}
 	f.release = loop.OnStop(f.ownerShutdown)
 	return f
 }
@@ -47,7 +48,7 @@ func NewFactory[C Component[In, Out], In, Out any](loop Loop, view FactoryView[C
 // NewFactory returns a factory owned by this component, rendering into
 // view: its items shut down with the component.
 func (cx *Context[In, Out]) NewFactory[C Component[CIn, COut], CIn, COut any](view FactoryView[C]) *Factory[C, CIn, COut] {
-	f := &Factory[C, CIn, COut]{loop: cx.loop, view: view}
+	f := &Factory[C, CIn, COut]{loop: cx.loop, view: view, surface: cx.surface}
 	cx.adopt(f)
 	return f
 }
@@ -86,7 +87,7 @@ func (f *Factory[C, In, Out]) Insert(i int, c C) *Index {
 	}
 	idx := &Index{i: i}
 	it := &factoryItem[C, In, Out]{model: c, index: idx}
-	it.cx = startAt(f.loop, Component[In, Out](c), idx)
+	it.cx = startAt(f.loop, Component[In, Out](c), idx, f.surface)
 	it.cx.outputs.forward = func(o Out) {
 		if f.forward != nil {
 			f.forward(idx, o)

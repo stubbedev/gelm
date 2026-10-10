@@ -85,6 +85,7 @@ type Context[In, Out any] struct {
 	loading bool
 	held    []In
 	index   *Index
+	surface *surfaceRef
 }
 
 // Index returns the component's position in its Factory, or nil for a
@@ -132,7 +133,7 @@ func (cx *Context[In, Out]) OnShutdown(fn func()) {
 // Launch starts c as a child of this component: it shuts down when this
 // component does, unless its controller is detached.
 func (cx *Context[In, Out]) Launch[CIn, COut any](c Component[CIn, COut]) *Controller[CIn, COut] {
-	child := start(cx.loop, c)
+	child := startAt(cx.loop, c, nil, cx.surface)
 	cx.adopt(child)
 	return &Controller[CIn, COut]{cx: child}
 }
@@ -153,11 +154,11 @@ func Launch[In, Out any](loop Loop, c Component[In, Out]) *Controller[In, Out] {
 }
 
 func start[In, Out any](loop Loop, c Component[In, Out]) *Context[In, Out] {
-	return startAt(loop, c, nil)
+	return startAt(loop, c, nil, &surfaceRef{})
 }
 
-func startAt[In, Out any](loop Loop, c Component[In, Out], index *Index) *Context[In, Out] {
-	cx := &Context[In, Out]{loop: loop, model: c, outputs: outlet[Out]{loop: loop}, index: index}
+func startAt[In, Out any](loop Loop, c Component[In, Out], index *Index, surface *surfaceRef) *Context[In, Out] {
+	cx := &Context[In, Out]{loop: loop, model: c, outputs: outlet[Out]{loop: loop}, index: index, surface: surface}
 	cx.ctx, cx.cancel = context.WithCancel(context.Background()) //nolint:gosec // shutdown calls cx.cancel
 	if l, ok := c.(Loader[In, Out]); ok {
 		cx.root = cx.load(l)

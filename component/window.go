@@ -28,6 +28,7 @@ func Window[In, Out any](a *app.Application, cfg app.WindowConfig, c Component[I
 		ctrl.Shutdown()
 		return nil, nil, err
 	}
+	ctrl.cx.surface.attach(w, nil)
 	return ctrl, w, nil
 }
 
@@ -44,6 +45,7 @@ func Layer[In, Out any](a *app.Application, cfg app.LayerConfig, c Component[In,
 		ctrl.Shutdown()
 		return nil, nil, err
 	}
+	ctrl.cx.surface.attach(nil, l)
 	return ctrl, l, nil
 }
 
