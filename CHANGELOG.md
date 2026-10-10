@@ -7,6 +7,9 @@
 - Fix: accelerators with shift+Tab never matched (xkb reports
   ISO_Left_Tab).
 
+- `widget.ToolbarView` (AdwToolbarView): top/bottom bars with sliding
+  reveal, flat/raised/raised-border styles, and content extending under
+  the bars.
 - libadwaita's tab stack: `widget.TabView` (pinned pages, loading,
   indicator, attention, close veto, `TransferPage`), `TabBar` (select,
   close, drag to reorder or move a page to another bar or window, in
