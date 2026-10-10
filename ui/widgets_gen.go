@@ -3635,6 +3635,119 @@ func (b *ListBuilder) OnSelectionChanged(fn func(rows []int)) *ListBuilder {
 	return b
 }
 
+// ListBoxBuilder builds a widget.ListBox.
+type ListBoxBuilder struct {
+	base[*widget.ListBox, *ListBoxBuilder]
+}
+
+// ListBox builds a widget.ListBox with widget.NewListBox.
+func ListBox() *ListBoxBuilder {
+	b := &ListBoxBuilder{}
+	b.init(b, func(s *Scope) *widget.ListBox { return widget.NewListBox() })
+	return b
+}
+
+// Append calls (*widget.ListBox).Append.
+func (b *ListBoxBuilder) Append(child Node) *ListBoxBuilder {
+	b.do(func(s *Scope, w *widget.ListBox) { w.Append(build(s, child)) })
+	return b
+}
+
+// Insert calls (*widget.ListBox).Insert.
+func (b *ListBoxBuilder) Insert(i int, child Node) *ListBoxBuilder {
+	b.do(func(s *Scope, w *widget.ListBox) { w.Insert(i, build(s, child)) })
+	return b
+}
+
+// FilterFunc calls (*widget.ListBox).SetFilterFunc.
+func (b *ListBoxBuilder) FilterFunc(keep func(*widget.ListBoxRow) bool) *ListBoxBuilder {
+	b.do(func(s *Scope, w *widget.ListBox) { w.SetFilterFunc(keep) })
+	return b
+}
+
+// HeaderFunc calls (*widget.ListBox).SetHeaderFunc.
+func (b *ListBoxBuilder) HeaderFunc(arg func(*widget.ListBoxRow) widget.Widget) *ListBoxBuilder {
+	b.do(func(s *Scope, w *widget.ListBox) { w.SetHeaderFunc(arg) })
+	return b
+}
+
+// Placeholder calls (*widget.ListBox).SetPlaceholder.
+func (b *ListBoxBuilder) Placeholder(child Node) *ListBoxBuilder {
+	b.do(func(s *Scope, w *widget.ListBox) { w.SetPlaceholder(build(s, child)) })
+	return b
+}
+
+// SingleClickActivate calls (*widget.ListBox).SetSingleClickActivate.
+func (b *ListBoxBuilder) SingleClickActivate(on bool) *ListBoxBuilder {
+	b.do(func(s *Scope, w *widget.ListBox) { w.SetSingleClickActivate(on) })
+	return b
+}
+
+// WatchSingleClickActivate re-applies SetSingleClickActivate with get's value after every update.
+func (b *ListBoxBuilder) WatchSingleClickActivate(get func() bool) *ListBoxBuilder {
+	b.watch(func(w *widget.ListBox) { w.SetSingleClickActivate(get()) })
+	return b
+}
+
+// SortFunc calls (*widget.ListBox).SetSortFunc.
+func (b *ListBoxBuilder) SortFunc(cmp func(a *widget.ListBoxRow, b *widget.ListBoxRow) int) *ListBoxBuilder {
+	b.do(func(s *Scope, w *widget.ListBox) { w.SetSortFunc(cmp) })
+	return b
+}
+
+// SelectionMode calls (*widget.ListBox).SetSelectionMode.
+func (b *ListBoxBuilder) SelectionMode(mode widget.SelectionMode) *ListBoxBuilder {
+	b.do(func(s *Scope, w *widget.ListBox) { w.SetSelectionMode(mode) })
+	return b
+}
+
+// WatchSelectionMode re-applies SetSelectionMode with get's value after every update.
+func (b *ListBoxBuilder) WatchSelectionMode(get func() widget.SelectionMode) *ListBoxBuilder {
+	b.watch(func(w *widget.ListBox) { w.SetSelectionMode(get()) })
+	return b
+}
+
+// OnSelectionChanged sets the widget's OnSelectionChanged field.
+func (b *ListBoxBuilder) OnSelectionChanged(fn func(rows []int)) *ListBoxBuilder {
+	b.do(func(_ *Scope, w *widget.ListBox) { w.OnSelectionChanged = fn })
+	return b
+}
+
+// OnActivate sets the widget's OnActivate field.
+func (b *ListBoxBuilder) OnActivate(fn func(i int)) *ListBoxBuilder {
+	b.do(func(_ *Scope, w *widget.ListBox) { w.OnActivate = fn })
+	return b
+}
+
+// ListBoxRowBuilder builds a widget.ListBoxRow.
+type ListBoxRowBuilder struct {
+	base[*widget.ListBoxRow, *ListBoxRowBuilder]
+}
+
+// Activatable calls (*widget.ListBoxRow).SetActivatable.
+func (b *ListBoxRowBuilder) Activatable(on bool) *ListBoxRowBuilder {
+	b.do(func(s *Scope, w *widget.ListBoxRow) { w.SetActivatable(on) })
+	return b
+}
+
+// WatchActivatable re-applies SetActivatable with get's value after every update.
+func (b *ListBoxRowBuilder) WatchActivatable(get func() bool) *ListBoxRowBuilder {
+	b.watch(func(w *widget.ListBoxRow) { w.SetActivatable(get()) })
+	return b
+}
+
+// Selectable calls (*widget.ListBoxRow).SetSelectable.
+func (b *ListBoxRowBuilder) Selectable(on bool) *ListBoxRowBuilder {
+	b.do(func(s *Scope, w *widget.ListBoxRow) { w.SetSelectable(on) })
+	return b
+}
+
+// WatchSelectable re-applies SetSelectable with get's value after every update.
+func (b *ListBoxRowBuilder) WatchSelectable(get func() bool) *ListBoxRowBuilder {
+	b.watch(func(w *widget.ListBoxRow) { w.SetSelectable(get()) })
+	return b
+}
+
 // MediaControlsBuilder builds a widget.MediaControls.
 type MediaControlsBuilder struct {
 	base[*widget.MediaControls, *MediaControlsBuilder]

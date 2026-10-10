@@ -94,6 +94,17 @@ func (v notebookView[C]) Move(from, to int, _ C, _ widget.Widget) {
 	v.notebook.MoveTab(from, to)
 }
 
+type listBoxView[C any] struct{ box *widget.ListBox }
+
+// ListBoxView renders items as the rows of a ListBox.
+func ListBoxView[C any](b *widget.ListBox) FactoryView[C] { return listBoxView[C]{box: b} }
+
+func (v listBoxView[C]) Insert(i int, _ C, w widget.Widget) { v.box.Insert(i, w) }
+func (v listBoxView[C]) Remove(i int, _ C, _ widget.Widget) { v.box.RemoveAt(i) }
+func (v listBoxView[C]) Move(from, to int, _ C, _ widget.Widget) {
+	v.box.Move(from, to)
+}
+
 type fixedView[C any] struct {
 	fixed *widget.Fixed
 	place func(i int) (x, y int)
