@@ -53,3 +53,28 @@ func chain(first, then func()) func() {
 		then()
 	}
 }
+
+// Run is relm4's RelmApp::run for one window: it connects to the
+// compositor, calls setup to build the root component (setup gets the
+// Application, to load fonts, register accelerators or open more
+// windows), opens it as the root of a window from cfg, and runs the loop
+// until the last window closes. A normal close returns nil.
+func Run[C Component[In, Out], In, Out any](cfg app.WindowConfig, setup func(*app.Application) (C, error)) error {
+	sess, err := app.Connect()
+	if err != nil {
+		return err
+	}
+	defer sess.Close()
+	a := app.NewApplication(sess)
+	c, err := setup(a)
+	if err != nil {
+		return err
+	}
+	if _, _, err := Window(a, cfg, Component[In, Out](c)); err != nil {
+		return err
+	}
+	if err := a.Run(); !errors.Is(err, app.ErrClosed) {
+		return err
+	}
+	return nil
+}

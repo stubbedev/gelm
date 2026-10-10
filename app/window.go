@@ -99,6 +99,8 @@ type hostWindow struct {
 	input        *surfaceInput
 	tip          *tooltipCtl
 	lastW, lastH int
+	// reportedW and reportedH are the size OnResize last heard.
+	reportedW, reportedH int
 	// limits reports the host's min/max size in logical pixels (zero
 	// axes unconstrained); sizes the compositor configures outside the
 	// limits are clamped before layout and buffers see them. Nil for
@@ -154,10 +156,11 @@ type windowHooks struct {
 	// opaque promises the surface is fully opaque: the frame pipeline
 	// sets wl_surface.set_opaque_region so the compositor can skip
 	// blending behind it. Computed once at config time by opaqueFor.
-	opaque  bool
-	onPress func(button uint32, serial uint32, over widget.Widget)
-	onMove  func(x, y float64)
-	onKey   func(r *widget.Router, keycode uint32, mods wlsession.Mods)
+	opaque   bool
+	onPress  func(button uint32, serial uint32, over widget.Widget)
+	onMove   func(x, y float64)
+	onResize func(width, height int)
+	onKey    func(r *widget.Router, keycode uint32, mods wlsession.Mods)
 	// keyCapture sees each press before any routing; true consumes it.
 	keyCapture func(Accel) bool
 	onClosed   func()
@@ -439,6 +442,14 @@ func (w *hostWindow) syncSize() bool {
 	return true
 }
 
+func (w *hostWindow) reportSize(bw, bh int) {
+	if w.cfg.onResize == nil || bw <= 0 || bh <= 0 || (bw == w.reportedW && bh == w.reportedH) {
+		return
+	}
+	w.reportedW, w.reportedH = bw, bh
+	w.cfg.onResize(bw, bh)
+}
+
 // rescale switches the window to a new device scale in place: the same
 // hostWindow, widget tree, router, focus, and pool survive; only the
 // buffers are rebuilt. The fresh buffers are fully stale, so the next
@@ -600,6 +611,7 @@ func (w *hostWindow) draw() bool {
 	// buffers are fully stale, so the frame repaints everything.
 	w.syncSize()
 	bw, bh := w.lastW, w.lastH
+	w.reportSize(bw, bh)
 	// Publish the wire scale state on the first draw with a real size:
 	// a surface created unconfigured has nothing to scale yet. Fractional
 	// windows have already applied theirs through rescale.
