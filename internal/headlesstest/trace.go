@@ -158,6 +158,34 @@ func (w *LogWatcher) CountSince(mark int, category, substr string) int {
 	return n
 }
 
+// MaxGapSince returns the largest pause in seconds between consecutive
+// traces in category containing substr after mark, counting the wait
+// for the first such trace from mark itself. Software renderers under
+// suite load present slowly but steadily; a pacing bug stops outright,
+// and this is the signal that tells them apart from a low frame count.
+func (w *LogWatcher) MaxGapSince(mark int, category, substr string) float64 {
+	w.readNew()
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	base := 0.0
+	if mark > 0 && mark <= len(w.seen) {
+		base = w.seen[mark-1].Secs
+	}
+	gap, last := 0.0, -1.0
+	for _, tr := range w.seen[min(mark, len(w.seen)):] {
+		if (category != "" && tr.Category != category) || !strings.Contains(tr.Message, substr) {
+			continue
+		}
+		if last < 0 {
+			gap = tr.Secs - base
+		} else {
+			gap = max(gap, tr.Secs-last)
+		}
+		last = tr.Secs
+	}
+	return gap
+}
+
 // WaitAll is Wait for a set: it waits until each substr has arrived
 // (one trace per substr, in ANY order) since this call began. State
 // transitions produce two racing traces - the confirmed-state line and
