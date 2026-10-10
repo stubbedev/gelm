@@ -11,12 +11,15 @@ import (
 )
 
 // fakePopoverHost is a wire-free Host for registry tests.
-type fakePopoverHost struct{ id int }
+type fakePopoverHost struct {
+	id   int
+	surf wl.Surface
+}
 
 func (f *fakePopoverHost) EnsureUsable() error      { return nil }
 func (f *fakePopoverHost) Closed() bool             { return false }
 func (f *fakePopoverHost) Size() (int, int)         { return 400, 300 }
-func (f *fakePopoverHost) HostSurface() *wl.Surface { return nil }
+func (f *fakePopoverHost) HostSurface() *wl.Surface { return &f.surf }
 
 // TestPopoverRegistry pins the re-anchor rule: opening a second
 // popover on the same host closes the first; a different host is
@@ -107,5 +110,46 @@ func TestPopoverKeyboardFollowsAutohide(t *testing.T) {
 	}
 	if got := popoverKeyboard(PopoverConfig{NoAutohide: true}); got != KeyboardOnDemand {
 		t.Errorf("no-autohide popover holds %v, want on demand", got)
+	}
+}
+
+func TestPressOnTheHostDismissesAnAutohidePopover(t *testing.T) {
+	a := &Application{}
+	host := &fakeHost{w: 100, h: 100}
+	dismissed := 0
+	pop := &Popover{host: host, autohide: true}
+	pop.closeFn = func() {
+		dismissed++
+		pop.markClosed()
+	}
+	a.popovers.openOrReplace(host, pop)
+
+	clicked := 0
+	clickable := &clickCountingBox{onClick: func() { clicked++ }}
+	clickable.Arrange(render.Rect{W: 100, H: 100})
+	in := &surfaceInput{
+		router:         &widget.Router{Root: clickable},
+		request:        func() {},
+		dismissPopover: func() bool { return a.dismissAutohide(host) },
+	}
+	in.HandlePointerEnter(50, 50)
+	in.HandlePointerButton(widget.BTNLeft, 1, 0)
+	in.HandlePointerButton(widget.BTNLeft, 0, 0)
+	if dismissed != 1 || clicked != 0 {
+		t.Fatalf("dismissed=%d clicked=%d, want the press to close the popover and go nowhere else", dismissed, clicked)
+	}
+	in.HandlePointerButton(widget.BTNLeft, 1, 0)
+	in.HandlePointerButton(widget.BTNLeft, 0, 0)
+	if dismissed != 1 || clicked != 1 {
+		t.Errorf("with the popover closed: dismissed=%d clicked=%d, want the press delivered", dismissed, clicked)
+	}
+
+	sticky := &Popover{host: host}
+	sticky.closeFn = func() { t.Error("a NoAutohide popover closed on a press") }
+	a.popovers.openOrReplace(host, sticky)
+	in.HandlePointerButton(widget.BTNLeft, 1, 0)
+	in.HandlePointerButton(widget.BTNLeft, 0, 0)
+	if clicked != 2 {
+		t.Errorf("a press beside a NoAutohide popover was swallowed")
 	}
 }

@@ -121,7 +121,10 @@ type surfaceInput struct {
 	router  *widget.Router
 	tip     *tooltipCtl
 	onPress func(button uint32, serial uint32, over widget.Widget)
-	onMove  func(x, y float64)
+	// dismissPopover closes the autohide popover open over this
+	// surface's window and reports whether it did.
+	dismissPopover func() bool
+	onMove         func(x, y float64)
 	// onRelative hears the pointer's relative motion (OnRelativeMotion).
 	onRelative func(dx, dy, rawDX, rawDY float64)
 	// dnd, when set, starts drags from press+motion gestures and
@@ -279,6 +282,10 @@ func (in *surfaceInput) HandlePointerButton(button, state, serial uint32) {
 		if in.tip != nil && in.tip.open != nil {
 			in.tip.open.Dismiss()
 			in.tip.open = nil
+		}
+		if in.dismissPopover != nil && in.dismissPopover() {
+			debug.Log("input", "press dismissed the open popover")
+			return
 		}
 		// A press on a resize handle belongs to the window frame: the
 		// xdg_toplevel.resize grab replaces the widget press entirely.

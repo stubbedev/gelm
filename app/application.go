@@ -570,6 +570,7 @@ func (a *Application) newWindow(host Host, scale int, root widget.Widget, hooks 
 	w := newHostWindow(a.sess, host, scale, ov, hooks, a.dnd, a.primary, animKind, hostCloser(host))
 	if w.input != nil {
 		w.input.transferError = a.reportTransfer
+		w.input.dismissPopover = func() bool { return a.dismissAutohide(host) }
 	}
 	ov.SetRouter(w.router)
 	w.inspector = ov

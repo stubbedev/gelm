@@ -114,6 +114,9 @@ type Popover struct {
 	teardown func()
 	parent   *Popover
 	children []*Popover
+	// autohide closes the popover on a press anywhere else, the parent
+	// window included (PopoverConfig.NoAutohide off).
+	autohide bool
 }
 
 // Parent is the popover this one is nested under, nil for a root.
@@ -218,26 +221,45 @@ func (p *Popover) markClosed() bool {
 }
 
 // popoverRegistry tracks the one open popover per host; opening a new
-// one on the same host re-anchors by closing the previous.
+// one on the same host re-anchors by closing the previous. Hosts are
+// keyed by their surface, so an *app.Window and the raw host it wraps
+// name the same entry.
 type popoverRegistry struct {
-	open map[Host]*Popover
+	open map[*wl.Surface]*Popover
 }
 
 // openOrReplace registers p for host and returns the popover it
 // replaced, if any; the caller closes it.
 func (r *popoverRegistry) openOrReplace(h Host, p *Popover) *Popover {
 	if r.open == nil {
-		r.open = make(map[Host]*Popover)
+		r.open = make(map[*wl.Surface]*Popover)
 	}
-	prev := r.open[h]
-	r.open[h] = p
+	prev := r.open[h.HostSurface()]
+	r.open[h.HostSurface()] = p
 	return prev
+}
+
+// get returns the popover registered for host, nil without one.
+func (r *popoverRegistry) get(h Host) *Popover { return r.open[h.HostSurface()] }
+
+// dismissAutohide closes the autohide popover open over host, if any,
+// and reports whether it did. Compositors deliver a press on the
+// popover's own client through the popup grab without a popup_done
+// (sway does), so the parent window's press path closes it here: the
+// press is the click away, and it goes nowhere else.
+func (a *Application) dismissAutohide(h Host) bool {
+	p := a.popovers.get(h)
+	if p == nil || !p.autohide || p.Closed() {
+		return false
+	}
+	p.Dismiss()
+	return true
 }
 
 // take removes and returns the popover registered for host.
 func (r *popoverRegistry) take(h Host) *Popover {
-	p := r.open[h]
-	delete(r.open, h)
+	p := r.open[h.HostSurface()]
+	delete(r.open, h.HostSurface())
 	return p
 }
 
@@ -346,7 +368,7 @@ func (a *Application) OpenPopover(host Host, cfg PopoverConfig) (*Popover, error
 	gutter := widget.Current().ShadowGutter()
 	debug.Log("input", "popover anchor %+v size %dx%d gravity %d gutter %d", anchor, size.W, size.H, cfg.Gravity, gutter)
 
-	p := &Popover{host: host, parent: parent}
+	p := &Popover{host: host, parent: parent, autohide: !cfg.NoAutohide}
 	keyRoot := &popoverKeyRoot{
 		onDismiss: p.Dismiss,
 		content:   cfg.Content,
@@ -530,7 +552,7 @@ func (a *Application) drivePopovers(all bool) error {
 		if op.pop.Destroyed() {
 			op.painter.Close()
 			op.detach()
-			if a.popovers.open[op.host] == op.popover {
+			if a.popovers.get(op.host) == op.popover {
 				a.popovers.take(op.host)
 			}
 			op.fireClosed()
