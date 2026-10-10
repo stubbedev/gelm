@@ -161,6 +161,7 @@ A `*Controller[In, Out]` gives you:
 | `ForwardTo(sender, f)` | route outputs, mapped by `f`, into another component |
 | `Detach()` | survive the owner's shutdown, until the loop stops |
 | `Shutdown()`, `Alive()` | stop it, and ask whether it runs |
+| `State()` | the `*StateWatcher`: observe the component's model |
 
 ## Children
 
@@ -177,6 +178,32 @@ func (p *Parent) Init(cx *component.Context[ParentMsg, struct{}]) widget.Widget 
 `Context.Launch` and `Controller.ForwardTo` are Go 1.27 generic
 methods, and the child's message types are inferred from the
 component value.
+
+## Observing a child's state
+
+A parent that wants the child's model, not just its outputs, reads it
+through the controller's state watcher, relm4's `Controller::state`:
+
+```go
+child := cx.Launch(&Counter{env: p.env})
+unwatch := child.State().Subscribe(func(c *Counter) {
+	p.total.Set(c.n)
+})
+```
+
+`Subscribe`'s callback runs on the component's loop after every batch
+of the child's updates - once per batch, like `UpdateView`, not once
+per message - and receives the live model itself, not a copy. It may
+only read the model: it must not change it, and it must not send the
+child input from inside the notification (a Send re-enters the child
+it observes; gelm queues it to the next loop pass rather than running
+it reentrantly, but an observer has no reason to rely on that). There
+is no initial call; subscribe before the first batch or read the model
+directly. The returned unsubscribe is idempotent and safe from any
+goroutine and after shutdown, and the child's shutdown releases every
+subscription. Between batches, `State().Model[T]()` returns the typed
+model as it is now (read it on the loop, so it does not race a batch
+in flight).
 
 Lifetime follows ownership. A parent's shutdown stops its children
 first (the last launched stops first), then its own `Shutdown`, then its
