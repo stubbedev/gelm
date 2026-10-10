@@ -191,6 +191,46 @@ Input sent while loading is held and delivered after `Init`. A
 component shut down mid-load cancels `Load`'s context and never runs
 `Init`.
 
+## Factories
+
+A `Factory[C, In, Out]` is a collection of item components rendered
+into a container (relm4's `FactoryVecDeque`). Every item is a full
+component with its own input, output, children and `Loader` support,
+and `cx.Index()` gives it a stable `*component.Index` whose
+`Current()` follows edits.
+
+```go
+func (l *List) Init(cx *component.Context[ListMsg, struct{}]) widget.Widget {
+	var box *widget.Box
+	root := ui.Mount(cx, l.env, ui.Scroll(ui.Column().Ref(&box)))
+	l.rows = cx.NewFactory(component.BoxView[*Row](box, false)).
+		ForwardTo(cx.Sender(), func(x *component.Index, o RowOut) ListMsg { return Removed{x.Current()} })
+	for _, item := range l.items {
+		l.rows.PushBack(&Row{env: l.env, item: item})
+	}
+	return root
+}
+```
+
+- Edits apply to the container in place as they are made: `PushBack`,
+  `PushFront`, `Insert`, `Remove`, `Move`, `Swap` and `Clear`. Items
+  that stay keep their widgets, moved items move without detaching (so
+  focus and selection survive), and nothing is rebuilt. There is no
+  guard to drop.
+- Items are read with `Len`, `Get(i)` and `All()` (an `iter.Seq2`), and
+  sent input with `Send(i, msg)` and `Broadcast(msg)`.
+- Item outputs reach `Forward`/`ForwardTo` with the emitting item's
+  index.
+- Removed items shut down. A factory owned by a component
+  (`cx.NewFactory`) shuts its items down with it.
+
+Views: `BoxView`, `FlowBoxView`, `StackView` (pages named per item),
+`NotebookView` (tabs titled per item) and `GridView` (cells placed by
+index). The container holds only the factory's items. Implement
+`FactoryView[C]` to render into anything else. Large, virtualized data
+sets use `widget.List` or `ColumnView` with a model instead, relm4's
+`TypedListView`.
+
 ## Workers
 
 A `Worker[In, Out]` is a typed background actor (relm4's `Worker`).
