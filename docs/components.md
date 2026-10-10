@@ -191,6 +191,35 @@ Input sent while loading is held and delivered after `Init`. A
 component shut down mid-load cancels `Load`'s context and never runs
 `Init`.
 
+## Workers
+
+A `Worker[In, Out]` is a typed background actor (relm4's `Worker`).
+Its `Update(msg, emit)` runs on the worker's own goroutine, in send
+order, and every `emit` reaches the controller's forward route on the
+loop.
+
+```go
+type Indexer struct{ db *Index }
+
+func (x *Indexer) Update(path string, emit func(Indexed)) {
+	emit(Indexed{path, x.db.Add(path)})
+}
+
+func (a *App) Init(cx *component.Context[Msg, struct{}]) widget.Widget {
+	a.indexer = cx.LaunchWorker(&Indexer{db: a.db}).
+		ForwardTo(cx.Sender(), func(r Indexed) Msg { return IndexDone{r} })
+	...
+}
+```
+
+`component.LaunchWorker(loop, w)` starts a top-level worker that stops
+with the loop, and `cx.LaunchWorker(w)` starts one owned by the
+component. The `WorkerController` has the same `Send`, `Sender`,
+`Forward`, `ForwardTo`, `Detach` and `Shutdown` as a component's.
+
+On shutdown, queued input is dropped and the update in progress
+finishes. An optional `Shutdown()` then runs on the worker's goroutine.
+
 ## Messaging
 
 - `cx.Input(msg)` and `Sender.Send(msg)` work from any goroutine. A

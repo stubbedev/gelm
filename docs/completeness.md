@@ -14,6 +14,7 @@ live in [architecture.md](architecture.md#non-goals).
 | `Component`, `Controller`, `RelmApp::run` | `component.Component[In, Out]`, `Context`, `Controller` (`Forward`, `ForwardTo`, `Detach`), `component.Window`/`Layer`; headless tests with `componenttest.Loop` | component/, [components.md](components.md) |
 | `view!`, `#[name]`, `#[watch]` setters, `#[relm4::widget_template]` | `ui`: a generated typed builder per widget (setters, `Watch*`, hooks, `Bind*`, adders), `Ref`, `Column`/`Row`, `If`, `Match`, `Each`, `Use`; templates are functions; `ui.Mount`/`ui.Build` | ui/, internal/uigen, [components.md](components.md#views-typed-builders) |
 | `Command`, `oneshot_command`, `spawn_command`, `AsyncComponent` | `Context.Oneshot`, `Spawn`, `Context()` (cancelled at shutdown); `Loader` (loading view, `Load` off the loop, held input) | component/command.go |
+| `Worker`, `detach_worker` | `component.Worker[In, Out]` on its own goroutine, `LaunchWorker` (top-level or owned by a component), `WorkerController` | component/worker.go |
 | `tracker::track`, `#[watch]`, `#[track]` | `Context.Tracked` (`*Tracked[T]`, cleared after each refresh), `Context.Watch`, `Context.Track` | component/tracked.go |
 | `MessageBroker`, `SharedState` | `app.Stream[Msg]`, `app.SharedState[T]` | app/message.go |
 | relm4 `binding` module | `widget.Binding[T]` + the widget `Bind*` connectors | widget/binding.go |
@@ -101,7 +102,6 @@ The component framework relm4 is built around, tracked in
 [#139](https://github.com/stubbedev/gelm/issues/139):
 
 - no factory of per-item components with in-place edits;
-- no typed workers;
 - actions are string-keyed, with no state, parameters or groups;
 - the demos use `internal/` packages.
 
