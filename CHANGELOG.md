@@ -21,6 +21,17 @@
   goroutine, launched with `LaunchWorker` (top-level or owned by a
   component), forwarding outputs on the loop, and stopping with its
   owner.
+- `component.Factory[C, In, Out]`, relm4's `FactoryVecDeque`: item
+  components with stable `*Index`, edits applied in place (`PushBack`,
+  `PushFront`, `Insert`, `Remove`, `Move`, `Swap`, `Clear`),
+  `Send`/`Broadcast`, outputs forwarded with the item index, async
+  items via `Loader`, and the `BoxView`, `FlowBoxView`, `StackView`,
+  `NotebookView` and `GridView` views.
+- `Box.Move`, `FlowBox.Move`, `Stack.Insert`/`Move`, `Grid.Place`,
+  `Notebook.InsertTab`/`CloseTabAt`/`MoveTab`: in-place,
+  index-based container edits. `MoveTab` is programmatic and does not
+  fire `OnReorder`. Fix: closing a tab before the selected one no
+  longer switches the visible page.
 - New `ui` package, relm4's `view!` as typed public builders: one
   builder per widget, generated from package widget (`go generate
   ./ui`; a test fails on a stale file). Each builder has a constructor

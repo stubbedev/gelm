@@ -91,11 +91,12 @@ component's input and output queues coalesce their wakes exactly like
 | `Worker`, `detach_worker` | `component.Worker` with `LaunchWorker` and `WorkerController` |
 | `Command`, `oneshot_command`, `spawn_command` | `Context.Oneshot`, `Context.Spawn`, cancelled at shutdown |
 | `AsyncComponent` | a component implementing `component.Loader` |
-| `Factory`, `FactoryVecDeque` | `widget.List` + `ListModel`: virtualized rows rebuilt on `Changed()`, with no per-item component |
+| `FactoryVecDeque` | `component.Factory` of item components, edited in place |
+| `TypedListView` (virtualized) | `widget.List` + `ListModel`, `ColumnView` |
 | `glib::timeout_add` | `Application.Every` |
 
 The missing pieces are tracked in
-[#139](https://github.com/stubbedev/gelm/issues/139): factories and typed actions.
+[#139](https://github.com/stubbedev/gelm/issues/139): typed actions.
 
 ## Tests
 

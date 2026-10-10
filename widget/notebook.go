@@ -186,8 +186,11 @@ func (n *Notebook) revealTab(i int) {
 }
 
 // MoveTab moves tab from to index to, the selection following its
-// page, and fires OnReorder.
-func (n *Notebook) MoveTab(from, to int) {
+// page. It is the programmatic move: OnReorder reports only the user's
+// drags, so a handler that mirrors them into a model cannot loop.
+func (n *Notebook) MoveTab(from, to int) { n.moveTab(from, to, false) }
+
+func (n *Notebook) moveTab(from, to int, dragged bool) {
 	if from == to || from < 0 || to < 0 || from >= len(n.tabs) || to >= len(n.tabs) {
 		return
 	}
@@ -202,7 +205,7 @@ func (n *Notebook) MoveTab(from, to int) {
 	}
 	n.syncSelectedTab()
 	n.Invalidate()
-	if n.OnReorder != nil {
+	if dragged && n.OnReorder != nil {
 		n.OnReorder(t.name, to)
 	}
 }
@@ -485,7 +488,7 @@ func (n *Notebook) DragMove(p Point) {
 		return
 	}
 	if i := n.tabAt(Point{X: p.X, Y: n.bounds.Y + 1}); i >= 0 && i != n.dragTab {
-		n.MoveTab(n.dragTab, i)
+		n.moveTab(n.dragTab, i, true)
 		n.dragTab = i
 	}
 }

@@ -84,7 +84,12 @@ type Context[In, Out any] struct {
 	cancel  context.CancelFunc
 	loading bool
 	held    []In
+	index   *Index
 }
+
+// Index returns the component's position in its Factory, or nil for a
+// component that is not a factory item.
+func (cx *Context[In, Out]) Index() *Index { return cx.index }
 
 // Loop returns the loop the component runs on.
 func (cx *Context[In, Out]) Loop() Loop { return cx.loop }
@@ -144,7 +149,11 @@ func Launch[In, Out any](loop Loop, c Component[In, Out]) *Controller[In, Out] {
 }
 
 func start[In, Out any](loop Loop, c Component[In, Out]) *Context[In, Out] {
-	cx := &Context[In, Out]{loop: loop, model: c, outputs: outlet[Out]{loop: loop}}
+	return startAt(loop, c, nil)
+}
+
+func startAt[In, Out any](loop Loop, c Component[In, Out], index *Index) *Context[In, Out] {
+	cx := &Context[In, Out]{loop: loop, model: c, outputs: outlet[Out]{loop: loop}, index: index}
 	cx.ctx, cx.cancel = context.WithCancel(context.Background()) //nolint:gosec // shutdown calls cx.cancel
 	if l, ok := c.(Loader[In, Out]); ok {
 		cx.root = cx.load(l)
