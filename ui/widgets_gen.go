@@ -4644,6 +4644,12 @@ func (b *StackBuilder) Add(name string, child Node) *StackBuilder {
 	return b
 }
 
+// Insert calls (*widget.Stack).Insert.
+func (b *StackBuilder) Insert(i int, name string, child Node) *StackBuilder {
+	b.do(func(s *Scope, w *widget.Stack) { w.Insert(i, name, build(s, child)) })
+	return b
+}
+
 // Homogeneous calls (*widget.Stack).SetHomogeneous.
 func (b *StackBuilder) Homogeneous(h bool) *StackBuilder {
 	b.do(func(s *Scope, w *widget.Stack) { w.SetHomogeneous(h) })

@@ -75,6 +75,29 @@ func (s *Stack) Add(name string, w Widget) *Stack {
 	return s
 }
 
+// Insert puts a child under name at position i of the page order
+// (clamped), with Add's replacement rule for an existing name.
+func (s *Stack) Insert(i int, name string, w Widget) *Stack {
+	s.Add(name, w)
+	s.Move(name, i)
+	return s
+}
+
+// Move moves the page under name to position i of the page order
+// (clamped); the page stays attached. An unknown name is a no-op.
+func (s *Stack) Move(name string, i int) {
+	from := slices.Index(s.order, name)
+	if from < 0 {
+		return
+	}
+	i = min(max(i, 0), len(s.order)-1)
+	if from == i {
+		return
+	}
+	s.order = slices.Insert(slices.Delete(s.order, from, from+1), i, name)
+	s.Invalidate()
+}
+
 // Remove deletes the child under name and reports whether there was
 // one. Removing the visible child leaves the stack showing nothing —
 // Visible reads "" until the next Show or Add names a child; removal

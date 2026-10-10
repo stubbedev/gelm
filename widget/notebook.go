@@ -247,25 +247,30 @@ func (n *Notebook) selectIndex(i int) {
 // removed. The closed page detaches like every tree mutation: parent
 // link cleared, removal hook fired.
 func (n *Notebook) CloseTab(name string) bool {
-	for i, t := range n.tabs {
-		if t.name != name {
-			continue
-		}
-		notifyRemoved(t.w)
-		n.tabs = append(n.tabs[:i], n.tabs[i+1:]...)
-		if n.selected >= len(n.tabs) {
-			n.selected = len(n.tabs) - 1
-		}
-		if n.selected < 0 {
-			n.selected = 0
-		}
-		n.scrollStrip(n.scroll)
-		clearParents(t.w)
-		n.syncTabs()
-		n.InvalidateLayout()
-		return true
+	i := slices.IndexFunc(n.tabs, func(t notebookTab) bool { return t.name == name })
+	if i < 0 {
+		return false
 	}
-	return false
+	n.CloseTabAt(i)
+	return true
+}
+
+// CloseTabAt removes the page at index i, like CloseTab; an index out
+// of range is a no-op.
+func (n *Notebook) CloseTabAt(i int) {
+	if i < 0 || i >= len(n.tabs) {
+		return
+	}
+	t := n.tabs[i]
+	notifyRemoved(t.w)
+	n.tabs = slices.Delete(n.tabs, i, i+1)
+	if n.selected > i || n.selected >= len(n.tabs) {
+		n.selected = max(n.selected-1, 0)
+	}
+	n.scrollStrip(n.scroll)
+	clearParents(t.w)
+	n.syncTabs()
+	n.InvalidateLayout()
 }
 
 // Children exposes only the visible page, so keyboard traversal skips
