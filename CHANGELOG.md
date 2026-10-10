@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+### Component framework
+
+- New `component` package, relm4's component model:
+  `Component[In, Out]` (`Init`, `Update`, optional `UpdateView` and
+  `Shutdown`), `Context` (`Input`, `Output`, `Sender`, `Watch`,
+  `OnShutdown`, child `Launch`), and `Controller` (`Widget`, `Send`,
+  `Forward`, `ForwardTo`, `Detach`, `Shutdown`). `component.Window` and
+  `Layer` launch a component as a window's root.
+- Children launched from a context shut down with their parent;
+  top-level components shut down when the loop stops.
+- `component/componenttest.Loop` runs components headless in tests.
+- `Application.OnStop(fn)`: hooks run when `Run` returns, in reverse
+  order. The loop's stop set used to iterate a map.
+- Removed `app.Component[Msg]` and `NewComponent`; `component`
+  replaces them.
+
 ### Public system appearance
 
 - `Application.ColorScheme`, `Accent`, `Contrast` and their

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/stubbedev/gelm/internal/debug"
+	"github.com/stubbedev/gelm/internal/mailbox"
 )
 
 // Single-instance activation, GApplication/relm4 parity (#79): the
@@ -96,7 +97,7 @@ type Instance struct {
 	mu   sync.Mutex
 	app  *Application
 	id   int
-	box  mailbox[Invocation]
+	box  mailbox.Box[Invocation]
 }
 
 // invocationWire is the on-socket form of Invocation.
@@ -161,9 +162,9 @@ func (ins *Instance) Bind(a *Application) {
 	if ok {
 		ins.id = id
 	} else {
-		ins.box.stop()
+		ins.box.Stop()
 	}
-	if ins.box.pending() > 0 {
+	if ins.box.Pending() > 0 {
 		a.Invoke(ins.drain)
 	}
 }
@@ -185,7 +186,7 @@ func (ins *Instance) Close() {
 // delivers each invocation to the hooks, activating afterwards so a
 // window the hook just created can be the one focused.
 func (ins *Instance) drain() {
-	for _, inv := range ins.box.take() {
+	for _, inv := range ins.box.Take() {
 		ins.deliver(inv)
 	}
 }
@@ -223,7 +224,7 @@ func (ins *Instance) activate(token string) {
 // loop when one is bound; before Bind the mailbox buffers.
 func (ins *Instance) receive(inv Invocation) {
 	ins.mu.Lock()
-	route := ins.box.put(inv) && ins.app != nil
+	route := ins.box.Put(inv) && ins.app != nil
 	app := ins.app
 	ins.mu.Unlock()
 	if route {
@@ -253,7 +254,7 @@ func (ins *Instance) accept() {
 }
 
 func (ins *Instance) stop() {
-	ins.box.stop()
+	ins.box.Stop()
 	if ins.ln != nil {
 		_ = ins.ln.Close()
 		_ = os.Remove(ins.path)
