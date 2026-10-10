@@ -112,6 +112,16 @@ func (c *Counter) Init(cx *component.Context[Msg, int]) widget.Widget {
 }
 ```
 
+A component living in a window can keep the window's own properties
+in step with its model (relm4's `#[watch] set_title`):
+`cx.WindowTitle(get)`, `cx.WindowMaximized(get)`,
+`cx.WindowFullscreen(get)` and `cx.WindowMinSize(get)` request a change
+only when the value moved, and `cx.WatchWindow(fn)` is the general
+form. `cx.Window()` and `cx.Layer()` return the surface the component
+or an ancestor was opened in. During `Init` the window does not exist
+yet (it is created around the root `Init` returns), so window watches
+first run when it does.
+
 A refresh runs `UpdateView`, then the watches and tracks in
 registration order, then clears the marks. A mark set by an update is
 visible to every later update in the same batch.

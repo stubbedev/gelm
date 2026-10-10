@@ -4,6 +4,10 @@
 
 ### Parity, fifth pass
 
+- Component-owned window state: `Context.Window`/`Layer` (shared with
+  children and factory items), `WatchWindow`, and change-only
+  `WindowTitle`, `WindowMaximized`, `WindowFullscreen`,
+  `WindowMinSize`.
 - `component.Dialog` and `component.Popover` run a component as a
   surface's content with a two-way lifetime; `DialogResponder` hears
   responses; `Context.Shutdown` stops a component from inside.

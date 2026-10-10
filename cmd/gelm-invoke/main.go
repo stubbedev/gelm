@@ -50,6 +50,12 @@ func (s *sensor) Init(cx *component.Context[msg, struct{}]) widget.Widget {
 		}
 	})
 	cx.OnShutdown(s.app.Every(time.Second, func() { cx.Input(tick{}) }))
+	cx.WindowTitle(func() string {
+		if s.reading == 0 {
+			return "gelm invoke"
+		}
+		return fmt.Sprintf("gelm invoke: %d mV", s.reading)
+	})
 
 	return ui.Mount(cx, s.env, ui.Column(
 		ui.Label("").Font(nil, 18).WatchText(func() string {
