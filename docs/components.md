@@ -333,6 +333,9 @@ ui.Button(ui.Label("Save"), 8, 6).BindAction(save)
 - A disabled action (`SetEnabled(false)`) disables every proxy: menu
   rows grey out, buttons disable, and its accelerator lets the key
   through.
+- A `ParamAction[P]` runs with a value: `open.Target(path)` is the
+  proxy-bindable activation of `open-file(path)`, one action for every
+  recent-file row.
 - A `StateAction[S]`'s state shows on every proxy. `Toggle` (bool) and
   `Target(v)` (radio) are the checkable views of it.
 - Menus opened through the application show each action row's
