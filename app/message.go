@@ -1,6 +1,7 @@
 package app
 
 import (
+	"slices"
 	"sync"
 )
 
@@ -115,40 +116,37 @@ func (s *stopSet) shutdown() {
 }
 
 // subscriberSet is the fan-out half of a messenger: callbacks added from
-// any goroutine, snapshotted per message for delivery on the loop.
+// any goroutine, snapshotted per message for delivery on the loop in
+// subscription order.
 type subscriberSet[Msg any] struct {
 	mu   sync.Mutex
 	next int
-	subs map[int]func(Msg)
+	subs []subscriber[Msg]
+}
+
+type subscriber[Msg any] struct {
+	id int
+	fn func(Msg)
 }
 
 func (s *subscriberSet[Msg]) add(fn func(Msg)) int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.subs == nil {
-		s.subs = map[int]func(Msg){}
-	}
 	s.next++
-	s.subs[s.next] = fn
+	s.subs = append(s.subs, subscriber[Msg]{id: s.next, fn: fn})
 	return s.next
 }
 
 func (s *subscriberSet[Msg]) remove(id int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	delete(s.subs, id)
+	s.subs = slices.DeleteFunc(s.subs, func(sub subscriber[Msg]) bool { return sub.id == id })
 }
 
-// snapshot returns the live callbacks; delivery per message keeps a
-// cancel effective at the next message, never retroactively.
-func (s *subscriberSet[Msg]) snapshot() []func(Msg) {
+func (s *subscriberSet[Msg]) snapshot() []subscriber[Msg] {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	subs := make([]func(Msg), 0, len(s.subs))
-	for _, fn := range s.subs {
-		subs = append(subs, fn)
-	}
-	return subs
+	return slices.Clone(s.subs)
 }
 
 // Stream is a typed publish/subscribe messenger onto the loop goroutine:
@@ -217,8 +215,8 @@ func (s *Stream[Msg]) stop() {
 // hands each message to the subscribers live at that message.
 func (s *Stream[Msg]) drain() {
 	for _, msg := range s.box.take() {
-		for _, fn := range s.subs.snapshot() {
-			fn(msg)
+		for _, sub := range s.subs.snapshot() {
+			sub.fn(msg)
 		}
 	}
 }

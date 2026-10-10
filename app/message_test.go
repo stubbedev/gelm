@@ -1,6 +1,7 @@
 package app
 
 import (
+	"slices"
 	"strconv"
 	"sync"
 	"testing"
@@ -226,5 +227,33 @@ func TestStreamCloseDropsQueuedMessages(t *testing.T) {
 	a.pump(time.Now())
 	if ran {
 		t.Error("a message queued before Close was still delivered")
+	}
+}
+
+func TestStreamSubscribersFireInSubscriptionOrder(t *testing.T) {
+	a := testApp(nil)
+	broker := NewStream[int](a)
+	const subscribers = 32
+	var order []int
+	cancels := make([]func(), subscribers)
+	for i := range subscribers {
+		cancels[i] = broker.Subscribe(func(int) { order = append(order, i) })
+	}
+	cancels[5]()
+	for range 50 {
+		broker.Send(0)
+	}
+	a.pump(time.Now())
+	want := make([]int, 0, subscribers-1)
+	for i := range subscribers {
+		if i != 5 {
+			want = append(want, i)
+		}
+	}
+	for msg := range 50 {
+		got := order[msg*len(want) : (msg+1)*len(want)]
+		if !slices.Equal(got, want) {
+			t.Fatalf("message %d reached subscribers in order %v, want %v", msg, got, want)
+		}
 	}
 }
