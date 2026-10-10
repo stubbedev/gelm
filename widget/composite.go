@@ -64,7 +64,7 @@ func (c *composite) Measure(con Constraints) Size {
 	if c.fixedWidth > 0 {
 		inner.Max.W = min(inner.Max.W, c.fixedWidth)
 	}
-	sz := c.root.Measure(inner)
+	sz := measureChild(c.self, c.root, inner)
 	switch {
 	case c.fixedWidth > 0:
 		sz.W = c.fixedWidth

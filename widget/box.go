@@ -289,6 +289,7 @@ func (b *Box) Measure(con Constraints) Size {
 		for i, c := range b.child {
 			if !IsVisible(c.w) {
 				b.child[i].nat = Size{}
+				setParents(b, c.w)
 				continue
 			}
 			nat := measureChild(b, c.w, Constraints{Max: b.withMain(Size{W: innerCross, H: innerCross}, availMain)})
