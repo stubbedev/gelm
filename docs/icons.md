@@ -1,6 +1,6 @@
 # gelm icons
 
-How gelm resolves and paints themed icons (stubbedev/gelm#20).
+How gelm resolves and paints themed icons.
 
 ## Pieces
 
@@ -19,7 +19,7 @@ How gelm resolves and paints themed icons (stubbedev/gelm#20).
   made), `NewThemeIcon` (theme name), `NewFileIcon` (png / svg / svgz
   path), `NewSVGIcon` (embedded bytes, for apps that ship their own
   glyphs). Icons rasterize at the canvas device scale, so a fractional
-  rescale (#14) re-rasterizes crisply.
+  rescale re-rasterizes crisply.
 - `render.Icon.Tint` — the recoloring primitive.
 
 ## Symbolic recoloring
@@ -42,11 +42,11 @@ A symbolic `widget.Icon` follows `widget.Current().Accent` automatically;
 `SetTint` pins a different color (zero un-pins). Non-symbolic sources
 keep their colors unless a tint is pinned.
 
-## Icon-theme changes are followed live (#64)
+## Icon-theme changes are followed live
 
 The portal's `org.gnome.desktop.interface icon-theme` setting is
 watched by the same monitor that carries the color-scheme preference
-(internal/appearance, #53). The application wires the two together:
+(internal/appearance). The application wires the two together:
 `Monitor.OnIconThemeChange` feeds `icons.Default().ApplyIconTheme`, and
 an `Application` does that wiring for you — a desktop theme switch
 swaps the resolution theme, drops every cached raster, and bumps
