@@ -190,3 +190,30 @@ func TestMissingFacePanics(t *testing.T) {
 	}()
 	ui.Build(ui.Env{Size: 12}, ui.Label("x"))
 }
+
+func TestFixedBuilderPlacesChildren(t *testing.T) {
+	var fixed *widget.Fixed
+	root, _ := ui.Build(env(t), ui.Fixed().Ref(&fixed).
+		Put(ui.Label("a"), 3, 4).
+		Put(ui.Spacer(10, 5), -6, 1))
+	if root != widget.Widget(fixed) {
+		t.Fatalf("root = %T, want the fixed itself", root)
+	}
+	kids := fixed.Children()
+	if len(kids) != 2 {
+		t.Fatalf("fixed holds %d children, want 2", len(kids))
+	}
+	nat := fixed.Measure(widget.Constraints{Max: widget.Size{W: 300, H: 300}})
+	fixed.Arrange(render.Rect{X: 0, Y: 0, W: nat.W, H: nat.H})
+	label := kids[0].(interface{ Bounds() render.Rect })
+	spacer := kids[1].(interface{ Bounds() render.Rect })
+	if got := label.Bounds(); got.X != 3 || got.Y != 4 {
+		t.Errorf("label at %v, want 3,4", got)
+	}
+	if got := spacer.Bounds(); got != (render.Rect{X: -6, Y: 1, W: 10, H: 5}) {
+		t.Errorf("spacer = %v, want -6,1 10x5", got)
+	}
+	if got, want := fixed.Bounds(), label.Bounds().Union(spacer.Bounds()); got.W != want.W || got.H != want.H {
+		t.Errorf("fixed bounds %v, want the children's union size %dx%d", got, want.W, want.H)
+	}
+}
