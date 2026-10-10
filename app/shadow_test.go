@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stubbedev/gelm/internal/anim"
+	"github.com/stubbedev/gelm/internal/animclock"
 	"github.com/stubbedev/gelm/render"
 	"github.com/stubbedev/gelm/widget"
 )
@@ -18,14 +18,14 @@ import (
 func drainAnim(t *testing.T, now *time.Time) {
 	t.Helper()
 	for i := 0; ; i++ {
-		wake, ok := anim.Next()
+		wake, ok := animclock.Next()
 		if !ok {
 			return
 		}
 		if wake.After(*now) {
 			*now = wake
 		}
-		anim.Tick(*now)
+		animclock.Tick(*now)
 		if i > 1000 {
 			t.Fatal("animation schedule did not drain")
 		}
@@ -45,9 +45,9 @@ func TestToastShadowDamageInWindow(t *testing.T) {
 	widget.SetTheme(widget.DarkTheme())
 
 	base := time.Unix(1750000000, 0)
-	t.Cleanup(anim.SetClock(func() time.Time { return base }))
-	t.Cleanup(anim.Reset)
-	anim.Reset()
+	t.Cleanup(animclock.SetClock(func() time.Time { return base }))
+	t.Cleanup(animclock.Reset)
+	animclock.Reset()
 
 	root := widget.NewBox(widget.Row, 0, 0)
 	h := newPaintHarness(root, 320, 200)

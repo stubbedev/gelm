@@ -3,7 +3,7 @@ package widget
 import (
 	"time"
 
-	"github.com/stubbedev/gelm/internal/anim"
+	"github.com/stubbedev/gelm/anim"
 	"github.com/stubbedev/gelm/internal/style"
 	"github.com/stubbedev/gelm/internal/surfx"
 	"github.com/stubbedev/gelm/render"

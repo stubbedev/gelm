@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stubbedev/gelm/internal/anim"
+	"github.com/stubbedev/gelm/internal/animclock"
 	"github.com/stubbedev/gelm/internal/style"
 	"github.com/stubbedev/gelm/render"
 )
@@ -156,7 +156,7 @@ func TestExpanderRemembersStateWhileHidden(t *testing.T) {
 		t.Error("hidden expander forgot its closing state")
 	}
 	c.set(t0.Add(time.Second))
-	anim.Tick(c.now())
+	animclock.Tick(c.now())
 }
 
 func TestExpanderClickAndKeyToggle(t *testing.T) {

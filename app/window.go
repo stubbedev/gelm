@@ -24,7 +24,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/stubbedev/gelm/internal/anim"
+	"github.com/stubbedev/gelm/internal/animclock"
 	"github.com/stubbedev/gelm/internal/buffer"
 	"github.com/stubbedev/gelm/internal/debug"
 	"github.com/stubbedev/gelm/internal/dragdrop"
@@ -322,7 +322,7 @@ func (w *hostWindow) ApplyVisual(reveal float64) {
 }
 
 // MarkFrame implements surfx.Driver: request a repaint through the
-// loop's kick flag. The app loop's anim.Tick already marks every
+// loop's kick flag. The app loop's animclock.Tick already marks every
 // window dirty when a callback runs there; the kick covers ticks that
 // ran on another goroutine (a popup's nested loop).
 func (w *hostWindow) MarkFrame() { w.kick.Store(true) }
@@ -547,7 +547,7 @@ func (s wireSurface) SetOpaqueRegion(w, h int) error {
 // animation timer pace the draw itself. One and a half frame periods:
 // safely past callback jitter at any refresh rate, tight enough to
 // keep an occluded tween moving.
-const frameStaleAfter = 3 * anim.FrameInterval / 2
+const frameStaleAfter = 3 * animclock.FrameInterval / 2
 
 // maxLayoutPasses bounds the re-layouts one draw runs while the tree
 // settles (each level of newly parented widgets can take one).

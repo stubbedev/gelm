@@ -64,7 +64,7 @@ live in [architecture.md](architecture.md#non-goals).
 | CSS | GTK-flavored stylesheets above the palette: selectors, `@define-color`, transitions, `@keyframes`, hot reload | internal/style, widget/style.go, [css.md](css.md) |
 | icon themes | freedesktop spec in pure Go, live icon-theme following | internal/icons, [icons.md](icons.md) |
 | accessibility | semantic roles, keyboard-first guarantee, in-process AT-SPI bridge | widget/a11y.go, internal/atspi, [a11y.md](a11y.md) |
-| animation | timer-paced tweens, easing curves, springs, timelines | internal/anim |
+| animation (`adw::TimedAnimation`, `SpringAnimation`) | `anim`: tweens, easing curves, springs, Sequence/Parallel/Delay timelines, reduced motion | anim/, internal/animclock |
 
 ## Protocols and platform
 
@@ -106,8 +106,8 @@ The component framework relm4 is built around, tracked in
   components;
 - no typed workers;
 - actions are string-keyed, with no state, parameters or groups;
-- animation and the system appearance are only reachable through
-  `internal/` packages;
+- the system appearance is only reachable through an `internal/`
+  package;
 - the demos use `internal/` packages.
 
 The Hyprland gate is allow-failure until it has been green for a

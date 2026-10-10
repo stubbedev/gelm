@@ -4,7 +4,7 @@ import (
 	"math"
 	"time"
 
-	"github.com/stubbedev/gelm/internal/anim"
+	"github.com/stubbedev/gelm/anim"
 )
 
 // GestureKind is a recognized gesture's kind.

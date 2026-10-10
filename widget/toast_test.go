@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stubbedev/gelm/internal/anim"
+	"github.com/stubbedev/gelm/internal/animclock"
 	"github.com/stubbedev/gelm/render"
 )
 
@@ -45,13 +45,13 @@ func TestToastAutoDismiss(t *testing.T) {
 		if !animActiveNow(t) {
 			t.Fatal("visible toast scheduled nothing")
 		}
-		wake, ok := anim.Next()
+		wake, ok := animclock.Next()
 		if !ok {
 			t.Fatal("no wake scheduled")
 		}
 		// The entrance is mid-flight: the next wake is exactly one
 		// frame period past the last tick.
-		if want := t0.Add(anim.FrameInterval); wake != want {
+		if want := t0.Add(animclock.FrameInterval); wake != want {
 			t.Errorf("first wake = %v, want exactly %v", wake, want)
 		}
 	})
@@ -71,7 +71,7 @@ func TestToastAutoDismiss(t *testing.T) {
 			t.Error("finished toast still scheduled wakes")
 		}
 		c.set(t0.Add(10 * time.Second))
-		anim.Tick(c.now())
+		animclock.Tick(c.now())
 		if fired != 1 {
 			t.Errorf("fired = %d after the world moved on, want 1", fired)
 		}
@@ -82,10 +82,10 @@ func TestToastAutoDismiss(t *testing.T) {
 // scheduled; the zero-wake contract is the "no idle burn" pin.
 func animActiveNow(tb testing.TB) bool {
 	tb.Helper()
-	if anim.Active() {
+	if animclock.Active() {
 		return true
 	}
-	_, ok := anim.Next()
+	_, ok := animclock.Next()
 	return ok
 }
 
@@ -115,14 +115,14 @@ func TestToastHoverCancelsDismissal(t *testing.T) {
 	}
 	// The timeout elapses with the pointer resting: nothing fires.
 	c.set(t0.Add(5 * time.Second))
-	anim.Tick(c.now())
+	animclock.Tick(c.now())
 	if fired != 0 {
 		t.Errorf("dismissed while hovered, fired = %d", fired)
 	}
 
 	// Leaving arms a fresh full timeout from now.
 	toast.SetHovered(false)
-	wake, ok := anim.Next()
+	wake, ok := animclock.Next()
 	if !ok {
 		t.Fatal("unhovered toast armed no dismissal")
 	}
@@ -187,7 +187,7 @@ func TestToastCloseStopsEverything(t *testing.T) {
 		t.Error("closed toast kept its timer")
 	}
 	c.set(c.now().Add(5 * time.Second))
-	anim.Tick(c.now())
+	animclock.Tick(c.now())
 	if fired != 0 {
 		t.Errorf("Close fired OnDismissed %d times, want 0", fired)
 	}

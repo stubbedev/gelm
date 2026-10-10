@@ -4,14 +4,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stubbedev/gelm/internal/anim"
+	"github.com/stubbedev/gelm/internal/animclock"
 )
 
 // animClock is the injected animation clock the anim-driven widget
 // tests share: launches and deadlines read a test-controlled instant,
 // and ticks take their instants from the same hand, so schedules are
 // exact (the anim package's own pinClock pattern, driven from outside
-// the package through anim.SetClock).
+// the package through animclock.SetClock).
 type animClock struct {
 	cur time.Time
 }
@@ -21,9 +21,9 @@ type animClock struct {
 func pinAnimClock(t *testing.T) *animClock {
 	t.Helper()
 	c := &animClock{cur: time.Unix(1750000000, 0)}
-	t.Cleanup(anim.SetClock(func() time.Time { return c.cur }))
-	t.Cleanup(anim.Reset)
-	anim.Reset()
+	t.Cleanup(animclock.SetClock(func() time.Time { return c.cur }))
+	t.Cleanup(animclock.Reset)
+	animclock.Reset()
 	return c
 }
 
@@ -37,12 +37,12 @@ func (c *animClock) set(tm time.Time) { c.cur = tm }
 // the last tick for an in-flight tween, a later step's start across a
 // delay — and ticks the clock there. False when nothing is scheduled.
 func (c *animClock) step() bool {
-	wake, ok := anim.Next()
+	wake, ok := animclock.Next()
 	if !ok {
 		return false
 	}
 	c.cur = wake
-	anim.Tick(wake)
+	animclock.Tick(wake)
 	return true
 }
 

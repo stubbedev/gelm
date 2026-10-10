@@ -15,7 +15,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/stubbedev/gelm/internal/anim"
+	"github.com/stubbedev/gelm/internal/animclock"
 	"github.com/stubbedev/gelm/internal/debug"
 	"github.com/stubbedev/gelm/internal/scale"
 	"github.com/stubbedev/gelm/internal/surfx"
@@ -72,7 +72,7 @@ type Popup struct {
 	mu sync.Mutex
 	// dirty is set by MarkFrame (tween callbacks) and the input
 	// handlers, and consumed by Run's loop; atomic because tween ticks
-	// run on whichever goroutine called anim.Tick.
+	// run on whichever goroutine called animclock.Tick.
 	dirty atomic.Bool
 	sess  *wlsession.Session
 	// gravity orients the enter/exit slide toward the anchor.
@@ -497,7 +497,7 @@ func Run(sess *wlsession.Session, p *Popup, frac120 uint32, root widget.Widget, 
 		// decides which loop notices first. A tween callback flips dirty
 		// and wakes the park, so an exit keeps this loop event-driven:
 		// paint, park, wake on the next frame.
-		if anim.Tick(time.Now()) {
+		if animclock.Tick(time.Now()) {
 			p.dirty.Store(true)
 		}
 		if _, err := frame.Pass(); err != nil {
@@ -508,7 +508,7 @@ func Run(sess *wlsession.Session, p *Popup, frac120 uint32, root widget.Widget, 
 		// runs, arm the animation clock's next frame deadline as the
 		// wake — frame-callback pacing is the Pass gate, the timer is
 		// the fallback, and both park when nothing runs.
-		if wake, ok := anim.Next(); ok {
+		if wake, ok := animclock.Next(); ok {
 			sess.WakeAfter(time.Until(wake))
 		}
 		if err := sess.Step(); err != nil {

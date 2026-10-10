@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stubbedev/gelm/internal/anim"
+	"github.com/stubbedev/gelm/internal/animclock"
 )
 
 // typeClock steps past the type-ahead idle timeout without disturbing
@@ -12,7 +12,7 @@ import (
 func typeClock(c *animClock, t *testing.T) {
 	t.Helper()
 	c.set(c.now().Add(dropdownTypeTimeout + time.Millisecond))
-	anim.Tick(c.now())
+	animclock.Tick(c.now())
 }
 
 // TestDropdownTypeAheadOpen pins the open-list behavior (#62): a

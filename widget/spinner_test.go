@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stubbedev/gelm/internal/anim"
+	"github.com/stubbedev/gelm/internal/animclock"
 	"github.com/stubbedev/gelm/render"
 )
 
@@ -46,7 +46,7 @@ func TestSpinnerNeedsSpinningAndVisible(t *testing.T) {
 		}
 		frozen := s.angle
 		c.set(c.now().Add(time.Second))
-		anim.Tick(c.now())
+		animclock.Tick(c.now())
 		if s.angle != frozen {
 			t.Errorf("angle moved after stop: %v -> %v", frozen, s.angle)
 		}
