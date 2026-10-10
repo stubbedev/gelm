@@ -32,6 +32,15 @@
   index-based container edits. `MoveTab` is programmatic and does not
   fire `OnReorder`. Fix: closing a tab before the selected one no
   longer switches the visible page.
+- Typed actions: `widget.Action` and `StateAction[S]` (`Toggle`,
+  `Target`), with menu rows `ActionItem`/`CheckItem`/`RadioItem` and
+  `BindAction` on `Button`, `ToggleButton`, `CheckButton` and `Switch`.
+  Disabling an action disables every proxy. Accelerators bind typed
+  actions: `AddAccel(keys, action)`, plus `AddScopedAccel(scope, keys,
+  action)` for any subtree, innermost first. `DescribeAction` takes the
+  action, and application menus show each action row's accelerator.
+  The string-keyed `AddAction` and `AddWidgetAccel` are removed, and
+  `AccelInfo` carries `Action` and `Scope`.
 - New `ui` package, relm4's `view!` as typed public builders: one
   builder per widget, generated from package widget (`go generate
   ./ui`; a test fails on a stale file). Each builder has a constructor

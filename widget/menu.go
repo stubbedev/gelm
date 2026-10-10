@@ -52,8 +52,15 @@ const (
 // nor dismisses - the state an application toggles on a live row
 // (a check item that cannot change right now) without dropping its
 // OnClick.
+//
+// Action binds the row to an action instead: activating the row
+// activates it, a disabled action greys the row, and a Checkable
+// action decides a check or radio row's state (ActionItem, CheckItem,
+// RadioItem build such rows). OnClick, when also set, runs in its
+// place.
 type MenuItem struct {
 	Label    string
+	Action   Activatable
 	OnClick  func()
 	Kind     ItemKind
 	Checked  bool
@@ -68,7 +75,50 @@ type MenuItem struct {
 // inert reports whether the row paints in the disabled ink: explicitly
 // disabled, or with neither an action nor a submenu.
 func (it MenuItem) inert() bool {
-	return it.Disabled || (it.OnClick == nil && len(it.Items) == 0)
+	return !it.Enabled() || (it.Run() == nil && len(it.Items) == 0)
+}
+
+// Enabled reports whether the row takes input: not Disabled, and its
+// action, if any, enabled.
+func (it MenuItem) Enabled() bool {
+	return !it.Disabled && (it.Action == nil || it.Action.Enabled())
+}
+
+// IsChecked reports a check or radio row's state: its Checkable
+// action's when bound to one, else Checked.
+func (it MenuItem) IsChecked() bool {
+	if c, ok := it.Action.(Checkable); ok {
+		return c.Checked()
+	}
+	return it.Checked
+}
+
+// Run returns the row's activation: OnClick, else its action's
+// Activate, nil for neither.
+func (it MenuItem) Run() func() {
+	if it.OnClick != nil {
+		return it.OnClick
+	}
+	if it.Action != nil {
+		return it.Action.Activate
+	}
+	return nil
+}
+
+// ActionItem is a menu row activating a.
+func ActionItem(label string, a Activatable) MenuItem {
+	return MenuItem{Label: label, Action: a}
+}
+
+// CheckItem is a check row showing and flipping c, such as
+// Toggle(action).
+func CheckItem(label string, c Checkable) MenuItem {
+	return MenuItem{Label: label, Action: c, Kind: ItemCheck}
+}
+
+// RadioItem is a radio row selecting c, such as action.Target(value).
+func RadioItem(label string, c Checkable) MenuItem {
+	return MenuItem{Label: label, Action: c, Kind: ItemRadio}
 }
 
 // MenuSeparator returns a separator item.
@@ -200,7 +250,7 @@ func (m *Menu) syncRowStates() {
 	for i := range m.items {
 		it := &m.items[i]
 		m.rows[i].SetEnabled(!it.inert())
-		m.rows[i].SetState(StateChecked, (it.Kind == ItemCheck || it.Kind == ItemRadio) && it.Checked)
+		m.rows[i].SetState(StateChecked, (it.Kind == ItemCheck || it.Kind == ItemRadio) && it.IsChecked())
 	}
 }
 
@@ -253,7 +303,7 @@ func resolveMnemonics(items []MenuItem) (rows map[rune]int, runes []int) {
 		runes[i] = strings.IndexRune(strings.ToLower(items[i].Label), letter)
 	}
 	for i, it := range items {
-		if it.Mnemonic == 0 || it.Kind == ItemSeparator || it.Kind == ItemHeader || it.Disabled {
+		if it.Mnemonic == 0 || it.Kind == ItemSeparator || it.Kind == ItemHeader || !it.Enabled() {
 			continue
 		}
 		explicit[i] = true
@@ -265,7 +315,7 @@ func resolveMnemonics(items []MenuItem) (rows map[rune]int, runes []int) {
 		claim(letter, i)
 	}
 	for i, it := range items {
-		if runes[i] >= 0 || explicit[i] || it.Kind == ItemSeparator || it.Kind == ItemHeader || it.Disabled || it.Label == "" {
+		if runes[i] >= 0 || explicit[i] || it.Kind == ItemSeparator || it.Kind == ItemHeader || !it.Enabled() || it.Label == "" {
 			continue
 		}
 		for _, r := range strings.ToLower(it.Label) {
@@ -351,7 +401,7 @@ func (m *Menu) iconSlot() int {
 
 // selectable reports whether keyboard motion may land on row i.
 func (m *Menu) selectable(i int) bool {
-	return i >= 0 && i < len(m.items) && m.items[i].Kind != ItemSeparator && m.items[i].Kind != ItemHeader && !m.items[i].Disabled
+	return i >= 0 && i < len(m.items) && m.items[i].Kind != ItemSeparator && m.items[i].Kind != ItemHeader && m.items[i].Enabled()
 }
 
 // nextSelectable returns the nearest selectable row at or after i in
@@ -423,13 +473,13 @@ func (m *Menu) Paint(cv *render.Canvas) {
 		switch it.Kind {
 		case ItemCheck:
 			cv.FillRect(render.Rect{X: x, Y: row.Y + (row.H-12)/2, W: 12, H: 12}, t.Border)
-			if it.Checked {
+			if it.IsChecked() {
 				cv.FillRect(render.Rect{X: x + 2, Y: row.Y + (row.H-12)/2 + 2, W: 8, H: 8}, t.Accent)
 			}
 			x += 18
 		case ItemRadio:
 			cv.FillRect(render.Rect{X: x, Y: row.Y + (row.H-12)/2, W: 12, H: 12}, t.Border)
-			if it.Checked {
+			if it.IsChecked() {
 				cv.FillRect(render.Rect{X: x + 3, Y: row.Y + (row.H-12)/2 + 3, W: 6, H: 6}, t.Accent)
 			}
 			x += 18
@@ -586,16 +636,18 @@ func (m *Menu) moveHover(i int) {
 // actions fire and dismiss, and rows with no action do nothing.
 func (m *Menu) activate(i int) {
 	item := m.items[i]
+	run := item.Run()
 	switch {
-	case item.Kind == ItemSeparator, item.Disabled:
+	case item.Kind == ItemSeparator, !item.Enabled():
 		return
 	case len(item.Items) > 0:
 		if m.OnSubmenu != nil {
 			m.OnSubmenu(i, item.Items)
 		}
 		return
-	case item.OnClick == nil:
+	case run == nil:
 		return
+	case item.Action != nil:
 	case item.Kind == ItemCheck:
 		m.items[i].Checked = !m.items[i].Checked
 		m.syncRowStates()
@@ -611,7 +663,11 @@ func (m *Menu) activate(i int) {
 		m.Invalidate()
 	}
 	m.dismiss()
-	item.OnClick()
+	run()
+	if item.Action != nil {
+		m.syncRowStates()
+		m.Invalidate()
+	}
 }
 
 // step moves the hover to the next selectable row in dir without

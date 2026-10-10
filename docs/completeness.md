@@ -22,7 +22,7 @@ live in [architecture.md](architecture.md#non-goals).
 | GApplication single instance, `command-line`, `open` | `app.ClaimInstance` + `InstanceConfig` hooks | app/instance.go |
 | GSettings | `app.NewSettings` + typed `Key[T]`, persisted atomically | app/settings.go |
 | gettext for built-in strings | `widget.SetMessageCatalog`, `widget.Tr` | widget/message.go |
-| `gtk::Application` accels, `gio::SimpleAction` | `Application.AddAction`, `AddAccel` (chords), `AddWidgetAccel` | app/accel.go |
+| `RelmAction`, `RelmActionGroup`, `menu!`, `set_accels_for_action` | typed `widget.Action` and `StateAction[S]` (`Toggle`, `Target`); `ActionItem`/`CheckItem`/`RadioItem` menu rows; `BindAction` on buttons and toggles; `AddAccel` (chords) and subtree-scoped `AddScopedAccel` | widget/action.go, app/accel.go |
 | library logging | injectable `*slog.Logger` (`app.SetLogger`), silent by default | internal/logutil |
 | GTK inspector | `GELM_INSPECT=1`, `Application.SetInspect`, `widget.DumpTree` | app/inspect.go, [inspector.md](inspector.md) |
 
@@ -99,11 +99,8 @@ live in [architecture.md](architecture.md#non-goals).
 
 ## Known gaps
 
-The component framework relm4 is built around, tracked in
-[#139](https://github.com/stubbedev/gelm/issues/139):
-
-- actions are string-keyed, with no state, parameters or groups;
-- the demos use `internal/` packages.
+The demos still use `internal/` packages instead of showing the
+public API ([#138](https://github.com/stubbedev/gelm/issues/138)).
 
 The Hyprland gate is allow-failure until it has been green for a
 sustained window; sway is the required gate.

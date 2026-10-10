@@ -140,7 +140,7 @@ func TestSuperTabSkipsTheTabTrap(t *testing.T) {
 
 	app := accelApp()
 	fired := false
-	if err := app.accels.bindWidget(second, "<Super>Tab", func() { fired = true }); err != nil {
+	if err := app.accels.bind(second, "<Super>Tab", testAction(func() { fired = true })); err != nil {
 		t.Fatal(err)
 	}
 	routeKey(tr, r, 24, wlsession.ModSuper, nil, app.accels, nil)
