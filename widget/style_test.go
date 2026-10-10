@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -365,35 +366,120 @@ func TestStylesheetReloadRepaintsEverything(t *testing.T) {
 	}
 }
 
-func TestStylesheetHotReloadPoll(t *testing.T) {
-	// The poll hook: LoadStylesheetFile schedules its stat tick through
-	// the app-installed scheduler, exactly once (first file only).
-	var scheduled []func()
-	SetStylesheetPoller(func(fn func()) { scheduled = append(scheduled, fn) })
-	t.Cleanup(func() { SetStylesheetPoller(nil) })
-	// Earlier file tests leave their poll state; this test owns it.
-	t.Cleanup(func() { pollPath.Store(nil) })
-	pollPath.Store(nil)
-
+func TestAddStylesheetFilePriority(t *testing.T) {
+	resetWatches(t)
 	dir := t.TempDir()
-	path := filepath.Join(dir, "hot.css")
-	write := func(css string) {
+	write := func(name, css string) string {
 		t.Helper()
+		path := filepath.Join(dir, name)
 		if err := os.WriteFile(path, []byte(css), 0o600); err != nil {
 			t.Fatal(err)
 		}
+		return path
 	}
-	write(`button { border-radius: 9; }`)
-	if err := LoadStylesheetFile(path); err != nil {
+	theme, err := AddStylesheetFile(write("theme.css", `button { border-radius: 9; }`), StylePriorityTheme)
+	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(theme.Remove)
+	face := goldenFace(t)
+	b := NewButton(NewLabel(face, 14, "x", 0), 4, 4)
+	arrangeTree(t, b, 100, 40)
+	if got := b.style(b).Radius.TopLeft; got != 9 {
+		t.Fatalf("theme file radius = %d, want 9", got)
+	}
+
+	// The application file beats the theme at equal specificity; and a
+	// file loaded below it loses, whatever the load order.
+	app, err := AddStylesheetFile(write("app.css", `button { border-radius: 5; }`), StylePriorityApplication)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(app.Remove)
+	CollectDamage(b)
+	if got := b.style(b).Radius.TopLeft; got != 5 {
+		t.Fatalf("app file radius = %d, want 5", got)
+	}
+	under, err := AddStylesheetFile(write("under.css", `button { border-radius: 20; }`), StylePriorityFallback)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(under.Remove)
+	CollectDamage(b)
+	if got := b.style(b).Radius.TopLeft; got != 5 {
+		t.Fatalf("fallback file radius = %d, still want 5", got)
+	}
+	app.Remove()
+	CollectDamage(b)
+	if got := b.style(b).Radius.TopLeft; got != 9 {
+		t.Fatalf("after removing the app file radius = %d, want the theme's 9", got)
+	}
+}
+
+func TestAddStylesheetFileParseError(t *testing.T) {
+	resetWatches(t)
+	dir := t.TempDir()
+	path := filepath.Join(dir, "broken.css")
+	if err := os.WriteFile(path, []byte("button { border-radius: 4; }\nbutton {"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, err := AddStylesheetFile(path, StylePriorityApplication)
+	if err == nil {
+		t.Fatal("broken file loaded without error")
+	}
+	if !strings.Contains(err.Error(), path) || !strings.Contains(err.Error(), "stylesheet: parse") {
+		t.Errorf("error %q names neither the path nor the parse", err)
+	}
+	face := goldenFace(t)
+	b := NewButton(NewLabel(face, 14, "x", 0), 4, 4)
+	arrangeTree(t, b, 100, 40)
+	if got := b.style(b).Radius.TopLeft; got != 0 {
+		t.Errorf("failed file left radius %d, want nothing applied", got)
+	}
+}
+
+// resetWatches owns the poll state for one test: earlier file tests
+// leave their watches and the scheduled poller behind.
+func resetWatches(t *testing.T) {
+	t.Helper()
+	watchMu.Lock()
+	watches = nil
+	pollStarted = false
+	watchMu.Unlock()
+}
+
+func TestStylesheetFileHotReloadPoll(t *testing.T) {
+	resetWatches(t)
+	// The poll hook: file loads schedule the stat tick through the
+	// app-installed scheduler, exactly once for every file.
+	var scheduled []func()
+	SetStylesheetPoller(func(fn func()) { scheduled = append(scheduled, fn) })
+	t.Cleanup(func() { SetStylesheetPoller(nil) })
+
+	dir := t.TempDir()
+	write := func(name, css string) string {
+		t.Helper()
+		path := filepath.Join(dir, name)
+		if err := os.WriteFile(path, []byte(css), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		return path
+	}
+	load := func(name, css string, priority int) *Stylesheet {
+		t.Helper()
+		s, err := AddStylesheetFile(write(name, css), priority)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(s.Remove)
+		return s
+	}
+	app := load("app.css", `button { border-radius: 5; }`, StylePriorityApplication)
 	if len(scheduled) != 1 {
 		t.Fatalf("poll scheduled %d times, want 1", len(scheduled))
 	}
-	// A second file load replaces without re-scheduling.
-	if err := LoadStylesheetFile(path); err != nil {
-		t.Fatal(err)
-	}
+	// A second file joins the one poller without re-scheduling.
+	theme := load("theme.css", `button { border-radius: 9; }`, StylePriorityTheme)
 	if len(scheduled) != 1 {
 		t.Fatalf("poll re-scheduled: %d", len(scheduled))
 	}
@@ -401,31 +487,135 @@ func TestStylesheetHotReloadPoll(t *testing.T) {
 	face := goldenFace(t)
 	b := NewButton(NewLabel(face, 14, "x", 0), 4, 4)
 	arrangeTree(t, b, 100, 40)
-	if got := b.style(b).Radius.TopLeft; got != 9 {
-		t.Fatalf("radius = %d, want 9", got)
+	if got := b.style(b).Radius.TopLeft; got != 5 {
+		t.Fatalf("radius = %d, want 5", got)
 	}
 
-	// The tick stats the file; an unchanged stat is free, a changed
+	// One tick stats both files; an unchanged stat is free, a changed
 	// one reloads and the next read sees it.
 	scheduled[0]()
-	if got := b.style(b).Radius.TopLeft; got != 9 {
+	if got := b.style(b).Radius.TopLeft; got != 5 {
 		t.Fatalf("unchanged stat restyled: radius %d", got)
 	}
-	write(`button { border-radius: 11; }`)
+	write("app.css", `button { border-radius: 11; }`)
+	write("theme.css", `button { border-radius: 3; }`)
 	scheduled[0]()
 	CollectDamage(b)
 	if got := b.style(b).Radius.TopLeft; got != 11 {
-		t.Fatalf("changed file did not reload: radius %d", got)
+		t.Fatalf("changed files did not reload: radius %d", got)
+	}
+	app.Remove()
+	CollectDamage(b)
+	if got := b.style(b).Radius.TopLeft; got != 3 {
+		t.Fatalf("theme under a removed app file: radius %d, want 3", got)
 	}
 
-	// A deleted file keeps the last good sheet instead of half-loading.
-	if err := os.Remove(path); err != nil {
+	// A removed sheet stops its poll: no reload, and no error for a
+	// file that vanished after the removal.
+	var warns []string
+	style.SetParseWarn(func(msg string) { warns = append(warns, msg) })
+	t.Cleanup(func() { style.SetParseWarn(nil) })
+	if err := os.Remove(filepath.Join(dir, "app.css")); err != nil {
 		t.Fatal(err)
 	}
 	scheduled[0]()
 	CollectDamage(b)
-	if got := b.style(b).Radius.TopLeft; got != 11 {
+	if got := b.style(b).Radius.TopLeft; got != 3 {
+		t.Fatalf("removed sheet reloaded: radius %d", got)
+	}
+	if len(warns) != 0 {
+		t.Fatalf("removed sheet still reported: %v", warns)
+	}
+
+	// A deleted watched file keeps its last good rules and reports the
+	// path; so does one that stops parsing.
+	if err := os.Remove(filepath.Join(dir, "theme.css")); err != nil {
+		t.Fatal(err)
+	}
+	scheduled[0]()
+	CollectDamage(b)
+	if got := b.style(b).Radius.TopLeft; got != 3 {
 		t.Fatalf("deleted file changed the sheet: radius %d", got)
+	}
+	if len(warns) != 1 || !strings.Contains(warns[0], "theme.css") {
+		t.Fatalf("vanish warnings = %v, want one naming the path", warns)
+	}
+	theme.Remove()
+	warns = warns[:0]
+	load("later.css", `button { border-radius: 7; }`, StylePriorityUser)
+	CollectDamage(b)
+	if got := b.style(b).Radius.TopLeft; got != 7 {
+		t.Fatalf("later file radius = %d, want 7", got)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "later.css"), []byte("button { border-radius: 8; } button {"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	scheduled[0]()
+	CollectDamage(b)
+	if got := b.style(b).Radius.TopLeft; got != 7 {
+		t.Fatalf("unparseable reload changed the sheet: radius %d", got)
+	}
+	if len(warns) != 1 || !strings.Contains(warns[0], "later.css") {
+		t.Fatalf("parse warnings = %v, want one naming the path", warns)
+	}
+}
+
+func TestLoadStylesheetFileUsesTheFilePath(t *testing.T) {
+	resetWatches(t)
+	var scheduled []func()
+	SetStylesheetPoller(func(fn func()) { scheduled = append(scheduled, fn) })
+	t.Cleanup(func() { SetStylesheetPoller(nil) })
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "app.css")
+	write := func(css string) {
+		t.Helper()
+		if err := os.WriteFile(path, []byte(css), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Cleanup(func() { LoadStylesheet("") })
+	write(`button { border-radius: 9; }`)
+	if err := LoadStylesheetFile(path); err != nil {
+		t.Fatal(err)
+	}
+	face := goldenFace(t)
+	b := NewButton(NewLabel(face, 14, "x", 0), 4, 4)
+	arrangeTree(t, b, 100, 40)
+	if got := b.style(b).Radius.TopLeft; got != 9 {
+		t.Fatalf("radius = %d, want the file's 9", got)
+	}
+
+	// The application slot rides AddStylesheetFile: the poll reloads
+	// it in place, a second load replaces it, and "" removes it (and
+	// its poll).
+	write(`button { border-radius: 11; }`)
+	scheduled[0]()
+	CollectDamage(b)
+	if got := b.style(b).Radius.TopLeft; got != 11 {
+		t.Fatalf("hot reload through the application slot: radius %d", got)
+	}
+	other := filepath.Join(dir, "other.css")
+	if err := os.WriteFile(other, []byte(`button { border-radius: 2; }`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := LoadStylesheetFile(other); err != nil {
+		t.Fatal(err)
+	}
+	CollectDamage(b)
+	if got := b.style(b).Radius.TopLeft; got != 2 {
+		t.Fatalf("second file did not replace the first: radius %d", got)
+	}
+	LoadStylesheet("")
+	CollectDamage(b)
+	if v := b.style(b); v.Set != 0 {
+		t.Errorf("empty stylesheet left %b set", v.Set)
+	}
+	watchMu.Lock()
+	left := len(watches)
+	watchMu.Unlock()
+	if left != 0 {
+		t.Fatalf("%d files still watched after the removal", left)
 	}
 }
 

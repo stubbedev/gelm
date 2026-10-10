@@ -9,7 +9,8 @@ parses in about 6 ms with no warnings.
 ## API
 
 ```go
-widget.LoadStylesheetFile("theme.css")          // the application sheet, hot-reloaded
+s, err := widget.AddStylesheetFile("theme.css", widget.StylePriorityTheme) // its own sheet, hot-reloaded
+widget.LoadStylesheetFile("app.css")             // the application slot, hot-reloaded
 widget.LoadStylesheet(`.title { color: #c00 }`) // or from a string; "" removes it
 s := widget.AddStylesheet(css, widget.StylePrioritySettings)
 s.Load(newCSS)                                  // replace its rules in place
@@ -26,9 +27,13 @@ box.AttachStylesheet(widget.NewStylesheet(css, widget.StylePriorityApplication))
 - **Priorities** follow GTK's provider priorities: `StylePriorityFallback`,
   `Theme` (regenerated on `SetTheme`), `Settings`, `Application` (the
   `LoadStylesheet` slot), and `User` (inline styles).
-- **Hot reload.** `LoadStylesheetFile` stats the file once a second on
-  the application's timer and reloads it on change. The poll starts
-  with the first file load, and nothing runs before that.
+- **Hot reload.** `AddStylesheetFile` and `LoadStylesheetFile` stat each
+  loaded file once a second on the application's timer and reload it on
+  change; one poller covers every file, starts with the first file load,
+  and each sheet's `Remove` (or `Load`) stops its file. A file that
+  vanishes or stops parsing keeps its last good rules and is reported
+  through `widget.SetParseWarn`; a load that cannot read or parse it
+  fails with an error carrying the path.
 - **Fonts.** `font-family` and `font-weight` resolve through
   `widget.SetFaceResolver` (for example over `app.FontWeighted`).
   Without a resolver they keep the constructor face. A variable face

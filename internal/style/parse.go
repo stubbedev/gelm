@@ -45,6 +45,11 @@ func warnf(format string, args ...any) {
 	parseWarn("css: " + fmt.Sprintf(format, args...))
 }
 
+// Warn reports one stylesheet problem through the parse-warning sink
+// outside a parse (a hot-reload stat failure, say), with the css:
+// prefix warnf's messages carry.
+func Warn(msg string) { parseWarn("css: " + msg) }
+
 // cssWide is a CSS-wide keyword a declaration's whole value can be.
 type cssWide uint8
 
@@ -185,11 +190,36 @@ func Parse(css string) *Sheet {
 	return &p.sheet
 }
 
+// ParseCollecting parses css like Parse and returns the sheet plus
+// every warning the parse produced, without routing them to the sink:
+// the caller reports them its own way (a file loader turns them into
+// an error carrying the path).
+func ParseCollecting(css string) (*Sheet, []string) {
+	var warns []string
+	p := parser{src: css, warn: func(msg string) { warns = append(warns, msg) }}
+	p.stylesheet(tokenize(css))
+	return &p.sheet, warns
+}
+
 // parser walks the token stream once.
 type parser struct {
 	src   string
 	sheet Sheet
 	order int
+	// warn, when set, receives this parse's warnings instead of the
+	// sink (ParseCollecting).
+	warn func(msg string)
+}
+
+// warnf reports one stylesheet problem and lets the parser carry on
+// with the surrounding rules.
+func (p *parser) warnf(format string, args ...any) {
+	msg := fmt.Sprintf(format, args...)
+	if p.warn != nil {
+		p.warn(msg)
+		return
+	}
+	parseWarn("css: " + msg)
 }
 
 // stylesheet consumes rule after rule to the end of the input.
@@ -256,18 +286,18 @@ func (p *parser) defineColor(ts []token, i int) int {
 		j++
 	}
 	if j < len(ts) && ts[j].kind == tkLBrace {
-		warnf("@define-color skipped: want `name value;`")
+		p.warnf("@define-color skipped: want `name value;`")
 		return blockEnd(ts, j)
 	}
 	body := trimWS(ts[i+1 : min(j, len(ts))])
 	next := min(j+1, len(ts))
 	if len(body) < 2 || body[0].kind != tkIdent {
-		warnf("@define-color skipped: want `name value;`")
+		p.warnf("@define-color skipped: want `name value;`")
 		return next
 	}
 	val := colorRefs(trimWS(body[1:]))
 	if len(val) == 0 {
-		warnf("@define-color skipped: %s has no value", body[0].s)
+		p.warnf("@define-color skipped: %s has no value", body[0].s)
 		return next
 	}
 	if p.sheet.defines == nil {
@@ -316,7 +346,7 @@ func (p *parser) keyframes(ts []token, i int) int {
 		}
 	}
 	if j >= len(ts) {
-		warnf("@keyframes skipped: want a block")
+		p.warnf("@keyframes skipped: want a block")
 		return j
 	}
 	name := ""
@@ -329,7 +359,7 @@ func (p *parser) keyframes(ts []token, i int) int {
 	}
 	end := blockEnd(ts, j)
 	if name == "" {
-		warnf("@keyframes skipped: want a name")
+		p.warnf("@keyframes skipped: want a name")
 		return min(end, len(ts))
 	}
 	kf := &Keyframes{Name: name}
@@ -348,7 +378,7 @@ func (p *parser) keyframes(ts []token, i int) int {
 			x++
 		}
 		if x >= len(body) {
-			warnf("@keyframes stop skipped: want '{'")
+			p.warnf("@keyframes stop skipped: want '{'")
 			break
 		}
 		prelude := trimWS(body[start:x])
@@ -436,11 +466,11 @@ func (p *parser) keyframe(decls []decl) Keyframe {
 			iconX, ok = composeTransform(d.val, &cx)
 			slot = "-gtk-icon-transform"
 		default:
-			warnf("keyframe declaration skipped: %q does not interpolate", d.name)
+			p.warnf("keyframe declaration skipped: %q does not interpolate", d.name)
 			continue
 		}
 		if !ok {
-			warnf("keyframe declaration skipped: %s: %s", slot, badText(rawText(p.src, d.val)))
+			p.warnf("keyframe declaration skipped: %s: %s", slot, badText(rawText(p.src, d.val)))
 			continue
 		}
 		switch slot {
@@ -466,7 +496,7 @@ func (p *parser) warnAt(name string) {
 	case "keyframes", "media", "-gtk-keyframes":
 		return
 	}
-	warnf("at-rule @%s ignored", name)
+	p.warnf("at-rule @%s ignored", name)
 }
 
 // qualifiedRule parses a selector list and its block starting at ts[i]
@@ -475,7 +505,7 @@ func (p *parser) qualifiedRule(ts []token, i int) int {
 	start := i
 	for i < len(ts) && ts[i].kind != tkLBrace {
 		if ts[i].kind == tkSemi || ts[i].kind == tkRBrace {
-			warnf("rule skipped: want '{' at %q", badText(rawText(p.src, ts[start:i+1])))
+			p.warnf("rule skipped: want '{' at %q", badText(rawText(p.src, ts[start:i+1])))
 			return i + 1
 		}
 		if closer(ts[i].kind) != 0 {
@@ -485,30 +515,30 @@ func (p *parser) qualifiedRule(ts []token, i int) int {
 		i++
 	}
 	if i >= len(ts) {
-		warnf("rule skipped: want '{' at %q", badText(rawText(p.src, ts[start:])))
+		p.warnf("rule skipped: want '{' at %q", badText(rawText(p.src, ts[start:])))
 		return i
 	}
 	prelude := trimWS(ts[start:i])
 	end := blockEnd(ts, i)
 	if end > len(ts) || ts[end-1].kind != tkRBrace {
-		warnf("rule skipped: unterminated block at %q", badText(rawText(p.src, prelude)))
+		p.warnf("rule skipped: unterminated block at %q", badText(rawText(p.src, prelude)))
 		return len(ts)
 	}
 	body := ts[i+1 : end-1]
 	sels, ok := parseSelectorList(p.src, prelude)
 	if !ok {
-		warnf("rule skipped: bad selector %q", badText(rawText(p.src, prelude)))
+		p.warnf("rule skipped: bad selector %q", badText(rawText(p.src, prelude)))
 		return end
 	}
 	for _, t := range body {
 		if t.kind == tkLBrace {
 			// Nested rules are SCSS, not CSS: the whole rule goes.
-			warnf("rule skipped: nested block in %q", badText(rawText(p.src, prelude)))
+			p.warnf("rule skipped: nested block in %q", badText(rawText(p.src, prelude)))
 			return end
 		}
 	}
 	if hasImportant(body) {
-		warnf("rule skipped: !important in %q", badText(rawText(p.src, prelude)))
+		p.warnf("rule skipped: !important in %q", badText(rawText(p.src, prelude)))
 		return end
 	}
 	block := &Block{decls: p.declarations(body)}
@@ -555,7 +585,7 @@ func (p *parser) declarations(ts []token) []decl {
 // declaration parses `name: value`.
 func (p *parser) declaration(ts []token) (decl, bool) {
 	if ts[0].kind != tkIdent {
-		warnf("declaration skipped: %s", badText(rawText(p.src, ts)))
+		p.warnf("declaration skipped: %s", badText(rawText(p.src, ts)))
 		return decl{}, false
 	}
 	j := 1
@@ -563,7 +593,7 @@ func (p *parser) declaration(ts []token) (decl, bool) {
 		j++
 	}
 	if j >= len(ts) || ts[j].kind != tkColon {
-		warnf("declaration skipped: %s", badText(rawText(p.src, ts)))
+		p.warnf("declaration skipped: %s", badText(rawText(p.src, ts)))
 		return decl{}, false
 	}
 	name := ts[0].s
@@ -578,7 +608,7 @@ func (p *parser) declaration(ts []token) (decl, bool) {
 	d.name = lname
 	if lname == "all" {
 		if d.wide == wideNone {
-			warnf("declaration skipped: all: %s", badText(rawText(p.src, val)))
+			p.warnf("declaration skipped: all: %s", badText(rawText(p.src, val)))
 			return decl{}, false
 		}
 		d.covers = allProps
@@ -587,13 +617,13 @@ func (p *parser) declaration(ts []token) (decl, bool) {
 	def, ok := propTable[lname]
 	if !ok {
 		if !ignoredProps[lname] {
-			warnf("declaration skipped: unknown property %q", name)
+			p.warnf("declaration skipped: unknown property %q", name)
 		}
 		return decl{}, false
 	}
 	d.covers, d.parse = def.covers, def.parse
 	if len(val) == 0 {
-		warnf("declaration skipped: %s has no value", name)
+		p.warnf("declaration skipped: %s has no value", name)
 		return decl{}, false
 	}
 	if d.wide != wideNone || d.hasVar {
@@ -604,7 +634,7 @@ func (p *parser) declaration(ts []token) (decl, bool) {
 	scratch := initialValues()
 	cx := ctx{rem: parseRem, em: parseRem, weight: 400}
 	if !d.parse(val, &cx, &scratch) {
-		warnf("declaration skipped: %s: %s", name, badText(rawText(p.src, val)))
+		p.warnf("declaration skipped: %s: %s", name, badText(rawText(p.src, val)))
 		return decl{}, false
 	}
 	if !cx.dep {
