@@ -93,8 +93,8 @@ func TestDrivePopoversPaintsOnDamageAndReapsDestroyed(t *testing.T) {
 	if err := a.drivePopovers(false); err != nil {
 		t.Fatal(err)
 	}
-	if len(a.openPopovers) != 0 || painter.closes != 1 || *closed != 1 || a.popovers.open[op.host] != nil {
-		t.Errorf("reap: %d open, %d closes, %d closed, registry %v", len(a.openPopovers), painter.closes, *closed, a.popovers.open[op.host])
+	if len(a.openPopovers) != 0 || painter.closes != 1 || *closed != 1 || a.popovers.get(op.host) != nil {
+		t.Errorf("reap: %d open, %d closes, %d closed, registry %v", len(a.openPopovers), painter.closes, *closed, a.popovers.get(op.host))
 	}
 	if err := a.drivePopovers(false); err != nil || painter.passes != 3 {
 		t.Errorf("a reaped popover was driven again: %d passes", painter.passes)

@@ -397,6 +397,7 @@ func (p *Popup) Destroy() {
 		p.XdgSurface = nil
 	}
 	if p.WLSurface != nil {
+		debug.Log("input", "popup %d destroyed", p.WLSurface.Id())
 		_ = p.WLSurface.Destroy()
 		p.WLSurface = nil
 	}
