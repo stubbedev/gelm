@@ -1065,6 +1065,96 @@ func (b *ClampBuilder) WatchMaximum(get func() int) *ClampBuilder {
 	return b
 }
 
+// ColorButtonBuilder builds a widget.ColorButton.
+type ColorButtonBuilder struct {
+	base[*widget.ColorButton, *ColorButtonBuilder]
+}
+
+// ColorButton builds a widget.ColorButton with widget.NewColorButton.
+func ColorButton(c render.Color) *ColorButtonBuilder {
+	b := &ColorButtonBuilder{}
+	b.init(b, func(s *Scope) *widget.ColorButton { return widget.NewColorButton(c) })
+	return b
+}
+
+// BindColor calls (*widget.ColorButton).BindColor.
+func (b *ColorButtonBuilder) BindColor(binding *widget.Binding[render.Color]) *ColorButtonBuilder {
+	b.do(func(s *Scope, w *widget.ColorButton) { s.onShutdown(w.BindColor(binding)) })
+	return b
+}
+
+// Color calls (*widget.ColorButton).SetColor.
+func (b *ColorButtonBuilder) Color(c render.Color) *ColorButtonBuilder {
+	b.do(func(s *Scope, w *widget.ColorButton) { w.SetColor(c) })
+	return b
+}
+
+// WatchColor re-applies SetColor with get's value after every update.
+func (b *ColorButtonBuilder) WatchColor(get func() render.Color) *ColorButtonBuilder {
+	b.watch(func(w *widget.ColorButton) { w.SetColor(get()) })
+	return b
+}
+
+// BindAction calls (*widget.ColorButton).BindAction.
+func (b *ColorButtonBuilder) BindAction(a widget.Activatable) *ColorButtonBuilder {
+	b.do(func(s *Scope, w *widget.ColorButton) { s.onShutdown(w.BindAction(a)) })
+	return b
+}
+
+// OnOpen sets the widget's OnOpen field.
+func (b *ColorButtonBuilder) OnOpen(fn func(current render.Color)) *ColorButtonBuilder {
+	b.do(func(_ *Scope, w *widget.ColorButton) { w.OnOpen = fn })
+	return b
+}
+
+// OnColorSet sets the widget's OnColorSet field.
+func (b *ColorButtonBuilder) OnColorSet(fn func(c render.Color)) *ColorButtonBuilder {
+	b.do(func(_ *Scope, w *widget.ColorButton) { w.OnColorSet = fn })
+	return b
+}
+
+// Bg sets the widget's Bg field.
+func (b *ColorButtonBuilder) Bg(value render.Color) *ColorButtonBuilder {
+	b.do(func(_ *Scope, w *widget.ColorButton) { w.Bg = value })
+	return b
+}
+
+// BgHover sets the widget's BgHover field.
+func (b *ColorButtonBuilder) BgHover(value render.Color) *ColorButtonBuilder {
+	b.do(func(_ *Scope, w *widget.ColorButton) { w.BgHover = value })
+	return b
+}
+
+// BgPressed sets the widget's BgPressed field.
+func (b *ColorButtonBuilder) BgPressed(value render.Color) *ColorButtonBuilder {
+	b.do(func(_ *Scope, w *widget.ColorButton) { w.BgPressed = value })
+	return b
+}
+
+// BgExplicit sets the widget's BgExplicit field.
+func (b *ColorButtonBuilder) BgExplicit(value bool) *ColorButtonBuilder {
+	b.do(func(_ *Scope, w *widget.ColorButton) { w.BgExplicit = value })
+	return b
+}
+
+// Hovered sets the widget's Hovered field.
+func (b *ColorButtonBuilder) Hovered(value bool) *ColorButtonBuilder {
+	b.do(func(_ *Scope, w *widget.ColorButton) { w.Hovered = value })
+	return b
+}
+
+// Pressed sets the widget's Pressed field.
+func (b *ColorButtonBuilder) Pressed(value bool) *ColorButtonBuilder {
+	b.do(func(_ *Scope, w *widget.ColorButton) { w.Pressed = value })
+	return b
+}
+
+// OnClick sets the widget's OnClick field.
+func (b *ColorButtonBuilder) OnClick(fn func()) *ColorButtonBuilder {
+	b.do(func(_ *Scope, w *widget.ColorButton) { w.OnClick = fn })
+	return b
+}
+
 // ColorChooserBuilder builds a widget.ColorChooser.
 type ColorChooserBuilder struct {
 	base[*widget.ColorChooser, *ColorChooserBuilder]
@@ -2536,6 +2626,94 @@ type FlowBoxChildBuilder struct {
 	base[*widget.FlowBoxChild, *FlowBoxChildBuilder]
 }
 
+// FontButtonBuilder builds a widget.FontButton.
+type FontButtonBuilder struct {
+	base[*widget.FontButton, *FontButtonBuilder]
+	face render.Font
+	size float64
+}
+
+// FontButton builds a widget.FontButton with widget.NewFontButton.
+func FontButton(initial widget.FontChoice) *FontButtonBuilder {
+	b := &FontButtonBuilder{}
+	b.init(b, func(s *Scope) *widget.FontButton {
+		return widget.NewFontButton(s.face(b.face), s.size(b.size), initial)
+	})
+	return b
+}
+
+// Font overrides the environment's typeface and size for this widget; zero values keep the environment's.
+func (b *FontButtonBuilder) Font(face render.Font, sizePx float64) *FontButtonBuilder {
+	b.face, b.size = face, sizePx
+	return b
+}
+
+// BindFont calls (*widget.FontButton).BindFont.
+func (b *FontButtonBuilder) BindFont(binding *widget.Binding[widget.FontChoice]) *FontButtonBuilder {
+	b.do(func(s *Scope, w *widget.FontButton) { s.onShutdown(w.BindFont(binding)) })
+	return b
+}
+
+// BindAction calls (*widget.FontButton).BindAction.
+func (b *FontButtonBuilder) BindAction(a widget.Activatable) *FontButtonBuilder {
+	b.do(func(s *Scope, w *widget.FontButton) { s.onShutdown(w.BindAction(a)) })
+	return b
+}
+
+// OnOpen sets the widget's OnOpen field.
+func (b *FontButtonBuilder) OnOpen(fn func(current widget.FontChoice)) *FontButtonBuilder {
+	b.do(func(_ *Scope, w *widget.FontButton) { w.OnOpen = fn })
+	return b
+}
+
+// OnFontSet sets the widget's OnFontSet field.
+func (b *FontButtonBuilder) OnFontSet(fn func(f widget.FontChoice)) *FontButtonBuilder {
+	b.do(func(_ *Scope, w *widget.FontButton) { w.OnFontSet = fn })
+	return b
+}
+
+// Bg sets the widget's Bg field.
+func (b *FontButtonBuilder) Bg(value render.Color) *FontButtonBuilder {
+	b.do(func(_ *Scope, w *widget.FontButton) { w.Bg = value })
+	return b
+}
+
+// BgHover sets the widget's BgHover field.
+func (b *FontButtonBuilder) BgHover(value render.Color) *FontButtonBuilder {
+	b.do(func(_ *Scope, w *widget.FontButton) { w.BgHover = value })
+	return b
+}
+
+// BgPressed sets the widget's BgPressed field.
+func (b *FontButtonBuilder) BgPressed(value render.Color) *FontButtonBuilder {
+	b.do(func(_ *Scope, w *widget.FontButton) { w.BgPressed = value })
+	return b
+}
+
+// BgExplicit sets the widget's BgExplicit field.
+func (b *FontButtonBuilder) BgExplicit(value bool) *FontButtonBuilder {
+	b.do(func(_ *Scope, w *widget.FontButton) { w.BgExplicit = value })
+	return b
+}
+
+// Hovered sets the widget's Hovered field.
+func (b *FontButtonBuilder) Hovered(value bool) *FontButtonBuilder {
+	b.do(func(_ *Scope, w *widget.FontButton) { w.Hovered = value })
+	return b
+}
+
+// Pressed sets the widget's Pressed field.
+func (b *FontButtonBuilder) Pressed(value bool) *FontButtonBuilder {
+	b.do(func(_ *Scope, w *widget.FontButton) { w.Pressed = value })
+	return b
+}
+
+// OnClick sets the widget's OnClick field.
+func (b *FontButtonBuilder) OnClick(fn func()) *FontButtonBuilder {
+	b.do(func(_ *Scope, w *widget.FontButton) { w.OnClick = fn })
+	return b
+}
+
 // FrameBuilder builds a widget.Frame.
 type FrameBuilder struct {
 	base[*widget.Frame, *FrameBuilder]
@@ -2969,6 +3147,119 @@ func (b *ImageBuilder) OnLoaded(fn func(img *widget.Image)) *ImageBuilder {
 // OnPasteImage sets the widget's OnPasteImage field.
 func (b *ImageBuilder) OnPasteImage(fn func(img image.Image)) *ImageBuilder {
 	b.do(func(_ *Scope, w *widget.Image) { w.OnPasteImage = fn })
+	return b
+}
+
+// InscriptionBuilder builds a widget.Inscription.
+type InscriptionBuilder struct {
+	base[*widget.Inscription, *InscriptionBuilder]
+	face render.Font
+	size float64
+	ink  render.Color
+}
+
+// Inscription builds a widget.Inscription with widget.NewInscription.
+func Inscription(text string) *InscriptionBuilder {
+	b := &InscriptionBuilder{}
+	b.init(b, func(s *Scope) *widget.Inscription {
+		return widget.NewInscription(s.face(b.face), s.size(b.size), text, s.ink(b.ink))
+	})
+	return b
+}
+
+// Font overrides the environment's typeface and size for this widget; zero values keep the environment's.
+func (b *InscriptionBuilder) Font(face render.Font, sizePx float64) *InscriptionBuilder {
+	b.face, b.size = face, sizePx
+	return b
+}
+
+// Ink overrides the environment's text color for this widget.
+func (b *InscriptionBuilder) Ink(c render.Color) *InscriptionBuilder {
+	b.ink = c
+	return b
+}
+
+// Alignment calls (*widget.Inscription).SetAlignment.
+func (b *InscriptionBuilder) Alignment(a render.Alignment) *InscriptionBuilder {
+	b.do(func(s *Scope, w *widget.Inscription) { w.SetAlignment(a) })
+	return b
+}
+
+// WatchAlignment re-applies SetAlignment with get's value after every update.
+func (b *InscriptionBuilder) WatchAlignment(get func() render.Alignment) *InscriptionBuilder {
+	b.watch(func(w *widget.Inscription) { w.SetAlignment(get()) })
+	return b
+}
+
+// Color calls (*widget.Inscription).SetColor.
+func (b *InscriptionBuilder) Color(c render.Color) *InscriptionBuilder {
+	b.do(func(s *Scope, w *widget.Inscription) { w.SetColor(c) })
+	return b
+}
+
+// WatchColor re-applies SetColor with get's value after every update.
+func (b *InscriptionBuilder) WatchColor(get func() render.Color) *InscriptionBuilder {
+	b.watch(func(w *widget.Inscription) { w.SetColor(get()) })
+	return b
+}
+
+// MinChars calls (*widget.Inscription).SetMinChars.
+func (b *InscriptionBuilder) MinChars(n int) *InscriptionBuilder {
+	b.do(func(s *Scope, w *widget.Inscription) { w.SetMinChars(n) })
+	return b
+}
+
+// WatchMinChars re-applies SetMinChars with get's value after every update.
+func (b *InscriptionBuilder) WatchMinChars(get func() int) *InscriptionBuilder {
+	b.watch(func(w *widget.Inscription) { w.SetMinChars(get()) })
+	return b
+}
+
+// MinLines calls (*widget.Inscription).SetMinLines.
+func (b *InscriptionBuilder) MinLines(n int) *InscriptionBuilder {
+	b.do(func(s *Scope, w *widget.Inscription) { w.SetMinLines(n) })
+	return b
+}
+
+// WatchMinLines re-applies SetMinLines with get's value after every update.
+func (b *InscriptionBuilder) WatchMinLines(get func() int) *InscriptionBuilder {
+	b.watch(func(w *widget.Inscription) { w.SetMinLines(get()) })
+	return b
+}
+
+// NatChars calls (*widget.Inscription).SetNatChars.
+func (b *InscriptionBuilder) NatChars(n int) *InscriptionBuilder {
+	b.do(func(s *Scope, w *widget.Inscription) { w.SetNatChars(n) })
+	return b
+}
+
+// WatchNatChars re-applies SetNatChars with get's value after every update.
+func (b *InscriptionBuilder) WatchNatChars(get func() int) *InscriptionBuilder {
+	b.watch(func(w *widget.Inscription) { w.SetNatChars(get()) })
+	return b
+}
+
+// NatLines calls (*widget.Inscription).SetNatLines.
+func (b *InscriptionBuilder) NatLines(n int) *InscriptionBuilder {
+	b.do(func(s *Scope, w *widget.Inscription) { w.SetNatLines(n) })
+	return b
+}
+
+// WatchNatLines re-applies SetNatLines with get's value after every update.
+func (b *InscriptionBuilder) WatchNatLines(get func() int) *InscriptionBuilder {
+	b.watch(func(w *widget.Inscription) { w.SetNatLines(get()) })
+	return b
+}
+
+// Text calls (*widget.Inscription).SetText.
+func (b *InscriptionBuilder) Text(text string) *InscriptionBuilder {
+	b.do(func(s *Scope, w *widget.Inscription) { w.SetText(text) })
+	return b
+}
+
+// WatchText re-applies SetText with get's value after every update.
+func (b *InscriptionBuilder) WatchText(get func() string) *InscriptionBuilder {
+	b.watch(func(w *widget.Inscription) { w.SetText(get()) })
 	return b
 }
 
