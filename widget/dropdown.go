@@ -198,6 +198,13 @@ func (d *Dropdown) selectableFrom(i int) int {
 // Selected returns the selected item index, -1 when empty.
 func (d *Dropdown) Selected() int { return d.selected }
 
+// Items returns the item labels, row order.
+func (d *Dropdown) Items() []string {
+	out := make([]string, len(d.items))
+	copy(out, d.items)
+	return out
+}
+
 // SetDirection selects the base paragraph direction the selection
 // label and the open list's rows resolve and lay out with; the menu
 // inherits it. DirectionAuto (the default) reads it off the label's
