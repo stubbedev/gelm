@@ -140,7 +140,7 @@ func TestTranslucentBackgroundCompositesThroughTheBufferPath(t *testing.T) {
 }
 
 // TestOpaqueRegionSetOncePerSizeChange pins the wire traffic an opaque
-// window owes: the full device rect on the first frame and after a
+// window owes: the full surface rect on the first frame and after a
 // resize, and nothing in between - an idle frame re-sends nothing.
 func TestOpaqueRegionSetOncePerSizeChange(t *testing.T) {
 	root := widget.NewBox(widget.Row, 0, 0)
@@ -171,22 +171,22 @@ func TestOpaqueRegionSetOncePerSizeChange(t *testing.T) {
 	}
 }
 
-// TestOpaqueRegionResetsOnRescale pins the rescale leg: a preferred_scale
-// change rebuilds the buffers at a new device size, and the region
-// follows once, in device pixels.
-func TestOpaqueRegionResetsOnRescale(t *testing.T) {
+// TestOpaqueRegionIsInSurfaceCoordinates pins the units (#165): the
+// region is surface-local, the logical size, so a rescale that rebuilds
+// the buffers at twice the pixels sends no new region.
+func TestOpaqueRegionIsInSurfaceCoordinates(t *testing.T) {
 	root := widget.NewBox(widget.Row, 0, 0)
 	fh := newFracHarness(root, 64, 32, 120)
 	fh.wnd.cfg.background = render.RGB(30, 30, 46)
 	fh.wnd.cfg.opaque = opaqueFor(fh.wnd.cfg.background, false)
 
 	fh.frame()
-	fh.wnd.rescale(240) // 1x -> 2x
+	fh.wnd.rescale(240)
 	fh.frame()
 
-	want := []render.Rect{{W: 64, H: 32}, {W: 128, H: 64}}
+	want := []render.Rect{{W: 64, H: 32}}
 	if !rectsEqual(fh.surf.opaque, want) {
-		t.Fatalf("opaque regions across rescale = %+v, want %+v", fh.surf.opaque, want)
+		t.Fatalf("opaque regions across rescale = %+v, want only the logical %+v", fh.surf.opaque, want)
 	}
 }
 
