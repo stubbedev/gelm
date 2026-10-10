@@ -63,7 +63,7 @@ func (e *Entry) displayText() string {
 		if !e.composing() {
 			return e.disp
 		}
-		return string(rs)
+		return e.peDispStr
 	case e.echo == EchoNone:
 		return ""
 	default:

@@ -107,6 +107,10 @@ type Entry struct {
 	peText []rune
 	peAt   int
 	peCur  int
+	// peDisp/peDispStr memoize the composing display and its string
+	// form; nil/empty until the first read after a preedit change.
+	peDisp    []rune
+	peDispStr string
 
 	// bands is the selection/underline scratch the paint reuses across
 	// frames, so the render path stays allocation-free in the steady
@@ -162,7 +166,9 @@ type entryText struct {
 	placeholder, selection stylePart
 }
 
-func (t *entryText) styleChildren() []Widget { return []Widget{&t.placeholder, &t.selection} }
+func (t *entryText) appendStyleKids(buf []Widget) []Widget {
+	return append(buf, &t.placeholder, &t.selection)
+}
 
 // SetTrailingIcon shows a themed icon at the entry's end — the
 // entry > image node, GtkEntry's secondary icon: a password field's
@@ -291,16 +297,16 @@ func (e *Entry) leadingWidth() int {
 	return sz.W + entryTrailingGap
 }
 
-// styleChildren is the text node and any icons (styleKids).
-func (e *Entry) styleChildren() []Widget {
-	kids := []Widget{&e.text}
+// appendStyleKids is the text node and any icons (styleKids).
+func (e *Entry) appendStyleKids(buf []Widget) []Widget {
+	buf = append(buf, &e.text)
 	if e.leading != nil {
-		kids = append(kids, e.leading)
+		buf = append(buf, e.leading)
 	}
 	if e.trailing != nil {
-		kids = append(kids, e.trailing)
+		buf = append(buf, e.trailing)
 	}
-	return kids
+	return buf
 }
 
 // entryPad is an unstyled field's padding: lineheight plus 12 tall.

@@ -138,7 +138,10 @@ type hostWindow struct {
 	damageSeen uint64
 	// devRects is the scratch the device-space damage rect list is
 	// built in, one backing array per window.
-	devRects     []render.Rect
+	devRects []render.Rect
+	// canvas is the window's own frame canvas, Reset per painted frame
+	// instead of a fresh NewScaled struct each time.
+	canvas       render.Canvas
 	dirty        bool
 	frameReady   bool
 	framePending bool
@@ -734,7 +737,7 @@ func (w *hostWindow) draw() bool {
 	debug.Log("frame", "draw %dx%d at %d/120: %d damage rect(s), region %dx%d",
 		bw, bh, w.frac120, len(rects), region.W, region.H)
 
-	cv := render.NewScaled(b.Data, b.Stride, b.Width, b.Height, w.devNum(), scale.Denom)
+	cv := w.canvas.Reset(b.Data, b.Stride, b.Width, b.Height, w.devNum(), scale.Denom)
 	prev := cv.PushClipDevice(region)
 	cv.ClearDevice(region, w.cfg.background)
 	// The focus ring draws right after its widget, in tree order, so

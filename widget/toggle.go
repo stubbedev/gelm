@@ -180,8 +180,8 @@ func NewCheckButton(checked bool) *CheckButton {
 	return c
 }
 
-// styleChildren is the check (styleKids).
-func (c *CheckButton) styleChildren() []Widget { return []Widget{&c.check} }
+// appendStyleKids is the check (styleKids).
+func (c *CheckButton) appendStyleKids(buf []Widget) []Widget { return append(buf, &c.check) }
 
 // Checked reports the state.
 func (c *CheckButton) Checked() bool { return c.checked }
@@ -393,5 +393,5 @@ func (s *Spacer) Paint(*render.Canvas) {}
 // HitTest returns nil: empty space is not interactive.
 func (s *Spacer) HitTest(Point) Widget { return nil }
 
-// styleChildren is the knob (styleKids).
-func (s *Switch) styleChildren() []Widget { return []Widget{&s.knob} }
+// appendStyleKids is the knob (styleKids).
+func (s *Switch) appendStyleKids(buf []Widget) []Widget { return append(buf, &s.knob) }

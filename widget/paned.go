@@ -72,16 +72,15 @@ func NewPaned(axis Axis, start, end Widget) *Paned {
 	return p
 }
 
-// styleChildren is the separator and the two panes (styleKids).
-func (p *Paned) styleChildren() []Widget {
-	out := make([]Widget, 0, 3)
-	out = append(out, &p.sep)
+// appendStyleKids is the separator and the two panes (styleKids).
+func (p *Paned) appendStyleKids(buf []Widget) []Widget {
+	buf = append(buf, &p.sep)
 	for _, pane := range [2]Widget{p.start, p.end} {
 		if pane != nil {
-			out = append(out, pane)
+			buf = append(buf, pane)
 		}
 	}
-	return out
+	return buf
 }
 
 // sepSlot is the divider's slot along the axis: the separator's min

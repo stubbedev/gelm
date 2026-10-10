@@ -88,10 +88,12 @@ type sliderTrough struct {
 	highlight, knob stylePart
 }
 
-func (t *sliderTrough) styleChildren() []Widget { return []Widget{&t.highlight, &t.knob} }
+func (t *sliderTrough) appendStyleKids(buf []Widget) []Widget {
+	return append(buf, &t.highlight, &t.knob)
+}
 
-// styleChildren is the trough (styleKids).
-func (s *Slider) styleChildren() []Widget { return []Widget{&s.trough} }
+// appendStyleKids is the trough (styleKids).
+func (s *Slider) appendStyleKids(buf []Widget) []Widget { return append(buf, &s.trough) }
 
 // SetHovered implements HoverSetter: `scale:hover` restyles the
 // trough and knob (a knob shown only on hover).

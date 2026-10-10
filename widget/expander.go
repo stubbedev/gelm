@@ -70,13 +70,13 @@ func NewExpander(face render.Font, title string, child Widget) *Expander {
 	return e
 }
 
-// styleChildren is the title and, while open, the child (styleKids).
-func (e *Expander) styleChildren() []Widget {
-	out := []Widget{&e.titleNode}
+// appendStyleKids is the title and, while open, the child (styleKids).
+func (e *Expander) appendStyleKids(buf []Widget) []Widget {
+	buf = append(buf, &e.titleNode)
 	if e.open && e.child != nil {
-		out = append(out, e.child)
+		buf = append(buf, e.child)
 	}
-	return out
+	return buf
 }
 
 // Open reports the toggle state (the settled layout, not the animated

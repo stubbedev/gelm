@@ -801,39 +801,55 @@ func (s *styleTargeter) StylePosition() (int, int) {
 	return idx + 1, len(sib)
 }
 
-// siblingBuf is visibleSiblings' reusable buffer (loop-goroutine only).
-var siblingBuf []Widget
-
 // visibleSiblings returns the visible children of n's parent and n's
 // index among them; -1 when n has no parent or is not among them.
+// The list is memoized on the parent node keyed by the damage
+// generation: a sibling-selector restyle marks the whole sibling set
+// in one pass, so the rebuild happens once per parent per generation,
+// not once per restyled widget. Membership and visibility changes all
+// mark damage (Append through InvalidateLayout, SetVisible through
+// the parent's relayout), so a mark cannot be missed; the memo is
+// loop-goroutine state like every other walk buffer.
 func visibleSiblings(n *node, w Widget) ([]Widget, int) {
 	if n.parent == nil {
 		return nil, -1
 	}
-	siblingBuf = siblingBuf[:0]
-	switch p := n.parent.(type) {
-	case childBuf:
-		siblingBuf = p.appendChildren(siblingBuf)
-	case childser:
-		siblingBuf = append(siblingBuf, p.Children()...)
-	default:
+	pn := nodeOf(n.parent)
+	if pn == nil {
 		return nil, -1
 	}
-	out := siblingBuf[:0]
-	idx := -1
-	for _, k := range siblingBuf {
-		if k == nil {
-			continue
+	gen := DamageGeneration()
+	if pn.sibsGen != gen {
+		out := pn.sibs[:0]
+		switch p := n.parent.(type) {
+		case childBuf:
+			out = p.appendChildren(out)
+		case childser:
+			out = append(out, p.Children()...)
+		default:
+			pn.sibs, pn.sibsGen = nil, gen
+			return nil, -1
 		}
-		if kn := nodeOf(k); kn != nil && kn.hidden {
-			continue
+		filtered := out[:0]
+		for _, k := range out {
+			if k == nil {
+				continue
+			}
+			if kn := nodeOf(k); kn != nil && kn.hidden {
+				continue
+			}
+			filtered = append(filtered, k)
 		}
-		if k == w {
-			idx = len(out)
-		}
-		out = append(out, k)
+		pn.sibs, pn.sibsGen = filtered, gen
 	}
-	return out, idx
+	idx := -1
+	for i, k := range pn.sibs {
+		if k == w {
+			idx = i
+			break
+		}
+	}
+	return pn.sibs, idx
 }
 
 // fillTarget fills the selector-relevant facts of one widget.
@@ -1182,12 +1198,26 @@ func inkOf(v *style.Values) render.Insets {
 // recomputes on its next read — the damage walk reaches them
 // pre-order — and repaints only if its values actually moved (the
 // restyle diff invalidates).
-func restyleSubtree(w Widget) {
-	for _, k := range styleKids(w) {
+func restyleSubtree(w Widget) { restyleInto(w, 0) }
+
+// styleStack is restyleSubtree's per-depth snapshot buffers, reused
+// across passes like the damage walk's walkStack: tree walks are
+// loop-goroutine work, and a level's snapshot lives until its subtree
+// is done.
+var styleStack [][]Widget
+
+// restyleInto is restyleSubtree's recursive body, snapshotting the
+// kids at each depth into styleStack's slot.
+func restyleInto(w Widget, depth int) {
+	for len(styleStack) <= depth {
+		styleStack = append(styleStack, nil)
+	}
+	styleStack[depth] = appendStyleKids(w, styleStack[depth][:0])
+	for _, k := range styleStack[depth] {
 		if n := nodeOf(k); n != nil {
 			n.styleDirty = true
 		}
-		restyleSubtree(k)
+		restyleInto(k, depth+1)
 	}
 	markDamage()
 }
@@ -1196,15 +1226,22 @@ func restyleSubtree(w Widget) {
 // a widget that keeps its children out of the Children walks (a
 // Button's content, a List's rows, a Menu's icons: focus, hit
 // testing and a11y treat the parent as the leaf) lists through
-// styleChildren.
-func styleKids(w Widget) []Widget {
+// appendStyleKids.
+func styleKids(w Widget) []Widget { return appendStyleKids(w, nil) }
+
+// appendStyleKids appends w's inheriting children onto buf, the
+// buffered form the restyle pass reads: one buffer per depth instead
+// of a fresh slice per subtree per pass.
+func appendStyleKids(w Widget, buf []Widget) []Widget {
 	switch c := w.(type) {
-	case interface{ styleChildren() []Widget }:
-		return c.styleChildren()
+	case interface{ appendStyleKids([]Widget) []Widget }:
+		return c.appendStyleKids(buf)
+	case childBuf:
+		return c.appendChildren(buf)
 	case childser:
-		return c.Children()
+		return append(buf, c.Children()...)
 	}
-	return nil
+	return buf
 }
 
 // restyleChildren marks w's children (and their subtrees) stale: a

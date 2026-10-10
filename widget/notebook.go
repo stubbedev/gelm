@@ -58,12 +58,11 @@ type notebookTabs struct {
 	tab []stylePart
 }
 
-func (t *notebookTabs) styleChildren() []Widget {
-	out := make([]Widget, len(t.tab))
+func (t *notebookTabs) appendStyleKids(buf []Widget) []Widget {
 	for i := range t.tab {
-		out[i] = &t.tab[i]
+		buf = append(buf, &t.tab[i])
 	}
-	return out
+	return buf
 }
 
 type notebookTab struct {
@@ -99,7 +98,7 @@ func (n *Notebook) syncTabs() {
 	}
 	setParents(n, &n.header)
 	setParents(&n.header, &n.header.tabs)
-	setParents(&n.header.tabs, n.header.tabs.styleChildren()...)
+	setParents(&n.header.tabs, styleKids(&n.header.tabs)...)
 	n.syncSelectedTab()
 }
 
@@ -110,13 +109,13 @@ func (n *Notebook) syncSelectedTab() {
 	}
 }
 
-// styleChildren is the header and the visible page (styleKids).
-func (n *Notebook) styleChildren() []Widget {
-	out := []Widget{&n.header}
+// appendStyleKids is the header and the visible page (styleKids).
+func (n *Notebook) appendStyleKids(buf []Widget) []Widget {
+	buf = append(buf, &n.header)
 	if n.selected < len(n.tabs) {
-		out = append(out, n.tabs[n.selected].w)
+		buf = append(buf, n.tabs[n.selected].w)
 	}
-	return out
+	return buf
 }
 
 // AppendTab adds a page under name; the first page added becomes the

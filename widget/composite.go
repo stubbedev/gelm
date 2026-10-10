@@ -110,8 +110,8 @@ func (c *composite) HitTest(p Point) Widget {
 	return c.self
 }
 
-// styleChildren is the root (styleKids).
-func (c *composite) styleChildren() []Widget { return []Widget{c.root} }
+// appendStyleKids is the root (styleKids).
+func (c *composite) appendStyleKids(buf []Widget) []Widget { return append(buf, c.root) }
 
 // sizedCell pins its child's width - the table cell every header and
 // row of a ColumnView shares, so columns line up by construction.
