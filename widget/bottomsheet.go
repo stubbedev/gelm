@@ -166,3 +166,6 @@ func (b *BottomSheet) styleChildren() []Widget {
 	}
 	return []Widget{b.root}
 }
+
+// Content returns the widget the sheet slides over.
+func (b *BottomSheet) Content() Widget { return b.root }
