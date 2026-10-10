@@ -1,0 +1,722 @@
+package style
+
+import (
+	"os"
+	"path/filepath"
+	"slices"
+	"strings"
+)
+
+// Media is the environment @media conditions evaluate against: the
+// viewport's size and density, and the appearance preferences the
+// theme carries (dark polarity, high contrast, motion). The widget
+// layer fills it per compute: the viewport from SetMediaViewport, the
+// preferences derived from the active Theme (IsDark, Animations) and
+// SetMediaContrast, so a theme swap re-evaluates prefers-* rules.
+type Media struct {
+	Width, Height float64
+	DPI           float64
+	Dark          bool
+	HighContrast  bool
+	ReducedMotion bool
+}
+
+type mediaFeat uint8
+
+const (
+	featWidth mediaFeat = iota + 1
+	featHeight
+	featAspect
+	featOrientation
+	featResolution
+	featScheme
+	featContrast
+	featMotion
+)
+
+type mediaCmp uint8
+
+const (
+	cmpKeyword mediaCmp = iota
+	cmpLT
+	cmpLE
+	cmpEQ
+	cmpGE
+	cmpGT
+)
+
+type mediaCond struct {
+	feat mediaFeat
+	cmp  mediaCmp
+	// a is the compared value, or the keyword code: orientation 1
+	// landscape 2 portrait, scheme 1 dark 2 light, contrast and motion
+	// 1 the preference 2 no-preference.
+	a float64
+}
+
+func (c mediaCond) match(m *Media) bool {
+	if c.cmp == cmpKeyword {
+		var want, have bool
+		switch c.feat {
+		case featOrientation:
+			want, have = c.a == 1, m.Width >= m.Height
+		case featScheme:
+			want, have = c.a == 1, m.Dark
+		case featContrast:
+			want, have = c.a == 1, m.HighContrast
+		case featMotion:
+			want, have = c.a == 1, m.ReducedMotion
+		}
+		return want == have
+	}
+	var v float64
+	switch c.feat {
+	case featWidth:
+		v = m.Width
+	case featHeight:
+		v = m.Height
+	case featAspect:
+		if m.Height <= 0 {
+			return false
+		}
+		v = m.Width / m.Height
+	case featResolution:
+		v = m.DPI
+	default:
+		return false
+	}
+	switch c.cmp {
+	case cmpLT:
+		return v < c.a
+	case cmpLE:
+		return v <= c.a
+	case cmpEQ:
+		return v == c.a
+	case cmpGE:
+		return v >= c.a
+	case cmpGT:
+		return v > c.a
+	}
+	return false
+}
+
+type mediaPart struct {
+	neg   bool
+	conds []mediaCond
+}
+
+func (p mediaPart) match(m *Media) bool {
+	for _, c := range p.conds {
+		if !c.match(m) {
+			return p.neg
+		}
+	}
+	return !p.neg
+}
+
+// mediaQuery is one @media condition: an OR of branches, each an AND
+// of parts. nil matches everything.
+type mediaQuery [][]mediaPart
+
+func mediaMatches(q mediaQuery, m *Media) bool {
+	for _, branch := range q {
+		ok := true
+		for _, part := range branch {
+			if !part.match(m) {
+				ok = false
+				break
+			}
+		}
+		if ok {
+			return true
+		}
+	}
+	return len(q) == 0
+}
+
+func condsEqual(a, b []mediaCond) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func queryEqual(a, b mediaQuery) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		x, y := a[i], b[i]
+		if len(x) != len(y) {
+			return false
+		}
+		for j := range x {
+			if x[j].neg != y[j].neg || !condsEqual(x[j].conds, y[j].conds) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// intersectMedia ands two queries by crossing their OR branches; nil
+// is the always-true identity.
+func intersectMedia(a, b mediaQuery) mediaQuery {
+	if a == nil {
+		return b
+	}
+	if b == nil {
+		return a
+	}
+	out := make(mediaQuery, 0, len(a)*len(b))
+	for _, x := range a {
+		for _, y := range b {
+			out = append(out, append(slices.Clone(x), y...))
+		}
+	}
+	return out
+}
+
+// parseMediaQuery parses an @media prelude: a comma list (OR) of
+// `not`-prefixed conditions joined by `and`, each condition a
+// parenthesized feature (classic `name: value` or Level 4 range
+// syntax) or a media type. A nil query is always true; ok is false
+// when the prelude is malformed.
+func parseMediaQuery(ts []token) (mediaQuery, bool) {
+	if len(ts) == 0 {
+		return nil, true
+	}
+	var out mediaQuery
+	for _, raw := range splitTop(ts, tkComma) {
+		branch, ok := parseMediaBranch(trimWS(raw))
+		if !ok {
+			return nil, false
+		}
+		if branch == nil {
+			return nil, true
+		}
+		out = append(out, branch)
+	}
+	return out, true
+}
+
+// parseMediaBranch parses one comma member; a nil branch is always
+// true (a bare `screen`).
+func parseMediaBranch(ts []token) ([]mediaPart, bool) {
+	var parts []mediaPart
+	i := 0
+	first := true
+	for i < len(ts) {
+		t := ts[i]
+		switch {
+		case t.kind == tkWS:
+			i++
+		case t.kind == tkLParen:
+			end := blockEnd(ts, i)
+			conds, ok, known := parseMediaGroup(trimWS(ts[i+1 : end-1]))
+			if !ok {
+				return nil, false
+			}
+			if !known {
+				parts = append(parts, mediaPart{neg: true})
+			} else {
+				parts = append(parts, mediaPart{conds: conds})
+			}
+			i = end
+			first = false
+		case t.kind == tkIdent && (strings.EqualFold(t.s, "and") || strings.EqualFold(t.s, "or")) && !first:
+			if strings.EqualFold(t.s, "or") {
+				return nil, false
+			}
+			i++
+		case t.kind == tkIdent && strings.EqualFold(t.s, "not"):
+			i++
+			j := i
+			for j < len(ts) && ts[j].kind == tkWS {
+				j++
+			}
+			if j >= len(ts) || ts[j].kind != tkLParen {
+				var ok bool
+				parts, ok = parseMediaType(parts, ts, j)
+				if !ok {
+					return nil, false
+				}
+				i = len(ts)
+				first = false
+				break
+			}
+			end := blockEnd(ts, j)
+			if end > len(ts) {
+				return nil, false
+			}
+			conds, ok, known := parseMediaGroup(trimWS(ts[j+1 : end-1]))
+			if !ok {
+				return nil, false
+			}
+			switch {
+			case !known:
+				parts = append(parts, mediaPart{})
+			default:
+				parts = append(parts, mediaPart{neg: true, conds: conds})
+			}
+			i = end
+			first = false
+		case t.kind == tkIdent:
+			var ok bool
+			parts, ok = parseMediaType(parts, ts, i)
+			if !ok {
+				return nil, false
+			}
+			i = len(ts)
+			first = false
+		default:
+			return nil, false
+		}
+	}
+	if first {
+		return nil, false
+	}
+	return parts, true
+}
+
+// parseMediaType folds a media type (with the `only` prefix) into
+// parts: screen and all are true, anything else false.
+func parseMediaType(parts []mediaPart, ts []token, i int) ([]mediaPart, bool) {
+	for i < len(ts) && ts[i].kind == tkWS {
+		i++
+	}
+	if i >= len(ts) || ts[i].kind != tkIdent {
+		return nil, false
+	}
+	name := strings.ToLower(ts[i].s)
+	if name == "only" {
+		i++
+		for i < len(ts) && ts[i].kind == tkWS {
+			i++
+		}
+		if i >= len(ts) || ts[i].kind != tkIdent {
+			return nil, false
+		}
+		name = strings.ToLower(ts[i].s)
+	}
+	switch name {
+	case "screen", "all":
+		return parts, true
+	default:
+		return append(parts, mediaPart{neg: true}), true
+	}
+}
+
+// parseMediaGroup parses one parenthesized condition. ok is false
+// when the condition is malformed; known is false for a feature the
+// engine does not understand, which evaluates false.
+func parseMediaGroup(ts []token) (conds []mediaCond, ok, known bool) {
+	if len(ts) == 0 {
+		return nil, false, true
+	}
+	if len(ts) >= 2 && ts[0].kind == tkIdent && ts[1].kind == tkColon {
+		return parseMediaFeature(strings.ToLower(ts[0].s), trimWS(ts[2:]))
+	}
+	return parseMediaRange(ts)
+}
+
+// parseMediaFeature parses `name: value`.
+func parseMediaFeature(name string, val []token) ([]mediaCond, bool, bool) {
+	minmax := byte(0)
+	switch {
+	case strings.HasPrefix(name, "min-"):
+		minmax, name = 'm', name[4:]
+	case strings.HasPrefix(name, "max-"):
+		minmax, name = 'x', name[4:]
+	}
+	switch name {
+	case "width", "height":
+		feat := featWidth
+		if name == "height" {
+			feat = featHeight
+		}
+		v, ok := mediaLength(val)
+		if !ok {
+			return nil, false, true
+		}
+		return rangeConds(feat, minmax, v), true, true
+	case "aspect-ratio":
+		v, ok := mediaRatio(val)
+		if !ok {
+			return nil, false, true
+		}
+		return rangeConds(featAspect, minmax, v), true, true
+	case "resolution":
+		v, ok := mediaResolution(val)
+		if !ok {
+			return nil, false, true
+		}
+		return rangeConds(featResolution, minmax, v), true, true
+	case "orientation":
+		if len(val) != 1 || val[0].kind != tkIdent {
+			return nil, false, true
+		}
+		switch strings.ToLower(val[0].s) {
+		case "landscape":
+			return []mediaCond{{feat: featOrientation, a: 1}}, true, true
+		case "portrait":
+			return []mediaCond{{feat: featOrientation, a: 2}}, true, true
+		}
+		return nil, false, true
+	case "prefers-color-scheme":
+		if len(val) != 1 || val[0].kind != tkIdent {
+			return nil, false, true
+		}
+		switch strings.ToLower(val[0].s) {
+		case "dark":
+			return []mediaCond{{feat: featScheme, a: 1}}, true, true
+		case "light":
+			return []mediaCond{{feat: featScheme, a: 2}}, true, true
+		}
+		return nil, false, true
+	case "prefers-contrast":
+		if len(val) != 1 || val[0].kind != tkIdent {
+			return nil, false, true
+		}
+		switch strings.ToLower(val[0].s) {
+		case "more", "high", "custom":
+			return []mediaCond{{feat: featContrast, a: 1}}, true, true
+		case "no-preference":
+			return []mediaCond{{feat: featContrast, a: 2}}, true, true
+		}
+		return nil, false, true
+	case "prefers-reduced-motion":
+		if len(val) != 1 || val[0].kind != tkIdent {
+			return nil, false, true
+		}
+		switch strings.ToLower(val[0].s) {
+		case "reduce":
+			return []mediaCond{{feat: featMotion, a: 1}}, true, true
+		case "no-preference":
+			return []mediaCond{{feat: featMotion, a: 2}}, true, true
+		}
+		return nil, false, true
+	}
+	return nil, true, false
+}
+
+// rangeConds maps a min-/max- prefix onto >= / <= comparisons.
+func rangeConds(feat mediaFeat, minmax byte, v float64) []mediaCond {
+	switch minmax {
+	case 'm':
+		return []mediaCond{{feat: feat, cmp: cmpGE, a: v}}
+	case 'x':
+		return []mediaCond{{feat: feat, cmp: cmpLE, a: v}}
+	}
+	return []mediaCond{{feat: feat, cmp: cmpEQ, a: v}}
+}
+
+// parseMediaRange parses Level 4 range syntax: `name op value`,
+// `value op name`, or `value op name op value`.
+func parseMediaRange(ts []token) ([]mediaCond, bool, bool) {
+	comps, okc := rangeComponents(ts)
+	if !okc || (len(comps) != 2 && len(comps) != 3) {
+		return nil, false, true
+	}
+	nameAt := -1
+	for i, c := range comps {
+		if c.t.kind == tkIdent {
+			if nameAt >= 0 {
+				return nil, false, true
+			}
+			nameAt = i
+		}
+	}
+	if nameAt < 0 {
+		return nil, false, true
+	}
+	feat, known := rangeFeature(strings.ToLower(comps[nameAt].t.s))
+	if !known {
+		return nil, true, false
+	}
+	value := func(i int) (float64, bool) {
+		switch feat {
+		case featAspect:
+			return mediaRatio([]token{comps[i].t})
+		case featResolution:
+			return mediaResolution([]token{comps[i].t})
+		default:
+			return mediaLength([]token{comps[i].t})
+		}
+	}
+	cond := func(op mediaCmp, flip bool, vi int) (mediaCond, bool) {
+		if op == 0 {
+			return mediaCond{}, false
+		}
+		if flip {
+			op = flipCmp(op)
+		}
+		v, ok := value(vi)
+		if !ok {
+			return mediaCond{}, false
+		}
+		return mediaCond{feat: feat, cmp: op, a: v}, true
+	}
+	var out []mediaCond
+	if len(comps) == 3 {
+		if nameAt != 1 {
+			return nil, false, true
+		}
+		lo, ok := cond(comps[0].op, true, 0)
+		if !ok {
+			return nil, false, true
+		}
+		hi, ok := cond(comps[1].op, false, 2)
+		if !ok {
+			return nil, false, true
+		}
+		return append(out, lo, hi), true, true
+	}
+	flip := nameAt == 1
+	vi := 1 - nameAt
+	c, ok := cond(comps[0].op, flip, vi)
+	if !ok {
+		return nil, false, true
+	}
+	return append(out, c), true, true
+}
+
+func flipCmp(c mediaCmp) mediaCmp {
+	switch c {
+	case cmpLT:
+		return cmpGT
+	case cmpLE:
+		return cmpGE
+	case cmpGT:
+		return cmpLT
+	case cmpGE:
+		return cmpLE
+	}
+	return c
+}
+
+func rangeFeature(name string) (mediaFeat, bool) {
+	switch name {
+	case "width":
+		return featWidth, true
+	case "height":
+		return featHeight, true
+	case "aspect-ratio":
+		return featAspect, true
+	case "resolution":
+		return featResolution, true
+	}
+	return 0, false
+}
+
+// rangeComp is one range-syntax component: a value token with the
+// comparison operator that follows it (0 when none does).
+type rangeComp struct {
+	t  token
+	op mediaCmp
+}
+
+func rangeComponents(ts []token) ([]rangeComp, bool) {
+	var out []rangeComp
+	for _, part := range components(ts) {
+		if op, isOp := rangeOp(part); isOp {
+			if len(out) == 0 {
+				return nil, false
+			}
+			last := &out[len(out)-1]
+			switch {
+			case last.op == 0:
+				last.op = op
+			case op == cmpEQ && last.op == cmpLT:
+				last.op = cmpLE
+			case op == cmpEQ && last.op == cmpGT:
+				last.op = cmpGE
+			default:
+				return nil, false
+			}
+			continue
+		}
+		if len(part) != 1 {
+			return nil, false
+		}
+		out = append(out, rangeComp{t: part[0]})
+	}
+	return out, true
+}
+
+func rangeOp(part []token) (mediaCmp, bool) {
+	if len(part) == 0 || len(part) > 2 || len(part) == 2 && !part[1].is('=') {
+		return 0, false
+	}
+	switch {
+	case part[0].is('<') && len(part) == 2:
+		return cmpLE, true
+	case part[0].is('>') && len(part) == 2:
+		return cmpGE, true
+	case part[0].is('<'):
+		return cmpLT, true
+	case part[0].is('>'):
+		return cmpGT, true
+	case part[0].is('=') && len(part) == 1:
+		return cmpEQ, true
+	}
+	return 0, false
+}
+
+func mediaLength(ts []token) (float64, bool) {
+	if len(ts) != 1 {
+		return 0, false
+	}
+	t := ts[0]
+	switch t.kind {
+	case tkNumber:
+		return t.num, true
+	case tkDim:
+		if t.s == "px" || t.s == "" {
+			return t.num, true
+		}
+	}
+	return 0, false
+}
+
+func mediaRatio(ts []token) (float64, bool) {
+	if len(ts) == 3 && ts[0].kind == tkNumber && ts[1].is('/') && ts[2].kind == tkNumber {
+		if ts[2].num == 0 {
+			return 0, false
+		}
+		return ts[0].num / ts[2].num, true
+	}
+	if len(ts) == 1 && ts[0].kind == tkNumber {
+		return ts[0].num, true
+	}
+	return 0, false
+}
+
+func mediaResolution(ts []token) (float64, bool) {
+	if len(ts) != 1 {
+		return 0, false
+	}
+	t := ts[0]
+	switch t.kind {
+	case tkNumber:
+		return t.num, true
+	case tkDim:
+		switch t.s {
+		case "dpi":
+			return t.num, true
+		case "x":
+			return t.num * 96, true
+		case "dpcm":
+			return t.num * 2.54, true
+		}
+	}
+	return 0, false
+}
+
+// evalSupports evaluates an @supports prelude at parse time against
+// the engine's actual property and selector support.
+func evalSupports(ts []token) bool {
+	orParts := splitOnIdent(ts, "or")
+	if len(orParts) > 1 {
+		for _, p := range orParts {
+			if evalSupports(p) {
+				return true
+			}
+		}
+		return false
+	}
+	andParts := splitOnIdent(ts, "and")
+	if len(andParts) > 1 {
+		for _, p := range andParts {
+			if !evalSupports(p) {
+				return false
+			}
+		}
+		return true
+	}
+	ts = trimWS(ts)
+	if len(ts) == 0 {
+		return false
+	}
+	if ts[0].kind == tkIdent && strings.EqualFold(ts[0].s, "not") {
+		return !evalSupports(ts[1:])
+	}
+	if ts[0].kind == tkLParen && blockEnd(ts, 0) == len(ts) {
+		inner := trimWS(ts[1 : len(ts)-1])
+		if len(inner) > 0 && inner[0].kind == tkFunc && inner[0].s == "selector" {
+			args := trimWS(funcArgs(inner))
+			_, ok := parseSelectorList("", args)
+			return ok
+		}
+		if len(inner) > 1 && inner[0].kind == tkIdent && inner[1].kind == tkColon {
+			return supportsDecl(inner[0].s, trimWS(inner[2:]))
+		}
+		return evalSupports(inner)
+	}
+	if ts[0].kind == tkFunc && ts[0].s == "selector" {
+		args := trimWS(funcArgs(ts))
+		_, ok := parseSelectorList("", args)
+		return ok
+	}
+	return false
+}
+
+// supportsDecl reports whether `name: value` parses in this engine.
+func supportsDecl(name string, val []token) bool {
+	lname := strings.ToLower(name)
+	def, ok := propTable[lname]
+	if !ok {
+		return ignoredProps[lname]
+	}
+	if len(val) == 0 || wideOf(val) != wideNone || containsVar(val) {
+		return false
+	}
+	cx := ctx{rem: parseRem, em: parseRem, weight: 400}
+	scratch := initialValues()
+	return def.parse(val, &cx, &scratch)
+}
+
+// splitOnIdent splits ts at nesting depth zero on the identifier name.
+func splitOnIdent(ts []token, name string) [][]token {
+	var out [][]token
+	start := 0
+	for i := 0; i < len(ts); {
+		if closer(ts[i].kind) != 0 {
+			i = blockEnd(ts, i)
+			continue
+		}
+		if ts[i].kind == tkIdent && strings.EqualFold(ts[i].s, name) {
+			out = append(out, ts[start:i])
+			start = i + 1
+		}
+		i++
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return append(out, ts[start:])
+}
+
+// ImportResolver loads an @import target: ref resolved against base,
+// the importing stylesheet's path ("" for a string stylesheet, when
+// ref stands alone). An error drops the import with a warning.
+type ImportResolver func(ref, base string) (path, content string, err error)
+
+// fileImport is the default resolver: the filesystem, relative to the
+// importing file's directory.
+func fileImport(ref, base string) (string, string, error) {
+	p := ref
+	if base != "" && !filepath.IsAbs(ref) {
+		p = filepath.Join(filepath.Dir(base), ref)
+	}
+	b, err := os.ReadFile(p) //nolint:gosec // an app stylesheet names its imports
+	if err != nil {
+		return "", "", err
+	}
+	return p, string(b), nil
+}

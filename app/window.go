@@ -464,11 +464,14 @@ func (w *hostWindow) syncSize() bool {
 }
 
 func (w *hostWindow) reportSize(bw, bh int) {
-	if w.cfg.onResize == nil || bw <= 0 || bh <= 0 || (bw == w.reportedW && bh == w.reportedH) {
+	if bw <= 0 || bh <= 0 || (bw == w.reportedW && bh == w.reportedH) {
 		return
 	}
 	w.reportedW, w.reportedH = bw, bh
-	w.cfg.onResize(bw, bh)
+	widget.SetMediaViewport(bw, bh)
+	if w.cfg.onResize != nil {
+		w.cfg.onResize(bw, bh)
+	}
 }
 
 // rescale switches the window to a new device scale in place: the same

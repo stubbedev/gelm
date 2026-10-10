@@ -129,6 +129,21 @@ func TestGoldenCSSTextAreaBackground(t *testing.T) {
 	cssShot(t, `textview { background-color: #123456; }`, area, "css-textarea-background")
 }
 
+func TestGoldenCSSMediaQuery(t *testing.T) {
+	face := goldenFace(t)
+	SetMediaViewport(640, 480)
+	t.Cleanup(func() { SetMediaViewport(0, 0) })
+	btn := NewButton(NewLabel(face, 14, "responsive", render.RGB(0xff, 0xff, 0xff)), 10, 6)
+	cssShot(t, `
+		@media (min-width: 500px) {
+			button { background-color: #4488cc; }
+		}
+	`, btn, "css-media-query")
+	if bg := StyleBackground(btn); bg != render.RGB(0x44, 0x88, 0xcc) {
+		t.Errorf("media rule cascade = %08x", uint32(bg))
+	}
+}
+
 func TestGoldenCSSToastShadow(t *testing.T) {
 	face := goldenFace(t)
 	toast := NewToast(face, "saved", 0)

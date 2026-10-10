@@ -769,7 +769,7 @@ func TestWarnAndSkipPolicy(t *testing.T) {
 		entry { padding: 4px; color: #abcdef; }
 		button[flavored] { color: #333333; }
 		button { background-color: #445566; `)
-	want := []string{"unknown property", "bad selector", "bad selector", "!important", "nested block", "@import", "bad selector", "unterminated"}
+	want := []string{"unknown property", "bad selector", "bad selector", "@import", "bad selector", "unterminated"}
 	if len(*warns) != len(want) {
 		t.Fatalf("got %d warnings, want %d: %v", len(*warns), len(want), *warns)
 	}
@@ -779,8 +779,8 @@ func TestWarnAndSkipPolicy(t *testing.T) {
 		}
 	}
 	v := computeTree(s, el("button"))
-	if v.Color != render.RGB(0xff, 0, 0) || v.Background != render.RGB(0, 0xff, 0) {
-		t.Errorf("valid declarations around the bad ones: %08x %08x", uint32(v.Color), uint32(v.Background))
+	if v.Color != render.RGB(0x00, 0x00, 0xff) || v.Background != render.RGB(0, 0xff, 0) {
+		t.Errorf("!important beats the later normal rules: %08x %08x", uint32(v.Color), uint32(v.Background))
 	}
 	if v := computeTree(s, el("entry")); v.Color != render.RGB(0xab, 0xcd, 0xef) {
 		t.Errorf("rule after the skipped ones: %08x", uint32(v.Color))

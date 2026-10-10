@@ -14,6 +14,9 @@ type Env struct {
 	// FontPx is the font size a node computes when nothing in its
 	// ancestry sets one (CSS's `medium`); zero means Rem.
 	FontPx float64
+	// Media is what @media conditions evaluate against (the viewport
+	// and appearance state); the zero value is a 0×0 viewport at 96dpi.
+	Media Media
 }
 
 // maxVarDepth bounds var() expansion: a chain deeper than this is
@@ -33,6 +36,10 @@ func Compute(layers []Layer, n Node, parent, old *Values, env Env, sc *Scratch, 
 	}
 	if env.FontPx <= 0 {
 		env.FontPx = env.Rem
+	}
+	sc.media = env.Media
+	if sc.media.DPI <= 0 {
+		sc.media.DPI = 96
 	}
 	sc.collect(layers, n)
 	sc.layers = layers
@@ -103,6 +110,19 @@ func (sc *Scratch) computeProp(p Prop, v, parent *Values, cx *ctx) PropSet {
 		return 0
 	}
 	wide := d.wide
+	if wide == wideRevertLayer {
+		if lo := sc.winLow[p]; lo != nil && lo.wide != wideRevertLayer {
+			if src, ok := sc.parse(lo, v.Vars, cx); ok {
+				copyProp(v, src, p)
+				v.Set |= 1 << p
+				return 0
+			}
+		}
+		wide = wideUnset
+	}
+	if wide == wideRevert {
+		wide = wideUnset
+	}
 	if wide == wideNone {
 		src, ok := sc.parse(d, v.Vars, cx)
 		if ok {
@@ -247,7 +267,7 @@ func (sc *Scratch) resolveVars(parent *Vars) *Vars {
 		var ts []token
 		ok := true
 		switch d.wide {
-		case wideInherit, wideUnset:
+		case wideInherit, wideUnset, wideRevert, wideRevertLayer:
 			ts, ok = sc.lookup(parent, name)
 		case wideInitial:
 			ok = false

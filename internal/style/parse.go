@@ -58,6 +58,8 @@ const (
 	wideInherit
 	wideInitial
 	wideUnset
+	wideRevert
+	wideRevertLayer
 )
 
 // decl is one parsed declaration: which longhands it covers, its value
@@ -71,6 +73,9 @@ type decl struct {
 	val    []token
 	hasVar bool
 	wide   cssWide
+	// important marks a `!important` value: it outranks every normal
+	// declaration, whatever the priority or specificity.
+	important bool
 	// order is the declaration's source position within its sheet:
 	// later wins among equal priority and specificity.
 	order int
@@ -121,6 +126,15 @@ type Sheet struct {
 	byID      map[string][]int32
 	universal []int32
 
+	// mediaQs holds the distinct @media conditions the sheet's rules
+	// carry, by first use; a rule's mq indexes it, -1 when the rule is
+	// unconditional.
+	mediaQs []mediaQuery
+
+	// layerNames is the sheet's @layer order of first appearance;
+	// rules carry the index of their layer, 255 when unlayered.
+	layerNames []string
+
 	// keyframes holds the sheet's @keyframes rules by (lowercased)
 	// name; a later rule of the same name replaces an earlier one.
 	keyframes map[string]*Keyframes
@@ -154,6 +168,10 @@ type Sensitivity struct {
 // Sensitivity returns the sheet's selector summary.
 func (s *Sheet) Sensitivity() *Sensitivity { return &s.sens }
 
+// MediaQueries reports how many distinct @media conditions the
+// sheet's rules carry: zero when nothing in it is media-conditional.
+func (s *Sheet) MediaQueries() int { return len(s.mediaQs) }
+
 // Keyframes returns the sheet's @keyframes rule of that name, nil when
 // it declares none.
 func (s *Sheet) Keyframes(name string) *Keyframes {
@@ -172,22 +190,21 @@ func (s *Sheet) addKeyframes(kf *Keyframes) {
 	s.keyframes[kf.Name] = kf
 }
 
-// rule is one selector of one stylesheet rule with its specificity and
-// declarations. A comma group compiles to one rule per selector, all
-// sharing the block.
+// rule is one selector of one stylesheet rule with its specificity,
+// declarations, @media condition, and cascade layer.
 type rule struct {
 	sel   selector
 	spec  spec
 	block *Block
+	mq    int32
+	layer uint8
 }
 
 // Parse compiles css into a Sheet. Malformed declarations and rules are
 // warned about and skipped; the valid remainder still applies. An
 // empty (or all-invalid) input yields an empty Sheet — never nil.
 func Parse(css string) *Sheet {
-	p := parser{src: css}
-	p.stylesheet(tokenize(css))
-	return &p.sheet
+	return parseSheet(css, "", nil, nil)
 }
 
 // ParseCollecting parses css like Parse and returns the sheet plus
@@ -195,10 +212,24 @@ func Parse(css string) *Sheet {
 // the caller reports them its own way (a file loader turns them into
 // an error carrying the path).
 func ParseCollecting(css string) (*Sheet, []string) {
+	return ParseImporting(css, "", nil)
+}
+
+// ParseImporting parses css whose base is the importing file's path
+// and whose @import targets load through resolve (nil: the
+// filesystem, relative to the importing file). It is the file-backed
+// loader's parse: imports resolve beside the file, and a cycle or a
+// missing import reports precisely.
+func ParseImporting(css, base string, resolve ImportResolver) (*Sheet, []string) {
 	var warns []string
-	p := parser{src: css, warn: func(msg string) { warns = append(warns, msg) }}
+	sheet := parseSheet(css, base, resolve, func(msg string) { warns = append(warns, msg) })
+	return sheet, warns
+}
+
+func parseSheet(css, base string, resolve ImportResolver, warn func(string)) *Sheet {
+	p := parser{src: css, warn: warn, resolve: resolve, base: base, layer: 255}
 	p.stylesheet(tokenize(css))
-	return &p.sheet, warns
+	return &p.sheet
 }
 
 // parser walks the token stream once.
@@ -209,6 +240,17 @@ type parser struct {
 	// warn, when set, receives this parse's warnings instead of the
 	// sink (ParseCollecting).
 	warn func(msg string)
+	// mq is the active @media condition (nil: everything) and layer
+	// the active cascade layer rank (255: unlayered); dead is the
+	// nesting depth of @supports branches that evaluated false.
+	mq    mediaQuery
+	layer uint8
+	dead  int
+	// resolve loads @import targets; base is the importing file's
+	// path, importStack the active import chain for cycle detection.
+	resolve     ImportResolver
+	base        string
+	importStack []string
 }
 
 // warnf reports one stylesheet problem and lets the parser carry on
@@ -239,10 +281,9 @@ func (p *parser) stylesheet(ts []token) {
 	}
 }
 
-// atRule skips one at-rule: through its block, or to its semicolon.
-// @keyframes compiles into the sheet; @media and the rest do not
-// participate — @media is common in GTK stylesheets and skips
-// silently, the rest warn.
+// atRule consumes one at-rule: through its block, or to its
+// semicolon. @keyframes, @define-color, @media, @supports, @layer and
+// @import participate; the rest skip with a warning.
 func (p *parser) atRule(ts []token, i int) int {
 	name := ts[i].s
 	switch name {
@@ -250,6 +291,14 @@ func (p *parser) atRule(ts []token, i int) int {
 		return p.keyframes(ts, i)
 	case "define-color":
 		return p.defineColor(ts, i)
+	case "media":
+		return p.mediaRule(ts, i)
+	case "supports":
+		return p.supportsRule(ts, i)
+	case "layer":
+		return p.layerRule(ts, i)
+	case "import":
+		return p.importRule(ts, i)
 	}
 	j := i + 1
 	for ; j < len(ts); j++ {
@@ -300,10 +349,12 @@ func (p *parser) defineColor(ts []token, i int) int {
 		p.warnf("@define-color skipped: %s has no value", body[0].s)
 		return next
 	}
-	if p.sheet.defines == nil {
+	if p.sheet.defines == nil && p.dead == 0 {
 		p.sheet.defines = make(map[string][]token)
 	}
-	p.sheet.defines["--"+body[0].s] = val
+	if p.dead == 0 {
+		p.sheet.defines["--"+body[0].s] = val
+	}
 	return next
 }
 
@@ -392,7 +443,9 @@ func (p *parser) keyframes(ts []token, i int) int {
 		x = stopEnd
 	}
 	sortFrames(kf)
-	p.sheet.addKeyframes(kf)
+	if p.dead == 0 {
+		p.sheet.addKeyframes(kf)
+	}
 	return end
 }
 
@@ -493,10 +546,220 @@ func (p *parser) keyframe(decls []decl) Keyframe {
 
 func (p *parser) warnAt(name string) {
 	switch name {
-	case "keyframes", "media", "-gtk-keyframes":
+	case "keyframes", "-gtk-keyframes":
 		return
 	}
 	p.warnf("at-rule @%s ignored", name)
+}
+
+// mediaRule parses one @media: the condition becomes the context of
+// every rule in the block, intersecting any enclosing condition.
+func (p *parser) mediaRule(ts []token, i int) int {
+	prelude, body, end, ok := p.atBlock(ts, i, "@media")
+	if !ok {
+		return end
+	}
+	q, okq := parseMediaQuery(prelude)
+	if !okq {
+		p.warnf("@media skipped: bad query %q", badText(rawText(p.src, prelude)))
+		return end
+	}
+	save := p.mq
+	p.mq = intersectMedia(p.mq, q)
+	p.stylesheet(body)
+	p.mq = save
+	return end
+}
+
+// supportsRule parses one @supports: the condition evaluates against
+// the engine's actual support at parse time, so a false block's rules
+// never compile.
+func (p *parser) supportsRule(ts []token, i int) int {
+	prelude, body, end, ok := p.atBlock(ts, i, "@supports")
+	if !ok {
+		return end
+	}
+	save := p.dead
+	if !evalSupports(prelude) {
+		p.dead++
+	}
+	p.stylesheet(body)
+	p.dead = save
+	return end
+}
+
+// layerRule parses one @layer: `@layer a, b;` fixes the order of
+// first appearance, `@layer name { ... }` styles in name's layer (the
+// block's last name), `@layer { ... }` in a fresh anonymous layer.
+// Unlayered rules outrank every layer.
+func (p *parser) layerRule(ts []token, i int) int {
+	j := i + 1
+	for ; j < len(ts); j++ {
+		switch ts[j].kind {
+		case tkSemi:
+			for _, name := range splitTop(trimWS(ts[i+1:j]), tkComma) {
+				p.layerOf(rawName(name))
+			}
+			return j + 1
+		case tkLBrace:
+			goto block
+		case tkFunc, tkLParen, tkLBrack:
+			j = blockEnd(ts, j) - 1
+		}
+	}
+	p.warnf("@layer skipped: want a block")
+	return j
+block:
+	names := splitTop(trimWS(ts[i+1:j]), tkComma)
+	end := blockEnd(ts, j)
+	if end > len(ts) || ts[end-1].kind != tkRBrace {
+		p.warnf("@layer skipped: unterminated block")
+		return len(ts)
+	}
+	var last string
+	have := false
+	for _, name := range names {
+		last, have = rawName(name), true
+		p.layerOf(last)
+	}
+	save := p.layer
+	if have {
+		p.layer = p.layerOf(last)
+	} else {
+		p.layer = p.layerOf("")
+	}
+	p.stylesheet(ts[j+1 : end-1])
+	p.layer = save
+	return end
+}
+
+// rawName lowercases a layer name token span.
+func rawName(ts []token) string {
+	if len(ts) != 1 || ts[0].kind != tkIdent {
+		return ""
+	}
+	return strings.ToLower(ts[0].s)
+}
+
+// layerOf returns name's rank, registering it (a "" name is a fresh
+// anonymous layer) on first use.
+func (p *parser) layerOf(name string) uint8 {
+	if name != "" {
+		if i := slices.Index(p.sheet.layerNames, name); i >= 0 {
+			return uint8(i)
+		}
+	}
+	if n := len(p.sheet.layerNames); n < 254 {
+		p.sheet.layerNames = append(p.sheet.layerNames, name)
+		return uint8(n)
+	}
+	return 253
+}
+
+// importRule loads one `@import "file" layer? media?;` through the
+// resolver and inlines its rules in place, tracking the import chain
+// so a cycle reports precisely instead of looping.
+func (p *parser) importRule(ts []token, i int) int {
+	j := i + 1
+	for ; j < len(ts); j++ {
+		switch ts[j].kind {
+		case tkSemi:
+			goto found
+		case tkLBrace, tkRBrace:
+			p.warnf("@import skipped: want `\"file\";`")
+			return blockEnd(ts, j)
+		case tkFunc, tkLParen, tkLBrack:
+			j = blockEnd(ts, j) - 1
+		}
+	}
+	p.warnf("@import skipped: want `;`")
+	return j
+found:
+	prelude := trimWS(ts[i+1 : j])
+	if len(prelude) == 0 {
+		p.warnf("@import skipped: want a target")
+		return j + 1
+	}
+	var ref string
+	var rest []token
+	t := prelude[0]
+	switch {
+	case t.kind == tkString:
+		ref, rest = t.s, prelude[1:]
+	case t.kind == tkFunc && t.s == "url":
+		end := blockEnd(prelude, 0)
+		inner := trimWS(funcArgs(prelude[:end]))
+		ref = strings.Trim(rawText(p.src, inner), "\"'")
+		rest = prelude[end:]
+	default:
+		p.warnf("@import skipped: want a string or url() target")
+		return j + 1
+	}
+	if strings.Contains(rest2s(rest), "supports(") || strings.Contains(rest2s(rest), "layer(") {
+		p.warnf("@import skipped: supports()/layer() qualifiers are not supported")
+		return j + 1
+	}
+	q, okq := parseMediaQuery(trimWS(rest))
+	if !okq {
+		p.warnf("@import %s skipped: bad query", ref)
+		return j + 1
+	}
+	resolve := p.resolve
+	if resolve == nil {
+		resolve = fileImport
+	}
+	path, content, err := resolve(ref, p.base)
+	if err != nil {
+		p.warnf("@import %s: %v", ref, err)
+		return j + 1
+	}
+	if path != "" {
+		if slices.Contains(p.importStack, path) {
+			chain := strings.Join(append(slices.Clone(p.importStack), path), " -> ")
+			p.warnf("@import cycle: %s", chain)
+			return j + 1
+		}
+	}
+	saveMQ, saveBase := p.mq, p.base
+	p.mq = intersectMedia(p.mq, q)
+	p.base = path
+	p.importStack = append(p.importStack, path)
+	p.stylesheet(tokenize(content))
+	p.importStack = p.importStack[:len(p.importStack)-1]
+	p.mq, p.base = saveMQ, saveBase
+	return j + 1
+}
+
+func rest2s(ts []token) string {
+	var b strings.Builder
+	for _, t := range ts {
+		b.WriteString(t.s)
+	}
+	return strings.ToLower(b.String())
+}
+
+// atBlock locates an at-rule's `{`, returning its trimmed prelude and
+// body tokens and the index past the block.
+func (p *parser) atBlock(ts []token, i int, what string) (prelude, body []token, end int, ok bool) {
+	j := i + 1
+	for ; j < len(ts); j++ {
+		switch ts[j].kind {
+		case tkSemi:
+			p.warnf("%s skipped: want a block", what)
+			return nil, nil, j + 1, false
+		case tkLBrace:
+			end := blockEnd(ts, j)
+			if end > len(ts) || ts[end-1].kind != tkRBrace {
+				p.warnf("%s skipped: unterminated block", what)
+				return nil, nil, len(ts), false
+			}
+			return trimWS(ts[i+1 : j]), ts[j+1 : end-1], end, true
+		case tkFunc, tkLParen, tkLBrack:
+			j = blockEnd(ts, j) - 1
+		}
+	}
+	p.warnf("%s skipped: want a block", what)
+	return nil, nil, j, false
 }
 
 // qualifiedRule parses a selector list and its block starting at ts[i]
@@ -525,41 +788,196 @@ func (p *parser) qualifiedRule(ts []token, i int) int {
 		return len(ts)
 	}
 	body := ts[i+1 : end-1]
-	sels, ok := parseSelectorList(p.src, prelude)
-	if !ok {
-		p.warnf("rule skipped: bad selector %q", badText(rawText(p.src, prelude)))
-		return end
+	p.ruleBody(body, splitTop(prelude, tkComma))
+	return end
+}
+
+// ruleBody parses a rule's body — its declarations plus any nested
+// rules and at-rules — under parents, the token lists of the selector
+// each declaration and nested rule belongs to. A nested selector
+// desugars its `&`s to the parent selector (an absent `&` is the
+// descendant form), and a comma group crosses with the parent list.
+func (p *parser) ruleBody(ts []token, parents [][]token) {
+	for k := range parents {
+		parents[k] = trimWS(parents[k])
 	}
-	for _, t := range body {
-		if t.kind == tkLBrace {
-			// Nested rules are SCSS, not CSS: the whole rule goes.
-			p.warnf("rule skipped: nested block in %q", badText(rawText(p.src, prelude)))
-			return end
+	var decls []decl
+	start, seg := 0, 0
+	i := 0
+	for i < len(ts) {
+		switch ts[i].kind {
+		case tkLBrace:
+			decls = append(decls, p.declarationsHead(ts[start:i])...)
+			prelude := trimWS(ts[seg:i])
+			end := blockEnd(ts, i)
+			inner := ts[min(i+1, len(ts)):max(end-1, 0)]
+			p.nestedRule(prelude, inner, parents)
+			i, start, seg = end, end, end
+		case tkFunc, tkLParen, tkLBrack:
+			i = blockEnd(ts, i)
+		case tkSemi:
+			i++
+			seg = i
+		case tkAt:
+			if atSegmentStart(ts, seg, i) {
+				decls = append(decls, p.declarationsHead(ts[start:i])...)
+				i = p.nestedAt(ts, i, parents)
+				start, seg = i, i
+			} else {
+				i++
+			}
+		default:
+			i++
 		}
 	}
-	if hasImportant(body) {
-		p.warnf("rule skipped: !important in %q", badText(rawText(p.src, prelude)))
+	decls = append(decls, p.declarations(ts[start:])...)
+	if len(decls) == 0 || p.dead > 0 {
+		return
+	}
+	block := &Block{decls: decls}
+	for _, par := range parents {
+		sels, ok := parseSelectorList(p.src, par)
+		if !ok {
+			p.warnf("rule skipped: bad selector %q", badText(rawText(p.src, par)))
+			continue
+		}
+		for _, sel := range sels {
+			p.add(sel, block)
+		}
+	}
+}
+
+// atSegmentStart reports whether the token at i begins a fresh
+// statement: nothing but whitespace since the last `;` or block. An
+// `@` mid-declaration (GTK's `color: @fg`) is a value, not an at-rule.
+func atSegmentStart(ts []token, seg, i int) bool {
+	for _, t := range ts[seg:i] {
+		if t.kind != tkWS {
+			return false
+		}
+	}
+	return true
+}
+
+// nestedRule parses one nested `& ... { }` block under parents.
+func (p *parser) nestedRule(prelude, inner []token, parents [][]token) {
+	if len(prelude) == 0 {
+		p.warnf("rule skipped: want a selector before '{'")
+		return
+	}
+	var combined [][]token
+	for _, par := range parents {
+		for _, raw := range splitTop(prelude, tkComma) {
+			n := trimWS(raw)
+			if len(n) > 0 {
+				combined = append(combined, spliceParent(n, par))
+			}
+		}
+	}
+	if len(combined) > 0 {
+		p.ruleBody(inner, combined)
+	}
+}
+
+// spliceParent desugars n's `&`s to par; without one, n is a
+// descendant of par.
+func spliceParent(n, par []token) []token {
+	amp := false
+	for _, t := range n {
+		if t.is('&') {
+			amp = true
+			break
+		}
+	}
+	out := make([]token, 0, len(n)+len(par)+1)
+	if !amp {
+		out = append(out, par...)
+		out = append(out, token{kind: tkWS})
+		return append(out, n...)
+	}
+	for _, t := range n {
+		if t.is('&') {
+			out = append(out, par...)
+			continue
+		}
+		out = append(out, t)
+	}
+	return out
+}
+
+// nestedAt applies a declaration-scoped at-rule inside a rule body —
+// @media, @supports and @layer re-run the body's remaining content
+// under their condition — and drops the rest with a warning.
+func (p *parser) nestedAt(ts []token, i int, parents [][]token) int {
+	prelude, body, end, ok := p.atBlock(ts, i, "at-rule @"+ts[i].s)
+	if !ok {
 		return end
 	}
-	block := &Block{decls: p.declarations(body)}
-	for _, sel := range sels {
-		p.sheet.add(sel, block)
+	switch ts[i].s {
+	case "media":
+		q, okq := parseMediaQuery(prelude)
+		if !okq {
+			p.warnf("@media skipped: bad query %q", badText(rawText(p.src, prelude)))
+			return end
+		}
+		save := p.mq
+		p.mq = intersectMedia(p.mq, q)
+		p.ruleBody(body, parents)
+		p.mq = save
+	case "supports":
+		save := p.dead
+		if !evalSupports(prelude) {
+			p.dead++
+		}
+		p.ruleBody(body, parents)
+		p.dead = save
+	case "layer":
+		names := splitTop(prelude, tkComma)
+		var last string
+		have := false
+		for _, name := range names {
+			last, have = rawName(name), true
+			p.layerOf(last)
+		}
+		save := p.layer
+		if have {
+			p.layer = p.layerOf(last)
+		} else {
+			p.layer = p.layerOf("")
+		}
+		p.ruleBody(body, parents)
+		p.layer = save
+	default:
+		p.warnAt(ts[i].s)
 	}
 	return end
 }
 
-// hasImportant reports a `!important` anywhere in a block: gelm has no
-// important layer, so the rule is a parse error (docs/css.md).
-func hasImportant(ts []token) bool {
-	for i := 0; i+1 < len(ts); i++ {
-		if ts[i].is('!') {
-			j := i + 1
-			for j < len(ts) && ts[j].kind == tkWS {
-				j++
-			}
-			if j < len(ts) && ts[j].ident("important") {
-				return true
-			}
+// declarationsHead parses the declarations ahead of a nested rule:
+// a colon-less entry is the nested selector's start, not a malformed
+// declaration, so it drops silently.
+func (p *parser) declarationsHead(ts []token) []decl {
+	var out []decl
+	for _, raw := range splitTop(ts, tkSemi) {
+		raw = trimWS(raw)
+		if len(raw) == 0 || !hasTopColon(raw) || raw[0].is('&') {
+			continue
+		}
+		if d, ok := p.declaration(raw); ok {
+			out = append(out, d)
+		}
+	}
+	return out
+}
+
+func hasTopColon(ts []token) bool {
+	for i := 0; i < len(ts); i++ {
+		if closer(ts[i].kind) != 0 {
+			i = blockEnd(ts, i) - 1
+			continue
+		}
+		if ts[i].kind == tkColon {
+			return true
 		}
 	}
 	return false
@@ -597,9 +1015,13 @@ func (p *parser) declaration(ts []token) (decl, bool) {
 		return decl{}, false
 	}
 	name := ts[0].s
-	val := colorRefs(trimWS(ts[j+1:]))
+	val, imp := takeImportant(colorRefs(trimWS(ts[j+1:])))
+	if val == nil {
+		p.warnf("declaration skipped: %s", badText(rawText(p.src, ts)))
+		return decl{}, false
+	}
 	p.order++
-	d := decl{name: name, val: val, hasVar: containsVar(val), wide: wideOf(val), order: p.order}
+	d := decl{name: name, val: val, hasVar: containsVar(val), wide: wideOf(val), important: imp, order: p.order}
 	if strings.HasPrefix(name, "--") {
 		d.custom = true
 		return d, true
@@ -646,6 +1068,25 @@ func (p *parser) declaration(ts []token) (decl, bool) {
 	return d, true
 }
 
+// takeImportant strips a trailing `!important` from a value; a nil
+// return marks a malformed `!`.
+func takeImportant(ts []token) ([]token, bool) {
+	for i := len(ts) - 1; i >= 0; i-- {
+		if !ts[i].is('!') {
+			continue
+		}
+		j := i + 1
+		for j < len(ts) && ts[j].kind == tkWS {
+			j++
+		}
+		if j == len(ts)-1 && ts[j].ident("important") {
+			return trimWS(ts[:i]), true
+		}
+		return nil, false
+	}
+	return ts, false
+}
+
 // parseRem is the rem base declarations are validated (and, when
 // node-independent, pre-computed) under: CSS's 16px default.
 const parseRem = 16
@@ -660,8 +1101,12 @@ func wideOf(val []token) cssWide {
 		return wideInherit
 	case "initial":
 		return wideInitial
-	case "unset", "revert", "revert-layer":
+	case "unset":
 		return wideUnset
+	case "revert":
+		return wideRevert
+	case "revert-layer":
+		return wideRevertLayer
 	}
 	return wideNone
 }
@@ -677,10 +1122,28 @@ func containsVar(ts []token) bool {
 }
 
 // add files one compiled rule into the index and folds its selector
-// into the sensitivity summary.
-func (s *Sheet) add(sel selector, block *Block) {
+// into the sensitivity summary, carrying the parser's active @media
+// condition and cascade layer.
+func (p *parser) add(sel selector, block *Block) {
+	if p.dead > 0 {
+		return
+	}
+	s := &p.sheet
 	idx := int32(len(s.rules))
-	s.rules = append(s.rules, rule{sel: sel, spec: sel.spec(), block: block})
+	r := rule{sel: sel, spec: sel.spec(), block: block, mq: -1, layer: p.layer}
+	if p.mq != nil {
+		r.mq = int32(len(s.mediaQs))
+		for i, q := range s.mediaQs {
+			if queryEqual(q, p.mq) {
+				r.mq = int32(i)
+				break
+			}
+		}
+		if int(r.mq) == len(s.mediaQs) {
+			s.mediaQs = append(s.mediaQs, p.mq)
+		}
+	}
+	s.rules = append(s.rules, r)
 	for i := range sel.parts {
 		part := &sel.parts[i]
 		if part.structs != 0 || len(part.nths) > 0 {
