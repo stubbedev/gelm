@@ -100,7 +100,7 @@ func (p *portalShortcuts) createSession() error {
 	if err := p.connect(); err != nil {
 		return err
 	}
-	opts := map[string]dbus.Variant{"session_handle_token": dbus.MakeVariant(p.token("-s"))}
+	opts := map[string]dbus.Variant{"session_handle_token": dbus.MakeVariant(p.token(sessionToken))}
 	resp, err := p.call(portalCreateSession, opts)
 	if err != nil {
 		return err

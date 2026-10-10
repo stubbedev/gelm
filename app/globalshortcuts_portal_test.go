@@ -26,7 +26,7 @@ func TestPortalShortcutsDispatch(t *testing.T) {
 		Name: portalResponse,
 		Path: "/org/freedesktop/portal/desktop/request/:1.42/bind1",
 		Body: []any{uint32(0), map[string]dbus.Variant{
-			"session_handle": dbus.MakeVariant(dbus.ObjectPath("/org/freedesktop/portal/desktop/session/:1.42/gelm-s1")),
+			"session_handle": dbus.MakeVariant(dbus.ObjectPath("/org/freedesktop/portal/desktop/session/:1.42/gelm_s1")),
 		}},
 	})
 	select {
@@ -124,6 +124,15 @@ func TestPathTail(t *testing.T) {
 	for path, want := range cases {
 		if got := pathTail(dbus.ObjectPath(path)); got != want {
 			t.Errorf("pathTail(%q) = %q, want %q", path, got, want)
+		}
+	}
+}
+
+func TestPortalTokensAreObjectPathElements(t *testing.T) {
+	var c portalClient
+	for _, kind := range []tokenKind{requestToken, sessionToken} {
+		if token := c.token(kind); !dbus.ObjectPath("/org/freedesktop/portal/desktop/session/x/" + token).IsValid() {
+			t.Errorf("token %q is not an object path element, so the portal cannot build its handle", token)
 		}
 	}
 }

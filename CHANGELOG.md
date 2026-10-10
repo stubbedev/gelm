@@ -6,6 +6,8 @@
 
 - Fix: accelerators with shift+Tab never matched (xkb reports
   ISO_Left_Tab).
+- Fix: the GlobalShortcuts portal session token held a `-`, which is
+  not a valid object path element, so a real portal refused it.
 
 - `widget.WindowTitle` (AdwWindowTitle) and `Application.AdaptiveDialog`
   (adaptive AdwDialog): floating over a wide parent, a bottom sheet
