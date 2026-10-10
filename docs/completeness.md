@@ -96,6 +96,7 @@ live in [architecture.md](architecture.md#non-goals).
 | taskbars, launchers | wlr-foreign-toplevel-management, xdg-activation, `OpenURL`/`OpenPath` (portal, xdg-open fallback) | internal/wlsession, app/launcher.go |
 | idle | idle inhibit, ext-idle-notify-v1 (`OnIdle`) | app/application.go |
 | shortcuts | keyboard-shortcuts-inhibit, GlobalShortcuts portal | internal/wlsession, app/globalshortcuts.go |
+| printing (GtkPrintDialog, GtkPrintOperation) | `Application.Print` through the Print portal, `ExportPDF`; pages painted as rasters into a PDF by `pdf` | app/print.go, pdf/ |
 | session, background | Inhibit portal (`Inhibit`, `OnSessionStateChange` with query-end), Background portal (`RequestBackground`, `SetBackgroundStatus`) | app/portals.go |
 | lock screens | ext-session-lock-v1 (`LockSession`, every output, hotplug) | app/sessionlock.go |
 | notifications | `Application.Notify` with actions | app/notification.go |

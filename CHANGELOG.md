@@ -9,6 +9,14 @@
 - Fix: the GlobalShortcuts portal session token held a `-`, which is
   not a valid object path element, so a real portal refused it.
 
+- Printing (GtkPrintDialog): `Application.Print` runs the Print
+  portal's dialog, paints the job's pages on the loop at the confirmed
+  page setup (in CSS pixels at the job's DPI) into a PDF and hands it
+  to the portal; the next dialog starts from the last choices.
+  `app.ExportPDF` writes the same document to a file atomically. New
+  `pdf` package: a streaming, deterministic pure-Go PDF writer of
+  raster pages. `ErrPortalUnavailable` reports a missing portal for
+  every portal call.
 - Inhibit and Background portals: `Application.Inhibit` (logout, user
   switch, suspend, idle) with a release func, `OnSessionStateChange`
   answering query-end after the hook so it can still object,
