@@ -7,9 +7,8 @@ layer-shell windows, a GTK-flavored CSS layer over a typed palette,
 and an event loop that idles at 0% CPU.
 
 It works end to end on real compositors. Sway is the required
-headless gate (`just headless`). Hyprland runs the same suite in a
-private NixOS VM (`just hyprland-vm`) and is allow-failure until it
-has stayed green.
+headless gate (`just headless`); Hyprland runs the same suite in a
+private NixOS VM (`just hyprland-vm`) and is a required gate too.
 
 ## Install
 
