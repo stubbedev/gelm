@@ -392,7 +392,7 @@ func (e *Entry) SetPlaceholder(s string) {
 	}
 	e.placeholder = s
 	if len(e.runes) == 0 {
-		e.node.invalidateState(style.PlaceholderShown)
+		e.invalidateState(style.PlaceholderShown)
 	}
 	e.InvalidateLayout()
 }
@@ -417,7 +417,7 @@ func (e *Entry) SetReadOnly(ro bool) {
 		return
 	}
 	e.readOnly = ro
-	e.node.invalidateState(style.ReadOnly)
+	e.invalidateState(style.ReadOnly)
 	if ro {
 		e.clearPreedit() // no composing display on a frozen field
 	}
@@ -517,7 +517,7 @@ func (e *Entry) setRunes(rs []rune) {
 	e.runes = rs
 	e.disp = string(rs)
 	if e.placeholder != "" {
-		e.node.invalidateState(style.PlaceholderShown)
+		e.invalidateState(style.PlaceholderShown)
 	}
 }
 

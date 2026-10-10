@@ -327,8 +327,10 @@ func TestImportant(t *testing.T) {
 	if v.Color != render.RGB(0x01, 0x01, 0x01) {
 		t.Errorf("important at a lower priority beats normal above it: %08x", uint32(v.Color))
 	}
-	v = computeLayers([]Layer{{Sheet: parseOne(t, `a { color: #010101 !important; }`), Priority: PriorityTheme},
-		{Sheet: parseOne(t, `a { color: #020203 !important; }`), Priority: PriorityTheme}}, el("a"))
+	v = computeLayers([]Layer{
+		{Sheet: parseOne(t, `a { color: #010101 !important; }`), Priority: PriorityTheme},
+		{Sheet: parseOne(t, `a { color: #020203 !important; }`), Priority: PriorityTheme},
+	}, el("a"))
 	if v.Color != render.RGB(0x02, 0x02, 0x03) {
 		t.Errorf("later important at the same priority wins: %08x", uint32(v.Color))
 	}

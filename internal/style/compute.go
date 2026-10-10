@@ -80,9 +80,9 @@ func (sc *Scratch) computeAll(layers []Layer, n Node, parent, old *Values, env E
 
 	// The context lives in the scratch: the parsers are function values,
 	// so a stack ctx would escape and allocate per compute.
-sc.cx = ctx{
-	rem: env.Rem, em: env.FontPx, weight: 400, self: &sc.self,
-	vpW: env.Media.Width, vpH: env.Media.Height,
+	sc.cx = ctx{
+		rem: env.Rem, em: env.FontPx, weight: 400, self: &sc.self,
+		vpW: env.Media.Width, vpH: env.Media.Height,
 		font: env.Font, rlh: env.RootLineHeight, dark: env.Media.Dark,
 	}
 	if sc.cx.rlh == 0 {

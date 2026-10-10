@@ -39,7 +39,7 @@ func run(list bool, outputName, window string, monitor, cursor bool, frames int,
 	if err != nil {
 		return err
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 	if err := client.Refresh(); err != nil {
 		return err
 	}
@@ -123,7 +123,7 @@ func monitorOutput(name string, cursor bool, frames int, pattern string) error {
 	if err != nil {
 		return err
 	}
-	defer stream.Close()
+	defer func() { _ = stream.Close() }()
 	info := stream.Info()
 	log.Printf("gelm-capture: streaming %dx%d", info.Width, info.Height)
 	n := 0
@@ -161,11 +161,11 @@ func writePNG(frame *capture.Frame, path string) error {
 		return err
 	}
 	if dir := filepath.Dir(path); dir != "" && dir != "." {
-		if err := os.MkdirAll(dir, 0o755); err != nil {
+		if err := os.MkdirAll(dir, 0o750); err != nil {
 			return err
 		}
 	}
-	f, err := os.Create(path)
+	f, err := os.Create(path) //nolint:gosec // path is the user's -out argument
 	if err != nil {
 		return err
 	}

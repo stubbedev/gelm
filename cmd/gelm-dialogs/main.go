@@ -107,7 +107,8 @@ func run() error {
 		content := widget.NewBox(widget.Column, 8, 16)
 		content.Append(widget.NewLabel(face, 14, "narrow the window: this becomes a bottom sheet", theme.Text), false)
 		_, err := application.AdaptiveDialog(w, app.AdaptiveDialogConfig{
-			DialogConfig: app.DialogConfig{Title: "Adaptive dialog", Content: content},
+			Title:   "Adaptive dialog",
+			Content: content,
 		})
 		return err
 	}))

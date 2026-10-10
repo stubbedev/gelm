@@ -585,11 +585,16 @@ func mediaLength(ts []token) (float64, bool) {
 }
 
 func mediaRatio(ts []token) (float64, bool) {
-	if len(ts) == 3 && ts[0].kind == tkNumber && ts[1].is('/') && ts[2].kind == tkNumber {
-		if ts[2].num == 0 {
-			return 0, false
+	if len(ts) == 3 {
+		var t [3]token
+		copy(t[:], ts)
+		a, slash, c := t[0], t[1], t[2]
+		if a.kind == tkNumber && slash.is('/') && c.kind == tkNumber {
+			if c.num == 0 {
+				return 0, false
+			}
+			return a.num / c.num, true
 		}
-		return ts[0].num / ts[2].num, true
 	}
 	if len(ts) == 1 && ts[0].kind == tkNumber {
 		return ts[0].num, true
@@ -623,12 +628,7 @@ func mediaResolution(ts []token) (float64, bool) {
 func evalSupports(ts []token) bool {
 	orParts := splitOnIdent(ts, "or")
 	if len(orParts) > 1 {
-		for _, p := range orParts {
-			if evalSupports(p) {
-				return true
-			}
-		}
-		return false
+		return slices.ContainsFunc(orParts, evalSupports)
 	}
 	andParts := splitOnIdent(ts, "and")
 	if len(andParts) > 1 {

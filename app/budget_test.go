@@ -11,11 +11,12 @@ import (
 	"testing"
 	"time"
 
+	"golang.org/x/sys/unix"
+
 	"github.com/stubbedev/gelm/internal/animclock"
 	"github.com/stubbedev/gelm/internal/wlsession"
 	"github.com/stubbedev/gelm/render"
 	"github.com/stubbedev/gelm/widget"
-	"golang.org/x/sys/unix"
 )
 
 // idleBudgetApp builds an application over a zero-value session whose

@@ -41,8 +41,11 @@ func TestColorConversions(t *testing.T) {
 
 func TestColorSpaceRoundTrips(t *testing.T) {
 	colors := []rgbaf{
-		{r: 1, a: 1}, {g: 1, a: 1}, {b: 1, a: 1},
-		{r: 0.5, g: 0.25, b: 0.75, a: 1}, {r: 0.9, g: 0.1, b: 0.4, a: 0.5},
+		{r: 1, a: 1},
+		{g: 1, a: 1},
+		{b: 1, a: 1},
+		{r: 0.5, g: 0.25, b: 0.75, a: 1},
+		{r: 0.9, g: 0.1, b: 0.4, a: 0.5},
 	}
 	spaces := []space{spSrgb, spSrgbLinear, spLab, spLch, spOklab, spOklch, spHsl, spHwb}
 	for _, c := range colors {
