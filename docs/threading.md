@@ -94,8 +94,7 @@ component's input and output queues coalesce their wakes exactly like
 | `glib::timeout_add` | `Application.Every` |
 
 The missing pieces are tracked in
-[#139](https://github.com/stubbedev/gelm/issues/139): typed view
-builders, factories, lifetime-bound commands, async
+[#139](https://github.com/stubbedev/gelm/issues/139): factories, lifetime-bound commands, async
 components, workers, and typed actions.
 
 ## Tests
