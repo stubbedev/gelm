@@ -64,25 +64,27 @@ deliver as one ordered batch.
 - **`app.SharedState[T]`**: a loop-notified value. `Get` snapshots from
   any goroutine. `Update` mutates the value and notifies subscribers on
   the loop.
-- **`app.Component[Msg]`**: a typed `Invoke`. `Send(msg)` runs
-  `update(msg)` on the loop, in order and never reentrantly. It is
-  only a mailbox.
-
-Everything stops when `Run` returns. Delivery is deferred: a `Send`
+Everything stops when `Run` returns (`Application.OnStop` hooks run in
+reverse registration order). Delivery is deferred: a `Send`
 from inside a subscriber or update runs on the next pass.
-`cmd/gelm-messages` shows all three.
+`cmd/gelm-messages` shows both, with a component on the click path.
 
 The desktop-settings monitor is the background-worker shape: it
 watches the portal on its own dbus goroutine, and `Application`
 bridges each change onto the loop through `Invoke`
 ([appearance.md](appearance.md)).
 
+Components ([components.md](components.md)) ride the same mailbox: a
+component's input and output queues coalesce their wakes exactly like
+`Invoke`.
+
 ## The relm4 mapping
 
 | relm4 | gelm today |
 | --- | --- |
-| `Component`, `SimpleComponent` | callbacks mutating widgets, or `app.Component[Msg]` as a typed mailbox |
-| `ComponentSender::input`/`output` | `Component.Send`, a `Stream` for outputs |
+| `Component`, `SimpleComponent` | `component.Component[In, Out]`, launched with `component.Launch`/`Window`/`Layer` or `Context.Launch` |
+| `ComponentSender::input`/`output` | `Context.Input`/`Output`, `Sender[M]` |
+| `Controller`, `Connector::forward` | `component.Controller` with `Forward`/`ForwardTo`/`Detach` |
 | `MessageBroker` | a `Stream` in a package variable |
 | `SharedState` | `app.SharedState[T]` |
 | `Worker` | a goroutine whose results `Invoke` back |
@@ -91,10 +93,9 @@ bridges each change onto the loop through `Invoke`
 | `glib::timeout_add` | `Application.Every` |
 
 The missing pieces are tracked in
-[#139](https://github.com/stubbedev/gelm/issues/139): components with
-typed input/output and controllers, typed view builders, change
-tracking, factories, lifetime-bound commands, async components,
-workers, and typed actions.
+[#139](https://github.com/stubbedev/gelm/issues/139): typed view
+builders, change tracking, factories, lifetime-bound commands, async
+components, workers, and typed actions.
 
 ## Tests
 

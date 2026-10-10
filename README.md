@@ -17,9 +17,10 @@ has stayed green.
 go get github.com/stubbedev/gelm@latest
 ```
 
-Apps import the public packages: `app` (session, windows, loop,
-dialogs, desktop services), `widget` (the widget tree, theme, CSS),
-`render`, `transfer`, `highlight`, `capture`, and `widget/css`.
+Apps import the public packages: `component` (the component
+framework), `app` (session, windows, loop, dialogs, desktop services),
+`widget` (the widget tree, theme, CSS), `anim`, `appearance`, `render`,
+`transfer`, `highlight`, `capture`, and `widget/css`.
 Everything under `internal/` is implementation.
 
 ## A minimal app
@@ -97,6 +98,7 @@ toolchain. Pushing a `v*` tag releases the demo binaries
 | [docs/completeness.md](docs/completeness.md) | the capability map against relm4/GTK/libadwaita, and the known gaps |
 | [docs/architecture.md](docs/architecture.md) | the layers, the invariants that keep them correct, theming, non-goals |
 | [docs/application-model.md](docs/application-model.md) | windows, layer surfaces, disconnects, single instance, file dialogs, data transfer, chrome |
+| [docs/components.md](docs/components.md) | the component framework: components, controllers, children, forwarding, testing |
 | [docs/threading.md](docs/threading.md) | the loop goroutine, `Invoke`/`Every`, the off-loop guard, the typed messaging layer |
 | [docs/input-model.md](docs/input-model.md) | routing, implicit grab, click/drag, drag and drop, keyboard, IME, touch, tablets |
 | [docs/css.md](docs/css.md) | the CSS layer: selectors, values, properties, cascade, lifecycle |

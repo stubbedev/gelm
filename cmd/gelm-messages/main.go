@@ -3,13 +3,14 @@
 // one SharedState counter shared across two windows - either window's
 // buttons move both labels - and one Stream broker that any depth of
 // code can reach without threading senders: both windows subscribe, a
-// button publishes, every window toasts. The click handler itself is a
-// Component: clicks cross onto the loop as typed messages. A second
+// button publishes, every window toasts. The click path is a component
+// (package component): clicks cross onto the loop as typed input. A second
 // run of the binary is the GApplication remote: it forwards its argv
 // and --open paths to the primary, which toasts them, and exits.
 package main
 
 import (
+	"cmp"
 	"errors"
 	"log"
 	"os"
@@ -20,13 +21,34 @@ import (
 	"github.com/unxed/xkb-go"
 
 	"github.com/stubbedev/gelm/app"
+	"github.com/stubbedev/gelm/component"
 	"github.com/stubbedev/gelm/internal/sysfont"
 	"github.com/stubbedev/gelm/internal/wlsession"
+	"github.com/stubbedev/gelm/render"
 	"github.com/stubbedev/gelm/widget"
 )
 
-// clickMsg is the Component message: which window was clicked.
+// clickMsg is the click component's input: which window was clicked.
 type clickMsg struct{ window string }
+
+// lastClick is the click path as a component: clicks cross onto the
+// loop as typed input, bump the shared counter, and name the window.
+type lastClick struct {
+	face    *render.Typeface
+	counter *app.SharedState[int]
+	window  string
+}
+
+func (c *lastClick) Init(cx *component.Context[clickMsg, struct{}]) widget.Widget {
+	label := widget.NewLabel(c.face, 12, "", widget.Current().TextMuted)
+	cx.Watch(func() { label.SetText("last click: " + cmp.Or(c.window, "--")) })
+	return label
+}
+
+func (c *lastClick) Update(_ *component.Context[clickMsg, struct{}], m clickMsg) {
+	c.counter.Update(func(n *int) { *n++ })
+	c.window = m.window
+}
 
 // announceMsg is the broker message: a toast line for every window.
 type announceMsg struct{ text string }
@@ -83,13 +105,7 @@ func run() error {
 	// no per-window copy can fall out of sync.
 	counter := app.NewSharedState(application, 0)
 
-	// The component: clicks become typed messages and update on the
-	// loop goroutine.
-	lastClick := widget.NewLabel(tf, 12, "last click: --", theme.TextMuted)
-	clicks := app.NewComponent(application, func(m clickMsg) {
-		counter.Update(func(n *int) { *n++ })
-		lastClick.SetText("last click: " + m.window)
-	})
+	clicks := component.Launch(application, &lastClick{face: tf, counter: counter})
 
 	window := func(title string, pingText string) *widget.Box {
 		count := widget.NewLabel(tf, 28, "0", theme.Text)
@@ -116,7 +132,7 @@ func run() error {
 	})
 
 	rootA := window("gelm messages a", "ping from the left window")
-	rootA.Append(lastClick, false)
+	rootA.Append(clicks.Widget(), false)
 	rootB := window("gelm messages b", "ping from the right window")
 	for _, cfg := range []app.WindowConfig{
 		{Title: "gelm messages a", AppID: "dev.stubbe.gelm.messages", Width: 380, Height: 300, Root: rootA, Background: theme.Bg},
