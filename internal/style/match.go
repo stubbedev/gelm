@@ -49,15 +49,23 @@ const (
 	PriorityUser        = 800
 )
 
-// rank packs (priority, ids, classes, elements, layer, order) into one
-// comparable value, most significant first.
-func rank(prio int, sp spec, layer, order int) uint64 {
+// rank packs (important, priority, ids, classes, elements, cascade
+// layer, sheet, order) into one comparable value, most significant
+// first: a `!important` declaration outranks every normal one, then
+// the provider priority decides, then specificity, then the @layer
+// order (255: unlayered, which outranks every layer), then the
+// sheet's install position, then source order.
+func rank(prio int, sp spec, layer, sheet, order int, imp bool) uint64 {
 	clampTo := func(v, bits int) uint64 {
 		limit := 1<<bits - 1
 		return uint64(min(max(v, 0), limit))
 	}
-	return clampTo(prio, 10)<<54 | clampTo(sp.ids, 6)<<48 | clampTo(sp.cls, 10)<<38 |
-		clampTo(sp.els, 6)<<32 | clampTo(layer, 8)<<24 | clampTo(order, 24)
+	r := clampTo(prio, 10)<<53 | clampTo(sp.ids, 6)<<47 | clampTo(sp.cls, 9)<<38 |
+		clampTo(sp.els, 6)<<32 | clampTo(layer, 8)<<24 | clampTo(sheet, 6)<<18 | clampTo(order, 18)
+	if imp {
+		r |= 1 << 63
+	}
+	return r
 }
 
 // Scratch holds one matcher's reusable buffers. Style work runs on the
@@ -66,9 +74,20 @@ func rank(prio int, sp spec, layer, order int) uint64 {
 type Scratch struct {
 	self Target
 	anc  Target
+	// media is the environment the sheets' @media conditions evaluate
+	// against, copied from the compute's Env.
+	media Media
 
-	best    [numProps]uint64
-	win     [numProps]*decl
+	best      [numProps]uint64
+	win       [numProps]*decl
+	bestLayer [numProps]uint8
+	// lowRank/winLow/lowLayer track the best declaration strictly
+	// below the winner's cascade layer — the value revert-layer rolls
+	// back to.
+	lowRank  [numProps]uint64
+	winLow   [numProps]*decl
+	lowLayer [numProps]uint8
+
 	customs []customWin
 	byName  map[string]int
 
@@ -99,6 +118,10 @@ type parsedDecl struct {
 func (sc *Scratch) collect(layers []Layer, n Node) {
 	clear(sc.best[:])
 	clear(sc.win[:])
+	clear(sc.bestLayer[:])
+	clear(sc.lowRank[:])
+	clear(sc.winLow[:])
+	clear(sc.lowLayer[:])
 	sc.customs = sc.customs[:0]
 	if sc.byName == nil {
 		sc.byName = map[string]int{}
@@ -130,7 +153,7 @@ func (sc *Scratch) collect(layers []Layer, n Node) {
 		// like a `*` rule in a widget-scoped provider; they rank as the
 		// last layer at their priority.
 		for i := range b.decls {
-			sc.offer(&b.decls[i], rank(sc.self.InlinePriority, spec{}, 255, b.decls[i].order))
+			sc.offer(&b.decls[i], rank(sc.self.InlinePriority, spec{}, 255, 63, b.decls[i].order, b.decls[i].important), 255)
 		}
 	}
 }
@@ -142,18 +165,23 @@ func (sc *Scratch) collect(layers []Layer, n Node) {
 func (sc *Scratch) bucket(rules []int32, s *Sheet, prio, layer int, n Node) {
 	for _, idx := range rules {
 		r := &s.rules[idx]
+		if r.mq >= 0 && !mediaMatches(s.mediaQs[r.mq], &sc.media) {
+			continue
+		}
 		if !sc.selectorMatches(&r.sel, n) {
 			continue
 		}
 		for i := range r.block.decls {
 			d := &r.block.decls[i]
-			sc.offer(d, rank(prio, r.spec, layer, d.order))
+			sc.offer(d, rank(prio, r.spec, int(r.layer), layer, d.order, d.important), r.layer)
 		}
 	}
 }
 
-// offer records d for every longhand it covers where its rank wins.
-func (sc *Scratch) offer(d *decl, rk uint64) {
+// offer records d for every longhand it covers where its rank wins,
+// tracking also the best declaration below the winner's cascade layer
+// (the revert-layer fallback).
+func (sc *Scratch) offer(d *decl, rk uint64, layer uint8) {
 	if d.custom {
 		if i, ok := sc.byName[d.name]; ok {
 			if rk >= sc.customs[i].rank {
@@ -167,9 +195,19 @@ func (sc *Scratch) offer(d *decl, rk uint64) {
 	}
 	cov := d.covers
 	for p := Prop(0); cov != 0; p++ {
-		if cov&1 != 0 && rk >= sc.best[p] {
-			sc.best[p] = rk
-			sc.win[p] = d
+		if cov&1 != 0 {
+			if rk >= sc.best[p] {
+				if sc.win[p] != nil {
+					if layer > sc.bestLayer[p] {
+						sc.lowRank[p], sc.winLow[p], sc.lowLayer[p] = sc.best[p], sc.win[p], sc.bestLayer[p]
+					} else if layer < sc.bestLayer[p] && sc.lowLayer[p] >= layer {
+						sc.lowRank[p], sc.winLow[p], sc.lowLayer[p] = 0, nil, 0
+					}
+				}
+				sc.best[p], sc.win[p], sc.bestLayer[p] = rk, d, layer
+			} else if layer < sc.bestLayer[p] && rk >= sc.lowRank[p] {
+				sc.lowRank[p], sc.winLow[p], sc.lowLayer[p] = rk, d, layer
+			}
 		}
 		cov >>= 1
 	}

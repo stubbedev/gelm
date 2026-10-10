@@ -80,6 +80,9 @@ type sensitivity struct {
 	states   style.State
 	classes  map[string]bool
 	siblings bool
+	// media reports whether any loaded sheet carries @media rules: the
+	// viewport and preference setters restyle only then.
+	media bool
 }
 
 // styleGen bumps on every stylesheet (re)load and environment change.
@@ -153,6 +156,9 @@ func relayer() {
 		layersNow = append(layersNow, style.Layer{Sheet: s.sheet, Priority: s.priority})
 	}
 	for _, s := range append(slices.Clone(sheets), scopedSheets...) {
+		if s.sheet.MediaQueries() > 0 {
+			sensNow.media = true
+		}
 		sn := s.sheet.Sensitivity()
 		sensNow.states |= sn.AncestorStates
 		sensNow.siblings = sensNow.siblings || sn.Siblings
@@ -264,6 +270,78 @@ func SetRootFontSize(px float64) {
 // RootFontSize returns the current root font size.
 func RootFontSize() float64 { return styleEnv.Rem }
 
+// mediaViewport is the @media viewport (SetMediaViewport),
+// mediaContrast and mediaDPI the appearance inputs SetTheme cannot
+// derive: prefers-contrast and resolution. Loop-goroutine state, like
+// styleEnv.
+var (
+	mediaViewport struct{ w, h int }
+	mediaContrast bool
+	mediaDPI      = 96.0
+)
+
+// SetMediaViewport sets the size @media width/height/aspect-ratio/
+// orientation conditions evaluate against — the window's logical
+// size, which the app layer feeds from its resize callback. The whole
+// // tree restyles when the size changes. Call it from the event-loop
+// goroutine, like SetTheme.
+func SetMediaViewport(w, h int) {
+	if w == mediaViewport.w && h == mediaViewport.h {
+		return
+	}
+	mediaViewport.w, mediaViewport.h = w, h
+	if !sensNow.media {
+		return
+	}
+	styleGen++
+	markDamage()
+}
+
+// MediaViewport returns the current @media viewport, 0×0 until set.
+func MediaViewport() (int, int) { return mediaViewport.w, mediaViewport.h }
+
+// SetMediaContrast turns the prefers-contrast media feature on or
+// // off; the desktop's contrast preference, which no Theme field
+// carries. The whole tree restyles on a change.
+func SetMediaContrast(on bool) {
+	if on == mediaContrast {
+		return
+	}
+	mediaContrast = on
+	if !sensNow.media {
+		return
+	}
+	styleGen++
+	markDamage()
+}
+
+// SetMediaResolution sets the resolution the @media resolution feature
+// reports, in dpi. The default is 96.
+func SetMediaResolution(dpi float64) {
+	if dpi <= 0 || dpi == mediaDPI {
+		return
+	}
+	mediaDPI = dpi
+	if !sensNow.media {
+		return
+	}
+	styleGen++
+	markDamage()
+}
+
+// envNow is the compute environment: the unit state plus the @media
+// environment, its appearance half derived from the active Theme
+// (prefers-color-scheme from the palette's polarity, reduced motion
+// from the animation gate) so a theme swap re-evaluates every
+// prefers-* rule.
+func envNow() style.Env {
+	return style.Env{Rem: styleEnv.Rem, FontPx: styleEnv.FontPx, Media: style.Media{
+		Width: float64(mediaViewport.w), Height: float64(mediaViewport.h),
+		DPI: mediaDPI, Dark: current.IsDark(), HighContrast: mediaContrast,
+		ReducedMotion: !current.Animations,
+	}}
+}
+
 // styleFile is one loaded stylesheet file: what the hot-reload poll
 // stats and compares against.
 type styleFile struct {
@@ -347,7 +425,7 @@ func readStylesheetFile(path string) (*style.Sheet, styleFile, error) {
 	if err != nil {
 		return nil, styleFile{}, fmt.Errorf("stylesheet: read %s: %w", path, err)
 	}
-	sheet, warns := style.ParseCollecting(string(b))
+	sheet, warns := style.ParseImporting(string(b), path, nil)
 	if len(warns) > 0 {
 		return nil, styleFile{}, fmt.Errorf("stylesheet: parse %s: %s", path, strings.Join(warns, "; "))
 	}
@@ -412,7 +490,7 @@ func (s *Stylesheet) pollFile() {
 		style.Warn(fmt.Sprintf("hot reload: read %s: %v", f.path, err))
 		return
 	}
-	sheet, warns := style.ParseCollecting(string(b))
+	sheet, warns := style.ParseImporting(string(b), f.path, nil)
 	if len(warns) > 0 {
 		style.Warn(fmt.Sprintf("hot reload: parse %s: %s", f.path, strings.Join(warns, "; ")))
 		return
@@ -1037,7 +1115,7 @@ func (n *node) restyle(w Widget) *style.Values {
 			n.elemName = typeElementName(w)
 		}
 		styleSelf.n, styleSelf.w = n, w
-		style.Compute(layers, &styleSelf, parent, &old, styleEnv, &styleScratch, &v)
+		style.Compute(layers, &styleSelf, parent, &old, envNow(), &styleScratch, &v)
 	}
 	n.cs = v
 	n.csGen = styleGen

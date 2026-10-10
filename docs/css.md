@@ -45,9 +45,34 @@ box.AttachStylesheet(widget.NewStylesheet(css, widget.StylePriorityApplication))
 ## Syntax
 
 - A CSS Syntax 3 tokenizer.
-- `@keyframes` (and `@-gtk-keyframes`) compile into the sheet. `@media`
-  skips silently, and other at-rules skip with a warning.
-- A nested (SCSS) block or `!important` rejects its rule.
+- `@keyframes` (and `@-gtk-keyframes`) compile into the sheet.
+- `@media` evaluates against the tree's media state (below) — size
+  features (`width`, `height`, `aspect-ratio`, `orientation`,
+  `resolution`, with `min-`/`max-` and Level 4 range syntax like
+  `(400px <= width <= 800px)`), `prefers-color-scheme`,
+  `prefers-contrast`, `prefers-reduced-motion`, the `and`/`not`
+  combinators, a comma list (OR), media types (`screen`/`all` true),
+  and nesting (the inner conditions intersect). A `@media` block
+  inside a rule scopes that rule's remaining declarations.
+- `@supports` evaluates at parse time against the engine's actual
+  property and selector support: `(prop: value)`, `selector(...)`,
+  `not`, `and`, `or`, and parens. A false block's rules never
+  compile; unknown properties are false.
+- `@import "file.css";` (or `url(...)`, with an optional trailing
+  media query) loads and inlines its target relative to the importing
+  stylesheet's path — file loads resolve beside the file, string
+  stylesheets relative to the working directory. Cycles are detected
+  per import chain and reported precisely
+  (`@import cycle: a.css -> b.css -> a.css`); a missing file or a
+  malformed import warns and drops that import only. `layer()` and
+  `supports()` qualifiers are not supported yet.
+- `@layer` orders cascade layers (below).
+- Native nesting: a nested block desugars `&` to the parent selector
+  (`&:hover`, `& > .child`); a nested selector without `&` is the
+  parent's descendant, comma lists cross with the parent list, and
+  nesting nests.
+- `!important` wins the cascade over every normal declaration
+  (below).
 - A malformed declaration skips that declaration, and a malformed
   selector skips its rule. Everything around it still applies.
 
@@ -90,7 +115,8 @@ box.AttachStylesheet(widget.NewStylesheet(css, widget.StylePriorityApplication))
     to `var(--name)`, so a subtree's `--name` overrides them. The
     theme layer defines all of libadwaita's named colors from the
     palette.
-- **Keywords.** `inherit`, `initial`, `unset` and `all`.
+- **Keywords.** `inherit`, `initial`, `unset`, `all`, `revert` and
+  `revert-layer`.
 
 ## Properties
 
@@ -132,13 +158,44 @@ subtree, and ink outside the border box joins the damage rect.
 The origins, from highest to lowest precedence:
 
 1. programmatic per-widget colors (`Button.Bg`, `Entry.SetColor`, ...)
-2. stylesheet declarations, ordered by priority, then specificity
-   `(ids, classes+states, elements)`, then source order
+2. stylesheet declarations, ordered by `!important` first (an
+   important declaration at any priority beats every normal one;
+   among importants the normal order applies), then priority, then
+   cascade layer (unlayered rules outrank every `@layer`; among
+   layers, the later-declared wins — `@layer a, b;` fixes the order,
+   `@layer name { ... }` styles in it), then specificity `(ids,
+   classes+states, elements)`, then source order
 3. the `Theme` and its derived state colors
+
+`revert` rolls back to the theme origin — it behaves as `unset`, the
+next origin down. `revert-layer` rolls to the next cascade layer
+down within the same origin (one `revert-layer` chain step; a
+revert-layer beneath a revert-layer behaves as `unset`), and as
+`unset` when no lower layer declares the property.
 
 Constructor metrics (a button's padding, a label's size) are
 defaults that a stylesheet overrides. `color` and `font-*` inherit.
 Box properties do not.
+
+## Media state
+
+`@media` conditions evaluate per compute against the tree's media
+state:
+
+- **Viewport.** `widget.SetMediaViewport(w, h)` — the app feeds it
+  from the window's resize callback (the last resized window wins);
+  width, height, aspect-ratio and orientation features read it.
+  Until set, the viewport is 0×0, so min-conditions never match.
+- **Appearance.** `prefers-color-scheme` derives from the active
+  theme's polarity (`Theme.IsDark`) and `prefers-reduced-motion`
+  from its animation gate, so `SetTheme` re-evaluates them;
+  `prefers-contrast` comes from `widget.SetMediaContrast` (the
+  desktop's contrast preference, which no Theme field carries), and
+  `resolution` from `widget.SetMediaResolution` (dpi, 96 by default).
+
+A viewport or preference change restyles the whole tree — but only
+  when some loaded stylesheet carries `@media` rules; without one,
+  the setters record the state and style nothing.
 
 ## Performance
 
