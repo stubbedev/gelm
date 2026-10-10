@@ -2,60 +2,74 @@ package widget
 
 import "sync"
 
-// The message catalog: every built-in string the toolkit paints flows
-// through Tr, so an application localizes gelm's chrome - dialog
-// buttons, chooser labels, places, status lines - with one hook
-// (#89). The default catalog is the identity: untranslated gelm is
-// exactly today's English.
-//
-// The lookup key is the English string itself (the gettext msgid
-// model), so a catalog is a plain map:
-//
-//	widget.SetMessageCatalog(func(s string) string {
-//		return map[string]string{
-//			"OK":     "OK",
-//			"Cancel": "Avbryt",
-//		}[s]
-//	})
-//
-// Locale detection is the application's: read LANG/LC_MESSAGES (or
-// the portal's org.freedesktop.appearance settings) and load your own
-// catalog - gelm deliberately ships no catalog format, no plural
-// rules, and no locale parsing; apps bring their own loader (golang.
-// org/x/text/message, gotext, a map literal - all fit the hook).
-//
-// The strings that flow through Tr are user-facing chrome. Developer
-// surfaces - the inspector's dump, trace log lines - stay English on
-// purpose: they are read by the person debugging, not the person
-// using. Install the catalog before building widgets; it is a
-// process-wide setting like SetTheme, safe from any goroutine.
+// Catalog translates user-facing strings, the gettext model: the key
+// is the English string itself, plural pairs choose a form for n, and
+// a context disambiguates equal English strings. *i18n.Catalog
+// implements it from .po and .mo files; an untranslated key comes back
+// unchanged.
+type Catalog interface {
+	Get(id string) string
+	GetN(singular, plural string, n int) string
+	GetCtx(ctx, id string) string
+}
 
 var catalog struct {
 	mu sync.RWMutex
-	tr func(string) string
+	c  Catalog
 }
 
-// SetMessageCatalog installs lookup as the translation for every
-// built-in string; nil restores the identity. Call once at startup,
-// before widgets are built.
-func SetMessageCatalog(lookup func(string) string) {
+// SetMessageCatalog installs c as the translation for every built-in
+// string and every Tr, TrN and TrCtx call; nil restores the identity.
+// It is process-wide like SetTheme: install it before building widgets.
+func SetMessageCatalog(c Catalog) {
 	catalog.mu.Lock()
 	defer catalog.mu.Unlock()
-	catalog.tr = lookup
+	catalog.c = c
 }
 
-// Tr translates one built-in string through the installed catalog:
-// the hook point every toolkit-owned label passes through. English in,
-// catalog's answer out, English when no catalog is installed.
-func Tr(s string) string {
+func installedCatalog() Catalog {
 	catalog.mu.RLock()
-	tr := catalog.tr
-	catalog.mu.RUnlock()
-	if tr == nil {
+	defer catalog.mu.RUnlock()
+	return catalog.c
+}
+
+// Tr translates s through the installed catalog, English without one.
+// Every toolkit-owned label passes through it; developer surfaces (the
+// inspector dump, traces) stay English on purpose.
+func Tr(s string) string {
+	c := installedCatalog()
+	if c == nil {
 		return s
 	}
-	if out := tr(s); out != "" {
-		return out
+	return orEnglish(c.Get(s), s)
+}
+
+// TrN translates a plural pair for n: singular for 1 and plural
+// otherwise without a catalog, the catalog's form for n with one.
+func TrN(singular, plural string, n int) string {
+	english := plural
+	if n == 1 {
+		english = singular
 	}
-	return s
+	c := installedCatalog()
+	if c == nil {
+		return english
+	}
+	return orEnglish(c.GetN(singular, plural, n), english)
+}
+
+// TrCtx translates s within ctx (gettext's msgctxt).
+func TrCtx(ctx, s string) string {
+	c := installedCatalog()
+	if c == nil {
+		return s
+	}
+	return orEnglish(c.GetCtx(ctx, s), s)
+}
+
+func orEnglish(translated, english string) string {
+	if translated == "" {
+		return english
+	}
+	return translated
 }

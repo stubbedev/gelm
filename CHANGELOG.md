@@ -4,6 +4,13 @@
 
 ### Parity, fifth pass
 
+- New `i18n` package, gettext in pure Go: `.mo` (both byte orders) and
+  `.po` parsing, a safe Plural-Forms evaluator, contexts, `Locales()`
+  from LANGUAGE/LC_ALL/LC_MESSAGES/LANG, and `Load` over any `fs.FS` or
+  `LoadSystem` over the XDG locale dirs. `widget.SetMessageCatalog`
+  now takes a `widget.Catalog` (`*i18n.Catalog`, or `i18n.FromMap` for
+  a literal map) instead of a lookup func, and `widget.TrN` and `TrCtx`
+  join `Tr`.
 - `app.Reducer[S, M]`: shared state changed only by typed messages,
   reduced on the loop, notifying only on change.
 - `widget.ParamAction[P]`: actions activated with a value, bound

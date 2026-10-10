@@ -1,6 +1,11 @@
 package widget
 
-import "testing"
+import (
+	"os"
+	"testing"
+
+	"github.com/stubbedev/gelm/i18n"
+)
 
 // TestMessageCatalog pins the catalog contract: Tr is the identity
 // without a catalog, the catalog translates what it knows and passes
@@ -13,18 +18,7 @@ func TestMessageCatalog(t *testing.T) {
 		t.Errorf("identity Tr = %q", got)
 	}
 
-	SetMessageCatalog(func(s string) string {
-		if s == "OK" {
-			return "OK"
-		}
-		if s == "Cancel" {
-			return "Avbryt"
-		}
-		if s == "broken" {
-			return ""
-		}
-		return s
-	})
+	SetMessageCatalog(i18n.FromMap(map[string]string{"OK": "OK", "Cancel": "Avbryt", "broken": ""}))
 	if got := Tr("Cancel"); got != "Avbryt" {
 		t.Errorf("catalog Tr = %q, want Avbryt", got)
 	}
@@ -47,13 +41,11 @@ func TestMessageCatalog(t *testing.T) {
 func TestChooserLabelsFlowThroughCatalog(t *testing.T) {
 	face := bindingFace(t)
 	defer SetMessageCatalog(nil)
-	SetMessageCatalog(func(s string) string {
-		return map[string]string{
-			"Up":           "Opp",
-			"Home":         "Hjem",
-			"Recent files": "Nylige filer",
-		}[s]
-	})
+	SetMessageCatalog(i18n.FromMap(map[string]string{
+		"Up":           "Opp",
+		"Home":         "Hjem",
+		"Recent files": "Nylige filer",
+	}))
 
 	c := NewFileChooser(face, 14, FileModeOpen, "/home", nil)
 	c.SetSource(func(string) ([]FileEntry, error) { return nil, nil })
@@ -62,3 +54,27 @@ func TestChooserLabelsFlowThroughCatalog(t *testing.T) {
 		t.Errorf("recents title = %q, want the catalog's", got)
 	}
 }
+
+func TestTrNAndTrCtxRouteThroughTheCatalog(t *testing.T) {
+	defer SetMessageCatalog(nil)
+	if TrN("%d file", "%d files", 1) != "%d file" || TrN("%d file", "%d files", 3) != "%d files" || TrCtx("menu", "Open") != "Open" {
+		t.Error("the identity catalog does not pick English forms")
+	}
+	data, err := os.ReadFile("../i18n/testdata/pl.po")
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := i18n.ParsePO(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	SetMessageCatalog(c)
+	if got := TrN("%d file", "%d files", 5); got != "%d plików" {
+		t.Errorf("TrN(5) = %q", got)
+	}
+	if got := TrCtx("menu", "Open"); got != "Otwórz…" {
+		t.Errorf("TrCtx = %q", got)
+	}
+}
+
+var _ Catalog = (*i18n.Catalog)(nil)
