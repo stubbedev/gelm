@@ -33,7 +33,7 @@
             version = self.shortRev or "dev";
             src = self;
             env.CGO_ENABLED = "0";
-            vendorHash = "sha256-uQB7oGgnH+gWf4o2mccfWWsTclDRJaJ8kUrFI2PSJVc=";
+            vendorHash = "sha256-NH6lBAUZwa7nuoC7ftPnE9zQn4VH9xGDKf7ePS8px3c=";
             doCheck = false;
             # third_party/ holds patched upstream packages gelm imports;
             # they build as dependencies, not as targets of their own.
