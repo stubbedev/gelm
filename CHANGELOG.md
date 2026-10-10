@@ -6,6 +6,9 @@
 
 - Fix: accelerators with shift+Tab never matched (xkb reports
   ISO_Left_Tab).
+- Fix: a paint-only change inside a composite or a button (an icon
+  swap, a label repaint) was not repainted until something else damaged
+  the area.
 - Fix: portal dialogs (open URI, print) were unparented: gelm passed a
   wl_surface proxy id as `parent_window`. Toplevels are now exported
   through xdg-foreign v2 and portals get `wayland:<handle>`.

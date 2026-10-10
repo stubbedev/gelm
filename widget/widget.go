@@ -410,35 +410,27 @@ func (n *node) InvalidateRect(r render.Rect) {
 }
 
 // markSub flags ancestors that some descendant needs a repaint, so
-// the damage collector notices through containers that hide their
-// children (a virtualized List, say). Parent links come from the last
-// Arrange. The walk stops at the first ancestor that exposes Children:
-// the collector descends through those anyway, so flagging them would
-// only widen the damage without hiding anything.
+// the damage collector notices through widgets that hide their
+// children from it (a composite, a Button, a virtualized List): the
+// collector descends only through Children, so every ancestor without
+// it is flagged, all the way to the root. A Children container above
+// a hiding one does not stop the walk, and neither does an ancestor
+// already flagged: the collector drains only the outermost hiding
+// ancestor it reaches, so inner flags can be stale. Parent links come
+// from the last Arrange.
 func (n *node) markSub() {
-	p := n.parent
-	for p != nil {
+	for p := n.parent; p != nil; p = parentOf(p) {
 		if _, ok := p.(childser); ok {
-			return
+			continue
 		}
-		s, ok := p.(interface{ markSubInvalid() bool })
-		if !ok {
-			return
+		if s, ok := p.(interface{ markSubInvalid() }); ok {
+			s.markSubInvalid()
 		}
-		if s.markSubInvalid() {
-			return
-		}
-		p = parentOf(p)
 	}
 }
 
-// markSubInvalid records a descendant invalidation and reports whether
-// it was already recorded (so the ancestor walk can stop early).
-func (n *node) markSubInvalid() bool {
-	was := n.subInvalid
-	n.subInvalid = true
-	return was
-}
+// markSubInvalid records a descendant invalidation.
+func (n *node) markSubInvalid() { n.subInvalid = true }
 
 // InvalidateLayout drops the cached Measure result here and in every
 // ancestor, so the next frame remeasures the affected branch only, and
