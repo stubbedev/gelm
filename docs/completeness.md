@@ -42,7 +42,7 @@ live in [architecture.md](architecture.md#non-goals).
 | Grid, FlowBox, adw WrapBox | `Grid` (spans, squeeze to MinSizer floors), `FlowBox`, `NewWrapBox` | widget/grid.go, widget/flowbox.go |
 | Paned, Frame, AspectFrame, Revealer, Expander, SizeGroup | the same names | widget/paned.go, widget/frame.go, widget/revealer.go, widget/expander.go, widget/shrink.go |
 | Notebook | `Notebook`: close hook, reorder by drag, overflow scrolling | widget/notebook.go |
-| ListView, GridView, ColumnView, TreeExpander | virtualized `List` (none/single/browse/multiple selection, rubber band), `ColumnView[T]` (sort, filter), `FlatTree[T]` | widget/list.go, widget/columnview.go, widget/tree.go |
+| ListView, GridView, ColumnView, TreeExpander | virtualized `List` (none/single/browse/multiple selection, rubber band), virtualized `GridView` (min/max columns, 2D keyboard motion, `gridview` > `child`), `ColumnView[T]` (sort, filter), `FlatTree[T]` | widget/list.go, widget/gridview.go, widget/columnview.go, widget/tree.go |
 | PopoverMenu, PopoverMenuBar | `Menu` (check/radio, submenus, mnemonics, accels), `MenuBar` | widget/menu.go, widget/menubar.go |
 | HeaderBar, WindowControls, ActionBar | the same names; `Application.AttachHeader`, `AttachMenuBar` | widget/chrome.go, app/chrome.go |
 | Popover | `app.Popover`, anchored to any widget, on toplevels and layer surfaces | app/popover.go |

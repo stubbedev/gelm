@@ -2646,6 +2646,108 @@ func (b *GridBuilder) WatchRowSpacing(get func() int) *GridBuilder {
 	return b
 }
 
+// GridViewBuilder builds a widget.GridView.
+type GridViewBuilder struct {
+	base[*widget.GridView, *GridViewBuilder]
+}
+
+// GridView builds a widget.GridView with widget.NewGridView.
+func GridView[W widget.Widget](model widget.ListModel[W], cellWidth int, cellHeight int) *GridViewBuilder {
+	b := &GridViewBuilder{}
+	b.init(b, func(s *Scope) *widget.GridView { return widget.NewGridView[W](model, cellWidth, cellHeight) })
+	return b
+}
+
+// MaxColumns calls (*widget.GridView).SetMaxColumns.
+func (b *GridViewBuilder) MaxColumns(n int) *GridViewBuilder {
+	b.do(func(s *Scope, w *widget.GridView) { w.SetMaxColumns(n) })
+	return b
+}
+
+// WatchMaxColumns re-applies SetMaxColumns with get's value after every update.
+func (b *GridViewBuilder) WatchMaxColumns(get func() int) *GridViewBuilder {
+	b.watch(func(w *widget.GridView) { w.SetMaxColumns(get()) })
+	return b
+}
+
+// MinColumns calls (*widget.GridView).SetMinColumns.
+func (b *GridViewBuilder) MinColumns(n int) *GridViewBuilder {
+	b.do(func(s *Scope, w *widget.GridView) { w.SetMinColumns(n) })
+	return b
+}
+
+// WatchMinColumns re-applies SetMinColumns with get's value after every update.
+func (b *GridViewBuilder) WatchMinColumns(get func() int) *GridViewBuilder {
+	b.watch(func(w *widget.GridView) { w.SetMinColumns(get()) })
+	return b
+}
+
+// CellWidth calls (*widget.GridView).SetCellWidth.
+func (b *GridViewBuilder) CellWidth(arg int) *GridViewBuilder {
+	b.do(func(s *Scope, w *widget.GridView) { w.SetCellWidth(arg) })
+	return b
+}
+
+// WatchCellWidth re-applies SetCellWidth with get's value after every update.
+func (b *GridViewBuilder) WatchCellWidth(get func() int) *GridViewBuilder {
+	b.watch(func(w *widget.GridView) { w.SetCellWidth(get()) })
+	return b
+}
+
+// MaxHeight calls (*widget.GridView).SetMaxHeight.
+func (b *GridViewBuilder) MaxHeight(h int) *GridViewBuilder {
+	b.do(func(s *Scope, w *widget.GridView) { w.SetMaxHeight(h) })
+	return b
+}
+
+// WatchMaxHeight re-applies SetMaxHeight with get's value after every update.
+func (b *GridViewBuilder) WatchMaxHeight(get func() int) *GridViewBuilder {
+	b.watch(func(w *widget.GridView) { w.SetMaxHeight(get()) })
+	return b
+}
+
+// SingleClickActivate calls (*widget.GridView).SetSingleClickActivate.
+func (b *GridViewBuilder) SingleClickActivate(on bool) *GridViewBuilder {
+	b.do(func(s *Scope, w *widget.GridView) { w.SetSingleClickActivate(on) })
+	return b
+}
+
+// WatchSingleClickActivate re-applies SetSingleClickActivate with get's value after every update.
+func (b *GridViewBuilder) WatchSingleClickActivate(get func() bool) *GridViewBuilder {
+	b.watch(func(w *widget.GridView) { w.SetSingleClickActivate(get()) })
+	return b
+}
+
+// SelectionMode calls (*widget.GridView).SetSelectionMode.
+func (b *GridViewBuilder) SelectionMode(mode widget.SelectionMode) *GridViewBuilder {
+	b.do(func(s *Scope, w *widget.GridView) { w.SetSelectionMode(mode) })
+	return b
+}
+
+// WatchSelectionMode re-applies SetSelectionMode with get's value after every update.
+func (b *GridViewBuilder) WatchSelectionMode(get func() widget.SelectionMode) *GridViewBuilder {
+	b.watch(func(w *widget.GridView) { w.SetSelectionMode(get()) })
+	return b
+}
+
+// OnSelect sets the widget's OnSelect field.
+func (b *GridViewBuilder) OnSelect(fn func(i int)) *GridViewBuilder {
+	b.do(func(_ *Scope, w *widget.GridView) { w.OnSelect = fn })
+	return b
+}
+
+// OnActivate sets the widget's OnActivate field.
+func (b *GridViewBuilder) OnActivate(fn func(i int)) *GridViewBuilder {
+	b.do(func(_ *Scope, w *widget.GridView) { w.OnActivate = fn })
+	return b
+}
+
+// OnSelectionChanged sets the widget's OnSelectionChanged field.
+func (b *GridViewBuilder) OnSelectionChanged(fn func(rows []int)) *GridViewBuilder {
+	b.do(func(_ *Scope, w *widget.GridView) { w.OnSelectionChanged = fn })
+	return b
+}
+
 // HeaderBarBuilder builds a widget.HeaderBar.
 type HeaderBarBuilder struct {
 	base[*widget.HeaderBar, *HeaderBarBuilder]

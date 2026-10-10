@@ -1493,6 +1493,8 @@ func typeElementName(w Widget) string {
 		return "levelbar"
 	case *List:
 		return "listview"
+	case *GridView:
+		return "gridview"
 	case *listRow:
 		return "row"
 	case *Menu:
