@@ -4,6 +4,14 @@
 
 ### Parity, fifth pass
 
+- Fix: accelerators with shift+Tab never matched (xkb reports
+  ISO_Left_Tab).
+
+- libadwaita's tab stack: `widget.TabView` (pinned pages, loading,
+  indicator, attention, close veto, `TransferPage`), `TabBar` (select,
+  close, drag to reorder or move a page to another bar or window, in
+  place updates), `TabOverview` (page thumbnails), and
+  `Application.AttachTabView` for the tab shortcuts.
 - `widget.ColorButton` and `FontButton` (GTK's ColorDialogButton and
   FontDialogButton) with `Application.AttachColorButton` /
   `AttachFontButton` and `BindColor` / `BindFont`; `widget.Inscription`,

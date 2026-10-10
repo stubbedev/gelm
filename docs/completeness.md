@@ -42,6 +42,7 @@ live in [architecture.md](architecture.md#non-goals).
 | Grid, FlowBox, adw WrapBox | `Grid` (spans, squeeze to MinSizer floors), `FlowBox`, `NewWrapBox` | widget/grid.go, widget/flowbox.go |
 | Paned, Frame, AspectFrame, Revealer, Expander, SizeGroup | the same names | widget/paned.go, widget/frame.go, widget/revealer.go, widget/expander.go, widget/shrink.go |
 | Notebook | `Notebook`: close hook, reorder by drag, overflow scrolling | widget/notebook.go |
+| adw TabView, TabBar, TabOverview | `TabView` (pages with title, icon, loading, indicator, attention, pinned; close veto; transfer between views), `TabBar` (select, close, drag to reorder or move to another window's bar), `TabOverview` (thumbnail grid); `Application.AttachTabView` binds ctrl+Tab, ctrl+PageUp/Down, alt+1..9 | widget/tabview.go, widget/tabbar.go, app/chrome.go |
 | ListView, GridView, ColumnView, TreeExpander | virtualized `List` (none/single/browse/multiple selection, rubber band), virtualized `GridView` (min/max columns, 2D keyboard motion, `gridview` > `child`), `ColumnView[T]` (sort, filter), `FlatTree[T]` | widget/list.go, widget/gridview.go, widget/columnview.go, widget/tree.go |
 | PopoverMenu, PopoverMenuBar | `Menu` (check/radio, submenus, mnemonics, accels), `MenuBar` | widget/menu.go, widget/menubar.go |
 | HeaderBar, WindowControls, ActionBar | the same names; `Application.AttachHeader`, `AttachMenuBar` | widget/chrome.go, app/chrome.go |

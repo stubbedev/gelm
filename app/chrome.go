@@ -1,6 +1,11 @@
 package app
 
 import (
+	"fmt"
+	"maps"
+	"slices"
+	"strconv"
+
 	"github.com/stubbedev/gelm/render"
 	"github.com/stubbedev/gelm/widget"
 )
@@ -130,4 +135,27 @@ func (a *Application) AttachFontButton(parent *Window, b *widget.FontButton) {
 			b.Choose(widget.FontChoice{Family: family, Size: size})
 		})
 	}
+}
+
+// AttachTabView binds libadwaita's tab shortcuts within scope (the
+// subtree holding the view and its bar): ctrl+Tab and ctrl+PageDown
+// select the next page, ctrl+shift+Tab and ctrl+PageUp the previous,
+// and alt+1 through alt+9 the page at that position (alt+9 the last).
+func (a *Application) AttachTabView(scope widget.Widget, v *widget.TabView) error {
+	bindings := map[string]func(){
+		"ctrl+Tab":       v.SelectNext,
+		"ctrl+Next":      v.SelectNext,
+		"ctrl+shift+Tab": v.SelectPrevious,
+		"ctrl+Prior":     v.SelectPrevious,
+		"alt+9":          func() { v.SelectIndex(v.NPages() - 1) },
+	}
+	for i := 1; i <= 8; i++ {
+		bindings["alt+"+strconv.Itoa(i)] = func() { v.SelectIndex(i - 1) }
+	}
+	for _, keys := range slices.Sorted(maps.Keys(bindings)) {
+		if err := a.AddScopedAccel(scope, keys, widget.NewAction("tab "+keys, bindings[keys])); err != nil {
+			return fmt.Errorf("app: tab shortcuts: %w", err)
+		}
+	}
+	return nil
 }
