@@ -89,11 +89,21 @@ func (b *Box) ShrinkableWidth() int {
 	return widest - floor
 }
 
+// shrinkStack is shrinkTakes' per-depth buffers, the walkStack
+// pattern: a box's takes stay live only across its own Measure/Arrange
+// loop, and everything that runs inside that loop (the children's own
+// measures and arranges) sits one depth deeper, so a level's buffer is
+// never rewritten while it is still being read.
+var (
+	shrinkStack [][]int
+	shrinkDepth int
+)
+
 // shrinkTakes splits a main-axis deficit across the children that can
 // give in proportion to what each can give, never more than that:
 // takes[i] is what child i gives up. GTK's distribution: every child
 // that can give participates, on either axis.
-func (b *Box) shrinkTakes(deficit int) []int {
+func (b *Box) shrinkTakes(deficit int) (takes []int) {
 	if deficit <= 0 {
 		return nil
 	}
@@ -101,9 +111,21 @@ func (b *Box) shrinkTakes(deficit int) []int {
 	if b.axis == Row {
 		give = shrinkableWidthOf
 	}
-	caps := make([]int, len(b.child))
+	n := len(b.child)
+	for len(shrinkStack) <= shrinkDepth {
+		shrinkStack = append(shrinkStack, nil)
+	}
+	buf := shrinkStack[shrinkDepth][:0]
+	for len(buf) < 2*n {
+		buf = append(buf, 0)
+	}
+	shrinkStack[shrinkDepth] = buf
+	shrinkDepth++
+	defer func() { shrinkDepth-- }()
+	caps, takes := buf[:n], buf[n:2*n]
 	total := 0
 	for i, c := range b.child {
+		caps[i] = 0
 		if IsVisible(c.w) {
 			caps[i] = give(c.w)
 			total += caps[i]
@@ -113,7 +135,6 @@ func (b *Box) shrinkTakes(deficit int) []int {
 		return nil
 	}
 	deficit = min(deficit, total)
-	takes := make([]int, len(b.child))
 	given := 0
 	for i, c := range caps {
 		takes[i] = deficit * c / total

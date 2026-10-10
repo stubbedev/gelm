@@ -164,37 +164,111 @@ down from 8 at the baseline.
 
 | budget line | baseline | budget | after | gate |
 |---|---|---|---|---|
-| gallery frame measure+paint | 24 | 29 | **9** | `widget.TestAllocBudgetGalleryFrame` |
+| gallery frame measure+paint | 24 | 29 | **1** | `widget.TestAllocBudgetGalleryFrame` |
+| whole-tree cascade rebuild | 9 | 9 | **0** | `widget.TestAllocBudgetStyleFullRestyle` |
+| sibling-selector restyle | - | 0 | **0** | `widget.TestAllocBudgetSiblingRestyle` |
+| composing display reads | - | 0 | **0** | `widget.TestAllocBudgetComposingDisplay` |
 | Shape of a stable line | 0 | 0 | 0 | `render.TestAllocBudgetShape` |
+| ShapeRunes of a stable rune slice | - | 0 | **0** | `render.TestAllocBudgetShapeRunes` |
 | DrawAligned over a fixed box | 0 | 0 | 0 | `render.TestAllocBudgetDrawAligned` |
 | canvas primitive mix | 0 | 0 | 0 | `render.TestAllocBudgetCanvasPaint` |
 | idle loop tick | 0 | 0 | 0 | `app.TestAllocBudgetIdleLoopTick` |
 
-The budgets stay at their baseline-derived values: they are regression
-ceilings, not assertions of today's numbers.
+After the #120 sweep the gallery-frame ceiling tightened from 29 to
+ceil(1×1.2) = 2: the fix that lowers the baseline tightens its budget
+in the same commit. The others keep their baseline-derived values;
+they are regression ceilings, not assertions of today's numbers.
+
+## The #120 sweep: widget/render allocation residuals
+
+Measured 2026-10-10 on the worktree branched off `1b0c118` (main),
+same machine and method. Each fix is gated by a budget test; the
+numbers below are `go test -run '^$' -bench ... -benchmem` over the
+worktree before and after the sweep. No behavior change: goldens stay
+byte-identical and every gate stays green.
+
+| benchmark | before allocs/op | after allocs/op | before B/op | after B/op |
+|---|---|---|---|---|
+| ShowcasePaint (full frame) | 24 | **4** | 3366 | 694 |
+| ShowcaseArrange | 4 | **0** | 144 | 0 |
+| StyleGalleryFullRestyle | 9 | **0** | 1280 | 0 |
+| StyleGalleryPaint | 12 | **6** | ~1900 | 1198 |
+| ProgressOnlyFrame (app frame) | ~ | **1** | ~ | 34 |
+| render ShapeRunes warm (new) | - | **0** | - | 0 |
+
+### The fixes
+
+1. **Rune-keyed line shaping cache** (`Font.ShapeRunes`/
+   `ShapeDirRunes`, render): the rune-holding widgets (text areas,
+   composing entries) converted their lines to a string per probe to
+   key the string cache; a set-associative table keyed on
+   (font, size, direction, runes) serves them without the conversion.
+   `ShapedText.RTL()` carries the resolved base direction, so the
+   RTL reads stopped converting too. Gated by
+   `render.TestAllocBudgetShapeRunes` (0 allocs).
+2. **Composing display memoized** (`Entry.displayRunes`,
+   `TextArea.displayLine`): while a preedit is on show, the splice
+   and its string form are built once per preedit change, not per
+   read; every content mutation clears the preedit first, so the
+   memo cannot outlive its text. Gated by
+   `widget.TestAllocBudgetComposingDisplay` (0 allocs).
+3. **Sibling list memoized per parent** (`visibleSiblings`): the
+   filtered sibling list is cached on the parent keyed by the damage
+   generation — a sibling-selector restyle marks the whole set in one
+   pass, so the rebuild happens once per parent per generation.
+   Membership and visibility changes all mark damage, so no mark can
+   be missed. Gated by `widget.TestAllocBudgetSiblingRestyle`.
+4. **Per-depth snapshot buffers for the style walks** (`styleKids` →
+   `appendStyleKids`, `walkTree`, `Box.shrinkTakes`): the restyle
+   pass, the generic tree walk, and the shrink distribution each took
+   a fresh slice per container per pass. StyleGalleryFullRestyle
+   9→0 allocs. Gated by `widget.TestAllocBudgetStyleFullRestyle`.
+5. **Two-slot measure cache** (`node.measureHit`): the cache keeps
+   the last two constraint sets, absorbing the containers that
+   measure a child twice a frame under two sets (a row's natural and
+   shrunk passes) instead of thrashing a single slot.
+6. **Toast slide damage clipped to the delta** (`Toast.slideExtent`):
+   an animated frame invalidates the shadow ring grown by the slide
+   distance the card moved through — the union of its last and
+   current positions — not the full entrance rise.
+7. **Window-owned canvas** (`Canvas.Reset`, app): the frame canvas is
+   re-readied per painted frame instead of allocated (`NewScaled`
+   per frame leaves the bounded-debt list).
+
+### Dispositioned
+
+- **Leaf restyles recompute the ancestor cascade per leaf**: already
+  amortized — `style()` serves a cached cascade per generation, so a
+  leaf's climb is pointer compares, not recomputation; a batched
+  restyle-from-root pass would add machinery for nothing measurable.
+- **List `findCheckButton` walk per row creation**: already cached —
+  `newRow` stores the checkbox on the row proxy (`r.check`) and the
+  subtree walk runs once per row entering the viewport, not per
+  frame.
+- **`CollectDamage` rect growth without a capacity hint**: the rects
+  slice is retained by callers (`hostWindow.lastDamage`), and the
+  zero-alloc gates (`app.TestAllocBudgetToastDamageWalk`,
+  `app.TestAllocBudgetWindowFrame`) forbid an unconditional
+  pre-allocation on clean walks. Growth stays amortized and only on
+  dirty frames; it remains bounded debt below. `render.Rect.Subtract`
+  (the old render/damage.go site) has no production caller.
 
 ## Bounded debt
 
 Allocation and syscall sites the profiles show that stay, each named
 with its cost and why:
 
-- **`[]rune`→`string` conversions that key the shaping cache**
-  (`TextArea.shapeLine`, `caretX`, `panToCaret`, `richlabel`): ~5-6
-  allocs per text-widget frame (each ~32-64B). The cache is
-  string-keyed; removing the conversions means rune-slice keys (Go
-  slices are not comparable, so a map key is out) or hashing runes
-  (a hash per probe per frame to save one small alloc). Not worth the
-  complexity.
 - **`CollectDamage`'s rect list and `hostWindow.draw`'s device rect
   mapping** (`widget.CollectDamage` growth + `app/window.go` `rects :=
-  make(...)`): ~3 allocs per frame. Both slices are RETAINED by
+  make(...)`): ~2 allocs per dirty frame. Both slices are RETAINED by
   callers (`hostWindow.lastDamage`, the harness) — reusing a buffer
   would alias previously returned results, an observable behavior
-  change.
-- **`render.NewScaled` per frame** (`app/window.go` draw): one Canvas
-  struct (~150B) per painted frame. Pooling means either a sync.Pool
-  in render or a window-owned canvas with a reset method — API churn
-  for one small allocation.
+  change, and a capacity hint would spend an allocation on every
+  walk, including the clean ones the zero-alloc gates pin.
+- **`render.NewScaled` per non-window canvas** (`app/dragdrop.go`,
+  `app/print.go`): one Canvas struct per dropped-image paint and per
+  printed page — event-time, not frame-time; the frame path pools its
+  canvas (`Canvas.Reset`).
 - **One `sendmsg` per Wayland request, one `recvmsg`+`read` per
   message** (neurlang/wayland binding, `Context.SendRequest` →
   `writeRequest`): the wire cannot batch below its per-request
@@ -205,12 +279,13 @@ with its cost and why:
 - **Go runtime background monitor** (`nanosleep` loop during
   activity): ~28 syscalls per animated frame during tweens, zero at
   idle. Not gelm code.
-- **Damage-walk snapshot buffers** (`widget.walkStack`): retained at
-  the deepest tree the process has walked (a few hundred bytes to a
-  few KB for a 48-row list). Freed never; the bound is tree depth.
-- **IME composing display** (`Entry.displayText` composing branch,
-  `TextArea.displayLine`): converts per read while composing —
-  keystroke-time, not frame-time; the steady state never hits it.
+- **Damage-walk and style-walk snapshot buffers** (`widget.walkStack`,
+  `styleStack`, `walkTreeStack`, the per-parent sibling lists, the
+  rune-keyed shaping table): retained at the deepest tree the process
+  has walked plus one filtered child list per parent with sibling
+  selectors (a few hundred bytes to a few KB for a 48-row list); the
+  rune table is fixed-size by construction (512 sets × 4 ways).
+  Freed never; the bound is tree shape.
 
 Syscalls after the sweep: unchanged by design — the fixes were
 allocation-shaped, and the syscall profile's only gelm-side lever

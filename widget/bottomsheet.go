@@ -159,12 +159,12 @@ func (b *BottomSheet) KeyAction(a KeyAction, _ Mods) {
 	}
 }
 
-// styleChildren is the content and, while showing, the sheet.
-func (b *BottomSheet) styleChildren() []Widget {
+// appendStyleKids is the content and, while showing, the sheet.
+func (b *BottomSheet) appendStyleKids(buf []Widget) []Widget {
 	if b.showing() {
-		return []Widget{b.root, b.sheet}
+		return append(buf, b.root, b.sheet)
 	}
-	return []Widget{b.root}
+	return append(buf, b.root)
 }
 
 // Content returns the widget the sheet slides over.

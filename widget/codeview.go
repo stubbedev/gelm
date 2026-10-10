@@ -284,5 +284,5 @@ func (t *TextArea) revealCaret() {
 	reveal(t, t.IMECursorRect(), false)
 }
 
-// styleChildren is the text node (styleKids).
-func (t *TextArea) styleChildren() []Widget { return []Widget{&t.text} }
+// appendStyleKids is the text node (styleKids).
+func (t *TextArea) appendStyleKids(buf []Widget) []Widget { return append(buf, &t.text) }

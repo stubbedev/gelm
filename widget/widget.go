@@ -114,8 +114,12 @@ type node struct {
 	subInvalid bool
 	extras     []render.Rect
 
-	// measure cache: measuredIn/out memoize the last Measure call once
-	// measureSeen; measureDirty forces a recompute after InvalidateLayout.
+	// measure cache: measuredIn/out memoize the last two Measure
+	// calls once measureSeen; the second slot absorbs the containers
+	// that measure a child twice a frame under two constraint sets (a
+	// row's natural pass and its shrunk pass, an expanding child's
+	// expand and final rects) — the alternation would thrash a single
+	// slot. measureDirty forces a recompute after InvalidateLayout.
 	// The style marks join the key: a stale cascade (or one marked by a
 	// class or state change) drops the entry, since padding, font-size,
 	// and min-* change what the widget wants.
@@ -123,6 +127,8 @@ type node struct {
 	measureDirty bool
 	measureIn    Constraints
 	measureOut   Size
+	measureIn2   Constraints
+	measureOut2  Size
 	// measureCount tallies Measure entries; the zero-recursion pin test
 	// reads it.
 	measureCount int
@@ -203,6 +209,10 @@ type node struct {
 	// self is the widget embedding this node, recorded by the first
 	// arranging container, so a state flip can walk its own subtree.
 	self Widget
+	// sibs is this node's filtered child list as the sibling selectors
+	// read it, memoized per damage generation (visibleSiblings).
+	sibs    []Widget
+	sibsGen uint64
 
 	// disabled is the widget's own half of the enable state: false (the
 	// zero value) means enabled, so plain widgets accept input without
@@ -482,8 +492,13 @@ func (n *node) markMeasureDirty() bool {
 // stylesheet load relayouts the tree by stamp, with no walk.
 func (n *node) measureHit(con Constraints) (Size, bool) {
 	n.measureCount++
-	if n.measureSeen && !n.measureDirty && !n.styleDirty && n.styleSeen == styleGen && n.measureIn == con {
-		return n.measureOut, true
+	if n.measureSeen && !n.measureDirty && !n.styleDirty && n.styleSeen == styleGen {
+		if n.measureIn == con {
+			return n.measureOut, true
+		}
+		if n.measureIn2 == con {
+			return n.measureOut2, true
+		}
 	}
 	return Size{}, false
 }
@@ -498,7 +513,10 @@ func (n *node) measureCalls() int { return n.measureCount }
 func (n *node) measureStore(con Constraints, s Size) Size {
 	n.measureSeen = true
 	n.measureDirty = false
-	n.measureIn = con
+	if con != n.measureIn {
+		n.measureIn2, n.measureOut2 = n.measureIn, n.measureOut
+		n.measureIn = con
+	}
 	n.measureOut = s
 	n.styleSeen = styleGen
 	return s
@@ -730,8 +748,8 @@ func walkWidgets(w Widget, visit func(Widget) (descend bool)) {
 	switch p := w.(type) {
 	case interface{ Children() []Widget }:
 		kids = p.Children()
-	case interface{ styleChildren() []Widget }:
-		kids = p.styleChildren()
+	default:
+		kids = styleKids(p)
 	}
 	for _, c := range kids {
 		walkWidgets(c, visit)

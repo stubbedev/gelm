@@ -77,7 +77,7 @@ func TestStyleWalkReachesEveryParentedWidget(t *testing.T) {
 
 // TestStyleWalkReachesComposites checks the composites' internal
 // parts: every widget under the root whose parent is set is in that
-// parent's style walk, found by walking Children and styleChildren.
+// parent's style walk, found by walking Children and styleKids.
 func TestStyleWalkReachesComposites(t *testing.T) {
 	face := testFace(t)
 	root := NewBox(Column, 0, 0)

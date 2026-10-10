@@ -897,19 +897,18 @@ func (r *listRow) SelectAll() { r.list.SelectAll() }
 
 // styleChildren are the materialized rows and the height probe
 // (styleKids).
-func (l *List) styleChildren() []Widget {
-	out := make([]Widget, 0, len(l.rows)+1)
+func (l *List) appendStyleKids(buf []Widget) []Widget {
 	if l.probe != nil {
-		out = append(out, l.probe)
+		buf = append(buf, l.probe)
 	}
 	for _, r := range l.rows {
-		out = append(out, r)
+		buf = append(buf, r)
 	}
-	return out
+	return buf
 }
 
-// styleChildren is the row widget, inheriting through the proxy.
-func (r *listRow) styleChildren() []Widget { return []Widget{r.row} }
+// appendStyleKids is the row widget, inheriting through the proxy.
+func (r *listRow) appendStyleKids(buf []Widget) []Widget { return append(buf, r.row) }
 
 // SetSingleClickActivate makes a plain click activate the row
 // (OnActivate) as well as select it, GTK's single-click-activate: a

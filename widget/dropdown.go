@@ -756,13 +756,13 @@ func (d *Dropdown) iconSlot() int {
 	return w
 }
 
-// styleChildren is the button (its arrow below), the open item list,
+// appendStyleKids is the button (its arrow below), the open item list,
 // and the face's icon (styleKids).
-func (d *Dropdown) styleChildren() []Widget {
-	kids := []Widget{&d.faceBtn}
-	kids = append(kids, d.Children()...)
+func (d *Dropdown) appendStyleKids(buf []Widget) []Widget {
+	buf = append(buf, &d.faceBtn)
+	buf = append(buf, d.Children()...)
 	if d.faceIcon != nil {
-		kids = append(kids, d.faceIcon)
+		buf = append(buf, d.faceIcon)
 	}
-	return kids
+	return buf
 }

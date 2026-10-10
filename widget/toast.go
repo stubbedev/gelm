@@ -57,7 +57,10 @@ type Toast struct {
 	hovered  bool
 	hoverPt  Point
 	// leaving marks an exit fade in flight — the rescue path on hover.
-	leaving     bool
+	leaving bool
+	// lastDy is the previous animated frame's slide offset, the delta's
+	// other edge (slideExtent).
+	lastDy      int
 	actionRect  render.Rect
 	ring        shadowTracker
 	cancelSlide anim.Cancel
@@ -231,13 +234,30 @@ func (t *Toast) Close() {
 }
 
 // invalidateFrame schedules the repaint one animated frame owes: the
-// bounds, plus the shadow ring grown by the slide while the card is
-// moving — the shadow rides the card, so its pixels move too.
+// bounds, plus the shadow ring grown by the slide distance the card
+// moved through since its previous frame — the union of the two
+// positions — never the full entrance rise. The fade repaints the
+// card in place; only the motion adds region.
 func (t *Toast) invalidateFrame() {
 	t.Invalidate()
-	if ext := t.paintExtent(); ext != t.bounds {
+	if ext := t.slideExtent(); ext != t.bounds {
 		t.InvalidateRect(ext)
 	}
+}
+
+// slideExtent is the repaint region the animated card can touch
+// beyond its bounds: the shadow ring grown by the larger of the last
+// and current slide offsets, which covers both edges of the move.
+func (t *Toast) slideExtent() render.Rect {
+	_, blur := effShadow(t, Current())
+	ring := ringFor(t.bounds, blur)
+	if ring.Empty() {
+		return t.bounds
+	}
+	dy := int((1 - math01(t.progress)) * toastSlide)
+	ext := expandRect(ring, max(dy, t.lastDy))
+	t.lastDy = dy
+	return ext
 }
 
 // paintExtent returns the rect the card's paint can touch: the bare
@@ -272,6 +292,7 @@ func (t *Toast) Arrange(r render.Rect) {
 		t.stopSlide()
 		t.stopTimer()
 		t.progress = 0
+		t.lastDy = toastSlide
 		st := toastPlan()
 		t.cancelSlide = anim.Play(anim.Animate(st.Enter.Duration, func(p float64) {
 			t.progress = min(p, 1)
@@ -284,6 +305,7 @@ func (t *Toast) Arrange(r render.Rect) {
 		t.stopTimer()
 		t.leaving = false
 		t.progress = 0
+		t.lastDy = toastSlide
 	}
 	t.layoutAction()
 }

@@ -27,7 +27,7 @@ func TestEntryLeadingIcon(t *testing.T) {
 	if got := plain.contentRect().W - e.contentRect().W; got < 12 {
 		t.Errorf("the leading icon only took %d px from the text area, want at least the icon's 12", got)
 	}
-	if n := len(e.styleChildren()); n != 2 {
+	if n := len(styleKids(e)); n != 2 {
 		t.Errorf("style children = %d, want the text node and the icon", n)
 	}
 	e.ClickAt(Point{X: lr.X + lr.W/2, Y: lr.Y + lr.H/2})
@@ -41,7 +41,7 @@ func TestEntryLeadingIconClears(t *testing.T) {
 	e := NewEntry(entryFace(t), 14, render.RGB(255, 255, 255))
 	e.SetLeadingIcon("tb-key-symbolic", 14, nil)
 	e.SetLeadingIcon("", 14, nil)
-	if e.LeadingIcon() != nil || len(e.styleChildren()) != 1 {
+	if e.LeadingIcon() != nil || len(styleKids(e)) != 1 {
 		t.Fatal("a cleared leading icon stayed")
 	}
 	arrangeTree(t, e, 200, 32)

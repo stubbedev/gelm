@@ -918,20 +918,38 @@ func focusWalker(w Widget, fn func(Widget)) {
 	walkTree(w, 0, func(w Widget, _ int) { fn(w) })
 }
 
+// walkTreeStack is walkTree's per-depth snapshot buffers, reused
+// across walks like the damage walk's walkStack: the walk is
+// loop-goroutine work, a level's snapshot is a copy taken at visit
+// time (so a callback mutating the tree changes the next walk, not
+// this one), and a walk must not nest inside another walkTree.
+var walkTreeStack [][]Widget
+
 // walkTree visits w and every descendant in paint order (pre-order),
 // passing each widget's nesting depth; the root is depth 0. The same
 // Children walk focus traversal, the damage collector, and the a11y
-// snapshot use. The walk iterates a Children snapshot per container, so
-// mutating the tree from the callback sees the pre-mutation set.
+// snapshot use. The walk iterates a Children snapshot per container,
+// so mutating the tree from the callback sees the pre-mutation set.
 func walkTree(w Widget, depth int, fn func(Widget, int)) {
 	if w == nil {
 		return
 	}
 	fn(w, depth)
-	if c, ok := w.(childser); ok {
-		for _, k := range c.Children() {
-			walkTree(k, depth+1, fn)
-		}
+	c, ok := w.(childser)
+	if !ok {
+		return
+	}
+	for len(walkTreeStack) <= depth {
+		walkTreeStack = append(walkTreeStack, nil)
+	}
+	walkTreeStack[depth] = walkTreeStack[depth][:0]
+	if cb, ok := c.(childBuf); ok {
+		walkTreeStack[depth] = cb.appendChildren(walkTreeStack[depth])
+	} else {
+		walkTreeStack[depth] = append(walkTreeStack[depth], c.Children()...)
+	}
+	for _, k := range walkTreeStack[depth] {
+		walkTree(k, depth+1, fn)
 	}
 }
 

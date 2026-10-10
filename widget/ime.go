@@ -113,20 +113,27 @@ func (e *Entry) clearPreedit() {
 		return
 	}
 	e.peText = nil
+	e.peDisp, e.peDispStr = nil, ""
 	e.cursor, e.anchor = e.peAt, e.peAt
 }
 
 // displayRunes is the text on show: the contents with any composing
-// text spliced in at the caret.
+// text spliced in at the caret. The splice and its string form are
+// memoized — the composing frame reads them several times — and every
+// mutation clears the preedit first, so the memo cannot outlive the
+// text it was built from.
 func (e *Entry) displayRunes() []rune {
 	if !e.composing() {
 		return e.runes
 	}
-	out := make([]rune, 0, len(e.runes)+len(e.peText))
-	out = append(out, e.runes[:e.peAt]...)
-	out = append(out, e.peText...)
-	out = append(out, e.runes[e.peAt:]...)
-	return out
+	if e.peDisp == nil {
+		out := make([]rune, 0, len(e.runes)+len(e.peText))
+		out = append(out, e.runes[:e.peAt]...)
+		out = append(out, e.peText...)
+		out = append(out, e.runes[e.peAt:]...)
+		e.peDisp, e.peDispStr = out, string(out)
+	}
+	return e.peDisp
 }
 
 // caretRune is the caret position in display coordinates, -1 while the
@@ -160,6 +167,7 @@ func (e *Entry) IMEPreedit(text string, cursorBegin, cursorEnd int) {
 	e.peText = []rune(text)
 	e.peAt = e.cursor
 	e.peCur = imePreeditCaret(text, cursorBegin, cursorEnd)
+	e.peDisp, e.peDispStr = nil, ""
 	e.panToCaret()
 }
 
@@ -235,6 +243,7 @@ func (t *TextArea) clearPreedit() {
 		return
 	}
 	t.peText = nil
+	t.peLine = nil
 	t.cursor, t.anchor = t.peAt, t.peAt
 	t.hasPref = false
 	t.rowsValid = false
@@ -242,17 +251,23 @@ func (t *TextArea) clearPreedit() {
 
 // displayLine returns logical line l as painted: the contents with any
 // composing text spliced in at the caret, so the visual row cache and
-// painting always describe what is on show.
+// painting always describe what is on show. The splice is memoized —
+// every frame reads it several times — and every content mutation
+// clears the preedit first, so the memo cannot outlive the text it
+// was built from.
 func (t *TextArea) displayLine(l int) []rune {
 	line := t.lines[l]
 	if !t.composing() || l != t.peAt.line {
 		return line
 	}
-	out := make([]rune, 0, len(line)+len(t.peText))
-	out = append(out, line[:t.peAt.col]...)
-	out = append(out, t.peText...)
-	out = append(out, line[t.peAt.col:]...)
-	return out
+	if t.peLine == nil {
+		out := make([]rune, 0, len(line)+len(t.peText))
+		out = append(out, line[:t.peAt.col]...)
+		out = append(out, t.peText...)
+		out = append(out, line[t.peAt.col:]...)
+		t.peLine = out
+	}
+	return t.peLine
 }
 
 // caretPos is the caret as a display-space position: inside the
@@ -282,6 +297,7 @@ func (t *TextArea) IMEPreedit(text string, cursorBegin, cursorEnd int) {
 	t.peText = []rune(text)
 	t.peAt = t.clamp(t.cursor)
 	t.peCur = imePreeditCaret(text, cursorBegin, cursorEnd)
+	t.peLine = nil
 	t.hasPref = false
 	t.rowsValid = false
 	t.panToCaret()

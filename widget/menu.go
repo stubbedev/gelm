@@ -779,19 +779,18 @@ func (m *Menu) dropMnemonics() {
 	}
 }
 
-// styleChildren is the contents, its row nodes, and the rows' icons
+// appendStyleKids is the contents, its row nodes, and the rows' icons
 // (styleKids); the icons hang off the menu for theme-swap
 // invalidation.
-func (m *Menu) styleChildren() []Widget {
-	out := make([]Widget, 0, len(m.rows)+1)
-	out = append(out, &m.contents)
+func (m *Menu) appendStyleKids(buf []Widget) []Widget {
+	buf = append(buf, &m.contents)
 	for i := range m.rows {
-		out = append(out, &m.rows[i])
+		buf = append(buf, &m.rows[i])
 	}
 	for _, it := range m.items {
 		if it.Icon != nil {
-			out = append(out, it.Icon)
+			buf = append(buf, it.Icon)
 		}
 	}
-	return out
+	return buf
 }

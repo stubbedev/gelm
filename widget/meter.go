@@ -27,7 +27,7 @@ type meterTrough struct {
 	fill stylePart
 }
 
-func (t *meterTrough) styleChildren() []Widget { return []Widget{&t.fill} }
+func (t *meterTrough) appendStyleKids(buf []Widget) []Widget { return append(buf, &t.fill) }
 
 // initMeter names the nodes and links them under self.
 func (m *meter) initMeter(self Widget, value float64, fill string) {
@@ -38,8 +38,8 @@ func (m *meter) initMeter(self Widget, value float64, fill string) {
 	setParents(&m.trough, &m.trough.fill)
 }
 
-// styleChildren is the trough (styleKids).
-func (m *meter) styleChildren() []Widget { return []Widget{&m.trough} }
+// appendStyleKids is the trough (styleKids).
+func (m *meter) appendStyleKids(buf []Widget) []Widget { return append(buf, &m.trough) }
 
 // Value returns the fill fraction in [0, 1].
 func (m *meter) Value() float64 { return m.value }

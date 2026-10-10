@@ -52,6 +52,9 @@ type TextArea struct {
 	peText []rune
 	peAt   pos
 	peCur  int
+	// peLine memoizes the composing line's splice; nil until the first
+	// read after a preedit change.
+	peLine []rune
 
 	// hist is the undo/redo history; every mutation records into it.
 	hist undoStack[areaState]
@@ -142,9 +145,10 @@ func (t *TextArea) SetDirection(d Direction) {
 func (t *TextArea) Direction() Direction { return t.dir }
 
 // shapeLine shapes line rs under the area's base direction — the one
-// text path the caret, selection, and paint share.
+// text path the caret, selection, and paint share. Rune-keyed in the
+// shaping cache, so it never converts the runes to a string per call.
 func (t *TextArea) shapeLine(rs []rune) *render.ShapedText {
-	return t.font().ShapeDir(string(rs), t.px(), t.dir)
+	return t.font().ShapeDirRunes(rs, t.px(), t.dir)
 }
 
 // SetIndent sets how many spaces Tab inserts while focused; zero (the
@@ -893,11 +897,9 @@ func (t *TextArea) caretX(l, col int) int {
 // offsets count from (the reading edge, pan applied).
 func (t *TextArea) rowLayout(ri int) (*render.ShapedText, int) {
 	row := t.rows[ri]
-	// One conversion serves both the shape cache key and the RTL read.
-	s := string(t.displayLine(row.line)[row.startCol:row.endCol])
-	sh := t.font().ShapeDir(s, t.px(), t.dir)
+	sh := t.shapeLine(t.displayLine(row.line)[row.startCol:row.endCol])
 	x := t.textRect().X - t.linePan(row.line)
-	if text.RTL(s, t.dir) {
+	if sh.RTL() {
 		x += t.wrapWidth() - int(sh.Advance()+0.5)
 	}
 	return sh, x
@@ -919,11 +921,12 @@ func (t *TextArea) panToCaret() {
 		t.setPan(l, 0)
 		return
 	}
-	// One conversion serves both the shape cache key and the RTL read.
-	line := string(t.displayLine(l))
-	sh := t.font().ShapeDir(line, t.px(), t.dir)
+	// The shape carries the line's resolved direction, so neither read
+	// converts the runes.
+	line := t.displayLine(l)
+	sh := t.shapeLine(line)
 	cx := int(sh.CaretX(c.col) + 0.5)
-	if text.RTL(line, t.dir) {
+	if sh.RTL() {
 		cx = int(sh.Advance()+0.5) - cx // the caret's distance from the reading start edge
 	}
 	p := t.linePan(l)
@@ -948,7 +951,7 @@ func (t *TextArea) setPan(l, x int) {
 // one visual row, returning a row-relative column.
 func (t *TextArea) caretIn(r visualRow, x float64) int {
 	line := t.lines[r.line]
-	k := t.font().Shape(string(line[r.startCol:r.endCol]), t.px()).CaretAt(x)
+	k := t.font().ShapeRunes(line[r.startCol:r.endCol], t.px()).CaretAt(x)
 	return min(k, r.endCol-r.startCol)
 }
 
@@ -957,7 +960,7 @@ func (t *TextArea) colForX(l int, x float64) int {
 	if l < 0 || l >= len(t.lines) {
 		return 0
 	}
-	return t.font().Shape(string(t.lines[l]), t.px()).CaretAt(x)
+	return t.font().ShapeRunes(t.lines[l], t.px()).CaretAt(x)
 }
 
 // Measure reports the natural widest-line size, or, when wrapping and
@@ -981,7 +984,7 @@ func (t *TextArea) Measure(con Constraints) Size {
 	}
 	w := 16
 	for l := range t.lines {
-		if adv := int(t.font().Shape(string(t.displayLine(l)), t.px()).Advance() + 0.5); adv > w {
+		if adv := int(t.shapeLine(t.displayLine(l)).Advance() + 0.5); adv > w {
 			w = adv
 		}
 	}
@@ -1109,10 +1112,6 @@ func (t *TextArea) Paint(cv *render.Canvas) {
 	selFill, selFg := t.selectionStyle()
 	t.updateHighlight()
 	prev := cv.PushClip(render.Rect{X: c.X, Y: t.bounds.Y, W: c.W, H: t.bounds.H})
-	// Rows of one line are contiguous in the row cache, so the line's
-	// string form — the RTL read below — converts once per line, not
-	// once per row.
-	lastLine, lineStr := -1, ""
 	for i, r := range t.rows {
 		pan := t.linePan(r.line)
 		line := t.displayLine(r.line)
@@ -1120,15 +1119,12 @@ func (t *TextArea) Paint(cv *render.Canvas) {
 		if len(line) == 0 || r.startCol >= r.endCol {
 			continue
 		}
-		if r.line != lastLine {
-			lastLine, lineStr = r.line, string(line)
-		}
 		sh := t.shapeLine(line[r.startCol:r.endCol])
 		// The row's line origin: the text rect's left for LTR, slid by
 		// the pan; flush right minus the pan for RTL, so short rows hug
 		// the edge their reading starts at.
 		rowX := c.X - pan
-		rtl := text.RTL(lineStr, t.dir)
+		rtl := sh.RTL()
 		if rtl {
 			rowX += t.wrapWidth() - int(sh.Advance()+0.5)
 		}
@@ -1181,7 +1177,7 @@ func (t *TextArea) Paint(cv *render.Canvas) {
 			sh := t.shapeLine(line[r.startCol:r.endCol])
 			pan := t.linePan(r.line)
 			rowX := c.X - pan
-			if text.RTL(string(line), t.dir) {
+			if sh.RTL() {
 				rowX += t.wrapWidth() - int(sh.Advance()+0.5)
 			}
 			for _, band := range sh.AppendCaretBands(t.bands[:0], max(r.startCol, pb)-r.startCol, min(r.endCol, pe)-r.startCol) {
