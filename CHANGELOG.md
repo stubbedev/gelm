@@ -17,6 +17,10 @@
   `Context.Spawn` and `Context.Context()`, cancelled at shutdown, with
   late results dropped. Async components implement `component.Loader`
   (`Loading` view, `Load` off the loop, held input).
+- `component.Worker[In, Out]`: a typed background actor on its own
+  goroutine, launched with `LaunchWorker` (top-level or owned by a
+  component), forwarding outputs on the loop, and stopping with its
+  owner.
 - New `ui` package, relm4's `view!` as typed public builders: one
   builder per widget, generated from package widget (`go generate
   ./ui`; a test fails on a stale file). Each builder has a constructor

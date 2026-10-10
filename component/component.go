@@ -65,11 +65,6 @@ func (s Sender[M]) Send(msg M) {
 	s.send(msg)
 }
 
-type owned interface {
-	ownerShutdown()
-	setRelease(release func())
-}
-
 // Context is a running component's handle to its runtime: sending
 // itself input, emitting output, registering view refreshes and
 // cleanups, and launching children.
@@ -78,19 +73,17 @@ type Context[In, Out any] struct {
 	model    Component[In, Out]
 	root     widget.Widget
 	inputs   mailbox.Box[In]
-	outputs  mailbox.Box[Out]
-	forward  func(Out)
+	outputs  outlet[Out]
 	watches  []func()
 	clears   []func()
 	hooks    []func()
 	children []owned
-	release  func()
-	detached bool
-	dead     bool
-	ctx      context.Context
-	cancel   context.CancelFunc
-	loading  bool
-	held     []In
+	lifetime
+	dead    bool
+	ctx     context.Context
+	cancel  context.CancelFunc
+	loading bool
+	held    []In
 }
 
 // Loop returns the loop the component runs on.
@@ -107,9 +100,7 @@ func (cx *Context[In, Out]) Input(msg In) {
 // Output emits msg to whatever the controller forwards to. Safe from
 // any goroutine; delivery happens on the loop.
 func (cx *Context[In, Out]) Output(msg Out) {
-	if cx.outputs.Put(msg) {
-		cx.loop.Invoke(cx.drainOutputs)
-	}
+	cx.outputs.send(msg)
 }
 
 // Sender returns a Sender for the component's input, for goroutines and
@@ -144,8 +135,6 @@ func (cx *Context[In, Out]) adopt(child owned) {
 	})
 }
 
-func (cx *Context[In, Out]) setRelease(fn func()) { cx.release = fn }
-
 // Launch starts c on loop as a top-level component, shut down when the
 // loop stops.
 func Launch[In, Out any](loop Loop, c Component[In, Out]) *Controller[In, Out] {
@@ -155,7 +144,7 @@ func Launch[In, Out any](loop Loop, c Component[In, Out]) *Controller[In, Out] {
 }
 
 func start[In, Out any](loop Loop, c Component[In, Out]) *Context[In, Out] {
-	cx := &Context[In, Out]{loop: loop, model: c}
+	cx := &Context[In, Out]{loop: loop, model: c, outputs: outlet[Out]{loop: loop}}
 	cx.ctx, cx.cancel = context.WithCancel(context.Background()) //nolint:gosec // shutdown calls cx.cancel
 	if l, ok := c.(Loader[In, Out]); ok {
 		cx.root = cx.load(l)
@@ -203,14 +192,6 @@ func (cx *Context[In, Out]) update(msgs []In) {
 	}
 }
 
-func (cx *Context[In, Out]) drainOutputs() {
-	for _, msg := range cx.outputs.Take() {
-		if cx.forward != nil {
-			cx.forward(msg)
-		}
-	}
-}
-
 func (cx *Context[In, Out]) ownerShutdown() {
 	if !cx.detached {
 		cx.shutdown()
@@ -235,11 +216,8 @@ func (cx *Context[In, Out]) shutdown() {
 	for _, fn := range slices.Backward(cx.hooks) {
 		fn()
 	}
-	cx.drainOutputs()
-	cx.outputs.Stop()
-	if cx.release != nil {
-		cx.release()
-	}
+	cx.outputs.stop()
+	cx.unown()
 }
 
 // Controller owns a launched component: its root widget, its input,
@@ -260,7 +238,7 @@ func (c *Controller[In, Out]) Sender() Sender[In] { return c.cx.Sender() }
 // Forward routes every output to fn on the loop goroutine, replacing
 // any earlier route. Outputs with no route are dropped.
 func (c *Controller[In, Out]) Forward(fn func(Out)) *Controller[In, Out] {
-	c.cx.forward = fn
+	c.cx.outputs.forward = fn
 	return c
 }
 
@@ -274,15 +252,9 @@ func (c *Controller[In, Out]) ForwardTo[T any](s Sender[T], f func(Out) T) *Cont
 // no longer reaches it. It then runs until Shutdown or until the loop
 // stops.
 func (c *Controller[In, Out]) Detach() *Controller[In, Out] {
-	cx := c.cx
-	if cx.dead || cx.detached {
-		return c
+	if !c.cx.dead {
+		c.cx.detach(c.cx.loop, c.cx.shutdown)
 	}
-	cx.detached = true
-	if cx.release != nil {
-		cx.release()
-	}
-	cx.release = cx.loop.OnStop(cx.shutdown)
 	return c
 }
 
