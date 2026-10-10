@@ -7,7 +7,7 @@ import (
 
 	"github.com/stubbedev/gelm/app"
 	"github.com/stubbedev/gelm/component"
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/gelm/ui"
 	"github.com/stubbedev/gelm/widget"
 )
 
@@ -19,21 +19,16 @@ const (
 )
 
 type Counter struct {
-	face *render.Typeface
-	n    int
+	env ui.Env
+	n   int
 }
 
 func (c *Counter) Init(cx *component.Context[Msg, int]) widget.Widget {
-	label := widget.NewLabel(c.face, 15, "", widget.Current().Text)
-	cx.Watch(func() { label.SetText(strconv.Itoa(c.n)) })
-
-	inc := widget.NewButton(widget.NewLabel(c.face, 15, "+", widget.Current().Text), 8, 6)
-	inc.OnClick = func() { cx.Input(Increment) }
-
-	box := widget.NewBox(widget.Row, 6, 6)
-	box.Append(inc, false)
-	box.Append(label, true)
-	return box
+	return ui.Mount(cx, c.env, ui.Row(
+		ui.Button(ui.Label("-"), 8, 6).OnClick(func() { cx.Input(Decrement) }),
+		ui.Expand(ui.Label("").WatchText(func() string { return strconv.Itoa(c.n) })),
+		ui.Button(ui.Label("+"), 8, 6).OnClick(func() { cx.Input(Increment) }),
+	).Spacing(6))
 }
 
 func (c *Counter) Update(cx *component.Context[Msg, int], msg Msg) {
@@ -59,7 +54,7 @@ func ExampleWindow() {
 	application := app.NewApplication(sess)
 	if _, _, err := component.Window(application, app.WindowConfig{
 		Title: "counter", AppID: "dev.example.counter",
-	}, &Counter{face: face}); err != nil {
+	}, &Counter{env: ui.Env{Face: face, Size: 15}}); err != nil {
 		log.Fatal(err)
 	}
 	if err := application.Run(); err != nil && !errors.Is(err, app.ErrClosed) {

@@ -13,6 +13,14 @@
 - Children launched from a context shut down with their parent;
   top-level components shut down when the loop stops.
 - `component/componenttest.Loop` runs components headless in tests.
+- New `ui` package, relm4's `view!` as typed public builders: one
+  builder per widget, generated from package widget (`go generate
+  ./ui`; a test fails on a stale file). Each builder has a constructor
+  per `New*` function, a chainable method per setter (plus a `Watch`
+  form), hook field, `Bind*` and adder, and the shared props. There
+  are also `Ref`, `With`, `Watch`, `Track`, `Column`/`Row` with
+  `Expand`/`Aligned`, `If`, `Match`, `Each` and `Use`. `ui.Mount`
+  builds inside a component, and `ui.Build` builds on its own.
 - Change tracking: `Context.Tracked(v)` returns a `*Tracked[T]` whose
   `Changed` mark the component clears after every refresh;
   `Context.Track(fn, deps...)` re-runs `fn` only when a dependency
