@@ -1,13 +1,11 @@
 # System dark/light preference (appearance)
 
-How gelm follows the desktop's dark/light preference — and why it
-still never switches a theme on its own (#53). The preference lives in
+How gelm follows the desktop's dark/light preference, and why it
+never switches a theme on its own. The preference lives in
 xdg-desktop-portal's `org.freedesktop.portal.Settings` `color-scheme`
 key, the one place Hyprland, GNOME, KDE and friends agree to publish
 it. gelm reads it over the session bus in pure Go via
-`github.com/godbus/dbus/v5` (no cgo, repo rule; the a11y decision in
-[docs/a11y.md](a11y.md) kept godbus out for AT-SPI, but #53 sanctions
-it here).
+`github.com/godbus/dbus/v5`.
 
 ## The split: gelm offers, wayle wires
 
@@ -51,7 +49,7 @@ if mon.Appearance() == appearance.Light {
 }
 ```
 
-## Accent color and high contrast (#88)
+## Accent color and high contrast
 
 The same portal namespace carries two more preferences, tracked by
 the same monitor with the same contracts:

@@ -1,14 +1,9 @@
 # gelm architecture
 
-How gelm is put together, and the rules that keep it correct. The
-layering first, then the invariants each layer must hold — most of them
-were paid for by a real bug, and each cites where the code and its test
-pins live. Companion documents: [input-model.md](input-model.md) (the
-input contract), [application-model.md](application-model.md) (many
-windows, one process), [threading.md](threading.md) (the goroutine
-rules and `Invoke`/`Every`), [a11y.md](a11y.md), [icons.md](icons.md),
-[appearance.md](appearance.md) (the system dark/light preference), and
-[completeness.md](completeness.md) (the relm4/GTK coverage map).
+How gelm is put together, and the rules that keep it correct: the
+layering first, then the invariants each layer must hold. Most of them
+were paid for by a real bug, and each cites the code and the tests
+that pin it.
 
 ## Layers
 
@@ -46,15 +41,14 @@ no loop plumbing of their own.
 
 ### 1. One connection, one loop, one goroutine
 
-`Session.Roundtrip` / `Session.Step` are the only readers of the
+`Session.Roundtrip` and `Session.Step` are the only readers of the
 connection, and one goroutine drives the loop (internal/wlsession/
 session.go, app/application.go). Wayland requests from one client must
-stay ordered; per-window goroutines would need a marshalling layer to
-preserve that, so gelm simply does not have them (a deliberate
-non-goal, see docs/application-model.md). Timer work — key repeat,
-animation deadlines, tooltip dwell, animated cursors — runs on small
-goroutines that only arm `Session.WakeAfter`, which kicks the parked
-read with a `wl_display.sync` and returns.
+stay ordered, and per-window goroutines would need a marshalling layer
+to preserve that, so gelm has none (see Non-goals). Timer work (key
+repeat, animation deadlines, tooltip dwell, animated cursors) runs on
+small goroutines that only arm `Session.WakeAfter`, which kicks the
+parked read with a `wl_display.sync` and returns.
 
 ### 2. The loop parks
 
@@ -263,11 +257,9 @@ aliasing:
 so the next frame repaints every widget (rule 3's damage walk).
 Explicit per-widget colors (`button.Bg`) always win over the palette.
 
-**No per-widget theme overrides.** Superseded by the CSS design
-([css.md](css.md), #75): a stylesheet restyles widgets per class and
-state above the palette, while programmatic per-widget colors remain
-the top of the cascade and restyling still flows one way, from the
-palette down, when no stylesheet is loaded.
+Stylesheets ([css.md](css.md)) restyle widgets per class and state
+above the palette. Programmatic per-widget colors stay above the
+cascade, and with no stylesheet loaded the palette alone decides.
 
 **Derived state colors live on the palette, not in widgets.** Hover,
 pressed, and disabled appearances are methods on `Theme`
@@ -315,88 +307,37 @@ fades only the caret.
 
 **Contrast guard.** `SetTheme` checks `Text`/`Bg` and
 `TextMuted`/`Bg` against WCAG AA (4.5:1) and reports a warning at
-Warn on the injected library logger (`wlsession.SetLogger` or
-`app.SetLogger`; nil keeps the silent default). It warns and
+Warn on the injected library logger (`app.SetLogger`; nil keeps the
+silent default). It warns and
 applies; a theme is never rejected for its colors.
 
 ## Non-goals
 
-- **No per-window goroutines** — one loop, one goroutine, ordered
-  requests (a protocol requirement, rule 1). Long work needs a
-  goroutine plus app-side marshalling back onto the loop.
-- **No window manager** — no cascading, tiling, or focus stealing;
-  that is the compositor's job on Wayland.
-- **No in-process AT-SPI** — semantic roles and a keyboard-first
-  guarantee ship instead; the decision and the integration path are
-  recorded in docs/a11y.md.
-- **No automatic theme switching** — the toolkit never flips its own
+- **No per-window goroutines.** There is one loop and one goroutine,
+  so requests stay ordered (rule 1). Background work runs on its own
+  goroutines and reaches the loop through `Invoke`.
+- **No window manager.** gelm does no cascading, tiling or focus
+  stealing; on Wayland that is the compositor's job.
+- **No automatic theme switching.** The toolkit never changes its own
   palette, not even on a system dark/light change. The preference is
-  observed and offered as a signal instead (`internal/appearance`,
-  xdg-desktop-portal's color-scheme over dbus); the app wires it to
-  `SetTheme` if it wants to follow (docs/appearance.md). Theme
-  switches remain explicit.
-- **No per-widget theme overrides** — superseded by the CSS design
-  ([css.md](css.md), #75): a stylesheet is a supported per-class,
-  per-state override layer above the palette, while programmatic
-  widget colors stay above the cascade and restyling still flows down
-  from the palette when no stylesheet is loaded.
-- **No actor model or component framework** — widgets are retained
-  objects with plain Go callbacks (docs/application-model.md).
-- **No RTL/bidirectional text** — superseded by relm4 parity (#68):
-  bidi resolution, mirroring, and logical-order editing ship in the
-  text path.
-- **No clipboard images** — superseded (#69): image payloads are
-  offered and accepted alongside text.
-- **No window icons** — superseded (#70): xdg-toplevel-icon-v1.
-- **No GtkCss analog** — superseded by the CSS design
-  ([css.md](css.md), #75): a scoped, cached override layer on the
-  typed `Theme`, not a full GTK CSS object model.
-- **No Paned (draggable splitter)** — superseded (#71): `widget.Paned`.
-- **No color picker, calendar, or font chooser** — superseded
-  (#72–#74): `ColorChooser`, `Calendar`, `FontChooserDialog`. The full
-  capability map lives in [completeness.md](completeness.md).
-- **No single-pixel buffers** (wp_single_pixel_buffer_v1) — a
-  single-pixel buffer only pays off as its own surface, and gelm draws
-  each window into one buffer per surface (no subsurfaces): spacers
-  and dividers are a rectangle fill inside damage, with no SHM arena
-  traffic to save.
-- **No commit timing** (wp_commit_timing_v1, wp_fifo_v1) — frame
-  callbacks already pace every commit (rule 3) and no measurable
-  pacing win appeared without a video or game presentation path.
-- **No subsurfaces** (wl_subsurface) — same-buffer overlays (popover
-  shadows, drag icons through the DnD icon surface, the fader) cover
-  every need so far; one buffer per surface keeps damage and pacing
-  one problem.
-- **No security context** (wp_security_context_v1) — it is for
-  sandbox launchers handing out restricted connections, which gelm
-  does not ship.
-- **No toplevel drag** (xdg_toplevel_drag_v1) — it only matters for
-  detachable tabs; it is folded into that decision rather than bound
-  ahead of a use.
-- **No color management or HDR** (wp_color_management_v1,
-  frog_color_management_v1; #111) — researched and declined for now.
-  The upstream protocol (staging since wayland-protocols 1.41) is the
-  one to bind when this changes; frog- was its stopgap and is being
-  retired in its favor by the compositors that carried it. What
-  matters to an sRGB shm client is the protocol's default: a surface
-  without an image description "should" be handled as sRGB, which is
-  what every color-managing compositor does, so gelm's colors already
-  map correctly onto wide-gamut and HDR outputs. Tagging surfaces
-  explicitly as sRGB would restate that default. What gelm cannot do
-  is show content beyond sRGB: that needs per-surface image
-  descriptions, a canvas that carries a color state, 10-bit or
-  half-float shm formats, rasterizers that blend in the right transfer
-  function, CSS `color()` forms beyond sRGB, and goldens per state - a
-  pipeline-wide change with no current consumer (photo and video apps
-  that need it). The trigger to reopen: an app that must show
-  wide-gamut or HDR images; the first step then is the explicit sRGB
-  tag plus the output's preferred description, before any pipeline
-  work.
-
-Implemented from the same review (#110): content-type hints
-(`WindowConfig.ContentType`, `Window.SetContentType`), live surface
-opacity (`Window.SetOpacity`, wp_alpha_modifier_v1), the error bell
-(`widget.ErrorBell`, xdg_system_bell_v1 - a read-only Entry refusing a
-key, a SpinButton refusing text that does not parse), and
-wm_capabilities (`Window.Capabilities`; `AttachHeader` hides the
-buttons the compositor declares it cannot honor).
+  offered as a signal, and the app decides whether to call `SetTheme`
+  ([appearance.md](appearance.md)).
+- **No subsurfaces and no single-pixel buffers.** gelm draws each
+  window into one buffer per surface. Overlays (popover shadows, drag
+  icons, the fader) are painted into that buffer, and spacers are
+  rectangle fills inside the damage, so damage and pacing stay one
+  problem per window.
+- **No commit timing** (wp_commit_timing_v1, wp_fifo_v1). Frame
+  callbacks already pace every commit (rule 3). Revisit for a video or
+  game presentation path.
+- **No security context and no toplevel drag.** Security context is
+  for sandbox launchers, which gelm does not ship. Toplevel drag only
+  matters for detachable tabs.
+- **No color management or HDR.** A surface without an image
+  description is handled as sRGB, which is what gelm paints, so its
+  colors map correctly onto wide-gamut and HDR outputs. Showing content
+  beyond sRGB would need per-surface image descriptions, a color-state
+  canvas, 10-bit or half-float formats and blending in the right
+  transfer function. Revisit when an app must show wide-gamut or HDR
+  images: start with an explicit sRGB tag plus the output's preferred
+  description.

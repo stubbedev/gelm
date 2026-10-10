@@ -1,174 +1,28 @@
 # gelm
 
-A retained-mode widget kit for Wayland, written in pure Go (no cgo).
-Logical-coordinate widget space, damage-tracked repaint, a parked event
-loop that idles at 0% CPU, and a renderer built on premultiplied-alpha
-ARGB — designed to carry a future Go wayle; see
-[stubbedev/wayle#19](https://github.com/stubbedev/wayle/issues/19) for
-the full plan and the completeness ladder.
+A pure-Go (no cgo) widget toolkit for Wayland, built as a
+feature-complete counterpart of [relm4](https://relm4.org): a retained
+widget tree with GTK4/libadwaita-class widgets, xdg-shell and
+layer-shell windows, a GTK-flavored CSS layer over a typed palette,
+and an event loop that idles at 0% CPU.
 
-## Status
+It works end to end on real compositors. Sway is the required
+headless gate (`just headless`). Hyprland runs the same suite in a
+private NixOS VM (`just hyprland-vm`) and is allow-failure until it
+has stayed green.
 
-The toolkit core works end to end on real compositors (verified on
-Hyprland and headless sway): toplevel and layer-shell windows, the full
-widget set below, keyboard and pointer input with a defined
-[input model](docs/input-model.md), the clipboard, drag and drop, IME
-composition, fractional scaling with live rescale, and an animation
-clock. Theming is a composable palette value (`widget.SetTheme`,
-`widget.DarkTheme().WithAccentHex("#a6e3a1").WithPadding(8)`-style
-chaining, dark and light presets); state shades derive from the
-palette, and a GTK-flavored CSS subset layers on top as an override —
-`widget.LoadStylesheetFile("theme.css")` with element/class/id/state
-selectors, hot reload on file change, and classes/ids per widget
-(`b.AddClass("destructive")`, `b.SetID("save-button")`); see
-[docs/css.md](docs/css.md). The system's dark/light preference is
-available as a signal, not an automatic switch: `internal/appearance`
-watches xdg-desktop-portal's `color-scheme` (pure Go, no cgo) and the
-app wires it to `SetTheme` — see
-[docs/appearance.md](docs/appearance.md).
-
-The compositor-in-the-loop gate runs the same input suite on both
-compositors: sway is the primary required gate (`just headless`), and
-Hyprland runs the identical suite inside a private NixOS VM with its
-own DRM node (`just hyprland-vm`, tests/hyprland-vm.nix) — currently
-allow-failure while stability settles, promoted to blocking once it
-has been green for a sustained window. Verified per compositor: the
-full synthetic-seat suite (clicks, keys, drag, tooltip dwell, list
-multi-select, dialog modality, window states, clipboard roundtrip,
-compositor-kill disconnect) runs unchanged on both; only the pinning
-recipe differs (sway `for_window` rules vs Hyprland windowrules).
-
-## Feature matrix
-
-A capability-by-capability audit against relm4/GTK — including the
-deliberate non-goals and the honest, deferred gaps — lives in
-[docs/completeness.md](docs/completeness.md).
-
-### Widgets
-
-| Widget | Status | Notes and caveats |
-| --- | --- | --- |
-| Label | done | shaped text, alignment, `SetText`; wrap and ellipsize helpers live on the typeface |
-| Button | done | any child widget; hover/pressed states; Enter + Space activate |
-| Slider | done | drag or arrows/Home/End, clamped steps |
-| Switch, CheckButton | done | keyboard toggles on Enter and Space |
-| ProgressBar | done | animated by the app through `anim` tweens |
-| Entry | done | single-line; selection (shift motion, drag, double-click word, select-all); clipboard; IME preedit display |
-| SpinButton | done | numeric Entry: range, step, decimals; arrows/PageUp/PageDown step; Enter or blur commits (clamped, rounded, garbage reverts) |
-| TextArea | done | multi-line; soft wrap on by default (logical-line editing model); plain Tab indents, ctrl/shift+Tab traverse |
-| Scroll | done | both axes; draggable bars, gutter paging, auto-hide fade, fill/center stretch |
-| List | done | virtualized model rows (a viewport's worth of widgets); single/browse/multiple selection modes with rubber-band drag, edge auto-scroll, and the shift/ctrl keyboard model |
-| Notebook | done | tabs with close hook; ctrl+PageUp/PageDown cycles; hidden pages skipped by focus |
-| Menu | done | check/radio rows, separators, nested submenus; Alt-letter mnemonics (explicit or auto-resolved, underlined) fire while the menu is open, and application accelerators fire from an open menu through the same table the main key path uses |
-| Dropdown, `DropdownOf[T]` | done | combobox: face plus an inline themed item list (a `Children` child only while open, not an `app.Popover`); Enter/Space/Down opens, arrows navigate, Esc cancels; type-ahead jumps the open list by prefix (case-insensitive, repeated keys cycle, idle-timeout reset) and first-letter-cycles the closed face |
-| Popover (`app.Popover`) | done | anchored to any widget, flips inside the host; works on layer surfaces too |
-| Dialog, MessageBox (`app`) | done | parented toplevels; modality is window-level through xdg-dialog-v1 where the compositor offers it (input to the parent is compositor-blocked) with the application-level block as the floor; Esc/Enter responses |
-| Icon | done | raster, theme-name, file, and embedded-SVG constructors; symbolic sources follow the accent or a pinned tint |
-| Box, Stack, Overlay, Scroll | done | the containers; row/column layout with expanding children |
-| Paned | done | two panes with a draggable themed divider; MinSizer-floor clamps, keyboard nudges, GTK keep-child-one resize semantics |
-| Calendar, `app.CalendarDialog` | done | month grid with month/year navigation, today marker, single selection, keyboard motion across month boundaries, pluggable locale names |
-| Color picker, `app.ColorChooserDialog` | done | SV square (exact premultiplied gradient composition), hue/alpha strips, hex entry, theme presets and an in-memory session palette; keyboard-operable end to end |
-| Font chooser, `app.FontChooserDialog` | done | searchable virtualized family list (rows lazily rendered in their own face), size entry + synced slider, monospace filter, live preview through the production fallback chain |
-| Tooltips | done | `SetTooltip` / `SetTooltipMarkup` on any widget, configurable dwell/offset/size; toplevel and layer hosts |
-| Drag source / drop target | done | `widget.DragSource` + `DragEnterer` per widget; mime negotiation, highlight, cross-window drops |
-
-### Protocols and input
-
-| Piece | Status | Notes and caveats |
-| --- | --- | --- |
-| xdg-shell | done | toplevels: title/app-id, min/max, close-request veto, ping/pong, interactive resize edges (6 logical px), xdg_popup menus and popovers |
-| Window icons | done | `Application.SetIcon`/`SetWindowIcon` through xdg-toplevel-icon-v1: square shm buffers rasterized at the compositor’s preferred sizes (fixed ladder without a preference); silent Debug no-op where the protocol is absent (icon goes to the compositor/taskbar, not a WM_HINTS analog) |
-| wlr-layer-shell | done | layer, anchors, margins, exclusive zone, keyboard interactivity; popups via `get_popup` |
-| Screen capture (`capture`) | done | private capture connection: wlr-screencopy (outputs, regions, cursor overlay, damage, a reused shm slot), ext-image-copy-capture (windows via ext-foreign-toplevel-list sources, one-shot outputs, the damage-driven continuous `Stream`), Hyprland toplevel-export, and linux-dmabuf import as a zero-copy screencopy target; frames convert to `image.RGBA` from the 8/10-bit packed and 24-bit formats; covered in the headless gate |
-| xdg-decoration | optional | server-side decorations when the compositor decorates; silently skipped otherwise (decorated windows opt out of client resize edges) |
-| wl_data_device | done | clipboard (ctrl+c/x/v) and drag and drop, including cross-window; `set_actions`/`finish` gated on data-device v3 |
-| xkb keyboard | done | the compositor's keymap (alt layouts, AltGr, dead keys); synthesized key repeat at the compositor's rate/delay |
-| zwp_text_input_v3 | optional | IME composition into Entry and TextArea; no-op when the compositor lacks the global |
-| wp_viewporter + wp_fractional_scale_v1 | optional | fractional scale (1.25 and friends) with **live rescale**; integer `set_buffer_scale` fallback |
-| xdg_toplevel resize/min/max | done | interactive edges, published limits, configure relayout in the same frame |
-| Cursors | done | xcursor theme loading, animated cursors, per-widget shapes, resize aliases, leave restoration |
-| wl_shm buffers | done | one arena per session: a single fd and mapping, buffers as sub-allocations; busy buffers are never overwritten |
-
-### Engine
-
-| Piece | Status | Notes and caveats |
-| --- | --- | --- |
-| Parked event loop | done | blocks in one dispatch; wakes only for compositor events, frame callbacks, and timer deadlines — idle CPU 0%, even with an occluded surface |
-| Damage-tracked repaint | done | per-widget invalidation, damage-union clipping, per-buffer staleness so rotated buffers stay correct; idle frames paint nothing |
-| Measure cache | done | memoized per widget against its constraints; edits drop exactly the affected branch |
-| Animation | done | timer-paced clock; easing curves, damped springs, Sequence/Parallel timelines, mid-flight cancel |
-| Fractional scale | done | 120-based rational scales end to end; logical coordinates for input, layout, and carets; text rasterizes at device scale |
-| Rendering | done | premultiplied-alpha ARGB8888, signed-distance AA (coverage scales all channels), shaped text, SVG/PNG icons |
-| Translucent surfaces | done | `Background` alpha < 255 composites for compositor blur (Hyprland blurs translucent layer surfaces; panels keep alpha ≈ 200–235); a fully opaque background sets `wl_surface.set_opaque_region` automatically — see [docs/architecture.md](docs/architecture.md), rule 13 |
-| Accessibility | done | semantic roles + `DescribeTree`, keyboard-first guarantee pinned by tests; in-process AT-SPI bridge in every build, serving while the desktop asks for assistive technologies (Accessible/Component/Text/Action/Value/Cache, focus/caret/selection setters, character geometry, text and property events) — see [docs/a11y.md](docs/a11y.md) |
-| Icon themes | done | freedesktop icon-theme spec lookup in pure Go; follows the portal's live icon-theme setting (empty keeps the previous theme) — see [docs/icons.md](docs/icons.md) |
-| System dark/light preference | done | `internal/appearance` watches xdg-desktop-portal `color-scheme` via godbus (pure Go); reports `Dark`/`Light`/`Unknown` + `OnChange` — the app wires it to `widget.SetTheme`, gelm never switches on its own — see [docs/appearance.md](docs/appearance.md) |
-
-The rules that keep all of this correct — the parked loop, the
-resize-before-acquire ordering, buffer staleness, the shared line
-height, the implicit-grab input model — are written down with file
-pointers in [docs/architecture.md](docs/architecture.md).
-
-## Quickstart
+## Install
 
 ```sh
-devenv shell  # pinned go 1.27, gopls, golangci-lint, gofumpt, delve, just, sway; CGO_ENABLED=0
-just demo     # the gelm-hello showcase: widgets, drag, tooltips, menu, Tab focus
-just panel    # the gelm-panel layer-shell demo
+go get github.com/stubbedev/gelm@latest
 ```
 
-Other recipes: `just bar` (layer-shell bar), `just multi` (many windows
-on one loop), `just check` (the release gates: vet, lint, test,
-build), `just fmt` (gofumpt in place; `just fmt-check` is the gate CI
-runs), `just bench` (benchmarks, see below). For headless runs without
-a desktop: `just test-env` starts a private sway on wlroots' headless
-backend, and `just demo-headless`, `move`, `click`, `sweep`, `axis`
-drive the demo through the synthetic `wlpointer` client.
+Apps import the public packages: `app` (session, windows, loop,
+dialogs, desktop services), `widget` (the widget tree, theme, CSS),
+`render`, `transfer`, `highlight`, `capture`, and `widget/css`.
+Everything under `internal/` is implementation.
 
-### Packaging and releases
-
-The flake exposes the module and the demo binaries as packages, built
-with the same pinned Go toolchain the dev shell uses (no cgo, no
-network at build time — modules are vendored via `buildGoModule` with
-`vendorHash` pinning `go.sum`):
-
-```sh
-nix build .#gelm-hello   # the widget showcase binary
-nix build .#gelm-bar     # the layer-shell bar
-nix build .#gelm-panel   # the layer-shell panel
-nix build .#gelm         # the whole module: every demo binary + wlpointer
-```
-
-`packages.gelm.goModules` carries the vendored dependency tree for
-other nix Go builds. Plain Go consumers don't go through nix: the
-toolkit ships as an ordinary Go module, and apps pin a version by
-semver tag — `go get github.com/stubbedev/gelm@v0.1.0`.
-
-Releases are tag-driven: pushing `v*` runs
-`.github/workflows/release.yml`, which builds the three demo binaries
-(linux/amd64 + arm64, CGO off) with goreleaser and attaches archives
-to the GitHub release. goreleaser was chosen over a nix-based release
-path because release artifacts must be usable without nix, while the
-flake remains the primary build path; the two share the same source
-and the same CGO-off constraint.
-
-### Benchmarks
-
-`widget/benchmark_test.go` benchmarks the three frame passes on the
-showcase tree: `BenchmarkShowcaseMeasure` (cold measure, cache
-defeated by alternating constraints), `BenchmarkStaticTreeMeasure`
-(warm measure: zero recursion), `BenchmarkShowcaseArrange` (steady
-layout walk), `BenchmarkShowcasePaint` (full-window repaint), plus the
-damage-tracker benchmarks `BenchmarkProgressOnlyFrame` /
-`BenchmarkProgressOnlyFrames` (incremental repaint). Fixed sizes, no
-time-dependent content. `just bench` runs them; CI archives the
-numbers as workflow artifacts for trend watching — deliberately not a
-gate, shared runners are too noisy.
-
-### The minimal app
-
-gelm's session plumbing is `internal/`, so an app is a command inside
-the module (all the demos are). Add `cmd/hello/main.go`:
+## A minimal app
 
 ```go
 package main
@@ -179,112 +33,105 @@ import (
 	"log"
 
 	"github.com/stubbedev/gelm/app"
-	"github.com/stubbedev/gelm/internal/sysfont"
-	"github.com/stubbedev/gelm/internal/window"
-	"github.com/stubbedev/gelm/internal/wlsession"
 	"github.com/stubbedev/gelm/widget"
 )
 
 func main() {
-	sess := must(wlsession.Connect())
+	if err := run(); err != nil && !errors.Is(err, app.ErrClosed) {
+		log.Fatal(err)
+	}
+}
+
+func run() error {
+	sess, err := app.Connect()
+	if err != nil {
+		return err
+	}
 	defer sess.Close()
-	tf := must(sysfont.Sans())
-	surf := must(sess.Compositor().CreateSurface())
-	win := must(window.New(sess.WmBase(), surf, window.Config{
-		Title: "hello", AppID: "dev.stubbe.gelm.hello", Width: 320, Height: 120,
-	}))
-	die(surf.Commit())
-	for range 20 { // complete the xdg configure handshake
-		if win.EnsureUsable() == nil {
-			break
-		}
-		die(sess.Roundtrip())
+	face, err := app.Font("sans", 15)
+	if err != nil {
+		return err
 	}
 
 	clicks := 0
-	count := widget.NewLabel(tf, 15, "clicked 0 times", widget.Current().Text)
+	count := widget.NewLabel(face, 15, "clicked 0 times", widget.Current().Text)
 	button := widget.NewButton(count, 10, 8)
 	button.OnClick = func() {
 		clicks++
 		count.SetText(fmt.Sprintf("clicked %d times", clicks))
 	}
-	sess.OnWmBasePing = win.Pong
 
-	err := app.Run(app.Config{Session: sess, Host: win, Root: button, Background: widget.Current().Bg})
-	if err != nil && !errors.Is(err, app.ErrClosed) {
-		log.Fatal(err)
+	application := app.NewApplication(sess)
+	if _, err := application.NewWindow(app.WindowConfig{
+		Title: "hello", AppID: "dev.stubbe.gelm.hello",
+		Width: 320, Height: 120,
+		Root: button, Background: widget.Current().Bg,
+	}); err != nil {
+		return err
 	}
-}
-
-// must unwraps a (value, error) pair or dies; die checks an error.
-func must[T any](v T, err error) T {
-	if err != nil {
-		log.Fatal(err)
-	}
-	return v
-}
-
-func die(err error) {
-	if err != nil {
-		log.Fatal(err)
-	}
+	return application.Run()
 }
 ```
 
-`go run ./cmd/hello` maps the window; the compositor's close button
-ends the loop. This exact program is kept compiling (and honest) as
-`ExampleRun` in `app/example_test.go`, and the widget-level examples —
-`ExampleEntry`, `ExampleTextArea`, `ExampleMenu` — run under
-`go test ./...` with their output checked.
+This program is kept compiling as `ExampleApplication` in
+`app/example_test.go`.
 
-### Documentation
+## Development
+
+```sh
+devenv shell       # pinned Go, gopls, golangci-lint, gofumpt, just, sway; CGO_ENABLED=0
+just demo          # the gelm-hello showcase
+just check         # vet, lint, test, build: the release gates
+just headless      # the compositor-in-the-loop suite on a private headless sway
+just bench         # benchmarks (archived by CI, not a gate)
+```
+
+`nix build .#gelm` builds the module and every demo with the pinned
+toolchain. Pushing a `v*` tag releases the demo binaries
+(linux/amd64 and arm64) through goreleaser.
+
+## Documentation
 
 | Document | Contents |
 | --- | --- |
-| [docs/architecture.md](docs/architecture.md) | session → surfaces → app loop → router → widgets, and the invariants |
-| [docs/input-model.md](docs/input-model.md) | the input contract: routing, implicit grab, click/drag, dnd, keyboard, IME |
-| [docs/application-model.md](docs/application-model.md) | many windows on one loop; relm4/GTK concept mapping |
-| [docs/threading.md](docs/threading.md) | the threading contract: `app.Invoke`, `app.Every`, goroutine rules, and the relm4 Component/Worker/Command/Factory mapping |
-| [docs/a11y.md](docs/a11y.md) | the accessibility decision and the AT-SPI bridge |
-| [docs/appearance.md](docs/appearance.md) | following the system dark/light preference via xdg-desktop-portal, and the wiring example |
-| [docs/icons.md](docs/icons.md) | icon theme lookup and symbolic recoloring |
-| [docs/completeness.md](docs/completeness.md) | the relm4/GTK coverage map: shipped, deliberate non-goals, known gaps |
+| [docs/completeness.md](docs/completeness.md) | the capability map against relm4/GTK/libadwaita, and the known gaps |
+| [docs/architecture.md](docs/architecture.md) | the layers, the invariants that keep them correct, theming, non-goals |
+| [docs/application-model.md](docs/application-model.md) | windows, layer surfaces, disconnects, single instance, file dialogs, data transfer, chrome |
+| [docs/threading.md](docs/threading.md) | the loop goroutine, `Invoke`/`Every`, the off-loop guard, the typed messaging layer |
+| [docs/input-model.md](docs/input-model.md) | routing, implicit grab, click/drag, drag and drop, keyboard, IME, touch, tablets |
+| [docs/css.md](docs/css.md) | the CSS layer: selectors, values, properties, cascade, lifecycle |
+| [docs/appearance.md](docs/appearance.md) | following the desktop's color scheme, accent and contrast |
+| [docs/icons.md](docs/icons.md) | icon-theme lookup and symbolic recoloring |
+| [docs/a11y.md](docs/a11y.md) | semantic roles, the keyboard-first guarantee, the AT-SPI bridge |
+| [docs/inspector.md](docs/inspector.md) | the live widget inspector, tree dump, and doctor block |
 
 ## Demos
 
 | Command | What it shows |
 | --- | --- |
-| `cmd/gelm-hello` | the showcase: every widget, drag-to-move, context menu, tooltips, Tab focus |
-| `cmd/gelm-multi` | one process, one loop: per-output layer bars, on-demand windows, close-request veto |
-| `cmd/gelm-invoke` | the threading model: a goroutine updates a label via `app.Invoke`, `app.Every` drives a poller, the loop parks between ticks |
+| `cmd/gelm-hello` | the showcase: every core widget, drag and drop, context menu, tooltips, Tab focus |
+| `cmd/gelm-bar` | a layer-shell top bar repainting only what changed each second |
 | `cmd/gelm-panel` | a right-anchored layer-shell panel with live widgets |
-| `cmd/gelm-bar` | the M0 bar: a 32px top bar; each second only the old and new notch regions repaint |
-| `cmd/wlpointer` | synthetic pointer for the headless test env |
-
-## Roadmap
-
-Milestones from the plan: M1 paint, M2 widgets, M3 theming (palette
-plus the CSS override layer), and M4 input are in; M5 apps (bar, OSD,
-launcher, lock screen, settings) is where the demos point. Long term:
-GTK-class completeness, tiers T1-T4 in the issue.
+| `cmd/gelm-multi` | one loop: per-output layer bars, on-demand windows, close-request veto |
+| `cmd/gelm-invoke` | goroutines reaching the loop through `Invoke` and `Every` |
+| `cmd/gelm-messages` | the typed messaging layer and single-instance forwarding |
+| `cmd/gelm-settings` | a preferences app over typed persisted settings |
+| `cmd/gelm-columns` | ten thousand sorted, filtered rows; the tree view; drag-to-reorder |
+| `cmd/gelm-i18n` | the message catalog localizing every built-in string |
+| `cmd/gelm-states`, `cmd/gelm-multilist`, `cmd/gelm-popover` | the clients the headless suite drives: window states, multi-select, popovers |
+| `cmd/wlpointer`, `cmd/zz-vpclick` | synthetic input for the headless suite |
 
 ## Dependencies
 
-All pure Go, no cgo:
-
-- [neurlang/wayland](https://github.com/neurlang/wayland) — Wayland
-  client, event loop, and protocol scanner
-- [godbus/dbus/v5](https://github.com/godbus/dbus) — session-bus
-  access for `internal/appearance` (the system dark/light preference;
-  #53 sanctions this one, the a11y decision does not apply)
-- [go-text/typesetting](https://github.com/go-text/typesetting) —
-  Harfbuzz-grade shaping and glyph outlines
-- [golang.org/x/image](https://pkg.go.dev/golang.org/x/image) — vector
-  rasterization (and embedded test fonts)
-- [srwiley/oksvg](https://github.com/srwiley/oksvg) +
-  [srwiley/rasterx](https://github.com/srwiley/rasterx) — SVG icons
-- [unxed/xkb-go](https://github.com/unxed/xkb-go) — the compositor's
-  xkb keymap, self-contained (no system xkb data at runtime)
+All pure Go:
+[neurlang/wayland](https://github.com/neurlang/wayland) (patched copy
+in `third_party/`),
+[godbus/dbus](https://github.com/godbus/dbus),
+[go-text/typesetting](https://github.com/go-text/typesetting),
+[golang.org/x/image](https://pkg.go.dev/golang.org/x/image),
+[srwiley/oksvg](https://github.com/srwiley/oksvg) +
+[rasterx](https://github.com/srwiley/rasterx), and
+[unxed/xkb-go](https://github.com/unxed/xkb-go).
 
 ## License
 

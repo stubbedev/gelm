@@ -1,9 +1,8 @@
 # gelm input model
 
-This document defines gelm's input semantics, modeled on GTK's event
-controllers and seat grabs (see stubbedev/gelm#1). It is the contract
-behind `wlsession` -> `app` -> `widget.Router`; change the code and this
-document together.
+gelm's input semantics, modeled on GTK's event controllers and seat
+grabs: the contract behind `wlsession` -> `app` -> `widget.Router`.
+Change the code and this document together.
 
 ## Event flow
 
@@ -296,8 +295,7 @@ the way out - by convention an accelerator (Escape) that calls
 
 ## Touch and gestures
 
-gelm binds wl_touch (this overturns the earlier recorded non-goal of
-no touch pipeline, #105). Every contact routes to the surface it went
+gelm binds wl_touch. Every contact routes to the surface it went
 down on and holds its own implicit grab there, independent of the
 pointer's; a wl_touch.cancel ends every surface's contacts.
 
@@ -357,7 +355,7 @@ Capabilities are state, not a one-shot: when the compositor reports a
 capability lost, the session drops the matching object and any routing
 state (focus, grab) that depended on it; a later gain creates a fresh
 object. This keeps input alive across virtual-device cycles, tablet
-mode switches, and unplug-replug (gelm#46).
+mode switches, and unplug-replug.
 
 ## Debug traces
 
@@ -368,8 +366,7 @@ pacing under `frame`. Without the tag every call compiles out.
 
 Traces are not logging. The library itself is silent by default: an
 embedding application installs its `*slog.Logger` once
-(`wlsession.SetLogger` or `app.SetLogger`; nil — the default —
-discards everything) and only three things flow through it: Warn for
+(`app.SetLogger`; nil, the default, discards everything) and only three things flow through it: Warn for
 degraded-but-running (an advertised optional protocol whose bind
 failed, a theme below WCAG AA), Error for terminal conditions (the
 compositor raising a fatal protocol error), and Debug for protocol

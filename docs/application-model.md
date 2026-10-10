@@ -1,8 +1,7 @@
 # gelm application model
 
-How gelm composes multiple windows in one process (stubbedev/gelm#3),
-with the relm4 and gtk4-layer-shell concepts it borrows and the ones it
-deliberately drops.
+How gelm composes many windows in one process, and the relm4 and
+gtk4-layer-shell concepts it borrows.
 
 ## Pieces
 
@@ -62,7 +61,7 @@ the new session. The hook itself is optional observation (flush state
 before the teardown, never block indefinitely); without it the same
 clean exit runs.
 
-**Reconnect with rebuild (#117).** `Application.SetReconnect` turns a
+**Reconnect with rebuild.** `Application.SetReconnect` turns a
 lost connection into a rebuild instead of the exit, for the case it can
 honestly cover: the connection was lost without a protocol verdict (a
 compositor that killed the client would do it again) and every window
@@ -136,7 +135,7 @@ without the protocols keep the integer behavior.
 
 ## Single instance and remote activation
 
-`app.ClaimInstance` (#79) is the GApplication single-instance guard:
+`app.ClaimInstance` is the GApplication single-instance guard:
 the first process to claim an AppID becomes the primary and listens on
 a unix socket under `XDG_RUNTIME_DIR`; every later process forwards
 its invocation - argv, `--open` paths, working directory, activation
@@ -176,7 +175,7 @@ test is `TestSingleInstanceForwardsToPrimary`
 ## File dialogs
 
 `app.OpenFileDialog`, `OpenFilesDialog`, `OpenFolderDialog`, and
-`SaveFileDialog` (#82) wrap `widget.FileChooser` - the pure-Go picker
+`SaveFileDialog` wrap `widget.FileChooser` - the pure-Go picker
 - in the standard Dialog: a places row (Up, Home, Filesystem, and
 Recent when recents are on), the directory listing, pattern filters,
 a name row in save mode, and an ok button that refuses to close the
@@ -234,7 +233,7 @@ keyboard focus.
 packs, `WindowControls` (close/minimize/maximize buttons, shown when
 asked and hooked by the app), `widget.MenuBar` the in-window primary
 navigation opening the existing menu popovers, `widget.ActionBar` the
-bottom bar (#91). A press on the bar's background starts the
+bottom bar. A press on the bar's background starts the
 compositor's `xdg_toplevel.move` grab (the `WindowMover` contract any
 widget can implement), a double press maximizes, and
 `app.AttachHeader(win, bar)` wires controls and double-press to the
@@ -248,10 +247,10 @@ ship undecorated otherwise, the GTK4 default inverted. The two can
 coexist (a compositor frame around an app-drawn header); the app is
 always right about what it draws itself, the compositor about what it
 draws around it. Minimize and maximize buttons follow the
-compositor's `wm_capabilities` (#110): shown until it declares what it
+compositor's `wm_capabilities`: shown until it declares what it
 cannot do, hidden for that.
 
-**Window requests from code (#115).** `Window.BeginMove` and
+**Window requests from code.** `Window.BeginMove` and
 `BeginResize(edge)` start the compositor's grabs from the press under
 way (custom title areas, drag handles - the window supplies the press
 serial the protocol wants); `FullscreenOn(output)` names the monitor;
@@ -267,28 +266,23 @@ URI launch never trade tokens.
 
 | relm4 / GTK | gelm | note |
 | --- | --- | --- |
-| `relm4::Application` | `app.Application` | no `init`/`shutdown` split; construct, hook, `Run` |
-| `relm4::ApplicationWindow` | `app.Window` | declarative config instead of builder chains |
-| gtk4-layer-shell namespace/anchor/margin/exclusive | `LayerConfig` fields | same wire concepts, no layer-shell-in-window trickery |
-| `gtk::Window::close-request` | `Window.SetCloseRequest` | veto by returning false |
-| `relm4::Component` | callbacks + `app.Invoke` | the Elm actor split is unneeded — see docs/threading.md for the mapping and the Component-shaped pattern on top of Invoke |
-| `relm4::Worker` / `Command` | a plain goroutine + `app.Invoke` | background work computes, then crosses onto the loop through Invoke; periodic work is `app.Every` on the loop's timer wakes (docs/threading.md) |
-| `relm4::Factory` | `widget.List[W]` + `ListModel[W]` | model-driven, virtualized rows with `OnSelect`/`OnActivate`; `Changed()` re-queries (docs/threading.md) |
+| `relm4::RelmApp`, `gtk::Application` | `app.Application` | construct, hook, `Run`; there is no `startup`/`activate` split |
+| `ApplicationWindow` | `app.Window` from a `WindowConfig` | a declarative config instead of builder chains |
+| gtk4-layer-shell | `app.LayerWindow` from a `LayerConfig` | the same wire concepts: layer, anchors, margins, exclusive zone, keyboard mode |
+| `gtk::Window::close-request` | `Window.SetCloseRequest` | return false to veto |
 | `gtk::Application::quit` | `Application.Quit` | authoritative, bypasses vetoes |
-| GApplication single-instance / `command-line` / `open` | `app.ClaimInstance` + `InstanceConfig` hooks | socket-keyed guard; secondaries forward and exit 0, never touching the session (see above) |
-| adw misc: `Banner`, `BottomSheet`, `StatusPage`, `Avatar`, `SplitButton`, `ButtonContent`, `ToggleGroup`, `WrapBox`; relm4-css | the same names in `widget` (`WrapBox` is `FlowBox` with `SetJustify`); `widget/css` constants | `ViewSwitcher` is a `ToggleGroup` bound to a `Stack`; `app.AttachSplitButton` opens menus through the same path as `AttachMenuBar`; GTK `@define-color`/`@name` and the Adwaita named colors resolve in any stylesheet (docs/css.md) |
-| adw adaptive shells: `NavigationView`, `NavigationSplitView`, `OverlaySplitView`, `Carousel`, `ViewSwitcher`/`StackSwitcher`, `Clamp`, `BreakpointBin` | the same names in `widget` | one breakpoint engine shared by `BreakpointBin` and both split views; splits re-home their pages on every collapse so the cascade follows the visible layout |
-| gtk4 CSD: `HeaderBar`/`WindowControls`/`ActionBar`/`PopoverMenuBar` | `widget.HeaderBar`/`MenuBar`/`ActionBar` + `app.AttachHeader`/`AttachMenuBar` | move grab + double-click maximize through the WindowMover contract; decoration policy above |
-| relm4 `binding` module (`StringBinding`, `ConnectBindingExt`) | `widget.Binding[T]` + the widget `Bind*` connectors | loop-owned observable with equal-suppressed Set and deferred write-while-notifying; two-way wiring is echo-free by construction |
-| relm4/macros `open_dialog` / `save_dialog` / `open_button`, GTK `FileDialog` | `app.OpenFileDialog` family over `widget.FileChooser` | pure-Go picker (see File dialogs above), recents in XDG recently-used.xbel, overwrite confirmation, validating ok button |
-| GTK `UriLauncher`/`FileLauncher`, `g_app_info_launch_default_for_uri` | `app.OpenURL` / `app.OpenPath`, `OpenURLFromLink` for `OnLinkClick` | xdg-desktop-portal OpenURI with an activation token from the session (focus-correct launch), xdg-open fallback |
-| per-window `scale-factor` | per-window `Scale` plus live `preferred_scale` | fractional scaling lands with #14 |
+| GApplication single instance, `command-line`, `open` | `app.ClaimInstance` | see Single instance above |
+| `FileDialog`, relm4 `open_dialog`/`save_dialog` | `app.OpenFileDialog` family | see File dialogs above |
+| `UriLauncher`, `FileLauncher` | `Application.OpenURL`, `OpenPath` | portal OpenURI with an activation token, xdg-open fallback |
+| per-window `scale-factor` | per-window scale with live `preferred_scale` | see Multi-output above |
+
+The component side of relm4 (components, workers, commands, factories)
+is mapped in [threading.md](threading.md). The widget-by-widget map is
+[completeness.md](completeness.md).
 
 ## What is deliberately absent
 
-- No per-window goroutines: one loop, one goroutine, ordered requests
-  (a protocol requirement, not a taste choice).
-- No window manager: the application does not cascade or tile; that is
-  the compositor's job on Wayland.
-- No implicit single-window shortcut for layer surfaces: bars are
-  windows like any other, one per output.
+Bars are windows like any other, one per output: there is no implicit
+single-window shortcut for layer surfaces. The process-wide non-goals
+(no per-window goroutines, no window manager) are in
+[architecture.md](architecture.md#non-goals).
