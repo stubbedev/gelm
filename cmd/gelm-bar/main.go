@@ -1,47 +1,39 @@
-// Command gelm-bar is the M1 paint demo: a top bar anchored across the
-// output showing a label, a clock, and a moving second indicator, all
-// CPU-rasterized (rounded rects, gradient, shaped text) into pooled wl_shm
-// ARGB8888 buffers and kept current with damage-tracked repaints driven by
-// frame callbacks.
+// Command gelm-bar is a layer-shell top bar component: a logo pill, the
+// clock, and a seconds gauge, ticked once a second by Application.Every.
+// Damage tracking repaints only what changed each second (the gauge,
+// and the clock once a minute); build with -tags gelmdebug and run with
+// GOELM_DEBUG=frame to watch the damage rects. -dump renders one frame
+// to a PNG instead.
 package main
 
 import (
 	"bytes"
 	"errors"
 	"flag"
-	"fmt"
 	"image"
 	"image/png"
 	"log"
 	"os"
 	"time"
 
-	"github.com/stubbedev/gelm/internal/buffer"
-	"github.com/stubbedev/gelm/internal/layersurface"
-	"github.com/stubbedev/gelm/internal/sysfont"
-	"github.com/stubbedev/gelm/internal/wlsession"
+	"github.com/stubbedev/gelm/app"
+	"github.com/stubbedev/gelm/component"
 	"github.com/stubbedev/gelm/render"
-	"github.com/stubbedev/gelm/third_party/neurlang-wayland/wl"
-	"github.com/stubbedev/gelm/third_party/neurlang-wayland/wlclient"
+	"github.com/stubbedev/gelm/ui"
 	"github.com/stubbedev/gelm/widget"
 )
 
-// gelmLogoSVG is the demo module icon: a five-point star on a 24x24 grid.
 const gelmLogoSVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
   <path fill="#89b4fa" d="M12 2 L14.35 8.76 L21.51 8.91 L15.80 13.24 L17.88 20.09 L12 16 L6.12 20.09 L8.20 13.24 L2.49 8.91 L9.65 8.76 Z"/>
 </svg>`
 
-const (
-	barHeight    = 32
-	poolCapacity = 3
-)
+const barHeight = 32
 
 var (
-	bgColor     = render.RGB(0x1E, 0x1E, 0x2E)
-	accentColor = render.RGB(0x89, 0xB4, 0xFA)
-	textColor   = render.RGB(0xCD, 0xD6, 0xF4)
-	labelColor  = render.RGB(0xBA, 0xB6, 0xC8)
-	pillColor   = render.RGB(0x11, 0x11, 0x1B)
+	bgColor    = render.RGB(0x1E, 0x1E, 0x2E)
+	textColor  = render.RGB(0xCD, 0xD6, 0xF4)
+	labelColor = render.RGB(0xBA, 0xB6, 0xC8)
+	pillColor  = render.RGB(0x11, 0x11, 0x1B)
 )
 
 func main() {
@@ -53,28 +45,95 @@ func main() {
 	} else {
 		err = run()
 	}
-	if err != nil {
+	if err != nil && !errors.Is(err, app.ErrClosed) {
 		log.Fatal(err)
 	}
 }
 
-// dumpFrame renders a single bar frame offscreen and saves it as PNG, for
-// visual checks without a compositor.
-func dumpFrame(path string) error {
-	tf, err := sysfont.Sans()
+type tick time.Time
+
+type bar struct {
+	env  ui.Env
+	now  time.Time
+	logo *render.Icon
+}
+
+func newBar() (*bar, error) {
+	face, err := app.Font("sans-serif", 14)
+	if err != nil {
+		return nil, err
+	}
+	logo, err := render.LoadSVG([]byte(gelmLogoSVG), 16, 16)
+	if err != nil {
+		return nil, err
+	}
+	return &bar{env: ui.Env{Face: app.FontFallback(face), Size: 14, Ink: textColor}, now: time.Now(), logo: logo}, nil
+}
+
+func (b *bar) view() ui.Node {
+	return ui.Row(
+		ui.Aligned(ui.Button(ui.Row(ui.Icon(b.logo), ui.Label("gelm").Ink(labelColor)).Spacing(6), 4, 6).
+			Bg(pillColor).BgHover(render.RGB(0x18, 0x18, 0x25)).BgPressed(render.RGB(0x0c, 0x0c, 0x14)), widget.AlignCenter),
+		ui.Expand(ui.Spacer(0, 0)),
+		ui.Aligned(ui.Label("").Font(nil, 17).WatchText(func() string { return b.now.Format("15:04") }), widget.AlignCenter),
+		ui.Expand(ui.Spacer(0, 0)),
+		ui.Aligned(ui.LevelBar(0).WatchValue(func() float64 { return float64(b.now.Second()) / 59 }), widget.AlignCenter),
+	).Spacing(8).Padding(render.Insets{Left: 8, Right: 8})
+}
+
+func (b *bar) Init(cx *component.Context[tick, struct{}]) widget.Widget {
+	return ui.Mount(cx, b.env, b.view())
+}
+
+func (b *bar) Update(_ *component.Context[tick, struct{}], t tick) { b.now = time.Time(t) }
+
+func run() error {
+	sess, err := app.Connect()
 	if err != nil {
 		return err
 	}
-	font := sysfont.Fallback(tf)
-	const (
-		w, h, scale = 800, 32, 1
-	)
-	left := buildLeftModule(font, scale)
+	defer sess.Close()
+	b, err := newBar()
+	if err != nil {
+		return err
+	}
+	outputs := sess.Outputs()
+	if len(outputs) == 0 {
+		return errors.New("gelm-bar: no output to draw on")
+	}
+	application := app.NewApplication(sess)
+	ctrl, _, err := component.Layer(application, app.LayerConfig{
+		Output:        outputs[0],
+		Layer:         app.LayerTop,
+		Anchor:        app.AnchorTop | app.AnchorLeft | app.AnchorRight,
+		Height:        barHeight,
+		ExclusiveZone: barHeight,
+		Keyboard:      app.KeyboardNone,
+		Namespace:     "gelm-bar",
+		Background:    bgColor,
+		OnResize:      func(w, h int) { log.Printf("gelm-bar: mapped at %dx%d", w, h) },
+	}, b)
+	if err != nil {
+		return err
+	}
+	defer application.Every(time.Second, func() { ctrl.Send(tick(time.Now())) })()
+	return application.Run()
+}
+
+func dumpFrame(path string) error {
+	b, err := newBar()
+	if err != nil {
+		return err
+	}
+	b.now = time.Date(2026, 1, 1, 9, 41, 17, 0, time.UTC)
+	const w, h = 800, barHeight
+	root, _ := ui.Build(b.env, b.view())
 	data := make([]byte, render.Stride(w)*h)
 	cv := render.New(data, render.Stride(w), w, h)
 	cv.Clear(cv.Rect(), bgColor)
-	paintElements(cv, cv.Rect(), "09:41", 17, w, h, scale, font, left)
-
+	root.Measure(widget.Constraints{Max: widget.Size{W: w, H: h}})
+	root.Arrange(render.Rect{W: w, H: h})
+	root.Paint(cv)
 	img := image.NewNRGBA(image.Rect(0, 0, w, h))
 	for y := range h {
 		for x := range w {
@@ -89,232 +148,4 @@ func dumpFrame(path string) error {
 		return err
 	}
 	return os.WriteFile(path, buf.Bytes(), 0o600)
-}
-
-// buildLeftModule assembles the left bar module: a button holding the
-// logo icon and the gelm label.
-func buildLeftModule(font render.Font, scale int) *widget.Button {
-	icon, err := render.LoadSVG([]byte(gelmLogoSVG), 16*scale, 16*scale)
-	if err != nil {
-		panic(err)
-	}
-	inner := widget.NewBox(widget.Row, 6*scale, 0)
-	inner.Append(widget.NewIcon(icon), false)
-	inner.Append(widget.NewLabel(font, float64(14*scale), "gelm", labelColor), false)
-	btn := widget.NewButton(inner, 4*scale, 6*scale)
-	btn.Bg = pillColor
-	btn.BgHover = render.RGB(0x18, 0x18, 0x25)
-	btn.BgPressed = render.RGB(0x0c, 0x0c, 0x14)
-	return btn
-}
-
-// layOutLeftModule measures and places the left module at the bar's left
-// edge, vertically centered.
-func layOutLeftModule(btn *widget.Button, bufW, bufH, scale int) widget.Size {
-	sz := btn.Measure(widget.Constraints{Max: widget.Size{W: bufW, H: bufH}})
-	btn.Arrange(render.Rect{X: 8 * scale, Y: (bufH - sz.H) / 2, W: sz.W, H: sz.H})
-	return sz
-}
-
-func run() error {
-	sess, err := wlsession.Connect()
-	if err != nil {
-		return err
-	}
-	defer sess.Close()
-
-	tf, err := sysfont.Sans()
-	if err != nil {
-		return err
-	}
-	font := sysfont.Fallback(tf)
-	log.Printf("gelm-bar: font %q", tf.Family())
-
-	outputs := sess.Outputs()
-	if len(outputs) == 0 {
-		return errors.New("gelm-bar: no output to draw on")
-	}
-	out := outputs[0]
-
-	surf, err := sess.Compositor().CreateSurface()
-	if err != nil {
-		return fmt.Errorf("gelm-bar: create surface: %w", err)
-	}
-	if err := surf.SetBufferScale(int32(out.Scale)); err != nil {
-		return fmt.Errorf("gelm-bar: set buffer scale: %w", err)
-	}
-
-	ls, err := layersurface.New(sess, surf, out.WL, layersurface.Config{
-		Layer:         layersurface.LayerTop,
-		Anchor:        layersurface.AnchorTop | layersurface.AnchorLeft | layersurface.AnchorRight,
-		Height:        barHeight,
-		ExclusiveZone: barHeight,
-		Keyboard:      layersurface.KeyboardNone,
-		Namespace:     "gelm-bar",
-	})
-	if err != nil {
-		return err
-	}
-
-	create := func() (*buffer.Buffer, error) {
-		w, h := ls.Size()
-		return buffer.NewFile(sess.Shm(), w*out.Scale, h, out.Scale)
-	}
-	pool := buffer.New(create, poolCapacity)
-
-	if err := surf.Commit(); err != nil {
-		return fmt.Errorf("gelm-bar: initial commit: %w", err)
-	}
-	if err := sess.Roundtrip(); err != nil {
-		return fmt.Errorf("gelm-bar: configure roundtrip: %w", err)
-	}
-	if err := ls.EnsureUsable(); err != nil {
-		return fmt.Errorf("gelm-bar: %w", err)
-	}
-	w, h := ls.Size()
-	log.Printf("gelm-bar: mapped at %dx%d, scale %d", w, h, out.Scale)
-
-	var frameReady bool
-	leftBtn := buildLeftModule(font, out.Scale)
-	lastSecond := -1
-	lastClock := ""
-	lastBufW, lastBufH, lastScale := 0, 0, out.Scale
-	full := true
-
-	for !ls.Closed() {
-		if out.Scale != lastScale {
-			if err := surf.SetBufferScale(int32(out.Scale)); err != nil {
-				return fmt.Errorf("gelm-bar: set buffer scale: %w", err)
-			}
-			lastScale = out.Scale
-			leftBtn = buildLeftModule(font, out.Scale)
-			full = true
-		}
-		bufW, bufH := w*out.Scale, h*out.Scale
-		if bufW != lastBufW || bufH != lastBufH {
-			pool.Resize(create)
-			lastBufW, lastBufH = bufW, bufH
-			full = true
-		}
-
-		now := time.Now()
-		second := now.Second()
-		clock := now.Format("15:04")
-		if !full && second == lastSecond && clock == lastClock {
-			next := now.Truncate(time.Second).Add(time.Second)
-			time.Sleep(time.Until(next))
-			continue
-		}
-
-		dirty := dirtyRects(full, lastClock, lastSecond, clock, second, bufW, bufH, out.Scale, font)
-		lastSecond = second
-		lastClock = clock
-		full = false
-
-		b, err := pool.Acquire()
-		if errors.Is(err, buffer.ErrBusy) {
-			if err := sess.Roundtrip(); err != nil {
-				return fmt.Errorf("gelm-bar: dispatch while busy: %w", err)
-			}
-			continue
-		}
-		if err != nil {
-			return fmt.Errorf("gelm-bar: acquire buffer: %w", err)
-		}
-
-		cv := render.New(b.Data, b.Stride, b.Width, b.Height)
-		for _, r := range dirty {
-			cv.Clear(r, bgColor)
-			paintElements(cv, r, clock, second, bufW, bufH, out.Scale, font, leftBtn)
-		}
-
-		if err := surf.Attach(b.WL, 0, 0); err != nil {
-			return fmt.Errorf("gelm-bar: attach: %w", err)
-		}
-		for _, r := range dirty {
-			if err := surf.DamageBuffer(int32(r.X), int32(r.Y), int32(r.W), int32(r.H)); err != nil {
-				return fmt.Errorf("gelm-bar: damage: %w", err)
-			}
-		}
-		if err := surf.Commit(); err != nil {
-			return fmt.Errorf("gelm-bar: commit: %w", err)
-		}
-
-		cb, err := surf.Frame()
-		if err != nil {
-			return fmt.Errorf("gelm-bar: frame callback: %w", err)
-		}
-		frameReady = false
-		wlclient.CallbackAddListener(cb, frameDone{ready: &frameReady})
-
-		for !frameReady && !ls.Closed() {
-			if err := sess.Roundtrip(); err != nil {
-				return fmt.Errorf("gelm-bar: frame dispatch: %w", err)
-			}
-		}
-	}
-	return nil
-}
-
-// frameDone flips ready when the compositor reports the frame as taken
-// and unregisters the callback (done is a destructor event; skipping
-// the unregister leaks a proxy per frame).
-type frameDone struct {
-	ready *bool
-}
-
-// HandleCallbackDone implements wl.CallbackDoneHandler.
-func (f frameDone) HandleCallbackDone(ev wl.CallbackDoneEvent) {
-	ev.C.Unregister()
-	*f.ready = true
-}
-
-// clockRect is the pill region on the right holding the clock text.
-func clockRect(clock string, bufW, bufH, scale int, font render.Font) render.Rect {
-	clockText := font.Shape(clock, float64(14*scale))
-	w := int(clockText.Advance()) + 12*scale
-	return render.Rect{X: bufW - w - 8*scale, Y: 0, W: w, H: bufH}
-}
-
-// notchRect is the moving second indicator, in buffer pixels. It clamps to
-// the buffer, so a too-small bar yields an empty rect and nothing repaints.
-func notchRect(second, bufW, bufH, scale int) render.Rect {
-	margin := 8 * scale
-	notchW := 6 * scale
-	pad := 6 * scale
-	x := margin + second*(bufW-2*margin-notchW)/59
-	r := render.Rect{X: x, Y: pad, W: notchW, H: bufH - 2*pad}
-	return r.Intersect(render.Rect{X: 0, Y: 0, W: bufW, H: bufH})
-}
-
-// dirtyRects returns the regions to repaint: everything on the first or
-// resized frame, otherwise the union of the old and new clock and notch
-// regions.
-func dirtyRects(full bool, lastClock string, lastSecond int, clock string, second, bufW, bufH, scale int, font render.Font) []render.Rect {
-	if full {
-		return []render.Rect{{X: 0, Y: 0, W: bufW, H: bufH}}
-	}
-	old := render.UnionAll([]render.Rect{clockRect(lastClock, bufW, bufH, scale, font), notchRect(lastSecond, bufW, bufH, scale)})
-	new := render.UnionAll([]render.Rect{clockRect(clock, bufW, bufH, scale, font), notchRect(second, bufW, bufH, scale)})
-	return append(old.Subtract(new), new.Subtract(old)...)
-}
-
-// paintElements draws the left module, clock pill, and notch, confined to
-// r. The left module only changes on resize, so its widget tree is laid
-// out here for every call that could paint it.
-func paintElements(cv *render.Canvas, r render.Rect, clock string, second, bufW, bufH, scale int, font render.Font, left *widget.Button) {
-	prev := cv.PushClipDevice(r)
-	defer cv.PopClip(prev)
-
-	layOutLeftModule(left, bufW, bufH, scale)
-	if !left.Bounds().Intersect(r).Empty() {
-		left.Paint(cv)
-	}
-
-	textPx := float64(14 * scale)
-	pill := clockRect(clock, bufW, bufH, scale, font)
-	cv.RoundedRect(pill, 6*scale, pillColor)
-	font.DrawAligned(cv, clock, pill, textPx, textColor, render.AlignCenter)
-
-	cv.PaintGradient(notchRect(second, bufW, bufH, scale), render.Corners{}, render.Linear(180, render.GradientStop{Pos: 0, Color: accentColor}, render.GradientStop{Pos: 1, Color: pillColor}))
 }

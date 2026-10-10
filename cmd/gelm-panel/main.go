@@ -1,6 +1,7 @@
-// Command gelm-panel is the M2+M4 interactive demo: a right-anchored panel
-// with a slider (drag), progress bar, switch, checkbox, text entry, and a
-// scrollable list, all live through the pointer and keyboard input stack.
+// Command gelm-panel is the layer-shell demo: a right-anchored panel
+// component with a slider, progress bar, switch, checkbox, text entry,
+// notes area and a scrollable list, live through the pointer and
+// keyboard input stack. -dump renders one frame to a PNG instead.
 package main
 
 import (
@@ -12,20 +13,16 @@ import (
 	"image/png"
 	"log"
 	"os"
+	"slices"
 
 	"github.com/stubbedev/gelm/app"
-	"github.com/stubbedev/gelm/internal/clipboard"
-	"github.com/stubbedev/gelm/internal/layersurface"
-	"github.com/stubbedev/gelm/internal/sysfont"
-	"github.com/stubbedev/gelm/internal/wlsession"
+	"github.com/stubbedev/gelm/component"
 	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/gelm/ui"
 	"github.com/stubbedev/gelm/widget"
 )
 
-const (
-	panelWidth   = 260
-	poolCapacity = 3
-)
+const panelWidth = 260
 
 var (
 	bgColor   = render.RGB(0x1E, 0x1E, 0x2E)
@@ -43,29 +40,108 @@ func main() {
 	} else {
 		err = run()
 	}
-	if err != nil {
+	if err != nil && !errors.Is(err, app.ErrClosed) {
 		log.Fatal(err)
 	}
 }
 
-// dumpFrame renders a single panel frame offscreen and saves it as PNG.
+type brightness float64
+
+type panel struct {
+	env   ui.Env
+	level float64
+}
+
+func (p *panel) Init(cx *component.Context[brightness, struct{}]) widget.Widget {
+	return ui.Mount(cx, p.env, p.view(cx.Sender()))
+}
+
+func (p *panel) view(send component.Sender[brightness]) ui.Node {
+	heading := func(text string) ui.Node { return ui.Label(text).Font(nil, 12).Ink(muted) }
+	servers := make([]string, 14)
+	for i := range servers {
+		servers[i] = fmt.Sprintf("server-%02d.example", i+1)
+	}
+	return ui.Column(
+		ui.Label("gelm panel").Font(nil, 17).Ink(accent),
+		heading("Brightness"),
+		ui.Slider(0, 100, 1, p.level*100).OnChanged(func(v float64) { send.Send(brightness(v / 100)) }),
+		ui.ProgressBar(p.level).WatchValue(func() float64 { return p.level }),
+		ui.Label("").Font(nil, 12).Ink(muted).WatchText(func() string { return fmt.Sprintf("%d%%", int(p.level*100)) }),
+		heading("Preferences"),
+		ui.Row(ui.CheckButton(true), ui.Label("Enable notifications")).Spacing(8),
+		ui.Row(ui.Switch(false), ui.Label("Night light")).Spacing(8),
+		heading("Quick note"),
+		ui.Entry().Placeholder("type here"),
+		heading("Notes"),
+		ui.TextArea().Placeholder("multi-line..."),
+		heading("Servers (scroll me)"),
+		ui.Expand(ui.Scroll(ui.Column(ui.Each(slices.Values(servers), func(s string) ui.Node {
+			return ui.Label(s)
+		})...).Spacing(2).Padding(render.UniformInsets(4))).ShowBars(true)),
+	).Spacing(12).Padding(render.UniformInsets(12))
+}
+
+func (p *panel) Update(_ *component.Context[brightness, struct{}], b brightness) {
+	p.level = float64(b)
+}
+
+func newPanel() (*panel, error) {
+	face, err := app.Font("sans-serif", 13)
+	if err != nil {
+		return nil, err
+	}
+	return &panel{env: ui.Env{Face: app.FontFallback(face), Size: 13, Ink: textColor}, level: 0.5}, nil
+}
+
+func run() error {
+	sess, err := app.Connect()
+	if err != nil {
+		return err
+	}
+	defer sess.Close()
+	p, err := newPanel()
+	if err != nil {
+		return err
+	}
+	outputs := sess.Outputs()
+	if len(outputs) == 0 {
+		return errors.New("gelm-panel: no output to draw on")
+	}
+	application := app.NewApplication(sess)
+	application.SetClipboard(app.NewClipboard(sess))
+	if _, _, err := component.Layer(application, app.LayerConfig{
+		Output:        outputs[0],
+		Layer:         app.LayerTop,
+		Anchor:        app.AnchorTop | app.AnchorBottom | app.AnchorRight,
+		Width:         panelWidth,
+		ExclusiveZone: panelWidth,
+		Keyboard:      app.KeyboardOnDemand,
+		Namespace:     "gelm-panel",
+		Background:    bgColor,
+		OnResize:      func(w, h int) { log.Printf("gelm-panel: mapped at %dx%d", w, h) },
+	}, p); err != nil {
+		return err
+	}
+	return application.Run()
+}
+
 func dumpFrame(path string) error {
-	tf, err := loadFont()
+	p, err := newPanel()
 	if err != nil {
 		return err
 	}
 	const dumpH = 480
-	root := buildPanel(tf)
+	root, _ := ui.Build(p.env, p.view(component.Sender[brightness]{}))
 	data := make([]byte, render.Stride(panelWidth)*dumpH)
 	cv := render.New(data, render.Stride(panelWidth), panelWidth, dumpH)
 	cv.Clear(cv.Rect(), bgColor)
 	root.Measure(widget.Constraints{Max: widget.Size{W: panelWidth, H: dumpH}})
-	root.Arrange(render.Rect{X: 0, Y: 0, W: panelWidth, H: dumpH})
+	root.Arrange(render.Rect{W: panelWidth, H: dumpH})
 	root.Paint(cv)
 	return writePNG(data, panelWidth, dumpH, path)
 }
 
-// writePNG converts a premultiplied ARGB8888 buffer to a PNG file.
 func writePNG(data []byte, w, h int, path string) error {
 	img := image.NewNRGBA(image.Rect(0, 0, w, h))
 	for y := range h {
@@ -81,127 +157,4 @@ func writePNG(data []byte, w, h int, path string) error {
 		return err
 	}
 	return os.WriteFile(path, buf.Bytes(), 0o600)
-}
-
-// loadFont resolves the system sans-serif face behind a fallback
-// chain, so CJK and emoji text in the panel renders past .notdef.
-func loadFont() (*render.Chain, error) {
-	tf, err := sysfont.Sans()
-	if err != nil {
-		return nil, err
-	}
-	return sysfont.Fallback(tf), nil
-}
-
-// buildPanel assembles the panel widget tree with all the interactive
-// wiring.
-func buildPanel(font render.Font) *widget.Box {
-	progress := widget.NewProgressBar(0.5)
-	status := widget.NewLabel(font, 12, "50%", muted)
-	entry := widget.NewEntry(font, 13, textColor)
-
-	slider := widget.NewSlider(0, 100, 1, 50)
-	slider.OnChanged = func(v float64) {
-		progress.SetValue(v / 100)
-		status.SetText(fmt.Sprintf("%d%%", int(v)))
-	}
-
-	list := widget.NewBox(widget.Column, 2, 4)
-	for i := range 14 {
-		list.Append(widget.NewLabel(font, 13, fmt.Sprintf("server-%02d.example", i+1), textColor), false)
-	}
-	scroll := widget.NewScroll(list)
-	scroll.ShowBars = true
-
-	notif := widget.NewCheckButton(true)
-	night := widget.NewSwitch(false)
-
-	row := func(kids ...widget.Widget) widget.Widget {
-		b := widget.NewBox(widget.Row, 8, 0)
-		for _, k := range kids {
-			b.Append(k, false)
-		}
-		return b
-	}
-	root := widget.NewBox(widget.Column, 12, 12)
-	root.Append(widget.NewLabel(font, 17, "gelm panel", accent), false)
-	root.Append(widget.NewLabel(font, 12, "Brightness", muted), false)
-	root.Append(slider, false)
-	root.Append(progress, false)
-	root.Append(status, false)
-	root.Append(widget.NewLabel(font, 12, "Preferences", muted), false)
-	root.Append(row(notif, widget.NewLabel(font, 13, "Enable notifications", textColor)), false)
-	root.Append(row(night, widget.NewLabel(font, 13, "Night light", textColor)), false)
-	root.Append(widget.NewLabel(font, 12, "Quick note", muted), false)
-	root.Append(entry, false)
-	root.Append(widget.NewLabel(font, 12, "Notes", muted), false)
-	notes := widget.NewTextArea(font, 13, textColor)
-	notes.SetPlaceholder("multi-line...")
-	root.Append(notes, false)
-	root.Append(widget.NewLabel(font, 12, "Servers (scroll me)", muted), false)
-	root.Append(scroll, true)
-	entry.SetPlaceholder("type here")
-	return root
-}
-
-func run() error {
-	sess, err := wlsession.Connect()
-	if err != nil {
-		return err
-	}
-	defer sess.Close()
-
-	tf, err := loadFont()
-	if err != nil {
-		return err
-	}
-
-	outputs := sess.Outputs()
-	if len(outputs) == 0 {
-		return errors.New("gelm-panel: no output to draw on")
-	}
-	out := outputs[0]
-
-	surf, err := sess.Compositor().CreateSurface()
-	if err != nil {
-		return fmt.Errorf("gelm-panel: create surface: %w", err)
-	}
-	if err := surf.SetBufferScale(int32(out.Scale)); err != nil {
-		return fmt.Errorf("gelm-panel: set buffer scale: %w", err)
-	}
-
-	ls, err := layersurface.New(sess, surf, out.WL, layersurface.Config{
-		Layer:         layersurface.LayerTop,
-		Anchor:        layersurface.AnchorTop | layersurface.AnchorBottom | layersurface.AnchorRight,
-		Width:         panelWidth,
-		ExclusiveZone: panelWidth,
-		Keyboard:      layersurface.KeyboardOnDemand,
-		Namespace:     "gelm-panel",
-	})
-	if err != nil {
-		return err
-	}
-
-	root := buildPanel(tf)
-
-	if err := surf.Commit(); err != nil {
-		return fmt.Errorf("gelm-panel: initial commit: %w", err)
-	}
-	if err := sess.Roundtrip(); err != nil {
-		return fmt.Errorf("gelm-panel: configure roundtrip: %w", err)
-	}
-	if err := ls.EnsureUsable(); err != nil {
-		return fmt.Errorf("gelm-panel: %w", err)
-	}
-	w, h := ls.Size()
-	log.Printf("gelm-panel: mapped at %dx%d, scale %d", w, h, out.Scale)
-
-	return app.Run(app.Config{
-		Session:    sess,
-		Host:       ls,
-		Scale:      out.Scale,
-		Root:       root,
-		Background: bgColor,
-		Clipboard:  clipboard.New(sess),
-	})
 }

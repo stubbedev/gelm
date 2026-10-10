@@ -7,16 +7,14 @@
 package main
 
 import (
-	"errors"
 	"log"
 	"os"
 	"path/filepath"
 
-	"github.com/unxed/xkb-go"
-
 	"github.com/stubbedev/gelm/app"
-	"github.com/stubbedev/gelm/internal/sysfont"
-	"github.com/stubbedev/gelm/internal/wlsession"
+	"github.com/stubbedev/gelm/component"
+	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/gelm/ui"
 	"github.com/stubbedev/gelm/widget"
 )
 
@@ -26,68 +24,47 @@ var (
 	notifyKey = app.Key[bool]{Name: "notifications", Default: true}
 )
 
-func main() {
-	if err := run(); err != nil && !errors.Is(err, app.ErrClosed) {
-		log.Fatal(err)
-	}
+type prefs struct {
+	env      ui.Env
+	settings *app.Settings
 }
 
-func run() error {
-	sess, err := wlsession.Connect()
-	if err != nil {
-		return err
-	}
-	defer sess.Close()
-	tf, err := sysfont.Sans()
-	if err != nil {
-		return err
-	}
-
-	application := app.NewApplication(sess)
-	settings := app.NewSettings(application, "dev.stubbe.gelm.settings")
-	theme := widget.Current()
-
-	name := widget.NewEntry(tf, 14, theme.Text)
-	defer name.BindText(nameKey.Binding(settings))()
-	volume := widget.NewSlider(0, 100, 1, 0)
-	defer volume.BindValue(scaleBinding(settings))()
-	notify := widget.NewSwitch(false)
-	defer notify.BindOn(notifyKey.Binding(settings))()
-
+func (p *prefs) Init(cx *component.Context[struct{}, struct{}]) widget.Widget {
 	path := "settings.json"
 	if dir, err := os.UserConfigDir(); err == nil {
 		path = filepath.Join(dir, "dev.stubbe.gelm.settings", "settings.json")
 	}
-	hint := widget.NewLabel(tf, 12, "edits persist to "+path+"; restart to see them; Escape quits", theme.TextMuted)
-
-	row := func(label string, control widget.Widget) *widget.Box {
-		box := widget.NewBox(widget.Row, 12, 0)
-		box.Append(widget.NewLabel(tf, 14, label, theme.Text), false)
-		box.Append(control, false)
-		return box
+	row := func(label string, control ui.Node) ui.Node {
+		return ui.Row(ui.Label(label), control).Spacing(12)
 	}
-	root := widget.NewBox(widget.Column, 14, 24)
-	root.Append(row("name", name), false)
-	root.Append(row("volume", volume), false)
-	root.Append(row("notifications", notify), false)
-	root.Append(hint, false)
+	return ui.Mount(cx, p.env, ui.Column(
+		row("name", ui.Entry().BindText(nameKey.Binding(p.settings))),
+		row("volume", ui.Slider(0, 100, 1, 0).BindValue(scaleBinding(p.settings))),
+		row("notifications", ui.Switch(false).BindOn(notifyKey.Binding(p.settings))),
+		ui.Label("edits persist to "+path+"; restart to see them; Escape quits").
+			Font(nil, 12).Ink(widget.Current().TextMuted),
+	).Spacing(14).Padding(render.UniformInsets(24)))
+}
 
-	application.OnKey(func(_ *widget.Router, code uint32, mods wlsession.Mods) {
-		if mods&wlsession.ModAlt == 0 && sess.KeySym(code) == xkb.KeyEscape {
-			application.Quit()
+func (p *prefs) Update(*component.Context[struct{}, struct{}], struct{}) {}
+
+func main() {
+	err := component.Run(app.WindowConfig{
+		Title: "gelm settings", AppID: "dev.stubbe.gelm.settings",
+		Width: 420, Height: 220, Background: widget.Current().Bg,
+	}, func(a *app.Application) (*prefs, error) {
+		face, err := app.Font("sans-serif", 14)
+		if err != nil {
+			return nil, err
 		}
+		if err := a.AddAccel("Escape", widget.NewAction("quit", a.Quit)); err != nil {
+			return nil, err
+		}
+		return &prefs{env: ui.Env{Face: face, Size: 14}, settings: app.NewSettings(a, "dev.stubbe.gelm.settings")}, nil
 	})
-
-	if _, err := application.NewWindow(app.WindowConfig{
-		Title: "gelm settings",
-		AppID: "dev.stubbe.gelm.settings",
-		Width: 420, Height: 220,
-		Root:       root,
-		Background: theme.Bg,
-	}); err != nil {
-		return err
+	if err != nil {
+		log.Fatal(err)
 	}
-	return application.Run()
 }
 
 // scaleBinding adapts the 0..1 persisted volume to the slider's

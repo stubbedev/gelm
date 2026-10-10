@@ -41,6 +41,16 @@
   action, and application menus show each action row's accelerator.
   The string-keyed `AddAction` and `AddWidgetAccel` are removed, and
   `AccelInfo` carries `Action` and `Scope`.
+- `component.Run(cfg, setup)`: relm4's `RelmApp::run` (connect, build
+  the root component, open its window, run).
+- `WindowConfig.OnResize` / `LayerConfig.OnResize`: the logical size
+  on the loop, the first configure included. `app.Trace` writes
+  application events into the gelmdebug trace stream, and
+  `app.WindowState` names `Window.State`'s type.
+- Every demo builds on the public API alone; the app-structure ones
+  (`gelm-hello`, `gelm-invoke`, `gelm-settings`, `gelm-i18n`,
+  `gelm-panel`, `gelm-bar`) are components with typed builders.
+  `internal/publicapi` fails on an internal import.
 - New `ui` package, relm4's `view!` as typed public builders: one
   builder per widget, generated from package widget (`go generate
   ./ui`; a test fails on a stale file). Each builder has a constructor

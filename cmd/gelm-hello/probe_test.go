@@ -3,20 +3,25 @@ package main
 import (
 	"testing"
 
-	"github.com/stubbedev/gelm/internal/sysfont"
+	"github.com/stubbedev/gelm/app"
+	"github.com/stubbedev/gelm/component"
+	"github.com/stubbedev/gelm/component/componenttest"
 	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/gelm/ui"
 	"github.com/stubbedev/gelm/widget"
 )
 
 // arrangedShowcase builds the showcase tree laid out at the demo window
 // size, ready for hit tests and router input.
-func arrangedShowcase(t *testing.T) showcase {
+func arrangedShowcase(t *testing.T) *showcase {
 	t.Helper()
-	tf, err := sysfont.Sans()
+	face, err := app.Font("sans-serif", 14)
 	if err != nil {
 		t.Skip("no system font:", err)
 	}
-	show := buildUI(tf)
+	show := &showcase{env: ui.Env{Face: face, Size: 14}}
+	var loop componenttest.Loop
+	component.Launch(&loop, show)
 	const (
 		w, h = 640, 470
 	)

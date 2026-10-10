@@ -22,8 +22,6 @@ import (
 
 	"github.com/stubbedev/gelm/app"
 	"github.com/stubbedev/gelm/component"
-	"github.com/stubbedev/gelm/internal/sysfont"
-	"github.com/stubbedev/gelm/internal/wlsession"
 	"github.com/stubbedev/gelm/render"
 	"github.com/stubbedev/gelm/widget"
 )
@@ -82,12 +80,12 @@ func run() error {
 	}
 	defer ins.Close()
 
-	sess, err := wlsession.Connect()
+	sess, err := app.Connect()
 	if err != nil {
 		return err
 	}
 	defer sess.Close()
-	tf, err := sysfont.Sans()
+	tf, err := app.Font("sans-serif", 14)
 	if err != nil {
 		return err
 	}
@@ -125,8 +123,8 @@ func run() error {
 		return box
 	}
 
-	application.OnKey(func(_ *widget.Router, code uint32, mods wlsession.Mods) {
-		if mods&wlsession.ModAlt == 0 && sess.KeySym(code) == xkb.KeyEscape {
+	application.OnKey(func(_ *widget.Router, code uint32, mods app.Mods) {
+		if mods&app.ModAlt == 0 && sess.KeySym(code) == xkb.KeyEscape {
 			application.Quit()
 		}
 	})

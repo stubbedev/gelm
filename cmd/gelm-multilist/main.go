@@ -16,9 +16,6 @@ import (
 	"github.com/unxed/xkb-go"
 
 	"github.com/stubbedev/gelm/app"
-	"github.com/stubbedev/gelm/internal/debug"
-	"github.com/stubbedev/gelm/internal/sysfont"
-	"github.com/stubbedev/gelm/internal/wlsession"
 	"github.com/stubbedev/gelm/render"
 	"github.com/stubbedev/gelm/widget"
 )
@@ -46,12 +43,12 @@ func main() {
 }
 
 func run() error {
-	sess, err := wlsession.Connect()
+	sess, err := app.Connect()
 	if err != nil {
 		return err
 	}
 	defer sess.Close()
-	tf, err := sysfont.Sans()
+	tf, err := app.Font("sans-serif", 14)
 	if err != nil {
 		return err
 	}
@@ -74,10 +71,10 @@ func run() error {
 		return "[" + strings.Join(parts, ",") + "]"
 	}
 	list.OnSelectionChanged = func(sel []int) {
-		debug.Log("demo", "selection %s", fmtRows(sel))
+		app.Trace("demo", "selection %s", fmtRows(sel))
 	}
 	list.OnActivate = func(i int) {
-		debug.Log("demo", "activated %d", i)
+		app.Trace("demo", "activated %d", i)
 	}
 
 	root := widget.NewBox(widget.Column, 8, 10)
@@ -94,11 +91,11 @@ func run() error {
 		Height:     300,
 		Root:       root,
 		Background: widget.Current().Bg,
-		OnKey: func(_ *widget.Router, code uint32, mods wlsession.Mods) {
+		OnKey: func(_ *widget.Router, code uint32, mods app.Mods) {
 			// d opens a modal dialog parented to this window, so the
 			// headless suite can drive the dialog-modality lifecycle
 			// (open, block, respond, restore) end to end.
-			if mods&wlsession.ModCtrl != 0 || sess.KeySym(code) != xkb.Keysym('d') {
+			if mods&app.ModCtrl != 0 || sess.KeySym(code) != xkb.Keysym('d') {
 				return
 			}
 			if dialog != nil && !dialog.Closed() {
@@ -115,17 +112,17 @@ func run() error {
 				Buttons:         []app.DialogButton{{Label: "OK", Response: "ok"}},
 				DefaultResponse: "ok",
 				CancelResponse:  "ok",
-				OnResponse:      func(resp string) { debug.Log("demo", "dialog response %s", resp) },
+				OnResponse:      func(resp string) { app.Trace("demo", "dialog response %s", resp) },
 			})
 			if err != nil {
-				debug.Log("demo", "dialog error %v", err)
+				app.Trace("demo", "dialog error %v", err)
 				return
 			}
 			dialog = d
 			dialogs++
-			debug.Log("demo", "dialog open %d", dialogs)
+			app.Trace("demo", "dialog open %d", dialogs)
 		},
-		OnClosed: func() { debug.Log("demo", "closed") },
+		OnClosed: func() { app.Trace("demo", "closed") },
 	})
 	if err != nil {
 		return err
@@ -142,12 +139,12 @@ func run() error {
 		}
 		traced = true
 		ww, wh := w.Size()
-		debug.Log("demo", "mapped %dx%d", ww, wh)
+		app.Trace("demo", "mapped %dx%d", ww, wh)
 		root.Measure(widget.Constraints{Max: widget.Size{W: ww, H: wh}})
 		root.Arrange(render.Rect{X: 0, Y: 0, W: ww, H: wh})
 		b := list.Bounds()
 		for i := range rows {
-			debug.Log("demo", "row %d center (%d,%d)", i, b.X+b.W/2, b.Y+i*rowH+rowH/2)
+			app.Trace("demo", "row %d center (%d,%d)", i, b.X+b.W/2, b.Y+i*rowH+rowH/2)
 		}
 	})
 

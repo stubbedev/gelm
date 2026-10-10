@@ -360,7 +360,8 @@ mode switches, and unplug-replug.
 ## Debug traces
 
 `internal/debug` (build tag `gelmdebug`, categories via GOELM_DEBUG)
-traces the path at its seams: `wire`-level pointer events with surface
+traces the path at its seams, and `app.Trace` lets an application
+trace its own events into the same timeline: `wire`-level pointer events with surface
 ids in `wlsession`, routing decisions and hit bounds in `app`, frame
 pacing under `frame`. Without the tag every call compiles out.
 
