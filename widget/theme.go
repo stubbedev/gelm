@@ -95,6 +95,7 @@ func SetTheme(t *Theme) {
 	}
 	current = t
 	themeGen++
+	markDamage()
 	syncThemeSheet(t)
 	for _, w := range t.contrastWarnings() {
 		themeWarn(w)

@@ -88,6 +88,11 @@ func (f frameDone) HandleCallbackDone(ev wl.CallbackDoneEvent) {
 	*f.ready = true
 }
 
+// Owes reports whether the painter has a frame to paint: a tween
+// callback or content change marked it. Owners skip the Pass call
+// while it reads false, the popover-style gate.
+func (pc *Painter) Owes() bool { return pc.dirty.Load() }
+
 // Pass paints at most one frame: when a repaint is owed and the
 // compositor has taken the previous one, measure, arrange, paint under
 // the current reveal, commit, and arm the next frame callback. The

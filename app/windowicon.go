@@ -188,6 +188,9 @@ func (a *Application) applyWindowIcon(w *hostWindow, icon *postedIcon) {
 // reapWindowIcons releases the icons of windows that left the loop:
 // the icon objects must not outlive their toplevels' buffers.
 func (a *Application) reapWindowIcons() {
+	if len(a.appliedIcons) == 0 && len(a.windowIcons) == 0 && len(a.windowIconSrc) == 0 {
+		return
+	}
 	live := make(map[*hostWindow]bool, len(a.windows))
 	handles := make(map[*Window]bool, len(a.windows))
 	for _, hw := range a.windows {

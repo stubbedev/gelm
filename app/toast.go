@@ -254,17 +254,29 @@ type toastLayer struct {
 	// latest toast's config.
 	margin, max int
 	slots       []*widget.Toast
+	// children is the cached Children() view over root and slots,
+	// rebuilt on add/remove so the damage walk borrows it for free.
+	children []widget.Widget
 }
 
 // Children exposes the wrapped root and the live toasts in paint
-// order, so damage collection and focus traversal descend.
+// order, so damage collection and focus traversal descend. The view
+// is cached and rebuilt only on structural change; a never-built one
+// is built here, so layers constructed bare stay correct.
 func (l *toastLayer) Children() []widget.Widget {
-	out := make([]widget.Widget, 0, len(l.slots)+1)
-	out = append(out, l.root)
-	for _, t := range l.slots {
-		out = append(out, t)
+	if l.children == nil && l.root != nil {
+		l.syncChildren()
 	}
-	return out
+	return l.children
+}
+
+// syncChildren rebuilds the cached children view after a structural
+// change.
+func (l *toastLayer) syncChildren() {
+	l.children = append(l.children[:0], l.root)
+	for _, t := range l.slots {
+		l.children = append(l.children, t)
+	}
 }
 
 // Measure passes through to the wrapped root: the toasts float, the
@@ -343,6 +355,7 @@ func (l *toastLayer) add(t *widget.Toast) {
 		l.markDirty()
 	}
 	l.slots = append(l.slots, t)
+	l.syncChildren()
 	l.markDirty()
 }
 
@@ -357,6 +370,7 @@ func (l *toastLayer) remove(t *widget.Toast) {
 		}
 	}
 	t.Close()
+	l.syncChildren()
 	l.markDirty()
 	if len(l.slots) == 0 {
 		l.close()
@@ -370,6 +384,7 @@ func (l *toastLayer) close() {
 		s.Close()
 	}
 	l.slots = nil
+	l.syncChildren()
 	if l.hw != nil && l.hw.router.Root == widget.Widget(l) {
 		l.hw.router.Root = l.root
 		l.markDirty()

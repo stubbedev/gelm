@@ -111,6 +111,7 @@ func (t *Toast) SetHovered(on bool) {
 	}
 	t.hovered = on
 	t.styleDirty = true
+	markDamage()
 	if on {
 		t.stopTimer()
 		if t.leaving {
