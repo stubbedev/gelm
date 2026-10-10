@@ -64,3 +64,47 @@ func TestNotebookInsertAndMoveTab(t *testing.T) {
 		t.Errorf("tabs %v selected %q, want [c a b] with c selected", names, n.SelectedTab())
 	}
 }
+
+func TestStackInsertAndMoveReorderPages(t *testing.T) {
+	s := NewStack()
+	s.Add("a", NewSpacer(1, 1)).Add("c", NewSpacer(1, 1))
+	s.Insert(1, "b", NewSpacer(1, 1))
+	if got := s.Order(); !slices.Equal(got, []string{"a", "b", "c"}) {
+		t.Fatalf("order after Insert = %v", got)
+	}
+	s.Move("a", 2)
+	if got := s.Order(); !slices.Equal(got, []string{"b", "c", "a"}) || s.Visible() != "a" {
+		t.Errorf("order after Move = %v visible %q, want [b c a] still showing a", got, s.Visible())
+	}
+}
+
+func TestGridPlaceMovesWithoutDisplacing(t *testing.T) {
+	g := NewGrid(0, 0)
+	a, b := NewSpacer(1, 1), NewSpacer(1, 1)
+	g.Attach(a, 0, 0, 1, 1).Attach(b, 1, 0, 1, 1)
+	removed := 0
+	SetRemovedHook(func(Widget) { removed++ })
+	defer SetRemovedHook(nil)
+	g.Place(a, 1, 0, 1, 1)
+	g.Place(b, 2, 0, 1, 1)
+	if removed != 0 || len(g.Children()) != 2 {
+		t.Errorf("Place displaced a child: removed=%d children=%d", removed, len(g.Children()))
+	}
+}
+
+func TestNotebookCloseTabAtKeepsTheSelectedPage(t *testing.T) {
+	n := NewNotebook(testFace(t))
+	for _, name := range []string{"a", "b", "c", "d"} {
+		n.AppendTab(name, NewSpacer(1, 1))
+	}
+	n.SelectTab("c")
+	n.CloseTab("a")
+	if n.SelectedTab() != "c" {
+		t.Errorf("closing an earlier tab switched the page to %q", n.SelectedTab())
+	}
+	n.CloseTabAt(2)
+	n.CloseTabAt(1)
+	if n.SelectedTab() != "b" {
+		t.Errorf("closing the selected last tab selected %q, want b", n.SelectedTab())
+	}
+}

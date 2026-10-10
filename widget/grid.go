@@ -189,6 +189,22 @@ func (g *Grid) Attach(w Widget, col, row, colSpan, rowSpan int) *Grid {
 	return g
 }
 
+// Place moves an attached child to a new cell in place, without
+// displacing whoever sits there, so a batch of moves can pass through
+// overlapping states: the widget stays attached and keeps its focus.
+// Unknown widgets are ignored.
+func (g *Grid) Place(w Widget, col, row, colSpan, rowSpan int) *Grid {
+	for _, c := range g.child {
+		if c.w == w {
+			c.col, c.row = max(0, col), max(0, row)
+			c.colSpan, c.rowSpan = max(1, colSpan), max(1, rowSpan)
+			g.InvalidateLayout()
+			return g
+		}
+	}
+	return g
+}
+
 // SetAlign selects how w sits inside its spanned run along each axis.
 // Unknown widgets are ignored.
 func (g *Grid) SetAlign(w Widget, h, v Align) *Grid {
