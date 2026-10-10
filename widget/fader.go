@@ -41,7 +41,7 @@ func (f *Fader) Measure(con Constraints) Size {
 // Arrange passes the rect straight through to the child.
 func (f *Fader) Arrange(r render.Rect) {
 	f.ArrangeRoot(r)
-	f.child.Arrange(r)
+	arrangeChild(f.child, r)
 	setParents(f, f.child)
 }
 

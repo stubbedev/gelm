@@ -69,7 +69,7 @@ func (b *Button) box(v *style.Values) cssInsets {
 func (b *Button) Arrange(r render.Rect) {
 	border, inner := boxRects(b.box(b.style(b)), r)
 	b.ArrangeRoot(border)
-	b.child.Arrange(inner)
+	arrangeChild(b.child, inner)
 	setParents(b, b.child)
 }
 

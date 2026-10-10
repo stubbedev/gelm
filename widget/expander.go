@@ -209,7 +209,7 @@ func (e *Expander) arrangeChild(r render.Rect) {
 		W: max(0, r.W-2*bodyPadX),
 		H: h,
 	}
-	e.child.Arrange(e.childRect)
+	arrangeChild(e.child, e.childRect)
 	setParents(e, e.child)
 }
 

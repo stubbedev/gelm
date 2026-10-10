@@ -421,7 +421,7 @@ func (c *FlowBoxChild) Measure(con Constraints) Size {
 func (c *FlowBoxChild) Arrange(r render.Rect) {
 	border, inner := boxRects(boxOf(c.style(c), render.Insets{}), r)
 	c.node.Arrange(border)
-	c.child.Arrange(inner)
+	arrangeChild(c.child, inner)
 	setParents(c, c.child)
 }
 

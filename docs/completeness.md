@@ -37,6 +37,7 @@ live in [architecture.md](architecture.md#non-goals).
 | undo/redo | bounded coalescing stack shared by `Entry` and `TextArea` | widget/undo.go |
 | TextView, SourceView | `TextArea` (soft wrap, Tab trap), code view (line numbers, highlighters, auto-indent); `highlight`: TOML, Go, JSON, YAML, Markdown, Adwaita schemes | widget/textarea.go, widget/codeview.go, highlight/ |
 | DropDown, ComboBox | `Dropdown`, `DropdownOf[T]`, `NewDropdownRows` (icons, headers); type-ahead | widget/dropdown.go |
+| widget layout properties (`hexpand`, `vexpand`, `halign`, `valign`, `margin-*`) | `SetHExpand`/`SetVExpand` (propagated like GTK's computed expand), `SetHAlign`/`SetVAlign`, `SetMargin` on every widget, honored by the containers | widget/layoutprops.go |
 | Box, CenterBox, Stack, Overlay, ScrolledWindow | `Box`, `CenterBox`, `Stack` (transitions), `Overlay`, `Scroll` (kinetic, `RevealRect`), `Scrollbar` | widget/box.go, widget/centerbox.go, widget/containers.go |
 | Grid, FlowBox, adw WrapBox | `Grid` (spans, squeeze to MinSizer floors), `FlowBox`, `NewWrapBox` | widget/grid.go, widget/flowbox.go |
 | Paned, Frame, AspectFrame, Revealer, Expander, SizeGroup | the same names | widget/paned.go, widget/frame.go, widget/revealer.go, widget/expander.go, widget/shrink.go |

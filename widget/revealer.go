@@ -278,7 +278,7 @@ func (r *Revealer) Arrange(rect render.Rect) {
 	if r.collapses() {
 		rect = r.childRect(rect)
 	}
-	r.child.Arrange(rect)
+	arrangeChild(r.child, rect)
 }
 
 // childRect places a collapsing slide's child in slot: entering from

@@ -94,6 +94,7 @@ type Widget interface {
 // the memoized Measure result, dropped by InvalidateLayout when a
 // mutation changes what a widget wants.
 type node struct {
+	layout  layoutProps
 	bounds  render.Rect
 	parent  Widget
 	tooltip string
@@ -445,6 +446,7 @@ func (n *node) markSubInvalid() bool {
 // painting too).
 func (n *node) InvalidateLayout() {
 	n.measureDirty = true
+	n.layout.dropExpand()
 	n.Invalidate()
 	n.markSubLayout()
 }
@@ -472,6 +474,7 @@ func (n *node) markSubLayout() {
 func (n *node) markMeasureDirty() bool {
 	was := n.measureDirty
 	n.measureDirty = true
+	n.layout.dropExpand()
 	return was
 }
 
@@ -716,5 +719,5 @@ func PaintChild(cv *render.Canvas, w Widget) {
 // measure, so a measure ahead of the first arrange is already styled.
 func measureChild(parent, child Widget, con Constraints) Size {
 	setParents(parent, child)
-	return child.Measure(con)
+	return measureWithMargin(child, con)
 }

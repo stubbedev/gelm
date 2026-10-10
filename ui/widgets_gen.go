@@ -19,15 +19,20 @@ type nodeProps interface {
 	SetDebugName(name string)
 	SetElement(name string)
 	SetEnabled(enabled bool)
+	SetHAlign(a widget.Align)
+	SetHExpand(on bool)
 	SetID(id string)
 	SetInlineStyle(css string)
 	SetInlineStylePriority(css string, priority int)
+	SetMargin(m render.Insets)
 	SetOnClickWithin(fn func())
 	SetOnFocusChanged(fn func(focused bool))
 	SetOnHoverWithin(fn func(on bool))
 	SetState(flags widget.StateFlags, on bool)
 	SetTooltip(s string)
 	SetTooltipMarkup(markup string)
+	SetVAlign(a widget.Align)
+	SetVExpand(on bool)
 	SetVisible(visible bool)
 }
 
@@ -97,6 +102,30 @@ func (b *base[W, B]) WatchEnabled(get func() bool) B {
 	return b.self
 }
 
+// HAlign calls SetHAlign on the widget.
+func (b *base[W, B]) HAlign(a widget.Align) B {
+	b.do(func(s *Scope, w W) { w.SetHAlign(a) })
+	return b.self
+}
+
+// WatchHAlign re-applies SetHAlign with get's value after every update.
+func (b *base[W, B]) WatchHAlign(get func() widget.Align) B {
+	b.watch(func(w W) { w.SetHAlign(get()) })
+	return b.self
+}
+
+// HExpand calls SetHExpand on the widget.
+func (b *base[W, B]) HExpand(on bool) B {
+	b.do(func(s *Scope, w W) { w.SetHExpand(on) })
+	return b.self
+}
+
+// WatchHExpand re-applies SetHExpand with get's value after every update.
+func (b *base[W, B]) WatchHExpand(get func() bool) B {
+	b.watch(func(w W) { w.SetHExpand(get()) })
+	return b.self
+}
+
 // ID calls SetID on the widget.
 func (b *base[W, B]) ID(id string) B {
 	b.do(func(s *Scope, w W) { w.SetID(id) })
@@ -124,6 +153,18 @@ func (b *base[W, B]) WatchInlineStyle(get func() string) B {
 // InlineStylePriority calls SetInlineStylePriority on the widget.
 func (b *base[W, B]) InlineStylePriority(css string, priority int) B {
 	b.do(func(s *Scope, w W) { w.SetInlineStylePriority(css, priority) })
+	return b.self
+}
+
+// Margin calls SetMargin on the widget.
+func (b *base[W, B]) Margin(m render.Insets) B {
+	b.do(func(s *Scope, w W) { w.SetMargin(m) })
+	return b.self
+}
+
+// WatchMargin re-applies SetMargin with get's value after every update.
+func (b *base[W, B]) WatchMargin(get func() render.Insets) B {
+	b.watch(func(w W) { w.SetMargin(get()) })
 	return b.self
 }
 
@@ -172,6 +213,30 @@ func (b *base[W, B]) TooltipMarkup(markup string) B {
 // WatchTooltipMarkup re-applies SetTooltipMarkup with get's value after every update.
 func (b *base[W, B]) WatchTooltipMarkup(get func() string) B {
 	b.watch(func(w W) { w.SetTooltipMarkup(get()) })
+	return b.self
+}
+
+// VAlign calls SetVAlign on the widget.
+func (b *base[W, B]) VAlign(a widget.Align) B {
+	b.do(func(s *Scope, w W) { w.SetVAlign(a) })
+	return b.self
+}
+
+// WatchVAlign re-applies SetVAlign with get's value after every update.
+func (b *base[W, B]) WatchVAlign(get func() widget.Align) B {
+	b.watch(func(w W) { w.SetVAlign(get()) })
+	return b.self
+}
+
+// VExpand calls SetVExpand on the widget.
+func (b *base[W, B]) VExpand(on bool) B {
+	b.do(func(s *Scope, w W) { w.SetVExpand(on) })
+	return b.self
+}
+
+// WatchVExpand re-applies SetVExpand with get's value after every update.
+func (b *base[W, B]) WatchVExpand(get func() bool) B {
+	b.watch(func(w W) { w.SetVExpand(get()) })
 	return b.self
 }
 

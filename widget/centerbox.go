@@ -41,7 +41,7 @@ func (b *CenterBox) Measure(con Constraints) Size {
 	}
 	var w, h int
 	for _, c := range b.Children() {
-		sz := c.Measure(Constraints{Max: con.Max})
+		sz := measureChild(b, c, Constraints{Max: con.Max})
 		w += sz.W
 		h = max(h, sz.H)
 	}
@@ -66,19 +66,19 @@ func (b *CenterBox) Arrange(r render.Rect) {
 	inner := o.Shrink(r)
 	cw := 0
 	if b.center != nil {
-		cw = b.center.Measure(Constraints{Max: Size{W: inner.W, H: inner.H}}).W
+		cw = measureChild(b, b.center, Constraints{Max: Size{W: inner.W, H: inner.H}}).W
 	}
 	cx := inner.X + (inner.W-cw)/2
 	if b.start != nil {
-		sw := b.start.Measure(Constraints{Max: Size{W: inner.W, H: inner.H}}).W
-		b.start.Arrange(render.Rect{X: inner.X, Y: inner.Y, W: sw, H: inner.H})
+		sw := measureChild(b, b.start, Constraints{Max: Size{W: inner.W, H: inner.H}}).W
+		arrangeChild(b.start, render.Rect{X: inner.X, Y: inner.Y, W: sw, H: inner.H})
 	}
 	if b.center != nil {
-		b.center.Arrange(render.Rect{X: cx, Y: inner.Y, W: cw, H: inner.H})
+		arrangeChild(b.center, render.Rect{X: cx, Y: inner.Y, W: cw, H: inner.H})
 	}
 	if b.end != nil {
-		ew := b.end.Measure(Constraints{Max: Size{W: inner.W, H: inner.H}}).W
-		b.end.Arrange(render.Rect{X: inner.X + inner.W - ew, Y: inner.Y, W: ew, H: inner.H})
+		ew := measureChild(b, b.end, Constraints{Max: Size{W: inner.W, H: inner.H}}).W
+		arrangeChild(b.end, render.Rect{X: inner.X + inner.W - ew, Y: inner.Y, W: ew, H: inner.H})
 	}
 }
 
