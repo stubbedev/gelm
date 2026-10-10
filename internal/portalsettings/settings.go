@@ -1,4 +1,4 @@
-package appearance
+package portalsettings
 
 import (
 	"slices"
@@ -7,7 +7,7 @@ import (
 	"github.com/godbus/dbus/v5"
 )
 
-// The per-setting machinery every tracked portal key shares (#88):
+// The per-setting machinery every tracked portal key shares:
 // one current value, one listener list, one update path. The monitor's
 // single mutex covers all settings; update runs the listeners outside
 // it, in registration order, skipping tombstoned slots.

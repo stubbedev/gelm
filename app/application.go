@@ -16,7 +16,6 @@ import (
 	"time"
 
 	"github.com/stubbedev/gelm/internal/animclock"
-	"github.com/stubbedev/gelm/internal/appearance"
 	"github.com/stubbedev/gelm/internal/clipboard"
 	"github.com/stubbedev/gelm/internal/datacontrol"
 	"github.com/stubbedev/gelm/internal/debug"
@@ -26,6 +25,7 @@ import (
 	"github.com/stubbedev/gelm/internal/layersurface"
 	"github.com/stubbedev/gelm/internal/notify"
 	"github.com/stubbedev/gelm/internal/popup"
+	"github.com/stubbedev/gelm/internal/portalsettings"
 	"github.com/stubbedev/gelm/internal/recentfiles"
 	"github.com/stubbedev/gelm/internal/surfx"
 	"github.com/stubbedev/gelm/internal/window"
@@ -82,13 +82,8 @@ type Application struct {
 	// openPopovers are the popovers the loop drives, oldest first.
 	openPopovers []*openPopover
 	// toasts tracks each window's toast stack (see toast.go).
-	toasts toastRegistry
-	// appearance follows the portal's live icon-theme setting (#64) so
-	// themed icons re-resolve without an app restart; stopIconFollow
-	// unwires at Run's exit. The monitor is icon-lookup plumbing, not a
-	// palette swap: the color-scheme preference stays the app's to wire
-	// (docs/appearance.md).
-	appearance     *appearance.Monitor
+	toasts         toastRegistry
+	portal         *portalsettings.Monitor
 	stopIconFollow func()
 	// windowIcons (windowicon.go): per-window overrides and the app
 	// default posted through xdg-toplevel-icon-v1, plus the icons
@@ -233,8 +228,8 @@ func NewApplication(sess *wlsession.Session) *Application {
 	// themed icons re-resolve. Any cache reset (that switch, new search
 	// paths, a refresh) is bridged into the loop as the repaint that
 	// walks the damage and picks the change up.
-	a.appearance = appearance.New()
-	a.stopIconFollow = a.appearance.OnIconThemeChange(icons.Default().ApplyIconTheme)
+	a.portal = portalsettings.New()
+	a.stopIconFollow = a.portal.OnIconThemeChange(icons.Default().ApplyIconTheme)
 	a.repaintOnIconReset(icons.Default())
 	if inspect.Enabled() {
 		a.setInspect(true)
@@ -646,8 +641,8 @@ func (a *Application) Run() error {
 		if a.stopIconFollow != nil {
 			a.stopIconFollow()
 		}
-		if a.appearance != nil {
-			a.appearance.Close()
+		if a.portal != nil {
+			a.portal.Close()
 		}
 		a.closeNotifier()
 		a.shortcuts.shutdown()

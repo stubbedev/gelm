@@ -1,9 +1,11 @@
-package appearance
+package portalsettings
 
 import (
 	"testing"
 
 	"github.com/godbus/dbus/v5"
+
+	"github.com/stubbedev/gelm/appearance"
 )
 
 // TestAccentValue pins the accent mapping: a (ddd) triple inside a
@@ -34,11 +36,11 @@ func TestAccentValue(t *testing.T) {
 // TestContrastValue pins the contrast mapping: 1 is high, 0 and
 // anything else are no preference.
 func TestContrastValue(t *testing.T) {
-	if got := contrastValue(dbus.MakeVariant(uint32(1))); got != ContrastHigh {
+	if got := contrastValue(dbus.MakeVariant(uint32(1))); got != appearance.ContrastHigh {
 		t.Errorf("1 mapped to %v", got)
 	}
 	for _, v := range []any{dbus.MakeVariant(uint32(0)), dbus.MakeVariant(uint32(7)), dbus.MakeVariant("high")} {
-		if got := contrastValue(v); got != ContrastUnknown {
+		if got := contrastValue(v); got != appearance.ContrastUnknown {
 			t.Errorf("%v mapped to %v, want unknown", v, got)
 		}
 	}
@@ -51,10 +53,10 @@ func TestContrastValue(t *testing.T) {
 func TestMonitorSignalRouting(t *testing.T) {
 	m := &Monitor{}
 	var scheme, icons, accents, contrasts int
-	m.OnChange(func(Appearance) { scheme++ })
+	m.OnColorSchemeChange(func(appearance.ColorScheme) { scheme++ })
 	m.OnIconThemeChange(func(string) { icons++ })
-	m.OnAccentChange(func(Accent) { accents++ })
-	m.OnContrastChange(func(Contrast) { contrasts++ })
+	m.OnAccentChange(func(appearance.Accent) { accents++ })
+	m.OnContrastChange(func(appearance.Contrast) { contrasts++ })
 
 	settingSignal := func(ns, key string, value any) *dbus.Signal {
 		return &dbus.Signal{Name: changedSig, Path: portalPath, Body: []any{ns, key, value}}
@@ -72,8 +74,8 @@ func TestMonitorSignalRouting(t *testing.T) {
 		t.Errorf("fired scheme=%d icons=%d accents=%d contrasts=%d, want 1 each",
 			scheme, icons, accents, contrasts)
 	}
-	if m.Appearance() != Dark {
-		t.Errorf("appearance = %v", m.Appearance())
+	if m.ColorScheme() != appearance.Dark {
+		t.Errorf("appearance = %v", m.ColorScheme())
 	}
 	if m.IconTheme() != "Papirus" {
 		t.Errorf("icon theme = %q", m.IconTheme())
@@ -81,7 +83,7 @@ func TestMonitorSignalRouting(t *testing.T) {
 	if a := m.Accent(); !a.Known || a.B != 0.9 {
 		t.Errorf("accent = %+v", a)
 	}
-	if m.Contrast() != ContrastHigh {
+	if m.Contrast() != appearance.ContrastHigh {
 		t.Errorf("contrast = %v", m.Contrast())
 	}
 }
@@ -91,8 +93,8 @@ func TestMonitorSignalRouting(t *testing.T) {
 func TestSettingUnregisterTombstones(t *testing.T) {
 	m := &Monitor{}
 	var first, second int
-	off := m.OnAccentChange(func(Accent) { first++ })
-	m.OnAccentChange(func(Accent) { second++ })
+	off := m.OnAccentChange(func(appearance.Accent) { first++ })
+	m.OnAccentChange(func(appearance.Accent) { second++ })
 	off()
 	m.signal(&dbus.Signal{Name: changedSig, Path: portalPath, Body: []any{
 		schemeNamespace, accentKey, dbus.MakeVariant([]float64{0.9, 0.1, 0.1}),

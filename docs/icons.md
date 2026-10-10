@@ -46,7 +46,7 @@ keep their colors unless a tint is pinned.
 
 The portal's `org.gnome.desktop.interface icon-theme` setting is
 watched by the same monitor that carries the color-scheme preference
-(internal/appearance). The application wires the two together:
+(internal/portalsettings). The application wires the two together:
 `Monitor.OnIconThemeChange` feeds `icons.Default().ApplyIconTheme`, and
 an `Application` does that wiring for you — a desktop theme switch
 swaps the resolution theme, drops every cached raster, and bumps

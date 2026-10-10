@@ -5,7 +5,7 @@
 // bus - the appearance.md failure model, inert and logged at Debug.
 // Pure Go over the existing godbus dependency.
 //
-// Threading matches internal/appearance: Notify blocks on the bus call
+// Threading matches internal/portalsettings: Notify blocks on the bus call
 // and belongs off the Wayland loop goroutine; OnAction and OnClosed
 // callbacks run serialized on the notifier's own goroutine, and the
 // application bridges onto its loop with Invoke. Every method is safe

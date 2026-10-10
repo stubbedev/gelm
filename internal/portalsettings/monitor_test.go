@@ -1,4 +1,4 @@
-package appearance
+package portalsettings
 
 import (
 	"errors"
@@ -14,6 +14,7 @@ import (
 
 	"github.com/godbus/dbus/v5"
 
+	"github.com/stubbedev/gelm/appearance"
 	"github.com/stubbedev/gelm/internal/dbustest"
 	"github.com/stubbedev/gelm/internal/icons"
 )
@@ -189,24 +190,24 @@ func newTestMonitor(t *testing.T, address string) *Monitor {
 
 // collect returns an OnChange sink and a snapshot of what it received,
 // both goroutine-safe (callbacks arrive on the monitor goroutine).
-func collect() (sink func(Appearance), snapshot func() []Appearance) {
+func collect() (sink func(appearance.ColorScheme), snapshot func() []appearance.ColorScheme) {
 	var mu sync.Mutex
-	var got []Appearance
-	return func(a Appearance) {
+	var got []appearance.ColorScheme
+	return func(a appearance.ColorScheme) {
 			mu.Lock()
 			got = append(got, a)
 			mu.Unlock()
-		}, func() []Appearance {
+		}, func() []appearance.ColorScheme {
 			mu.Lock()
 			defer mu.Unlock()
-			return append([]Appearance(nil), got...)
+			return append([]appearance.ColorScheme(nil), got...)
 		}
 }
 
 // wantEvents waits for snapshot to equal want exactly (delivery is
 // asynchronous; the wait bounds it) and fails with both sides on any
 // deviation — including extra events.
-func wantEvents(t *testing.T, snapshot func() []Appearance, want ...Appearance) {
+func wantEvents(t *testing.T, snapshot func() []appearance.ColorScheme, want ...appearance.ColorScheme) {
 	t.Helper()
 	deadline := time.Now().Add(3 * time.Second)
 	for time.Now().Before(deadline) {
@@ -222,7 +223,7 @@ func wantEvents(t *testing.T, snapshot func() []Appearance, want ...Appearance) 
 	t.Fatalf("timed out waiting for events: got %v, want %v", snapshot(), want)
 }
 
-func equalEvents(got, want []Appearance) bool {
+func equalEvents(got, want []appearance.ColorScheme) bool {
 	for i, w := range want {
 		if got[i] != w {
 			return false
@@ -232,7 +233,7 @@ func equalEvents(got, want []Appearance) bool {
 }
 
 // wantNoEvents asserts the sink stays silent for a beat.
-func wantNoEvents(t *testing.T, snapshot func() []Appearance) {
+func wantNoEvents(t *testing.T, snapshot func() []appearance.ColorScheme) {
 	t.Helper()
 	time.Sleep(100 * time.Millisecond)
 	if got := snapshot(); len(got) != 0 {
@@ -257,10 +258,10 @@ func TestStartupRead(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
 		value uint32
-		want  Appearance
+		want  appearance.ColorScheme
 	}{
-		{"prefer-dark", 1, Dark},
-		{"prefer-light", 2, Light},
+		{"prefer-dark", 1, appearance.Dark},
+		{"prefer-light", 2, appearance.Light},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			address, _ := startBus(t)
@@ -268,8 +269,8 @@ func TestStartupRead(t *testing.T) {
 			mock.set(tc.value)
 			m := newTestMonitor(t, address)
 			// The startup read is synchronous: no waiting.
-			if got := m.Appearance(); got != tc.want {
-				t.Fatalf("Appearance() = %v, want %v", got, tc.want)
+			if got := m.ColorScheme(); got != tc.want {
+				t.Fatalf("ColorScheme() = %v, want %v", got, tc.want)
 			}
 		})
 	}
@@ -290,8 +291,8 @@ func TestStartupFallbacksToUnknown(t *testing.T) {
 			mock := publishMock(t, address)
 			tc.set(mock)
 			m := newTestMonitor(t, address)
-			if got := m.Appearance(); got != Unknown {
-				t.Fatalf("Appearance() = %v, want unknown", got)
+			if got := m.ColorScheme(); got != appearance.Unknown {
+				t.Fatalf("ColorScheme() = %v, want unknown", got)
 			}
 		})
 	}
@@ -303,9 +304,9 @@ func TestNoPortalIsUnknownAndSilent(t *testing.T) {
 	// no-portal-desktop shape.
 	m := newTestMonitor(t, address)
 	onChange, snapshot := collect()
-	m.OnChange(onChange)
-	if got := m.Appearance(); got != Unknown {
-		t.Fatalf("Appearance() = %v, want unknown", got)
+	m.OnColorSchemeChange(onChange)
+	if got := m.ColorScheme(); got != appearance.Unknown {
+		t.Fatalf("ColorScheme() = %v, want unknown", got)
 	}
 	wantNoEvents(t, snapshot)
 }
@@ -316,12 +317,12 @@ func TestStartupReadNeverFiresOnChange(t *testing.T) {
 	mock.set(2)
 	m := newTestMonitor(t, address)
 	onChange, snapshot := collect()
-	m.OnChange(onChange)
+	m.OnColorSchemeChange(onChange)
 	// The baseline is not history: a listener registered after New
 	// must not see the startup read, ever (set(deliver=false)).
 	wantNoEvents(t, snapshot)
-	if got := m.Appearance(); got != Light {
-		t.Fatalf("Appearance() = %v, want light", got)
+	if got := m.ColorScheme(); got != appearance.Light {
+		t.Fatalf("ColorScheme() = %v, want light", got)
 	}
 }
 
@@ -330,15 +331,15 @@ func TestSettingChangedDeliversInOrder(t *testing.T) {
 	mock := publishMock(t, address)
 	mock.set(1)
 	m := newTestMonitor(t, address)
-	if got := m.Appearance(); got != Dark {
-		t.Fatalf("Appearance() = %v, want dark", got)
+	if got := m.ColorScheme(); got != appearance.Dark {
+		t.Fatalf("ColorScheme() = %v, want dark", got)
 	}
 	onChange, snapshot := collect()
-	m.OnChange(onChange)
+	m.OnColorSchemeChange(onChange)
 
 	// A burst: the deliveries must arrive in signal order, one at a
-	// time, with the mapped values — including Unknown for garbage and
-	// a filtered foreign setting. Both garbage signals map to Unknown;
+	// time, with the mapped values — including appearance.Unknown for garbage and
+	// a filtered foreign setting. Both garbage signals map to appearance.Unknown;
 	// the second is a duplicate value and dedups, like the final
 	// re-announcement of dark.
 	mock.emit(t, uint32(2))     // -> light
@@ -347,10 +348,10 @@ func TestSettingChangedDeliversInOrder(t *testing.T) {
 	mock.emit(t, uint32(1))     // -> dark
 	mock.emitOther(t)           // -> filtered, no event
 	mock.emit(t, uint32(1))     // -> duplicate, no event
-	wantEvents(t, snapshot, Light, Unknown, Dark)
+	wantEvents(t, snapshot, appearance.Light, appearance.Unknown, appearance.Dark)
 
-	if got := m.Appearance(); got != Dark {
-		t.Fatalf("Appearance() = %v, want dark", got)
+	if got := m.ColorScheme(); got != appearance.Dark {
+		t.Fatalf("ColorScheme() = %v, want dark", got)
 	}
 }
 
@@ -362,9 +363,9 @@ func TestNoBusIsInert(t *testing.T) {
 		10*time.Millisecond)
 	t.Cleanup(m.Close)
 	onChange, snapshot := collect()
-	m.OnChange(onChange)
-	if got := m.Appearance(); got != Unknown {
-		t.Fatalf("Appearance() = %v, want unknown", got)
+	m.OnColorSchemeChange(onChange)
+	if got := m.ColorScheme(); got != appearance.Unknown {
+		t.Fatalf("ColorScheme() = %v, want unknown", got)
 	}
 	// No dial means no goroutines: an inert monitor is free.
 	time.Sleep(50 * time.Millisecond)
@@ -392,11 +393,11 @@ func TestReconnectAfterBusRestart(t *testing.T) {
 	m := newMonitor(func() (*dbus.Conn, error) { return dbus.Connect("unix:path=" + sock) },
 		defaultRetry)
 	t.Cleanup(m.Close)
-	if got := m.Appearance(); got != Dark {
-		t.Fatalf("Appearance() = %v, want dark", got)
+	if got := m.ColorScheme(); got != appearance.Dark {
+		t.Fatalf("ColorScheme() = %v, want dark", got)
 	}
 	onChange, snapshot := collect()
-	m.OnChange(onChange)
+	m.OnColorSchemeChange(onChange)
 
 	// Kill generation one and wait for it to be gone: a new daemon on
 	// the same path must not race a dying one that still owns the
@@ -424,9 +425,9 @@ func TestReconnectAfterBusRestart(t *testing.T) {
 	// differs), re-subscribes, and this very emit proves the new
 	// subscription works: light again, deduped.
 	mock2.emit(t, uint32(2))
-	wantEvents(t, snapshot, Light)
-	if got := m.Appearance(); got != Light {
-		t.Fatalf("Appearance() = %v, want light after reconnect", got)
+	wantEvents(t, snapshot, appearance.Light)
+	if got := m.ColorScheme(); got != appearance.Light {
+		t.Fatalf("ColorScheme() = %v, want light after reconnect", got)
 	}
 }
 
@@ -442,11 +443,11 @@ func TestSharedConnFailsSilentOnDeath(t *testing.T) {
 
 	m := NewOn(shared)
 	t.Cleanup(m.Close)
-	if got := m.Appearance(); got != Dark {
-		t.Fatalf("Appearance() = %v, want dark", got)
+	if got := m.ColorScheme(); got != appearance.Dark {
+		t.Fatalf("ColorScheme() = %v, want dark", got)
 	}
 	onChange, snapshot := collect()
-	m.OnChange(onChange)
+	m.OnColorSchemeChange(onChange)
 
 	// The bus (or the owner) drops the connection. No re-dial, no
 	// fabricated unknown: the last known value stands, no events.
@@ -455,8 +456,8 @@ func TestSharedConnFailsSilentOnDeath(t *testing.T) {
 	}
 	time.Sleep(100 * time.Millisecond)
 	wantNoEvents(t, snapshot)
-	if got := m.Appearance(); got != Dark {
-		t.Fatalf("Appearance() = %v, want the last known value (dark)", got)
+	if got := m.ColorScheme(); got != appearance.Dark {
+		t.Fatalf("ColorScheme() = %v, want the last known value (dark)", got)
 	}
 }
 
@@ -467,7 +468,7 @@ func TestCloseStopsGoroutines(t *testing.T) {
 
 	m := newTestMonitor(t, address)
 	onChange, _ := collect()
-	m.OnChange(onChange)
+	m.OnColorSchemeChange(onChange)
 	m.Close()
 	m.Close() // idempotent
 
@@ -490,7 +491,7 @@ func TestCallbacksRunOnMonitorGoroutine(t *testing.T) {
 
 	caller := goroutineID()
 	delivered := make(chan uint64, 1)
-	m.OnChange(func(a Appearance) {
+	m.OnColorSchemeChange(func(a appearance.ColorScheme) {
 		delivered <- goroutineID()
 	})
 	mock.emit(t, uint32(2))
@@ -511,7 +512,7 @@ func TestCloseBeforeEventsDeliversNothing(t *testing.T) {
 	mock.set(1)
 	m := newTestMonitor(t, address)
 	onChange, snapshot := collect()
-	m.OnChange(onChange)
+	m.OnColorSchemeChange(onChange)
 	m.Close()
 	// Signals after Close must not panic or deliver: the loop is gone.
 	mock.emit(t, uint32(2))
@@ -520,13 +521,13 @@ func TestCloseBeforeEventsDeliversNothing(t *testing.T) {
 
 func TestAppearanceString(t *testing.T) {
 	for _, tc := range []struct {
-		a    Appearance
+		a    appearance.ColorScheme
 		want string
 	}{
-		{Unknown, "unknown"},
-		{Dark, "dark"},
-		{Light, "light"},
-		{Appearance(9), "unknown"},
+		{appearance.Unknown, "unknown"},
+		{appearance.Dark, "dark"},
+		{appearance.Light, "light"},
+		{appearance.ColorScheme(9), "unknown"},
 	} {
 		if got := tc.a.String(); got != tc.want {
 			t.Fatalf("%d.String() = %q, want %q", tc.a, got, tc.want)
@@ -626,9 +627,9 @@ func TestIconThemeStream(t *testing.T) {
 	// key (color-scheme), never reach the icon listeners.
 	mock.emitOther(t)
 	schemes, schemeSnapshot := collect()
-	m.OnChange(schemes)
+	m.OnColorSchemeChange(schemes)
 	mock.emit(t, uint32(1))
-	wantEvents(t, schemeSnapshot, Dark)
+	wantEvents(t, schemeSnapshot, appearance.Dark)
 	if got := snapshot(); len(got) != 1 {
 		t.Errorf("icon listeners saw %v across foreign noise", got)
 	}

@@ -1,64 +1,8 @@
-// Package appearance follows the desktop's dark/light preference —
-// xdg-desktop-portal's org.freedesktop.portal.Settings color-scheme key,
-// the one place Hyprland, GNOME, KDE and friends agree to publish it —
-// over the session bus. Pure Go end to end via github.com/godbus/dbus/v5
-// (no cgo, repo rule); #53 sanctions the dependency.
-//
-// gelm never switches themes on its own: theming is explicit
-// (widget.SetTheme, docs/architecture.md "Theming"). This package only
-// reports the system preference and its changes; the application wires
-// the two together:
-//
-//	mon := appearance.New()
-//	defer mon.Close()
-//	mon.OnChange(func(a appearance.Appearance) {
-//		if a == appearance.Unknown {
-//			return
-//		}
-//		application.Invoke(func() {
-//			if a == appearance.Dark {
-//				widget.SetTheme(widget.DarkTheme())
-//			} else {
-//				widget.SetTheme(widget.LightTheme())
-//			}
-//		})
-//	})
-//
-// See docs/appearance.md for the full walkthrough.
-//
-// # Threading
-//
-// OnChange callbacks run on the monitor's own goroutine — serialized in
-// signal-arrival order, never concurrent, and never on a Wayland loop
-// goroutine. That is the honest contract: the monitor is a background
-// worker in the docs/threading.md sense, and the app bridges into the
-// loop with Application.Invoke (the example above; the Worker/Command
-// rows of the relm4 mapping). Keep handlers fast — a slow one delays
-// later signals — and hand anything loop-shaped through Invoke.
-// Appearance and OnChange are safe from any goroutine; the startup read
-// does NOT fire OnChange (read Appearance once instead), so a listener
-// registered after New never sees stale history.
-//
-// # Connection hygiene
-//
-// One connection per monitor, shared by the read and the signal
-// subscription. New dials the session bus; if there is no bus at all
-// (no portal desktop) the monitor is inert: Unknown, no goroutines, no
-// events. If a live connection later dies (bus or portal restart) a
-// dialing monitor reconnects with exponential backoff (250ms doubling
-// to 8s), re-reads the key, and fires OnChange if the preference
-// changed while disconnected — the reconnect re-read is an event, the
-// startup read is not. A monitor built on an injected connection
-// (NewOn) cannot re-dial: it fails silent, keeping the last known
-// value until the owner replaces it. Failures never fabricate
-// Unknown events; Unknown only comes from a real read or signal that
-// says so (no preference, unknown value) or from a failed startup.
-//
-// Close stops everything — the goroutine, the subscription, and the
-// connection when the monitor owns it — and is idempotent. A callback
-// already running finishes first; Close does not wait for it. Without
-// Close the monitor's goroutine outlives Run, so apps defer it.
-package appearance
+// Package portalsettings follows the desktop settings xdg-desktop-portal
+// publishes (color scheme, accent color, contrast, icon theme) over the
+// session bus. Listeners run on the monitor's own goroutine; the
+// application bridges them onto its loop.
+package portalsettings
 
 import (
 	"context"
@@ -68,34 +12,9 @@ import (
 
 	"github.com/godbus/dbus/v5"
 
+	"github.com/stubbedev/gelm/appearance"
 	"github.com/stubbedev/gelm/internal/logutil"
 )
-
-// Appearance is the system dark/light preference.
-type Appearance uint8
-
-const (
-	// Unknown means no portal, no readable preference, or a value
-	// outside the spec (0 "no preference" included). Apps keep
-	// whatever theme they set; Unknown is a reason to do nothing.
-	Unknown Appearance = iota
-	// Dark means the system prefers a dark style ("prefer-dark", 1).
-	Dark
-	// Light means the system prefers a light style ("prefer-light", 2).
-	Light
-)
-
-// String implements fmt.Stringer, for logs.
-func (a Appearance) String() string {
-	switch a {
-	case Dark:
-		return "dark"
-	case Light:
-		return "light"
-	default:
-		return "unknown"
-	}
-}
 
 // The portal: a well-known name, one object, one method, one signal
 // (https://flatpak.github.io/xdg-desktop-portal/). The color-scheme
@@ -170,10 +89,10 @@ type Monitor struct {
 
 	mu       sync.Mutex
 	closed   bool
-	scheme   setting[Appearance]
+	scheme   setting[appearance.ColorScheme]
 	icons    setting[string]
-	accent   setting[Accent]
-	contrast setting[Contrast]
+	accent   setting[appearance.Accent]
+	contrast setting[appearance.Contrast]
 }
 
 // New starts a monitor on the session bus. It performs the startup read
@@ -239,28 +158,23 @@ func startOn(m *Monitor, conn *dbus.Conn) *Monitor {
 // whether a moved value fires its listeners (the startup read is the
 // baseline and never fires; the reconnect refresh is an event).
 func (m *Monitor) refresh(conn *dbus.Conn, deliver bool) {
-	m.scheme.update(m, readSetting(conn, schemeNamespace, schemeKey, schemeValue, Unknown), deliver)
+	m.scheme.update(m, readSetting(conn, schemeNamespace, schemeKey, schemeValue, appearance.Unknown), deliver)
 	m.icons.update(m, readSetting(conn, interfaceNamespace, iconThemeKey, stringValue, ""), deliver)
-	m.accent.update(m, readSetting(conn, schemeNamespace, accentKey, accentValue, Accent{}), deliver)
-	m.contrast.update(m, readSetting(conn, schemeNamespace, contrastKey, contrastValue, ContrastUnknown), deliver)
+	m.accent.update(m, readSetting(conn, schemeNamespace, accentKey, accentValue, appearance.Accent{}), deliver)
+	m.contrast.update(m, readSetting(conn, schemeNamespace, contrastKey, contrastValue, appearance.ContrastUnknown), deliver)
 }
 
-// Appearance returns the current system preference: Dark, Light, or
-// Unknown (no portal, no preference, unparseable value, or the monitor
-// never connected). Safe from any goroutine.
-func (m *Monitor) Appearance() Appearance {
+// ColorScheme returns the current color-scheme preference, Unknown when
+// the monitor never connected. Safe from any goroutine.
+func (m *Monitor) ColorScheme() appearance.ColorScheme {
 	return m.scheme.get(m)
 }
 
-// OnChange registers fn to run with the new value whenever the system
-// preference changes: on a color-scheme SettingChanged from the portal,
-// or on a reconnect refresh that found a different value. Callbacks run
-// on the monitor's goroutine, in signal order, one at a time — never on
-// a Wayland loop goroutine. Bridge into the loop with
-// Application.Invoke (package comment, docs/appearance.md). Safe from
-// any goroutine; registering fn twice calls it once per change each.
-func (m *Monitor) OnChange(fn func(Appearance)) {
-	m.scheme.on(m, fn)
+// OnColorSchemeChange registers fn for every color-scheme change, on
+// the monitor's goroutine; the returned function unregisters it. The
+// startup read is the baseline and never fires.
+func (m *Monitor) OnColorSchemeChange(fn func(appearance.ColorScheme)) (off func()) {
+	return m.scheme.on(m, fn)
 }
 
 // Close stops the monitor: the loop goroutine exits, the subscription
@@ -359,16 +273,16 @@ func (m *Monitor) listen(conn *dbus.Conn, ch chan *dbus.Signal, owned bool) (sto
 // signal dispatches one SettingChanged to whichever tracked setting it
 // names; every other signal is not ours.
 func (m *Monitor) signal(sig *dbus.Signal) {
-	if v, ok := settingChanged(sig, schemeNamespace, schemeKey, schemeValue, Unknown); ok {
+	if v, ok := settingChanged(sig, schemeNamespace, schemeKey, schemeValue, appearance.Unknown); ok {
 		m.scheme.update(m, v, true)
 	}
 	if v, ok := settingChanged(sig, interfaceNamespace, iconThemeKey, stringValue, ""); ok {
 		m.icons.update(m, v, true)
 	}
-	if v, ok := settingChanged(sig, schemeNamespace, accentKey, accentValue, Accent{}); ok {
+	if v, ok := settingChanged(sig, schemeNamespace, accentKey, accentValue, appearance.Accent{}); ok {
 		m.accent.update(m, v, true)
 	}
-	if v, ok := settingChanged(sig, schemeNamespace, contrastKey, contrastValue, ContrastUnknown); ok {
+	if v, ok := settingChanged(sig, schemeNamespace, contrastKey, contrastValue, appearance.ContrastUnknown); ok {
 		m.contrast.update(m, v, true)
 	}
 }
@@ -417,7 +331,7 @@ func (m *Monitor) OnIconThemeChange(fn func(string)) (off func()) {
 // Accent returns the desktop's accent-color preference: RGB in [0,1]
 // with Known set, or the zero Accent when the desktop published none
 // (no portal, no key, unreadable value). Safe from any goroutine.
-func (m *Monitor) Accent() Accent {
+func (m *Monitor) Accent() appearance.Accent {
 	return m.accent.get(m)
 }
 
@@ -425,21 +339,21 @@ func (m *Monitor) Accent() Accent {
 // returned function unregisters it. The same threading contract as
 // OnChange: callbacks run serialized on the monitor's goroutine -
 // bridge with Application.Invoke.
-func (m *Monitor) OnAccentChange(fn func(Accent)) (off func()) {
+func (m *Monitor) OnAccentChange(fn func(appearance.Accent)) (off func()) {
 	return m.accent.on(m, fn)
 }
 
 // Contrast returns the desktop's contrast preference: ContrastHigh or
 // ContrastUnknown (no portal, no preference, unreadable value). Safe
 // from any goroutine.
-func (m *Monitor) Contrast() Contrast {
+func (m *Monitor) Contrast() appearance.Contrast {
 	return m.contrast.get(m)
 }
 
 // OnContrastChange registers fn for every contrast change; the
 // returned function unregisters it. Same threading contract as
 // OnChange.
-func (m *Monitor) OnContrastChange(fn func(Contrast)) (off func()) {
+func (m *Monitor) OnContrastChange(fn func(appearance.Contrast)) (off func()) {
 	return m.contrast.on(m, fn)
 }
 
@@ -454,7 +368,7 @@ func (m *Monitor) isClosed() bool {
 // Appearance. Anything the spec does not define — 0 "no preference",
 // out-of-range numbers, wrong types — maps to Unknown rather than
 // guessing a polarity.
-func schemeValue(v any) Appearance {
+func schemeValue(v any) appearance.ColorScheme {
 	if variant, ok := v.(dbus.Variant); ok {
 		v = variant.Value()
 	}
@@ -462,12 +376,12 @@ func schemeValue(v any) Appearance {
 	case uint32:
 		switch u {
 		case schemeDark:
-			return Dark
+			return appearance.Dark
 		case schemeLight:
-			return Light
+			return appearance.Light
 		}
 	}
-	return Unknown
+	return appearance.Unknown
 }
 
 // stringValue maps a portal value to its string — a variant around
