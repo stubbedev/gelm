@@ -1,6 +1,7 @@
 package app
 
 import (
+	"github.com/stubbedev/gelm/render"
 	"github.com/stubbedev/gelm/widget"
 )
 
@@ -111,4 +112,22 @@ func (w *Window) stateMaximized() bool {
 		return false
 	}
 	return hw.state().Maximized
+}
+
+// AttachColorButton makes b open the color chooser dialog over parent
+// on click and apply the pick.
+func (a *Application) AttachColorButton(parent *Window, b *widget.ColorButton) {
+	b.OnOpen = func(current render.Color) {
+		_, _ = a.ColorChooserDialog(parent, current, b.Choose)
+	}
+}
+
+// AttachFontButton makes b open the font chooser dialog over parent on
+// click and apply the pick.
+func (a *Application) AttachFontButton(parent *Window, b *widget.FontButton) {
+	b.OnOpen = func(current widget.FontChoice) {
+		_, _ = a.FontChooserDialog(parent, current.Family, current.Size, func(family string, size float64) {
+			b.Choose(widget.FontChoice{Family: family, Size: size})
+		})
+	}
 }

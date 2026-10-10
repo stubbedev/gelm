@@ -4,6 +4,10 @@
 
 ### Parity, fifth pass
 
+- `widget.ColorButton` and `FontButton` (GTK's ColorDialogButton and
+  FontDialogButton) with `Application.AttachColorButton` /
+  `AttachFontButton` and `BindColor` / `BindFont`; `widget.Inscription`,
+  text sized by character and line counts for big lists.
 - `widget.GridView`, GTK's virtualized grid: only visible cells exist,
   columns fit between `SetMinColumns`/`SetMaxColumns` (1 to 7 by
   default), List's selection, rubber band and 2D keyboard motion, and

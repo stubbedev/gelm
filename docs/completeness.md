@@ -48,6 +48,7 @@ live in [architecture.md](architecture.md#non-goals).
 | Popover | `app.Popover`, anchored to any widget, on toplevels and layer surfaces | app/popover.go |
 | Dialog, MessageDialog, AlertDialog | `app.Dialog`, `MessageBox`, `PromptDialog`, `ProgressDialog`; modality through xdg-dialog-v1 | app/dialog.go, app/prompt.go |
 | FileDialog | `app.OpenFileDialog`, `OpenFilesDialog`, `OpenFolderDialog`, `SaveFileDialog` (pure-Go picker, XDG recents) | app/filedialog.go, widget/filechooser.go |
+| ColorDialogButton, FontDialogButton, Inscription | `ColorButton` and `FontButton` (`Application.AttachColorButton`/`AttachFontButton` open the choosers; `BindColor`/`BindFont`), `Inscription` (sized by character and line counts) | widget/dialogbuttons.go, widget/inscription.go, app/chrome.go |
 | ColorDialog, FontDialog, Calendar, EmojiChooser | `ColorChooserDialog`, `FontChooserDialog`, `CalendarDialog`, `EmojiChooser` | app/dialog.go, app/emojichooser.go |
 | adw AboutDialog | `Application.AboutDialog` | app/about.go |
 | ShortcutsWindow | `ShortcutsView` + `app.ShortcutsDialog` from the accelerator registry | widget/shortcuts.go, app/accel.go |

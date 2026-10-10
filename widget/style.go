@@ -1495,6 +1495,8 @@ func typeElementName(w Widget) string {
 		return "listview"
 	case *GridView:
 		return "gridview"
+	case *Inscription:
+		return "inscription"
 	case *listRow:
 		return "row"
 	case *Menu:
