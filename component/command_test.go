@@ -104,11 +104,11 @@ func TestOneshotResultAfterShutdownIsDropped(t *testing.T) {
 }
 
 type loader struct {
-	data     string
-	label    *widget.Spacer
-	inits    int
-	got      []int
-	sawData  []string
+	data    string
+	label   *widget.Spacer
+	inits   int
+	got     []int
+	sawData []string
 }
 
 func (l *loader) Loading() widget.Widget { return widget.NewSpacer(2, 2) }
