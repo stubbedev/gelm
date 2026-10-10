@@ -98,6 +98,9 @@ type Session struct {
 	shm              *wl.Shm
 	layerShell       *wlr.ZwlrLayerShellV1
 	viewporter       *wlr.WpViewporter
+	subcompositor    *wl.Subcompositor
+	dmabuf           *wlr.ZwpDmabufV1
+	dmabufLayouts    map[DmabufLayout]bool
 	fracScaleManager *wlr.WpScaleManagerV1
 	seat             *wl.Seat
 	seatVersion      uint32
@@ -513,6 +516,10 @@ func (s *Session) HandleRegistryGlobal(ev wl.RegistryGlobalEvent) {
 		s.bindDialogManager(ev)
 	case "zxdg_exporter_v2":
 		s.bindExporter(ev)
+	case "wl_subcompositor":
+		s.bindSubcompositor(ev)
+	case "zwp_linux_dmabuf_v1":
+		s.bindDmabuf(ev)
 	case "ext_session_lock_manager_v1":
 		s.bindSessionLockManager(ev)
 	case "xdg_toplevel_icon_manager_v1":

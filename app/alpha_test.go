@@ -258,3 +258,27 @@ func rectsEqual(got, want []render.Rect) bool {
 	}
 	return true
 }
+
+func TestOpaqueRegionCutsOutGPUAreas(t *testing.T) {
+	root := widget.NewBox(widget.Row, 0, 0)
+	h := newPaintHarness(root, 64, 32)
+	h.wnd.cfg.background = render.RGB(30, 30, 46)
+	h.wnd.cfg.opaque = opaqueFor(h.wnd.cfg.background, false)
+	g := &gpuSurface{hw: h.wnd, bounds: render.Rect{X: 4, Y: 4, W: 20, H: 10}}
+	h.wnd.gpu = append(h.wnd.gpu, g, &gpuSurface{hw: h.wnd})
+
+	h.frame()
+	if len(h.surf.holes) != 1 || !rectsEqual(h.surf.holes[0], []render.Rect{g.bounds}) {
+		t.Fatalf("first region holes %v, want the placed area only", h.surf.holes)
+	}
+	h.frame()
+	if len(h.surf.holes) != 1 {
+		t.Errorf("an idle frame re-sent the region: %v", h.surf.holes)
+	}
+	g.bounds.X = 10
+	h.wnd.dirty = true
+	h.frame()
+	if len(h.surf.holes) != 2 || !rectsEqual(h.surf.holes[1], []render.Rect{g.bounds}) {
+		t.Errorf("a moved area: holes %v", h.surf.holes)
+	}
+}

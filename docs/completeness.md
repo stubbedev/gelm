@@ -57,6 +57,7 @@ live in [architecture.md](architecture.md#non-goals).
 | ShortcutsWindow | `ShortcutsView` + `app.ShortcutsDialog` from the accelerator registry | widget/shortcuts.go, app/accel.go |
 | adw Toast | `Toast` + `Application.ShowToast` (stacking, action, hover pause) | widget/toast.go, app/toast.go |
 | Tooltip | `SetTooltip`, `SetTooltipMarkup`, `SetTooltipOptions` on any widget | widget/widget.go, app/tooltip.go |
+| GLArea | `widget.GPUArea`: application-rendered dmabufs (zero copy, async import checked against the advertised formats) or CPU images, on a subsurface below the window, paced by `OnFrame` | widget/gpuarea.go, app/gpuarea.go, dmabuf/ |
 | Video, MediaControls, MediaStream, MediaFile | `widget.Video` (fit policies, controls on hover or pause, autoplay), `widget.MediaControls`, `media.Stream` (play, pause, seek, loop, volume, mute, audio-clocked sync); sources: animated images, YUV4MPEG2 in pure Go, any file through an ffmpeg subprocess; sound through the PulseAudio protocol | media/, widget/video.go, widget/mediacontrols.go |
 | Spinner, Separator, Image, Icon | `Spinner`, `NewSeparator`, `Image` (fit/cover, async decode, PNG/JPEG/GIF/WebP, animated GIF/APNG), `Icon` (theme, file, SVG, symbolic tint, bundled Lucide fallback) | widget/spinner.go, widget/image.go, widget/icon.go |
 | DrawingArea, GestureStylus | `DrawingArea` (`OnDraw`, `OnStylus`) | widget/drawingarea.go |

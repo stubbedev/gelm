@@ -17,6 +17,14 @@
 - Fix: the GlobalShortcuts portal session token held a `-`, which is
   not a valid object path element, so a real portal refused it.
 
+- `widget.GPUArea` (GLArea without cgo): the application renders with
+  its own GPU stack into dmabufs (`Import`, async and checked against
+  the formats the compositor advertised, then `Present`) or into CPU
+  images (`PresentImage`), and the area shows them on a desynchronized
+  subsurface below the window, through a transparent hole cut from the
+  opaque region, so widgets over it stay on top. `OnFrame` paces the
+  application. New `dmabuf` package with the dma-buf description
+  capture now shares; `cmd/gelm-gpu` demonstrates it.
 - Media playback (GtkVideo, GtkMediaControls, GtkMediaStream): new
   `media` package with `Stream` (play, pause, seek, loop, volume, mute;
   decoding a few frames ahead on its own goroutine; the clock follows

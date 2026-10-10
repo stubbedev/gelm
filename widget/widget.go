@@ -657,14 +657,16 @@ func SetRemovedHook(fn func(Widget)) {
 	removedHook.Store(&fn)
 }
 
-// notifyRemoved fires the removal hook for every non-nil ws.
+// notifyRemoved detaches the GPUAreas under every non-nil ws and fires
+// the removal hook for it.
 func notifyRemoved(ws ...Widget) {
 	fn := removedHook.Load()
-	if fn == nil {
-		return
-	}
 	for _, w := range ws {
-		if w != nil {
+		if w == nil {
+			continue
+		}
+		DetachGPUAreas(w)
+		if fn != nil {
 			(*fn)(w)
 		}
 	}
@@ -712,4 +714,20 @@ func PaintChild(cv *render.Canvas, w Widget) {
 func measureChild(parent, child Widget, con Constraints) Size {
 	setParents(parent, child)
 	return measureWithMargin(child, con)
+}
+
+func walkWidgets(w Widget, visit func(Widget) (descend bool)) {
+	if !visit(w) {
+		return
+	}
+	var kids []Widget
+	switch p := w.(type) {
+	case interface{ Children() []Widget }:
+		kids = p.Children()
+	case interface{ styleChildren() []Widget }:
+		kids = p.styleChildren()
+	}
+	for _, c := range kids {
+		walkWidgets(c, visit)
+	}
 }

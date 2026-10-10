@@ -155,20 +155,14 @@ func joinPath(page, subtitle string) string {
 }
 
 func walkRows(w Widget, fn func(row Widget, title, subtitle string)) {
-	if s, ok := w.(searchable); ok {
+	walkWidgets(w, func(w Widget) bool {
+		s, ok := w.(searchable)
+		if !ok {
+			return true
+		}
 		if title, subtitle, on := s.searchTerms(); on {
 			fn(w, title, subtitle)
 		}
-		return
-	}
-	var kids []Widget
-	switch p := w.(type) {
-	case interface{ Children() []Widget }:
-		kids = p.Children()
-	case interface{ styleChildren() []Widget }:
-		kids = p.styleChildren()
-	}
-	for _, c := range kids {
-		walkRows(c, fn)
-	}
+		return false
+	})
 }

@@ -37,6 +37,8 @@ type fakeSurface struct {
 	// an opaque window sets one per size change, translucent ones
 	// never.
 	opaque []render.Rect
+	// holes records each SetOpaqueRegion's cut-outs, call by call.
+	holes [][]render.Rect
 }
 
 func (f *fakeSurface) Attach(*buffer.Buffer) error { f.attaches++; return nil }
@@ -59,8 +61,9 @@ func (f *fakeSurface) Frame(ready *bool) error {
 	return nil
 }
 
-func (f *fakeSurface) SetOpaqueRegion(w, h int) error {
+func (f *fakeSurface) SetOpaqueRegion(w, h int, holes []render.Rect) error {
 	f.opaque = append(f.opaque, render.Rect{W: w, H: h})
+	f.holes = append(f.holes, holes)
 	return nil
 }
 
