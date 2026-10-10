@@ -89,13 +89,13 @@ component's input and output queues coalesce their wakes exactly like
 | `MessageBroker` | a `Stream` in a package variable |
 | `SharedState` | `app.SharedState[T]` |
 | `Worker` | a goroutine whose results `Invoke` back |
-| `Command`, `oneshot_command` | a goroutine plus your own cancellation |
+| `Command`, `oneshot_command`, `spawn_command` | `Context.Oneshot`, `Context.Spawn`, cancelled at shutdown |
+| `AsyncComponent` | a component implementing `component.Loader` |
 | `Factory`, `FactoryVecDeque` | `widget.List` + `ListModel`: virtualized rows rebuilt on `Changed()`, with no per-item component |
 | `glib::timeout_add` | `Application.Every` |
 
 The missing pieces are tracked in
-[#139](https://github.com/stubbedev/gelm/issues/139): factories, lifetime-bound commands, async
-components, workers, and typed actions.
+[#139](https://github.com/stubbedev/gelm/issues/139): factories, workers, and typed actions.
 
 ## Tests
 

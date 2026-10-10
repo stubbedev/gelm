@@ -17,6 +17,7 @@
 package component
 
 import (
+	"context"
 	"slices"
 
 	"github.com/stubbedev/gelm/internal/mailbox"
@@ -86,6 +87,10 @@ type Context[In, Out any] struct {
 	release  func()
 	detached bool
 	dead     bool
+	ctx      context.Context
+	cancel   context.CancelFunc
+	loading  bool
+	held     []In
 }
 
 // Loop returns the loop the component runs on.
@@ -151,11 +156,21 @@ func Launch[In, Out any](loop Loop, c Component[In, Out]) *Controller[In, Out] {
 
 func start[In, Out any](loop Loop, c Component[In, Out]) *Context[In, Out] {
 	cx := &Context[In, Out]{loop: loop, model: c}
-	cx.root = c.Init(cx)
-	if cx.root == nil {
+	cx.ctx, cx.cancel = context.WithCancel(context.Background()) //nolint:gosec // shutdown calls cx.cancel
+	if l, ok := c.(Loader[In, Out]); ok {
+		cx.root = cx.load(l)
+		return cx
+	}
+	cx.root = cx.init()
+	return cx
+}
+
+func (cx *Context[In, Out]) init() widget.Widget {
+	root := cx.model.Init(cx)
+	if root == nil {
 		panic("component: Init returned no root widget")
 	}
-	return cx
+	return root
 }
 
 func (cx *Context[In, Out]) drainInputs() {
@@ -163,6 +178,14 @@ func (cx *Context[In, Out]) drainInputs() {
 	if cx.dead || len(msgs) == 0 {
 		return
 	}
+	if cx.loading {
+		cx.held = append(cx.held, msgs...)
+		return
+	}
+	cx.update(msgs)
+}
+
+func (cx *Context[In, Out]) update(msgs []In) {
 	for _, msg := range msgs {
 		cx.model.Update(cx, msg)
 		if cx.dead {
@@ -199,6 +222,7 @@ func (cx *Context[In, Out]) shutdown() {
 		return
 	}
 	cx.dead = true
+	cx.cancel()
 	cx.inputs.Stop()
 	children := cx.children
 	cx.children = nil

@@ -161,6 +161,36 @@ first (the last launched stops first), then its own `Shutdown`, then its
 `OnShutdown` hooks. Top-level components stop when the loop stops.
 `Detach` moves a child's ownership to the loop.
 
+## Commands and async components
+
+Background work is bound to the component's lifetime:
+
+- `cx.Oneshot(func(ctx) In)` runs on its own goroutine and delivers its
+  result to `Update` (relm4's `oneshot_command`).
+- `cx.Spawn(func(ctx, emit))` runs on its own goroutine, and every
+  `emit` delivers a message (`spawn_command`).
+- `cx.Context()` is cancelled when the component shuts down. It is the
+  context both forms receive, and results after shutdown are dropped.
+
+```go
+cx.Oneshot(func(ctx context.Context) Msg {
+	body, err := fetch(ctx, url)
+	return Fetched{body, err}
+})
+```
+
+A component that implements `Loader` initializes asynchronously
+(relm4's `AsyncComponent`):
+
+1. `Loading()` returns the widget shown first.
+2. `Load(ctx)` runs on its own goroutine and may fill in the model.
+3. `Init` runs on the loop once `Load` returns, and its view replaces
+   the loading one.
+
+Input sent while loading is held and delivered after `Init`. A
+component shut down mid-load cancels `Load`'s context and never runs
+`Init`.
+
 ## Messaging
 
 - `cx.Input(msg)` and `Sender.Send(msg)` work from any goroutine. A
