@@ -21,8 +21,7 @@
     pkgs.git
 
     # Development tools
-    pkgs.gofumpt # stricter gofmt; `just fmt`, CI's formatting gate
-    pkgs.golangci-lint # linter behind `just lint`, config in .golangci.yml
+    pkgs.golangci-lint # `just lint`, and `just fmt` through its gofumpt + gci formatters; config in .golangci.yml
     pkgs.just # task runner
 
     # Headless test compositor: sway on WLR_BACKENDS=headless gives

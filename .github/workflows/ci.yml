@@ -5,7 +5,7 @@
 #
 # Everything runs through the devenv CLI (devenv.nix, pinned by
 # devenv.lock - the same environment developers enter with
-# `devenv shell`): the Go toolchain, golangci-lint, gofumpt, just, and
+# `devenv shell`): the Go toolchain, golangci-lint, just, and
 # sway for the headless compositor. The whole job needs no display
 # server and no GPU: sway runs on wlroots' headless backend with the
 # software (pixman) renderer.
@@ -23,7 +23,7 @@ on:
 
 jobs:
   lint:
-    # PR evidence: gofumpt + golangci-lint in one quick pass. The full
+    # PR evidence: formatting + golangci-lint in one quick pass. The full
     # gate (tests, headless suite) runs in the check job; this exists so
     # formatting and lint findings surface as their own PR check.
     if: github.event_name == 'pull_request'
@@ -38,7 +38,7 @@ jobs:
           name: devenv
       - name: Install devenv
         run: nix profile add github:cachix/devenv/v2.4.0
-      - name: gofumpt + golangci-lint
+      - name: formatting + golangci-lint
         run: devenv shell -- just lint fmt-check
 
   check:
@@ -53,7 +53,7 @@ jobs:
           name: devenv
       - name: Install devenv
         run: nix profile add github:cachix/devenv/v2.4.0
-      - name: gofumpt formatting gate
+      - name: formatting gate
         run: devenv shell -- just fmt-check
       - name: Release gates (vet, lint, test, build)
         run: devenv shell -- just check
