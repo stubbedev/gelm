@@ -5420,6 +5420,122 @@ func (b *SymbolBuilder) WatchKind(get func() widget.SymbolKind) *SymbolBuilder {
 	return b
 }
 
+// TabBarBuilder builds a widget.TabBar.
+type TabBarBuilder struct {
+	base[*widget.TabBar, *TabBarBuilder]
+	face render.Font
+	size float64
+}
+
+// TabBar builds a widget.TabBar with widget.NewTabBar.
+func TabBar(view Of[*widget.TabView]) *TabBarBuilder {
+	b := &TabBarBuilder{}
+	b.init(b, func(s *Scope) *widget.TabBar {
+		return widget.NewTabBar(s.face(b.face), s.size(b.size), buildOf(s, view))
+	})
+	return b
+}
+
+// Font overrides the environment's typeface and size for this widget; zero values keep the environment's.
+func (b *TabBarBuilder) Font(face render.Font, sizePx float64) *TabBarBuilder {
+	b.face, b.size = face, sizePx
+	return b
+}
+
+// TabOverviewBuilder builds a widget.TabOverview.
+type TabOverviewBuilder struct {
+	base[*widget.TabOverview, *TabOverviewBuilder]
+	face render.Font
+	size float64
+}
+
+// TabOverview builds a widget.TabOverview with widget.NewTabOverview.
+func TabOverview(view Of[*widget.TabView], child Node) *TabOverviewBuilder {
+	b := &TabOverviewBuilder{}
+	b.init(b, func(s *Scope) *widget.TabOverview {
+		return widget.NewTabOverview(s.face(b.face), s.size(b.size), buildOf(s, view), build(s, child))
+	})
+	return b
+}
+
+// Font overrides the environment's typeface and size for this widget; zero values keep the environment's.
+func (b *TabOverviewBuilder) Font(face render.Font, sizePx float64) *TabOverviewBuilder {
+	b.face, b.size = face, sizePx
+	return b
+}
+
+// Open calls (*widget.TabOverview).SetOpen.
+func (b *TabOverviewBuilder) Open(on bool) *TabOverviewBuilder {
+	b.do(func(s *Scope, w *widget.TabOverview) { w.SetOpen(on) })
+	return b
+}
+
+// WatchOpen re-applies SetOpen with get's value after every update.
+func (b *TabOverviewBuilder) WatchOpen(get func() bool) *TabOverviewBuilder {
+	b.watch(func(w *widget.TabOverview) { w.SetOpen(get()) })
+	return b
+}
+
+// OnOpenChanged sets the widget's OnOpenChanged field.
+func (b *TabOverviewBuilder) OnOpenChanged(fn func(open bool)) *TabOverviewBuilder {
+	b.do(func(_ *Scope, w *widget.TabOverview) { w.OnOpenChanged = fn })
+	return b
+}
+
+// TabViewBuilder builds a widget.TabView.
+type TabViewBuilder struct {
+	base[*widget.TabView, *TabViewBuilder]
+}
+
+// TabView builds a widget.TabView with widget.NewTabView.
+func TabView() *TabViewBuilder {
+	b := &TabViewBuilder{}
+	b.init(b, func(s *Scope) *widget.TabView { return widget.NewTabView() })
+	return b
+}
+
+// Append calls (*widget.TabView).Append.
+func (b *TabViewBuilder) Append(child Node, title string) *TabViewBuilder {
+	b.do(func(s *Scope, w *widget.TabView) { w.Append(build(s, child), title) })
+	return b
+}
+
+// Insert calls (*widget.TabView).Insert.
+func (b *TabViewBuilder) Insert(i int, child Node, title string) *TabViewBuilder {
+	b.do(func(s *Scope, w *widget.TabView) { w.Insert(i, build(s, child), title) })
+	return b
+}
+
+// Pinned calls (*widget.TabView).SetPinned.
+func (b *TabViewBuilder) Pinned(p *widget.TabPage, on bool) *TabViewBuilder {
+	b.do(func(s *Scope, w *widget.TabView) { w.SetPinned(p, on) })
+	return b
+}
+
+// OnSelect sets the widget's OnSelect field.
+func (b *TabViewBuilder) OnSelect(fn func(p *widget.TabPage)) *TabViewBuilder {
+	b.do(func(_ *Scope, w *widget.TabView) { w.OnSelect = fn })
+	return b
+}
+
+// OnClosePage sets the widget's OnClosePage field.
+func (b *TabViewBuilder) OnClosePage(fn func(p *widget.TabPage) bool) *TabViewBuilder {
+	b.do(func(_ *Scope, w *widget.TabView) { w.OnClosePage = fn })
+	return b
+}
+
+// OnPageAttached sets the widget's OnPageAttached field.
+func (b *TabViewBuilder) OnPageAttached(fn func(p *widget.TabPage)) *TabViewBuilder {
+	b.do(func(_ *Scope, w *widget.TabView) { w.OnPageAttached = fn })
+	return b
+}
+
+// OnPageDetached sets the widget's OnPageDetached field.
+func (b *TabViewBuilder) OnPageDetached(fn func(p *widget.TabPage)) *TabViewBuilder {
+	b.do(func(_ *Scope, w *widget.TabView) { w.OnPageDetached = fn })
+	return b
+}
+
 // TextAreaBuilder builds a widget.TextArea.
 type TextAreaBuilder struct {
 	base[*widget.TextArea, *TextAreaBuilder]
