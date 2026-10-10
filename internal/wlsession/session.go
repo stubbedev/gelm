@@ -186,6 +186,7 @@ type Session struct {
 	shortcutsInhibitMgr shortcutsInhibitAPI
 	xdgOutputMgr        xdgOutputMaker
 	dialogMgr           *wlr.WmDialogV1
+	exporter            *wlr.ZxdgExporterV2
 	// toplevelIconMgr (toplevelicon.go) posts window icons; iconSizes
 	// are the compositor's preferred sizes, complete at iconSizesDone.
 	toplevelIconMgr *wlr.ToplevelIconManagerV1
@@ -510,6 +511,8 @@ func (s *Session) HandleRegistryGlobal(ev wl.RegistryGlobalEvent) {
 		s.bindXdgOutputManager(ev)
 	case "xdg_wm_dialog_v1":
 		s.bindDialogManager(ev)
+	case "zxdg_exporter_v2":
+		s.bindExporter(ev)
 	case "ext_session_lock_manager_v1":
 		s.bindSessionLockManager(ev)
 	case "xdg_toplevel_icon_manager_v1":

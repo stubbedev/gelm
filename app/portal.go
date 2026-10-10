@@ -61,6 +61,16 @@ type portalClient struct {
 	onSignal func(*dbus.Signal)
 }
 
+func portalParent(w *Window) string {
+	if w == nil || w.win == nil {
+		return ""
+	}
+	if h := w.win.ExportHandle(); h != "" {
+		return "wayland:" + h
+	}
+	return ""
+}
+
 func (c *portalClient) connect() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()

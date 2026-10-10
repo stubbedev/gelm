@@ -1161,3 +1161,20 @@ func TestHeadlessIdleNotify(t *testing.T) {
 		t.Errorf("input did not resume the seat: %v", err)
 	}
 }
+
+// TestHeadlessToplevelExport pins #160 on a real compositor: the
+// session binds xdg-foreign v2 and every toplevel receives the handle
+// portals take as its parent_window.
+func TestHeadlessToplevelExport(t *testing.T) {
+	requireEnv(t)
+	_, w, _ := startMultilistClient(t)
+	if err := w.WaitEver("shell", "xdg-foreign exporter bound", traceTimeout); err != nil {
+		t.Fatalf("the session never bound zxdg_exporter_v2: %v", err)
+	}
+	if err := w.WaitEver("shell", "toplevel exported as", traceTimeout); err != nil {
+		t.Fatalf("the toplevel never received an xdg-foreign handle: %v", err)
+	}
+	if w.SeenSince(0, "shell", `toplevel exported as ""`) {
+		t.Error("the compositor sent an empty handle")
+	}
+}

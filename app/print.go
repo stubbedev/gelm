@@ -219,10 +219,7 @@ func ExportPDF(path string, job PrintJob) error {
 // next Print starts from the settings the user chose.
 func (a *Application) Print(parent *Window, job PrintJob, done func(error)) {
 	d := a.desktop()
-	window := ""
-	if parent != nil && parent.win != nil {
-		window = surfacePortalID(parent.win.HostSurface())
-	}
+	window := portalParent(parent)
 	d.mu.Lock()
 	settings, setup := d.printSettings, job.Setup
 	if d.printSetup != nil {

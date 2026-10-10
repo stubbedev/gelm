@@ -455,6 +455,9 @@ func (a *Application) openWindow(w *Window, cfg WindowConfig) (*hostWindow, erro
 	if err != nil {
 		return nil, err
 	}
+	if err := win.Export(a.sess.Exporter()); err != nil {
+		return nil, fmt.Errorf("app: %w", err)
+	}
 	w.win = win
 	hw := a.newWindow(win, max(cfg.Scale, 1), cfg.Root, windowHooks{
 		background: cfg.Background,

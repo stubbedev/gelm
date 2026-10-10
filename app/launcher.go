@@ -91,8 +91,8 @@ func (a *Application) launchNow(uri, token string) {
 	l := &a.launchState
 	parent := ""
 	if a.sess != nil {
-		if hw := a.focused(); hw != nil && hw.host != nil {
-			parent = surfacePortalID(hw.host.HostSurface())
+		if hw := a.focused(); hw != nil {
+			parent = portalParent(hw.win)
 		}
 	}
 	go func() {
@@ -113,13 +113,6 @@ func (a *Application) launchNow(uri, token string) {
 			logutil.L().Debug("open uri failed", "uri", uri, "portal", portalErr, "fallback", err)
 		}
 	}()
-}
-
-// surfacePortalID formats a surface's wayland proxy id as the
-// portal's parent_window string; the compositor-side object id is
-// what the portal understands.
-func surfacePortalID(surface *wl.Surface) string {
-	return fmt.Sprintf("wayland:%d", surface.Id())
 }
 
 // portalOpen calls the OpenURI interface on the session bus.
