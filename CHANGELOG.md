@@ -4,6 +4,12 @@
 
 ### Parity, fifth pass
 
+- `Controller.State()` (relm4's `Controller::state`): a `StateWatcher`
+  whose `Subscribe` runs a callback on the component's loop after
+  every batch of updates with the live, typed model - no copy, read
+  only - and whose `Model[T]` reads it between batches. Unsubscribe is
+  idempotent and safe after shutdown; shutdown releases every
+  subscription.
 - Fix: accelerators with shift+Tab never matched (xkb reports
   ISO_Left_Tab).
 - Fix: the window's opaque region went out in buffer pixels; it is in

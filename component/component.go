@@ -86,6 +86,7 @@ type Context[In, Out any] struct {
 	busy    bool
 	held    []In
 	index   *Index
+	state   stateSubs
 	surface *surfaceRef
 }
 
@@ -159,7 +160,13 @@ func start[In, Out any](loop Loop, c Component[In, Out]) *Context[In, Out] {
 }
 
 func startAt[In, Out any](loop Loop, c Component[In, Out], index *Index, surface *surfaceRef) *Context[In, Out] {
-	cx := &Context[In, Out]{loop: loop, model: c, outputs: outlet[Out]{loop: loop}, index: index, surface: surface}
+	cx := &Context[In, Out]{
+		loop:    loop,
+		model:   c,
+		outputs: outlet[Out]{loop: loop},
+		index:   index,
+		surface: surface,
+	}
 	cx.ctx, cx.cancel = context.WithCancel(context.Background()) //nolint:gosec // shutdown calls cx.cancel
 	if l, ok := c.(Loader[In, Out]); ok {
 		cx.root = cx.load(l)
@@ -213,6 +220,7 @@ func (cx *Context[In, Out]) refresh() {
 	for _, clear := range cx.clears {
 		clear()
 	}
+	cx.state.notify()
 }
 
 func (cx *Context[In, Out]) ownerShutdown() {
@@ -240,6 +248,7 @@ func (cx *Context[In, Out]) shutdown() {
 		fn()
 	}
 	cx.outputs.stop()
+	cx.state.release()
 	cx.unown()
 }
 
@@ -288,3 +297,9 @@ func (c *Controller[In, Out]) Shutdown() { c.cx.shutdown() }
 
 // Alive reports whether the component has not shut down.
 func (c *Controller[In, Out]) Alive() bool { return !c.cx.dead }
+
+// State returns the component's state watcher, through which its
+// owner observes the model as it changes: relm4's Controller::state.
+func (c *Controller[In, Out]) State() *StateWatcher[In, Out] {
+	return &StateWatcher[In, Out]{cx: c.cx}
+}
