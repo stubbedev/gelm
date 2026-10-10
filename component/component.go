@@ -83,6 +83,7 @@ type Context[In, Out any] struct {
 	ctx     context.Context
 	cancel  context.CancelFunc
 	loading bool
+	busy    bool
 	held    []In
 	index   *Index
 	surface *surfaceRef
@@ -181,7 +182,7 @@ func (cx *Context[In, Out]) drainInputs() {
 	if cx.dead || len(msgs) == 0 {
 		return
 	}
-	if cx.loading {
+	if cx.loading || cx.busy {
 		cx.held = append(cx.held, msgs...)
 		return
 	}
@@ -189,12 +190,20 @@ func (cx *Context[In, Out]) drainInputs() {
 }
 
 func (cx *Context[In, Out]) update(msgs []In) {
-	for _, msg := range msgs {
+	for i, msg := range msgs {
 		cx.model.Update(cx, msg)
 		if cx.dead {
 			return
 		}
+		if cx.busy {
+			cx.held = append(slices.Clone(msgs[i+1:]), cx.held...)
+			break
+		}
 	}
+	cx.refresh()
+}
+
+func (cx *Context[In, Out]) refresh() {
 	if v, ok := cx.model.(ViewUpdater[In, Out]); ok {
 		v.UpdateView(cx)
 	}
