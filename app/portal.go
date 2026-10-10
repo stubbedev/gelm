@@ -61,11 +61,18 @@ func (c *portalClient) connect() error {
 	return nil
 }
 
-func (c *portalClient) token(prefix string) string {
+type tokenKind byte
+
+const (
+	requestToken tokenKind = 'r'
+	sessionToken tokenKind = 's'
+)
+
+func (c *portalClient) token(kind tokenKind) string {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.nextReq++
-	return fmt.Sprintf("gelm%s%d", prefix, c.nextReq)
+	return fmt.Sprintf("gelm_%c%d", kind, c.nextReq)
 }
 
 func (c *portalClient) dispatch(sig *dbus.Signal) {
@@ -108,7 +115,7 @@ func (c *portalClient) request(method string, opts map[string]dbus.Variant, args
 	if err := c.connect(); err != nil {
 		return portalResponseData{}, "", err
 	}
-	token := c.token("")
+	token := c.token(requestToken)
 	ch := make(chan portalResponseData, 1)
 	c.mu.Lock()
 	conn := c.conn
