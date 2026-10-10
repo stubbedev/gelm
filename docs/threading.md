@@ -64,6 +64,11 @@ deliver as one ordered batch.
 - **`app.SharedState[T]`**: a loop-notified value. `Get` snapshots from
   any goroutine. `Update` mutates the value and notifies subscribers on
   the loop.
+- **`app.Reducer[S, M]`**: relm4's `Reducer`. `Emit(msg)` from any
+  goroutine, and the `reduce` function applies it on the loop in emit
+  order. Subscribers hear the state only when `reduce` reports a
+  change, so the message type is the complete set of transitions.
+
 Everything stops when `Run` returns (`Application.OnStop` hooks run in
 reverse registration order). Delivery is deferred: a `Send`
 from inside a subscriber or update runs on the next pass.
@@ -87,7 +92,7 @@ component's input and output queues coalesce their wakes exactly like
 | `Controller`, `Connector::forward` | `component.Controller` with `Forward`/`ForwardTo`/`Detach` |
 | `tracker`, `#[watch]`, `#[track]` | `Context.Tracked`, `Watch`, `Track` |
 | `MessageBroker` | a `Stream` in a package variable |
-| `SharedState` | `app.SharedState[T]` |
+| `SharedState`, `Reducer` | `app.SharedState[T]`, `app.Reducer[S, M]` |
 | `Worker`, `detach_worker` | `component.Worker` with `LaunchWorker` and `WorkerController` |
 | `Command`, `oneshot_command`, `spawn_command` | `Context.Oneshot`, `Context.Spawn`, cancelled at shutdown |
 | `AsyncComponent` | a component implementing `component.Loader` |

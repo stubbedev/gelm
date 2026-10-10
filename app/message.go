@@ -154,3 +154,72 @@ func (s *SharedState[T]) Subscribe(fn func(T)) (cancel func()) {
 func (s *SharedState[T]) Close() {
 	s.changes.Close()
 }
+
+// Reducer is shared state changed only through typed messages, relm4's
+// Reducer: Emit sends a message from any goroutine, reduce applies it
+// to the state on the loop in emit order, and subscribers hear the new
+// state only when reduce reports a change. The set of transitions is
+// the message type, and nothing else writes the state.
+type Reducer[S, M any] struct {
+	app    *Application
+	mu     sync.Mutex
+	state  S
+	reduce func(*S, M) bool
+	box    mailbox.Box[M]
+	subs   subscriberSet[S]
+	stop   func()
+}
+
+// NewReducer creates a Reducer at initial, reducing with reduce on the
+// application's loop. After the loop ends it comes back stopped.
+func NewReducer[S, M any](a *Application, initial S, reduce func(state *S, msg M) (changed bool)) *Reducer[S, M] {
+	r := &Reducer[S, M]{app: a, state: initial, reduce: reduce}
+	r.stop = a.OnStop(r.box.Stop)
+	return r
+}
+
+// Emit queues msg for reduction on the loop. Safe from any goroutine.
+func (r *Reducer[S, M]) Emit(msg M) {
+	if r.box.Put(msg) {
+		r.app.Invoke(r.drain)
+	}
+}
+
+// Get returns a snapshot of the state, safe from any goroutine.
+func (r *Reducer[S, M]) Get() S {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.state
+}
+
+// Subscribe registers fn to receive the state after every reduction
+// that changed it, on the loop goroutine.
+func (r *Reducer[S, M]) Subscribe(fn func(S)) (cancel func()) {
+	if fn == nil {
+		return func() {}
+	}
+	id := r.subs.add(fn)
+	return sync.OnceFunc(func() { r.subs.remove(id) })
+}
+
+// Close stops the reducer: queued messages are dropped and later Emits
+// do nothing.
+func (r *Reducer[S, M]) Close() {
+	r.box.Stop()
+	r.stop()
+}
+
+func (r *Reducer[S, M]) drain() {
+	for _, msg := range r.box.Take() {
+		r.mu.Lock()
+		changed := r.reduce(&r.state, msg)
+		state := r.state
+		r.mu.Unlock()
+		if !changed {
+			continue
+		}
+		for _, sub := range r.subs.snapshot() {
+			sub.fn(state)
+		}
+	}
+}

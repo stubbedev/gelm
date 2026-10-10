@@ -4,6 +4,8 @@
 
 ### Parity, fifth pass
 
+- `app.Reducer[S, M]`: shared state changed only by typed messages,
+  reduced on the loop, notifying only on change.
 - `widget.ParamAction[P]`: actions activated with a value, bound
   through `Target(p)` like the other actions.
 - `Context.Await(work)` and `Busy()`: an awaiting update step whose

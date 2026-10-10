@@ -17,7 +17,7 @@ live in [architecture.md](architecture.md#non-goals).
 | `FactoryVecDeque`, `FactoryHashMap`, `FactoryComponent`, `DynamicIndex`, `FactoryView` | `component.Factory[C, In, Out]` of item components with in-place edits, `KeyedFactory[K, ...]`, `Index`, `BoxView`/`FlowBoxView`/`StackView`/`NotebookView`/`GridView` | component/factory.go, component/views.go |
 | `Worker`, `detach_worker` | `component.Worker[In, Out]` on its own goroutine, `LaunchWorker` (top-level or owned by a component), `WorkerController` | component/worker.go |
 | `tracker::track`, `#[watch]`, `#[track]` | `Context.Tracked` (`*Tracked[T]`, cleared after each refresh), `Context.Watch`, `Context.Track` | component/tracked.go |
-| `MessageBroker`, `SharedState` | `app.Stream[Msg]`, `app.SharedState[T]` | app/message.go |
+| `MessageBroker`, `SharedState`, `Reducer` | `app.Stream[Msg]`, `app.SharedState[T]`, `app.Reducer[S, M]` | app/message.go |
 | relm4 `binding` module | `widget.Binding[T]` + the widget `Bind*` connectors | widget/binding.go |
 | GApplication single instance, `command-line`, `open` | `app.ClaimInstance` + `InstanceConfig` hooks | app/instance.go |
 | GSettings | `app.NewSettings` + typed `Key[T]`, persisted atomically | app/settings.go |
