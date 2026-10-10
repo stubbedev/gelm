@@ -61,3 +61,20 @@ func ExampleWindow() {
 		log.Fatal(err)
 	}
 }
+
+func ExampleRun() {
+	err := component.Run(app.WindowConfig{Title: "counter", AppID: "dev.example.counter"},
+		func(a *app.Application) (*Counter, error) {
+			face, err := app.Font("sans-serif", 15)
+			if err != nil {
+				return nil, err
+			}
+			if err := a.AddAccel("Escape", widget.NewAction("quit", a.Quit)); err != nil {
+				return nil, err
+			}
+			return &Counter{env: ui.Env{Face: face, Size: 15}}, nil
+		})
+	if err != nil {
+		log.Fatal(err)
+	}
+}

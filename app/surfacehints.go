@@ -24,6 +24,10 @@ const (
 // counts as available.
 type WMCapabilities = window.Capabilities
 
+// WindowState is a toplevel's compositor-confirmed state: maximized,
+// fullscreen, activated, tiled edges and so on (Window.State).
+type WindowState = window.State
+
 // SetContentType hints the window's content kind; it applies with the
 // next frame. Fails when the compositor lacks the protocol.
 func (w *Window) SetContentType(ct ContentType) error {

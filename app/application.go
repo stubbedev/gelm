@@ -340,6 +340,10 @@ type WindowConfig struct {
 	OnPress func(button uint32, serial uint32, over widget.Widget)
 	// OnPointerMove receives raw pointer positions in surface pixels.
 	OnPointerMove func(x, y float64)
+	// OnResize runs on the loop goroutine whenever the window's logical
+	// size changes, the first configured size included, before that
+	// frame lays out.
+	OnResize func(width, height int)
 	// OnKey receives every key press routed to this window, after
 	// widget routing, for app-level keybindings.
 	OnKey func(r *widget.Router, keycode uint32, mods wlsession.Mods)
@@ -399,9 +403,11 @@ type LayerConfig struct {
 	Opaque bool
 	// ContentType mirrors WindowConfig.
 	ContentType ContentType
-	// OnPress, OnPointerMove, OnKey, KeyCapture mirror WindowConfig.
+	// OnPress, OnPointerMove, OnResize, OnKey, KeyCapture mirror
+	// WindowConfig.
 	OnPress       func(button uint32, serial uint32, over widget.Widget)
 	OnPointerMove func(x, y float64)
+	OnResize      func(width, height int)
 	OnKey         func(r *widget.Router, keycode uint32, mods wlsession.Mods)
 	KeyCapture    func(Accel) bool
 	// OnClosed runs when the surface closed or its output went away.
@@ -451,6 +457,7 @@ func (a *Application) openWindow(w *Window, cfg WindowConfig) (*hostWindow, erro
 		opaque:     opaqueFor(cfg.Background, cfg.Opaque),
 		onPress:    cfg.OnPress,
 		onMove:     cfg.OnPointerMove,
+		onResize:   cfg.OnResize,
 		onKey:      cfg.OnKey,
 		keyCapture: cfg.KeyCapture,
 	}, cfg.OnClosed, w.kind)
@@ -509,6 +516,7 @@ func (a *Application) openLayer(l *LayerWindow, cfg LayerConfig) (*hostWindow, e
 		opaque:     opaqueFor(cfg.Background, cfg.Opaque),
 		onPress:    cfg.OnPress,
 		onMove:     cfg.OnPointerMove,
+		onResize:   cfg.OnResize,
 		onKey:      cfg.OnKey,
 		keyCapture: cfg.KeyCapture,
 	}, cfg.OnClosed, surfx.KindOverlay)
@@ -1121,7 +1129,7 @@ func (w *Window) SetMinimized() {
 // State returns the compositor-confirmed window state: the state array
 // of the last configure, not the set of requests the client sent. A
 // refused request never shows up here.
-func (w *Window) State() window.State {
+func (w *Window) State() WindowState {
 	if w.win == nil {
 		return window.State{}
 	}

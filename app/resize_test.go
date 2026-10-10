@@ -6,6 +6,7 @@
 package app
 
 import (
+	"slices"
 	"testing"
 
 	"golang.org/x/image/font/gofont/goregular"
@@ -370,4 +371,19 @@ func TestCloseRequestVetoRoutesProtocolClose(t *testing.T) {
 			t.Error("protocol close without a veto did not close the window")
 		}
 	})
+}
+
+func TestOnResizeHearsEachConfiguredSizeOnce(t *testing.T) {
+	h := newPaintHarness(widget.NewBox(widget.Row, 0, 0), 320, 200)
+	var sizes [][2]int
+	h.wnd.cfg.onResize = func(w, hgt int) { sizes = append(sizes, [2]int{w, hgt}) }
+	host := h.wnd.host.(*fakeHost)
+	h.frame()
+	h.wnd.dirty = true
+	h.frame()
+	host.resizeTo(640, 470)
+	h.frame()
+	if !slices.Equal(sizes, [][2]int{{320, 200}, {640, 470}}) {
+		t.Errorf("OnResize heard %v, want the first size and each change once", sizes)
+	}
 }
