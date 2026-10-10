@@ -36,8 +36,11 @@ func (m *mockOrgA11yBus) GetAddress() (string, *dbus.Error) { return m.addr, nil
 
 // testScene is a synchronous Scene over a real widget tree: Invoke
 // runs inline, so Refresh and Serve's first sample are deterministic.
+// loop stands in for the loop goroutine: the bridge's D-Bus handlers
+// and the test body both touch the widgets only while holding it.
 type testScene struct {
 	mu    sync.Mutex
+	loop  sync.Mutex
 	roots []widget.Widget
 	focus widget.Widget
 }
@@ -54,7 +57,11 @@ func (s *testScene) Focused() widget.Widget {
 	return s.focus
 }
 
-func (s *testScene) Invoke(fn func()) { fn() }
+func (s *testScene) Invoke(fn func()) {
+	s.loop.Lock()
+	defer s.loop.Unlock()
+	fn()
+}
 
 func (s *testScene) SetFocus(w widget.Widget) {
 	s.mu.Lock()
@@ -408,7 +415,8 @@ func TestTreeWalk(t *testing.T) {
 	if err := f.obj(btnPath).Call("org.a11y.atspi.Component.GetExtents", 0, uint32(1)).Store(&ext); err != nil {
 		t.Fatalf("GetExtents: %v", err)
 	}
-	b := f.btn.Bounds()
+	var b render.Rect
+	f.scene.Invoke(func() { b = f.btn.Bounds() })
 	if int(ext.X) != b.X || int(ext.Y) != b.Y || int(ext.W) != b.W || int(ext.H) != b.H {
 		t.Errorf("extents = (%d,%d,%d,%d), want the arranged %+v", ext.X, ext.Y, ext.W, ext.H, b)
 	}
@@ -478,13 +486,19 @@ func TestTextInterface(t *testing.T) {
 		}
 		return ok
 	}
-	if !call("SetCaretOffset", int32(2)) || f.entry.Cursor() != 2 {
-		t.Errorf("SetCaretOffset left the caret at %d, want 2", f.entry.Cursor())
+	var caret int
+	if !call("SetCaretOffset", int32(2)) {
+		t.Error("SetCaretOffset declined")
+	}
+	if f.scene.Invoke(func() { caret = f.entry.Cursor() }); caret != 2 {
+		t.Errorf("SetCaretOffset left the caret at %d, want 2", caret)
 	}
 	if !call("SetSelection", int32(0), int32(1), int32(4)) {
 		t.Error("SetSelection declined")
 	}
-	if st, en, on := f.entry.Selection(); !on || st != 1 || en != 4 {
+	var st, en int
+	var on bool
+	if f.scene.Invoke(func() { st, en, on = f.entry.Selection() }); !on || st != 1 || en != 4 {
 		t.Errorf("selection = %d..%d %v, want 1..4", st, en, on)
 	}
 	f.br.Refresh()
@@ -501,7 +515,7 @@ func TestTextInterface(t *testing.T) {
 	if !call("RemoveSelection", int32(0)) {
 		t.Error("RemoveSelection declined")
 	}
-	if _, _, on := f.entry.Selection(); on {
+	if f.scene.Invoke(func() { _, _, on = f.entry.Selection() }); on {
 		t.Error("RemoveSelection left a selection")
 	}
 
@@ -511,7 +525,8 @@ func TestTextInterface(t *testing.T) {
 	if err := obj.Call("org.a11y.atspi.Text.GetCharacterExtents", 0, int32(1), uint32(1)).Store(&x, &y, &w, &h); err != nil {
 		t.Fatalf("GetCharacterExtents: %v", err)
 	}
-	if b := f.entry.Bounds(); w <= 0 || h <= 0 || !b.Contains(int(x), int(y)) {
+	var b render.Rect
+	if f.scene.Invoke(func() { b = f.entry.Bounds() }); w <= 0 || h <= 0 || !b.Contains(int(x), int(y)) {
 		t.Errorf("extents of 1 = (%d,%d,%d,%d), want a box inside %+v", x, y, w, h, b)
 	}
 	var off int32
@@ -559,7 +574,7 @@ func TestActionAndValue(t *testing.T) {
 	}
 
 	clicked := make(chan struct{}, 1)
-	f.btn.OnClick = func() { clicked <- struct{}{} }
+	f.scene.Invoke(func() { f.btn.OnClick = func() { clicked <- struct{}{} } })
 
 	var n int32
 	var name string
@@ -609,8 +624,9 @@ func TestActionAndValue(t *testing.T) {
 	if err := f.obj(sliderPath).Call("org.a11y.atspi.Value.SetCurrentValue", 0, 60.0).Store(&ok); err != nil {
 		t.Fatalf("SetCurrentValue: %v", err)
 	}
-	if !ok || f.slider.Value() != 60 {
-		t.Errorf("SetCurrentValue(60): ok=%v value=%v", ok, f.slider.Value())
+	var value float64
+	if f.scene.Invoke(func() { value = f.slider.Value() }); !ok || value != 60 {
+		t.Errorf("SetCurrentValue(60): ok=%v value=%v", ok, value)
 	}
 }
 
@@ -663,7 +679,7 @@ func TestEvents(t *testing.T) {
 	})
 
 	t.Run("a check toggle fires checked", func(t *testing.T) {
-		f.sw.SetOn(true)
+		f.scene.Invoke(func() { f.sw.SetOn(true) })
 		f.br.Refresh()
 		st := f.bus.nextSignal(t, swPath, "org.a11y.atspi.Event.Object.StateChanged")
 		if st.Body[0] != "checked" || st.Body[1] != int32(1) {
@@ -672,7 +688,7 @@ func TestEvents(t *testing.T) {
 	})
 
 	t.Run("a caret move fires TextCaretMoved", func(t *testing.T) {
-		f.entry.InsertRune('!') // "hello!" and the caret advances
+		f.scene.Invoke(func() { f.entry.InsertRune('!') })
 		f.br.Refresh()
 		ev := f.bus.nextSignal(t, entryPath, "org.a11y.atspi.Event.Object.TextCaretMoved")
 		if ev.Body[1] != int32(6) {
@@ -683,8 +699,10 @@ func TestEvents(t *testing.T) {
 	t.Run("an edit fires TextChanged, a selection TextSelectionChanged", func(t *testing.T) {
 		time.Sleep(50 * time.Millisecond) // the caret test's insert event lands, then goes
 		f.bus.drainSignals()
-		f.entry.Select(0, 6)
-		f.entry.Insert("yo") // "hello!" replaced
+		f.scene.Invoke(func() {
+			f.entry.Select(0, 6)
+			f.entry.Insert("yo")
+		})
 		f.br.Refresh()
 		del := f.bus.nextSignal(t, entryPath, "org.a11y.atspi.Event.Object.TextChanged")
 		if del.Body[0] != "delete" || del.Body[1] != int32(0) || del.Body[2] != int32(6) || del.Body[3].(dbus.Variant).Value() != "hello!" {
@@ -694,13 +712,13 @@ func TestEvents(t *testing.T) {
 		if ins.Body[0] != "insert" || ins.Body[2] != int32(2) || ins.Body[3].(dbus.Variant).Value() != "yo" {
 			t.Errorf("insert event = %v", ins.Body)
 		}
-		f.entry.Select(0, 1)
+		f.scene.Invoke(func() { f.entry.Select(0, 1) })
 		f.br.Refresh()
 		f.bus.nextSignal(t, entryPath, "org.a11y.atspi.Event.Object.TextSelectionChanged")
 	})
 
 	t.Run("a value change fires PropertyChange", func(t *testing.T) {
-		f.slider.SetValue(70)
+		f.scene.Invoke(func() { f.slider.SetValue(70) })
 		f.br.Refresh()
 		var sliderPath dbus.ObjectPath
 		for path, w := range paths {
@@ -715,15 +733,15 @@ func TestEvents(t *testing.T) {
 	})
 
 	t.Run("a relayout fires BoundsChanged", func(t *testing.T) {
-		arrange(t, f.root, 500, 600)
+		f.scene.Invoke(func() { arrange(t, f.root, 500, 600) })
 		f.br.Refresh()
 		f.bus.nextSignal(t, btnPath, "org.a11y.atspi.Event.Object.BoundsChanged")
 	})
 
 	t.Run("tree updates fire ChildrenChanged", func(t *testing.T) {
 		added := widget.NewLabel(f.face, 13, "added", render.RGB(0, 0, 0))
-		f.box.Append(added, false)
-		arrange(t, f.root, 300, 400)
+		f.scene.Invoke(func() { f.box.Append(added, false) })
+		f.scene.Invoke(func() { arrange(t, f.root, 300, 400) })
 		f.br.Refresh()
 		ev := f.bus.nextSignal(t, boxPath, "org.a11y.atspi.Event.Object.ChildrenChanged")
 		if ev.Body[0] != "add" {
@@ -733,8 +751,8 @@ func TestEvents(t *testing.T) {
 		if item, ok := add.Body[0].([]any); !ok || len(item) != 10 || item[6] != "added" {
 			t.Errorf("AddAccessible = %v, want the label's entry", add.Body)
 		}
-		f.box.Remove(added)
-		arrange(t, f.root, 300, 400)
+		f.scene.Invoke(func() { f.box.Remove(added) })
+		f.scene.Invoke(func() { arrange(t, f.root, 300, 400) })
 		f.br.Refresh()
 		ev = f.bus.nextSignal(t, boxPath, "org.a11y.atspi.Event.Object.ChildrenChanged")
 		if ev.Body[0] != "remove" {
@@ -744,7 +762,7 @@ func TestEvents(t *testing.T) {
 	})
 
 	t.Run("disabling fires enabled and sensitive", func(t *testing.T) {
-		f.btn.SetEnabled(false)
+		f.scene.Invoke(func() { f.btn.SetEnabled(false) })
 		f.br.Refresh()
 		st := f.bus.nextSignal(t, btnPath, "org.a11y.atspi.Event.Object.StateChanged")
 		if st.Body[0] != "enabled" || st.Body[1] != int32(0) {
