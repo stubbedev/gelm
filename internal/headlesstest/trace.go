@@ -140,15 +140,22 @@ func (w *LogWatcher) Mark() int {
 // SeenSince reports whether a trace in category containing substr
 // arrived after mark, without consuming anything.
 func (w *LogWatcher) SeenSince(mark int, category, substr string) bool {
+	return w.CountSince(mark, category, substr) > 0
+}
+
+// CountSince counts the traces in category containing substr that
+// arrived after mark, without consuming anything.
+func (w *LogWatcher) CountSince(mark int, category, substr string) int {
 	w.readNew()
 	w.mu.Lock()
 	defer w.mu.Unlock()
+	n := 0
 	for _, tr := range w.seen[min(mark, len(w.seen)):] {
 		if (category == "" || tr.Category == category) && strings.Contains(tr.Message, substr) {
-			return true
+			n++
 		}
 	}
-	return false
+	return n
 }
 
 // WaitAll is Wait for a set: it waits until each substr has arrived

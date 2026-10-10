@@ -6,6 +6,7 @@ import (
 	"image"
 	"time"
 
+	"github.com/stubbedev/gelm/media"
 	"github.com/stubbedev/gelm/render"
 	"github.com/stubbedev/gelm/widget"
 )
@@ -3598,6 +3599,40 @@ func (b *ListBuilder) OnSelectionChanged(fn func(rows []int)) *ListBuilder {
 	return b
 }
 
+// MediaControlsBuilder builds a widget.MediaControls.
+type MediaControlsBuilder struct {
+	base[*widget.MediaControls, *MediaControlsBuilder]
+	face render.Font
+	size float64
+}
+
+// MediaControls builds a widget.MediaControls with widget.NewMediaControls.
+func MediaControls(stream *media.Stream) *MediaControlsBuilder {
+	b := &MediaControlsBuilder{}
+	b.init(b, func(s *Scope) *widget.MediaControls {
+		return widget.NewMediaControls(s.face(b.face), s.size(b.size), stream)
+	})
+	return b
+}
+
+// Font overrides the environment's typeface and size for this widget; zero values keep the environment's.
+func (b *MediaControlsBuilder) Font(face render.Font, sizePx float64) *MediaControlsBuilder {
+	b.face, b.size = face, sizePx
+	return b
+}
+
+// Stream calls (*widget.MediaControls).SetStream.
+func (b *MediaControlsBuilder) Stream(stream *media.Stream) *MediaControlsBuilder {
+	b.do(func(s *Scope, w *widget.MediaControls) { w.SetStream(stream) })
+	return b
+}
+
+// WatchStream re-applies SetStream with get's value after every update.
+func (b *MediaControlsBuilder) WatchStream(get func() *media.Stream) *MediaControlsBuilder {
+	b.watch(func(w *widget.MediaControls) { w.SetStream(get()) })
+	return b
+}
+
 // MenuBuilder builds a widget.Menu.
 type MenuBuilder struct {
 	base[*widget.Menu, *MenuBuilder]
@@ -6168,6 +6203,62 @@ func (b *ToolbarViewBuilder) TopBarStyle(toolbarStyle widget.ToolbarStyle) *Tool
 // WatchTopBarStyle re-applies SetTopBarStyle with get's value after every update.
 func (b *ToolbarViewBuilder) WatchTopBarStyle(get func() widget.ToolbarStyle) *ToolbarViewBuilder {
 	b.watch(func(w *widget.ToolbarView) { w.SetTopBarStyle(get()) })
+	return b
+}
+
+// VideoBuilder builds a widget.Video.
+type VideoBuilder struct {
+	base[*widget.Video, *VideoBuilder]
+	face render.Font
+	size float64
+}
+
+// Video builds a widget.Video with widget.NewVideo.
+func Video(stream *media.Stream) *VideoBuilder {
+	b := &VideoBuilder{}
+	b.init(b, func(s *Scope) *widget.Video { return widget.NewVideo(s.face(b.face), s.size(b.size), stream) })
+	return b
+}
+
+// Font overrides the environment's typeface and size for this widget; zero values keep the environment's.
+func (b *VideoBuilder) Font(face render.Font, sizePx float64) *VideoBuilder {
+	b.face, b.size = face, sizePx
+	return b
+}
+
+// Autoplay calls (*widget.Video).SetAutoplay.
+func (b *VideoBuilder) Autoplay(on bool) *VideoBuilder {
+	b.do(func(s *Scope, w *widget.Video) { w.SetAutoplay(on) })
+	return b
+}
+
+// WatchAutoplay re-applies SetAutoplay with get's value after every update.
+func (b *VideoBuilder) WatchAutoplay(get func() bool) *VideoBuilder {
+	b.watch(func(w *widget.Video) { w.SetAutoplay(get()) })
+	return b
+}
+
+// Scale calls (*widget.Video).SetScale.
+func (b *VideoBuilder) Scale(imageScale widget.ImageScale) *VideoBuilder {
+	b.do(func(s *Scope, w *widget.Video) { w.SetScale(imageScale) })
+	return b
+}
+
+// WatchScale re-applies SetScale with get's value after every update.
+func (b *VideoBuilder) WatchScale(get func() widget.ImageScale) *VideoBuilder {
+	b.watch(func(w *widget.Video) { w.SetScale(get()) })
+	return b
+}
+
+// Stream calls (*widget.Video).SetStream.
+func (b *VideoBuilder) Stream(stream *media.Stream) *VideoBuilder {
+	b.do(func(s *Scope, w *widget.Video) { w.SetStream(stream) })
+	return b
+}
+
+// WatchStream re-applies SetStream with get's value after every update.
+func (b *VideoBuilder) WatchStream(get func() *media.Stream) *VideoBuilder {
+	b.watch(func(w *widget.Video) { w.SetStream(get()) })
 	return b
 }
 

@@ -1178,3 +1178,45 @@ func TestHeadlessToplevelExport(t *testing.T) {
 		t.Error("the compositor sent an empty handle")
 	}
 }
+
+func commitsWithin(w *LogWatcher, d time.Duration) int {
+	mark := w.Mark()
+	time.Sleep(d)
+	return w.CountSince(mark, "frame", "frame committed")
+}
+
+// TestHeadlessVideoPlays pins #149 on a real compositor: the video
+// demo's generated clip autoplays, presenting frames continuously off
+// the media frame clock, and Space pauses it until presentation goes
+// quiet.
+func TestHeadlessVideoPlays(t *testing.T) {
+	requireEnv(t)
+	bin, err := BuildClient(testEnv.Dir, "./cmd/gelm-video", "gelm-video")
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := testEnv.StartClient(bin, "client-"+t.Name(), "input,frame,shell")
+	if err != nil {
+		t.Fatal(err)
+	}
+	stopAndReport(t, c)
+	w, err := c.Watch()
+	if err != nil {
+		t.Fatal(err)
+	}
+	in := newInput(t)
+	waitKeyboard(t, w)
+	if err := w.WaitEver("frame", "frame committed", traceTimeout); err != nil {
+		t.Fatalf("the video never presented: %v", err)
+	}
+	if n := commitsWithin(w, time.Second); n < 15 {
+		t.Fatalf("%d frames presented in a second of playback, want a 25 fps clip's", n)
+	}
+	if err := in.Tap(KeySpace); err != nil {
+		t.Fatalf("tap space: %v", err)
+	}
+	time.Sleep(500 * time.Millisecond)
+	if n := commitsWithin(w, time.Second); n > 3 {
+		t.Errorf("%d frames presented in a second after pausing", n)
+	}
+}

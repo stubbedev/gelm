@@ -21,7 +21,7 @@ Apps import the public packages: `component` (the component
 framework, headless tests through `component/componenttest`), `ui`
 (typed view builders), `app` (session, windows, loop, dialogs, desktop services),
 `widget` (the widget tree, theme, CSS), `i18n` (gettext), `anim`,
-`appearance`, `render`, `pdf` (PDF writing),
+`appearance`, `render`, `pdf` (PDF writing), `media` (video and sound playback),
 `transfer`, `highlight`, `capture`, and `widget/css`.
 Everything under `internal/` is implementation.
 
@@ -137,6 +137,7 @@ toolchain. Pushing a `v*` tag releases the demo binaries
 | `cmd/gelm-messages` | the typed messaging layer and single-instance forwarding |
 | `cmd/gelm-settings` | a preferences app over typed persisted settings |
 | `cmd/gelm-columns` | ten thousand sorted, filtered rows; the tree view; drag-to-reorder |
+| `cmd/gelm-video` | a video with its controls: a file through ffmpeg, or a generated clip decoded in pure Go |
 | `cmd/gelm-i18n` | a gettext .po catalog (plurals included) localizing built-in and app strings |
 | `cmd/gelm-states`, `cmd/gelm-multilist`, `cmd/gelm-popover` | the clients the headless suite drives: window states, multi-select, popovers |
 | `cmd/wlpointer`, `cmd/zz-vpclick` | synthetic input for the headless suite |
@@ -150,8 +151,12 @@ in `third_party/`),
 [go-text/typesetting](https://github.com/go-text/typesetting),
 [golang.org/x/image](https://pkg.go.dev/golang.org/x/image),
 [srwiley/oksvg](https://github.com/srwiley/oksvg) +
-[rasterx](https://github.com/srwiley/rasterx), and
-[unxed/xkb-go](https://github.com/unxed/xkb-go).
+[rasterx](https://github.com/srwiley/rasterx),
+[unxed/xkb-go](https://github.com/unxed/xkb-go), and
+[jfreymuth/pulse](https://github.com/jfreymuth/pulse) (the PulseAudio
+protocol, which pipewire-pulse also serves). `media.OpenFile` runs
+`ffmpeg` and `ffprobe` from PATH when an app plays a file; nothing else
+needs them.
 
 ## License
 

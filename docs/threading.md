@@ -22,6 +22,13 @@ Who may touch a widget, when, and how everything else gets in.
    runs `fn` on the loop at a fixed cadence. No timer thread exists
    whose callback could race the tree.
 
+Library code follows the same rule. `media.Stream` decodes on its own
+goroutine a few frames ahead and hands frames over through channels
+that the Stream drains on the loop's frame clock. Its sound plays on
+the audio client's goroutine, which shares only an atomic counter of
+frames played. Every Stream method, and every subscriber it calls,
+runs on the loop.
+
 A tree may be built before `Run` starts, on the goroutine that will
 call `Run`. After `Run` returns, the guard disarms and teardown may
 touch widgets from any goroutine.
