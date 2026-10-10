@@ -200,6 +200,22 @@ cx.Oneshot(func(ctx context.Context) Msg {
 })
 ```
 
+An update can also await (relm4's async `update`):
+
+```go
+case Save:
+	cx.Await(func(ctx context.Context) func() {
+		err := store.Save(ctx, c.doc)
+		return func() { c.saveErr = err }
+	})
+```
+
+The work runs on its own goroutine, and the function it returns runs
+on the loop to apply the result. Until then `cx.Busy()` is true (watch
+it to show progress) and later input waits, the rest of the current
+batch included, so no update sees a half-applied model. Shutdown
+cancels the work, and its result never applies.
+
 A component that implements `Loader` initializes asynchronously
 (relm4's `AsyncComponent`):
 

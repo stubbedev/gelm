@@ -69,9 +69,48 @@ func (cx *Context[In, Out]) loaded(slot *widget.Stack) {
 	slot.Show("ready")
 	slot.Remove("loading")
 	cx.loading = false
+	cx.releaseHeld()
+}
+
+func (cx *Context[In, Out]) releaseHeld() {
 	held := cx.held
 	cx.held = nil
 	if len(held) > 0 {
 		cx.update(held)
 	}
 }
+
+// Await is an asynchronous update step, relm4's async update: work runs
+// on its own goroutine, and the function it returns runs on the loop
+// to apply the result to the model. Until then the component is Busy
+// and later input waits, the rest of the current batch included, so
+// no update ever sees the model halfway. The view refreshes when the
+// step starts and when it lands. work's context is cancelled at
+// shutdown, and a step landing after that never applies.
+func (cx *Context[In, Out]) Await(work func(ctx context.Context) (apply func())) {
+	if cx.busy {
+		panic("component: Await while a step is in flight")
+	}
+	cx.busy = true
+	go func() {
+		apply := work(cx.ctx)
+		cx.loop.Invoke(func() {
+			if cx.dead {
+				return
+			}
+			cx.busy = false
+			if apply != nil {
+				apply()
+			}
+			if len(cx.held) == 0 {
+				cx.refresh()
+				return
+			}
+			cx.releaseHeld()
+		})
+	}()
+}
+
+// Busy reports whether an Await step is in flight; a view can watch it
+// to show progress.
+func (cx *Context[In, Out]) Busy() bool { return cx.busy }

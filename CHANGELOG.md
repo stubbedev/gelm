@@ -4,6 +4,9 @@
 
 ### Parity, fifth pass
 
+- `Context.Await(work)` and `Busy()`: an awaiting update step whose
+  result applies on the loop while later input waits, cancelled at
+  shutdown.
 - Component-owned window state: `Context.Window`/`Layer` (shared with
   children and factory items), `WatchWindow`, and change-only
   `WindowTitle`, `WindowMaximized`, `WindowFullscreen`,
