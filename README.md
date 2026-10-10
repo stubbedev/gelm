@@ -21,7 +21,7 @@ Apps import the public packages: `component` (the component
 framework, headless tests through `component/componenttest`), `ui`
 (typed view builders), `app` (session, windows, loop, dialogs, desktop services),
 `widget` (the widget tree, theme, CSS), `i18n` (gettext), `anim`,
-`appearance`, `render`,
+`appearance`, `render`, `pdf` (PDF writing),
 `transfer`, `highlight`, `capture`, and `widget/css`.
 Everything under `internal/` is implementation.
 

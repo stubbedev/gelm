@@ -24,6 +24,7 @@ type mockDesktop struct {
 	queried []dbus.ObjectPath
 	monitor dbus.ObjectPath
 	owner   string
+	print   mockPrint
 }
 
 type mockRequest struct {
@@ -134,7 +135,7 @@ func startMockDesktop(t *testing.T) *mockDesktop {
 	}
 	t.Cleanup(func() { _ = conn.Close() })
 	d := &mockDesktop{t: t, conn: conn}
-	for iface, v := range map[string]any{"org.freedesktop.portal.Inhibit": inhibitIface{d}, "org.freedesktop.portal.Background": backgroundIface{d}} {
+	for iface, v := range map[string]any{"org.freedesktop.portal.Inhibit": inhibitIface{d}, "org.freedesktop.portal.Background": backgroundIface{d}, portalPrintIface: printIface{d}} {
 		if err := conn.Export(v, "/org/freedesktop/portal/desktop", iface); err != nil {
 			t.Fatal(err)
 		}

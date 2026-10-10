@@ -31,12 +31,7 @@ import (
 // launchTimeout bounds the portal call.
 const launchTimeout = 3 * time.Second
 
-const (
-	portalOpenName  = "org.freedesktop.portal.Desktop"
-	portalOpenPath  = dbus.ObjectPath("/org/freedesktop/portal/desktop")
-	portalOpenIface = "org.freedesktop.portal.OpenURI"
-	portalOpenCall  = portalOpenIface + ".OpenURI"
-)
+const portalOpenURI = "org.freedesktop.portal.OpenURI.OpenURI"
 
 // launcher is the Application's launch state: the transport seams
 // tests substitute. The defaults are the portal D-Bus call and
@@ -108,7 +103,7 @@ func (a *Application) launchNow(uri, token string) {
 		if portalErr == nil {
 			return
 		}
-		if !errors.Is(portalErr, errNoPortal) {
+		if !errors.Is(portalErr, ErrPortalUnavailable) {
 			debug.Log("shell", "open uri: portal: %v", portalErr)
 		}
 		if l.openExternal == nil {
@@ -127,21 +122,21 @@ func surfacePortalID(surface *wl.Surface) string {
 	return fmt.Sprintf("wayland:%d", surface.Id())
 }
 
-// errNoPortal reports the absent-portal case (the fallback runs).
-var errNoPortal = errors.New("no xdg-desktop-portal")
-
 // portalOpen calls the OpenURI interface on the session bus.
 func portalOpen(uri, parentWindow, token string) error {
 	conn, err := dbus.ConnectSessionBus()
 	if err != nil {
-		return errNoPortal
+		return fmt.Errorf("app: open %s: session bus: %w: %w", uri, ErrPortalUnavailable, err)
 	}
 	defer func() { _ = conn.Close() }()
 	var owned bool
 	if err := conn.Object("org.freedesktop.DBus", "/").CallWithContext(
 		conn.Context(), "org.freedesktop.DBus.NameHasOwner", 0,
-		portalOpenName).Store(&owned); err != nil || !owned {
-		return errNoPortal
+		portalName).Store(&owned); err != nil {
+		return fmt.Errorf("app: open %s: ask for %s: %w: %w", uri, portalName, ErrPortalUnavailable, err)
+	}
+	if !owned {
+		return fmt.Errorf("app: open %s: %w", uri, ErrPortalUnavailable)
 	}
 	options := map[string]dbus.Variant{}
 	if token != "" {
@@ -149,8 +144,8 @@ func portalOpen(uri, parentWindow, token string) error {
 	}
 	ctx, cancel := context.WithTimeout(conn.Context(), launchTimeout)
 	defer cancel()
-	return conn.Object(portalOpenName, portalOpenPath).CallWithContext(
-		ctx, portalOpenCall, dbus.FlagNoReplyExpected, parentWindow, uri, options).Err
+	return conn.Object(portalName, portalPath).CallWithContext(
+		ctx, portalOpenURI, dbus.FlagNoReplyExpected, parentWindow, uri, options).Err
 }
 
 // xdgOpen runs xdg-open(1) detached.

@@ -53,9 +53,11 @@ const (
 
 type desktopPortals struct {
 	portalClient
-	app     *Application
-	monitor dbus.ObjectPath
-	onState func(state SessionState, screensaver bool)
+	app           *Application
+	monitor       dbus.ObjectPath
+	onState       func(state SessionState, screensaver bool)
+	printSettings map[string]dbus.Variant
+	printSetup    *PageSetup
 }
 
 func (a *Application) desktop() *desktopPortals {

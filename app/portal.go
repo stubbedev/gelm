@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -21,6 +22,27 @@ const (
 )
 
 var errPortalTimeout = errors.New("app: portal request timed out")
+
+// ErrPortalUnavailable reports that no xdg-desktop-portal answered on
+// the session bus, or that the running one has no backend for the
+// interface asked for.
+var ErrPortalUnavailable = errors.New("app: no xdg-desktop-portal provides this interface")
+
+var portalAbsentErrors = []string{
+	"org.freedesktop.DBus.Error.ServiceUnknown",
+	"org.freedesktop.DBus.Error.NameHasNoOwner",
+	"org.freedesktop.DBus.Error.UnknownInterface",
+	"org.freedesktop.DBus.Error.UnknownObject",
+	"org.freedesktop.DBus.Error.UnknownMethod",
+}
+
+func portalCallError(method string, err error) error {
+	var de dbus.Error
+	if errors.As(err, &de) && slices.Contains(portalAbsentErrors, de.Name) {
+		return fmt.Errorf("app: portal %s: %w: %w", method, ErrPortalUnavailable, err)
+	}
+	return fmt.Errorf("app: portal %s: %w", method, err)
+}
 
 type portalResponseData struct {
 	code    uint32
@@ -47,7 +69,7 @@ func (c *portalClient) connect() error {
 	}
 	conn, err := dbus.ConnectSessionBus()
 	if err != nil {
-		return fmt.Errorf("app: portal: session bus: %w", err)
+		return fmt.Errorf("app: portal: session bus: %w: %w", ErrPortalUnavailable, err)
 	}
 	c.conn = conn
 	c.pending = map[string]chan portalResponseData{}
@@ -132,7 +154,7 @@ func (c *portalClient) request(method string, opts map[string]dbus.Variant, args
 	var handle dbus.ObjectPath
 	if err := conn.Object(portalName, portalPath).CallWithContext(ctx, method, 0, append(append([]any{}, args...), opts)...).Store(&handle); err != nil {
 		drop()
-		return portalResponseData{}, "", fmt.Errorf("app: portal %s: %w", method, err)
+		return portalResponseData{}, "", portalCallError(method, err)
 	}
 	select {
 	case resp := <-ch:
@@ -154,7 +176,7 @@ func (c *portalClient) callPlain(method string, args ...any) error {
 	ctx, cancel := context.WithTimeout(conn.Context(), portalRequestTimeout)
 	defer cancel()
 	if err := conn.Object(portalName, portalPath).CallWithContext(ctx, method, 0, args...).Err; err != nil {
-		return fmt.Errorf("app: portal %s: %w", method, err)
+		return portalCallError(method, err)
 	}
 	return nil
 }
