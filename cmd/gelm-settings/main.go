@@ -1,15 +1,16 @@
-// Command gelm-settings is the settings application example: typed
-// persisted keys (app/settings.go) bound straight to widgets through
-// Binding connectors, so every edit writes through to
-// <config>/dev.stubbe.gelm.settings/settings.json and every restart
-// comes back exactly where it left off. Change something, quit, run it
-// again.
+// Command gelm-settings is the M5 settings app: typed persisted keys
+// (app/settings.go) behind PreferencesView rows - the adaptive shell
+// of pages, view switcher, and built-in search - so every edit writes
+// through to <config>/dev.stubbe.gelm.settings/settings.json and every
+// restart comes back exactly where it left off. Change something,
+// quit, run it again.
 package main
 
 import (
 	"log"
 	"os"
 	"path/filepath"
+	"slices"
 
 	"github.com/stubbedev/gelm/app"
 	"github.com/stubbedev/gelm/component"
@@ -19,9 +20,14 @@ import (
 )
 
 var (
-	nameKey   = app.Key[string]{Name: "name", Default: "someone"}
-	volumeKey = app.Key[float64]{Name: "volume", Default: 0.5}
-	notifyKey = app.Key[bool]{Name: "notifications", Default: true}
+	nameKey    = app.Key[string]{Name: "name", Default: "someone"}
+	volumeKey  = app.Key[float64]{Name: "volume", Default: 0.5}
+	notifyKey  = app.Key[bool]{Name: "notifications", Default: true}
+	accentKey  = app.Key[string]{Name: "accent", Default: "blue"}
+	searchKey  = app.Key[bool]{Name: "searchable-rows", Default: true}
+	panelKey   = app.Key[bool]{Name: "panel-clock", Default: true}
+	denseKey   = app.Key[bool]{Name: "dense", Default: false}
+	accentList = []string{"blue", "teal", "green", "yellow", "pink"}
 )
 
 type prefs struct {
@@ -34,16 +40,11 @@ func (p *prefs) Init(cx *component.Context[struct{}, struct{}]) widget.Widget {
 	if dir, err := os.UserConfigDir(); err == nil {
 		path = filepath.Join(dir, "dev.stubbe.gelm.settings", "settings.json")
 	}
-	row := func(label string, control ui.Node) ui.Node {
-		return ui.Row(ui.Label(label), control).Spacing(12)
-	}
-	return ui.Mount(cx, p.env, ui.Column(
-		row("name", ui.Entry().BindText(nameKey.Binding(p.settings))),
-		row("volume", ui.Slider(0, 100, 1, 0).BindValue(scaleBinding(p.settings))),
-		row("notifications", ui.Switch(false).BindOn(notifyKey.Binding(p.settings))),
-		ui.Label("edits persist to "+path+"; restart to see them; Escape quits").
-			Font(nil, 12).Ink(widget.Current().TextMuted),
-	).Spacing(14).Padding(render.UniformInsets(24)))
+	face := p.env.Face.(render.Font)
+	root := widget.NewBox(widget.Column, 12, 12)
+	root.Append(p.buildPages(face), true)
+	root.Append(widget.NewLabel(face, 12, "edits persist to "+path+"; restart to see them; Escape quits", widget.Current().TextMuted), false)
+	return ui.Mount(cx, p.env, ui.Use(root))
 }
 
 func (p *prefs) Update(*component.Context[struct{}, struct{}], struct{}) {}
@@ -51,7 +52,7 @@ func (p *prefs) Update(*component.Context[struct{}, struct{}], struct{}) {}
 func main() {
 	err := component.Run(app.WindowConfig{
 		Title: "gelm settings", AppID: "dev.stubbe.gelm.settings",
-		Width: 420, Height: 220, Background: widget.Current().Bg,
+		Width: 520, Height: 520, Background: widget.Current().Bg,
 	}, func(a *app.Application) (*prefs, error) {
 		face, err := app.Font("sans-serif", 14)
 		if err != nil {
@@ -67,13 +68,56 @@ func main() {
 	}
 }
 
-// scaleBinding adapts the 0..1 persisted volume to the slider's
-// percentage scale: a Binding over the derived value, written back
-// through the key.
-func scaleBinding(s *app.Settings) *widget.Binding[float64] {
-	vol := volumeKey.Get(s)
-	b := widget.NewBinding(vol * 100)
-	b.Subscribe(func(pct float64) { volumeKey.Set(s, pct/100) })
-	volumeKey.Subscribe(s, func(v float64) { b.Set(v * 100) })
-	return b
+func (p *prefs) buildPages(face render.Font) widget.Widget {
+	general := widget.NewPreferencesPage()
+	general.SetTitle("General")
+
+	identity := widget.NewPreferencesGroup(face, 14, "Identity")
+	name := widget.NewEntryRow(face, 14, "Name", nameKey.Get(p.settings))
+	name.Entry().OnChanged = func(s string) { nameKey.Set(p.settings, s) }
+	identity.Add(name)
+
+	sound := widget.NewPreferencesGroup(face, 14, "Sound & Notifications")
+	volume := widget.NewSpinRow(face, 14, "Volume", "", 0, 100, 5, 0, func(v float64) {
+		volumeKey.Set(p.settings, v/100)
+	})
+	volume.SetValue(volumeKey.Get(p.settings) * 100)
+	sound.Add(volume)
+	notify := widget.NewSwitchRow(face, 14, "Notifications", "", func(on bool) {
+		notifyKey.Set(p.settings, on)
+	})
+	notify.Set(notifyKey.Get(p.settings))
+	sound.Add(notify)
+	general.Add(identity)
+	general.Add(sound)
+
+	appearance := widget.NewPreferencesPage()
+	appearance.SetTitle("Appearance")
+	colors := widget.NewPreferencesGroup(face, 14, "Accent")
+	accent := widget.NewComboRow(face, 14, "Accent color", "", accentList,
+		max(slices.Index(accentList, accentKey.Get(p.settings)), 0), func(i int) {
+			accentKey.Set(p.settings, accentList[i])
+		})
+	colors.Add(accent)
+	rows := widget.NewPreferencesGroup(face, 14, "Rows")
+	toggles := []struct {
+		key   app.Key[bool]
+		title string
+	}{
+		{searchKey, "Searchable rows"},
+		{panelKey, "Panel clock"},
+		{denseKey, "Dense lists"},
+	}
+	for _, t := range toggles {
+		row := widget.NewSwitchRow(face, 14, t.title, "", func(on bool) { t.key.Set(p.settings, on) })
+		row.Set(t.key.Get(p.settings))
+		rows.Add(row)
+	}
+	appearance.Add(colors)
+	appearance.Add(rows)
+
+	view := widget.NewPreferencesView(face, 14)
+	view.Add(general)
+	view.Add(appearance)
+	return view
 }
