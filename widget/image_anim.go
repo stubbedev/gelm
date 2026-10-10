@@ -3,7 +3,7 @@ package widget
 import (
 	"image"
 
-	"github.com/stubbedev/gelm/internal/anim"
+	"github.com/stubbedev/gelm/anim"
 	"github.com/stubbedev/gelm/render"
 )
 

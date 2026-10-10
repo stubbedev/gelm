@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stubbedev/gelm/internal/anim"
+	"github.com/stubbedev/gelm/internal/animclock"
 	"github.com/stubbedev/gelm/internal/wlsession"
 	"github.com/stubbedev/gelm/widget"
 )
@@ -19,7 +19,7 @@ import (
 // real tick, no compositor.
 func idleBudgetApp(tb testing.TB) *Application {
 	tb.Helper()
-	anim.Reset()
+	animclock.Reset()
 	a := NewApplication(&wlsession.Session{})
 	a.step = func() error { return nil }
 	a.wake = func(time.Duration) {}

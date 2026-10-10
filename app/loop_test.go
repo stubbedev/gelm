@@ -4,7 +4,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stubbedev/gelm/internal/anim"
+	"github.com/stubbedev/gelm/anim"
+	"github.com/stubbedev/gelm/internal/animclock"
 	"github.com/stubbedev/gelm/internal/popup"
 	"github.com/stubbedev/gelm/render"
 	"github.com/stubbedev/gelm/widget"
@@ -20,9 +21,9 @@ func repNext(rep *keyRepeater) time.Time {
 	return t
 }
 
-// animNext adapts anim.Next the same way.
+// animNext adapts animclock.Next the same way.
 func animNext() time.Time {
-	t, ok := anim.Next()
+	t, ok := animclock.Next()
 	if !ok {
 		return time.Time{}
 	}
@@ -61,7 +62,7 @@ func TestNextWake(t *testing.T) {
 	})
 
 	t.Run("a running animation wakes at its end", func(t *testing.T) {
-		anim.Reset()
+		animclock.Reset()
 		anim.Start(250*time.Millisecond, func(float64) {})
 		wake, ok := nextWake(repNext(newKeyRepeater(0, 0)), animNext(), never, never, now)
 		if !ok {
@@ -73,7 +74,7 @@ func TestNextWake(t *testing.T) {
 	})
 
 	t.Run("the earliest deadline wins", func(t *testing.T) {
-		anim.Reset()
+		animclock.Reset()
 		anim.Start(20*time.Millisecond, func(float64) {})
 		rep := newKeyRepeater(0, 0)
 		rep.press(30, 0)
@@ -98,7 +99,7 @@ func TestNextWake(t *testing.T) {
 // pending, zero wakeups may be scheduled. This is the acceptance hook
 // for the parked event loop; the pre-park loop burned a core here.
 func TestIdleLoopDoesNotWake(t *testing.T) {
-	anim.Reset()
+	animclock.Reset()
 	rep := newKeyRepeater(0, 0)
 	wakes := 0
 	start := time.Now()
@@ -203,8 +204,8 @@ func TestLoopKickerCoalesces(t *testing.T) {
 // when the tween ends the loop parks again - the acceptance half of
 // the timer-driven animation clock.
 func TestAnimatingLoopWakesOnFrameDeadlines(t *testing.T) {
-	anim.Reset()
-	t.Cleanup(anim.Reset)
+	animclock.Reset()
+	t.Cleanup(animclock.Reset)
 	rep := newKeyRepeater(0, 0)
 	never := time.Time{}
 
@@ -215,20 +216,20 @@ func TestAnimatingLoopWakesOnFrameDeadlines(t *testing.T) {
 	anim.Start(70*time.Millisecond, func(float64) {})
 	now := time.Now()
 	wakes := 0
-	for anim.Active() {
+	for animclock.Active() {
 		wake, ok := nextWake(repNext(rep), animNext(), never, never, now)
 		if !ok {
 			t.Fatal("animating tree did not schedule a wake")
 		}
-		if d := wake.Sub(now); d <= 0 || d > anim.FrameInterval {
-			t.Fatalf("wake in %v, want one animation frame period (%v) or less", d, anim.FrameInterval)
+		if d := wake.Sub(now); d <= 0 || d > animclock.FrameInterval {
+			t.Fatalf("wake in %v, want one animation frame period (%v) or less", d, animclock.FrameInterval)
 		}
 		wakes++
 		now = wake
-		anim.Tick(now) // the loop ticks its animation clock on the wake
+		animclock.Tick(now) // the loop ticks its animation clock on the wake
 	}
 	if wakes < 3 {
-		t.Errorf("wakes over a 70ms tween = %d, want the ~%v frame cadence", wakes, anim.FrameInterval)
+		t.Errorf("wakes over a 70ms tween = %d, want the ~%v frame cadence", wakes, animclock.FrameInterval)
 	}
 	if _, ok := nextWake(repNext(rep), animNext(), never, never, now); ok {
 		t.Error("finished tween still scheduled wakeups")
@@ -249,7 +250,7 @@ func TestFrameOwed(t *testing.T) {
 	if w.frameOwed(false, t0.Add(time.Second)) {
 		t.Error("pending frame drawn past without the callback")
 	}
-	if w.frameOwed(true, t0.Add(anim.FrameInterval)) {
+	if w.frameOwed(true, t0.Add(animclock.FrameInterval)) {
 		t.Error("animation drew over a fresh pending frame")
 	}
 	if !w.frameOwed(true, t0.Add(frameStaleAfter)) {

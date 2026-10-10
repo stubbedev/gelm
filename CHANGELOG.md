@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### Public animation API
+
+- `anim` is public: `Animate`, `Tween.Easing`, the easing curves
+  (`CubicBezier`, `Spring`, ...), `Sequence`, `Parallel`, `Delay`,
+  `Play`, `Start`, `Cancel`, and reduced motion (`Instant`,
+  `SetInstant`, `GELM_NO_ANIM=1`). Apps outside the module can
+  animate widgets, e.g. a `ProgressBar` value.
+- The loop-driving scheduler (`Tick`, `Next`, `Active`, `SetClock`,
+  `Reset`) moved to `internal/animclock`, out of the public surface.
+  `internal/anim` is gone.
+
 ### Scrolling by frame: wheel steps, touchpad pixels
 
 - The session routes a pointer frame's scroll once: wheel notches

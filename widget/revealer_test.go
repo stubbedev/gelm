@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stubbedev/gelm/internal/anim"
+	"github.com/stubbedev/gelm/internal/animclock"
 	"github.com/stubbedev/gelm/render"
 )
 
@@ -74,7 +74,7 @@ func redAt(data shot, x, y int) uint8 {
 func advance(c *animClock, d time.Duration) {
 	until := c.now().Add(d)
 	for {
-		wake, ok := anim.Next()
+		wake, ok := animclock.Next()
 		if !ok || wake.After(until) {
 			return
 		}

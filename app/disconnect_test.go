@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stubbedev/gelm/internal/anim"
+	"github.com/stubbedev/gelm/internal/animclock"
 	"github.com/stubbedev/gelm/internal/buffer"
 	"github.com/stubbedev/gelm/internal/headlesstest"
 	"github.com/stubbedev/gelm/internal/wlsession"
@@ -45,7 +45,7 @@ func deadPeerSession(t *testing.T) (*wlsession.Session, string) {
 // socket.
 func disconnectApp(t *testing.T, sess *wlsession.Session) (*Application, *hostWindow, *paintHarness) {
 	t.Helper()
-	anim.Reset()
+	animclock.Reset()
 	root := widget.NewBox(widget.Row, 0, 0)
 	h := newPaintHarness(root, 320, 200)
 	h.wnd.sess = sess

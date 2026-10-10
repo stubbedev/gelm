@@ -35,7 +35,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/stubbedev/gelm/internal/anim"
+	"github.com/stubbedev/gelm/anim"
 )
 
 // Kind selects a surface's animation profile. The zero value is the

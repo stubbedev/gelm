@@ -16,8 +16,8 @@ import (
 
 	"github.com/unxed/xkb-go"
 
+	"github.com/stubbedev/gelm/anim"
 	"github.com/stubbedev/gelm/app"
-	"github.com/stubbedev/gelm/internal/anim"
 	"github.com/stubbedev/gelm/internal/clipboard"
 	"github.com/stubbedev/gelm/internal/debug"
 	"github.com/stubbedev/gelm/internal/popup"

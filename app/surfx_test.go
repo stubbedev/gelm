@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stubbedev/gelm/internal/anim"
+	"github.com/stubbedev/gelm/internal/animclock"
 	"github.com/stubbedev/gelm/internal/surfx"
 	"github.com/stubbedev/gelm/widget"
 )
@@ -25,21 +25,21 @@ type animClock struct {
 func pinAnimClock(t *testing.T) *animClock {
 	t.Helper()
 	c := &animClock{cur: time.Unix(1750000000, 0)}
-	t.Cleanup(anim.SetClock(func() time.Time { return c.cur }))
-	t.Cleanup(anim.Reset)
-	anim.Reset()
+	t.Cleanup(animclock.SetClock(func() time.Time { return c.cur }))
+	t.Cleanup(animclock.Reset)
+	animclock.Reset()
 	return c
 }
 
 // step advances one animation wake — one frame deadline — and ticks
 // there. False when nothing is scheduled: the loop may park.
 func (c *animClock) step() bool {
-	wake, ok := anim.Next()
+	wake, ok := animclock.Next()
 	if !ok {
 		return false
 	}
 	c.cur = wake
-	anim.Tick(wake)
+	animclock.Tick(wake)
 	return true
 }
 
@@ -159,7 +159,7 @@ func TestLayerOverlayExitKeepsLoopParkedBetweenFrames(t *testing.T) {
 	if !h.host.closed {
 		t.Error("raw close did not flip the host's closed flag")
 	}
-	if _, ok := anim.Next(); ok {
+	if _, ok := animclock.Next(); ok {
 		t.Error("tween schedule not empty after the exit landed")
 	}
 }
@@ -205,7 +205,7 @@ func TestDismissedWindowSealsInputAndIgnoresDoubleClose(t *testing.T) {
 	if h.destroyed != 1 {
 		t.Errorf("destroyed %d times, want exactly 1", h.destroyed)
 	}
-	if _, ok := anim.Next(); ok {
+	if _, ok := animclock.Next(); ok {
 		t.Error("schedule not drained")
 	}
 }

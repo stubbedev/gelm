@@ -15,7 +15,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/stubbedev/gelm/internal/anim"
+	"github.com/stubbedev/gelm/internal/animclock"
 	"github.com/stubbedev/gelm/internal/appearance"
 	"github.com/stubbedev/gelm/internal/clipboard"
 	"github.com/stubbedev/gelm/internal/datacontrol"
@@ -735,14 +735,14 @@ func (a *Application) tick(step func() error, now time.Time) error {
 	if r := a.keyboardRouter(); r != nil {
 		a.ime.sync(r, true)
 	}
-	animating := anim.Active()
+	animating := animclock.Active()
 	if animating {
 		// The animation clock ticks on loop wakes: frame callbacks
 		// pace it when the compositor answers, the timer Next()
 		// schedules pace it when they stop (occlusion). A tick that
 		// ran callbacks invalidated widgets, so only then is a
 		// frame owed.
-		if anim.Tick(now) {
+		if animclock.Tick(now) {
 			for _, w := range a.windows {
 				w.dirty = true
 			}
@@ -828,7 +828,7 @@ func (a *Application) tick(step func() error, now time.Time) error {
 	if t, ok := a.rep.nextDeadline(); ok {
 		repNext = t
 	}
-	if t, ok := anim.Next(); ok {
+	if t, ok := animclock.Next(); ok {
 		animFrame = t
 	}
 	wakeAt, ok := nextWake(repNext, animFrame, tipNext, a.queues.nextDeadline(), now)

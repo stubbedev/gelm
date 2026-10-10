@@ -4,7 +4,8 @@ import (
 	"math"
 	"time"
 
-	"github.com/stubbedev/gelm/internal/anim"
+	"github.com/stubbedev/gelm/anim"
+	"github.com/stubbedev/gelm/internal/animclock"
 )
 
 const (
@@ -41,7 +42,7 @@ type kinetic struct {
 // sample records a delta of the gesture in flight, stopping any glide.
 func (k *kinetic) sample(dx, dy float64) {
 	k.halt()
-	k.ring[k.n%kineticSamples] = kineticSample{anim.Now(), [2]float64{dx, dy}}
+	k.ring[k.n%kineticSamples] = kineticSample{animclock.Now(), [2]float64{dx, dy}}
 	k.n++
 }
 
@@ -63,7 +64,7 @@ func (k *kinetic) stop() {
 // velocity is the gesture's recent speed per axis in pixels per second:
 // the deltas inside the window over the time they span.
 func (k *kinetic) velocity() [2]float64 {
-	now := anim.Now()
+	now := animclock.Now()
 	var sum [2]float64
 	var first time.Time
 	count := 0

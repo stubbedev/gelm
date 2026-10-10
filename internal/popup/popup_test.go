@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stubbedev/gelm/internal/anim"
+	"github.com/stubbedev/gelm/internal/animclock"
 	"github.com/stubbedev/gelm/internal/surfx"
 	"github.com/stubbedev/gelm/internal/wlsession"
 	"github.com/stubbedev/gelm/render"
@@ -98,13 +98,13 @@ func TestAnimViewRestMatchesContentRect(t *testing.T) {
 func wireFreePopup(t *testing.T, kind surfx.Kind) (*Popup, func()) {
 	t.Helper()
 	base := time.Unix(1750000000, 0)
-	t.Cleanup(anim.SetClock(func() time.Time { return base }))
-	anim.Reset()
-	t.Cleanup(anim.Reset)
+	t.Cleanup(animclock.SetClock(func() time.Time { return base }))
+	animclock.Reset()
+	t.Cleanup(animclock.Reset)
 	now := base
 	drive := func() {
 		for i := 0; ; i++ {
-			wake, ok := anim.Next()
+			wake, ok := animclock.Next()
 			if !ok {
 				return
 			}
@@ -114,7 +114,7 @@ func wireFreePopup(t *testing.T, kind surfx.Kind) (*Popup, func()) {
 			if wake.After(now) {
 				now = wake
 			}
-			anim.Tick(now)
+			animclock.Tick(now)
 		}
 	}
 	p := &Popup{}

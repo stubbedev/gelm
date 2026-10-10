@@ -107,11 +107,13 @@ must not spin waiting for one: dirty input still forces the next
 redraw, and a running animation takes over pacing itself — the
 animation clock's timer pushes a frame only once the callback has gone
 unheard for a frame and a half (`frameOwed`, app/window.go). Animation
-is timer-paced for the same reason (internal/anim): `Tick` advances
-eased, composable timelines (Easing / Sequence / Parallel / Cancel) on
-wakes, `Next` reports the next frame deadline, and nothing running
-means no deadline and a full park. Only ticks that ran callbacks mark
-windows dirty.
+is timer-paced for the same reason. Apps declare timelines with the
+public `anim` package (Animate, Easing, Sequence, Parallel, Delay,
+Play), and the loop drives the scheduler in internal/animclock:
+`Tick` advances the launched pieces on wakes, `Next` reports the next
+frame deadline, and nothing running means no deadline and a full park.
+Only ticks that ran callbacks mark windows dirty. The split keeps the
+loop-driving calls out of the public API.
 
 ### 6. Logical coordinates end to end; the device scale exists only at the paint boundary
 

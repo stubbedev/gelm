@@ -12,7 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stubbedev/gelm/internal/anim"
+	"github.com/stubbedev/gelm/anim"
+	"github.com/stubbedev/gelm/internal/animclock"
 )
 
 // recDriver is a fake Driver recording the call order, so tests can
@@ -48,9 +49,9 @@ func (d *recDriver) Destroy() {
 func last[T any](s []T) T { return s[len(s)-1] }
 
 func TestDismissFiresOnceAndDestroysAfterLastFrame(t *testing.T) {
-	restore := anim.SetClock(func() time.Time { return time.Unix(1750000000, 0) })
+	restore := animclock.SetClock(func() time.Time { return time.Unix(1750000000, 0) })
 	defer restore()
-	anim.Reset()
+	animclock.Reset()
 
 	d := &recDriver{}
 	fx := NewCoordinator(KindMenu, d, func() bool { return true })
@@ -83,15 +84,15 @@ func TestDismissFiresOnceAndDestroysAfterLastFrame(t *testing.T) {
 	framesBefore := d.frames
 	now := time.Unix(1750000000, 0)
 	for steps := 0; ; steps++ {
-		if _, ok := anim.Next(); !ok {
+		if _, ok := animclock.Next(); !ok {
 			break
 		}
 		steps++
 		if steps > 1000 {
 			t.Fatal("exit tween never landed")
 		}
-		now = now.Add(anim.FrameInterval)
-		anim.Tick(now)
+		now = now.Add(animclock.FrameInterval)
+		animclock.Tick(now)
 	}
 	if d.frames == framesBefore {
 		t.Error("exit tween painted no frames")
@@ -111,9 +112,9 @@ func TestDismissFiresOnceAndDestroysAfterLastFrame(t *testing.T) {
 }
 
 func TestTeardownInterruptsTweenWithoutLeaks(t *testing.T) {
-	restore := anim.SetClock(func() time.Time { return time.Unix(1750000000, 0) })
+	restore := animclock.SetClock(func() time.Time { return time.Unix(1750000000, 0) })
 	defer restore()
-	anim.Reset()
+	animclock.Reset()
 
 	d := &recDriver{}
 	fx := NewCoordinator(KindMenu, d, func() bool { return true })
@@ -131,7 +132,7 @@ func TestTeardownInterruptsTweenWithoutLeaks(t *testing.T) {
 		t.Errorf("destroyed %d times after teardown, want exactly 1", d.destroyed)
 	}
 	// A tick after teardown runs nothing: the surface is gone.
-	if _, ok := anim.Next(); ok {
+	if _, ok := animclock.Next(); ok {
 		t.Error("canceled tween still holds a wake deadline")
 	}
 	// Teardown is idempotent.
@@ -142,7 +143,7 @@ func TestTeardownInterruptsTweenWithoutLeaks(t *testing.T) {
 }
 
 func TestTeardownWithoutDismissFiresOnce(t *testing.T) {
-	anim.Reset()
+	animclock.Reset()
 	d := &recDriver{}
 	fx := NewCoordinator(KindMenu, d, nil)
 	closed := 0
@@ -155,9 +156,9 @@ func TestTeardownWithoutDismissFiresOnce(t *testing.T) {
 }
 
 func TestEnterFirstFrameAtZeroAndRestAtCompletion(t *testing.T) {
-	restore := anim.SetClock(func() time.Time { return time.Unix(1750000000, 0) })
+	restore := animclock.SetClock(func() time.Time { return time.Unix(1750000000, 0) })
 	defer restore()
-	anim.Reset()
+	animclock.Reset()
 
 	d := &recDriver{}
 	fx := NewCoordinator(KindMenu, d, func() bool { return true })
@@ -176,11 +177,11 @@ func TestEnterFirstFrameAtZeroAndRestAtCompletion(t *testing.T) {
 	// Drive to rest.
 	now := time.Unix(1750000000, 0)
 	for steps := 0; ; steps++ {
-		if _, ok := anim.Next(); !ok {
+		if _, ok := animclock.Next(); !ok {
 			break
 		}
-		now = now.Add(anim.FrameInterval)
-		anim.Tick(now)
+		now = now.Add(animclock.FrameInterval)
+		animclock.Tick(now)
 		if steps > 1000 {
 			t.Fatal("enter tween never landed")
 		}
@@ -217,7 +218,7 @@ func TestInstantPathsRunTheSameMachine(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			anim.Reset()
+			animclock.Reset()
 			tc.setup(t)
 
 			d := &recDriver{}
@@ -241,7 +242,7 @@ func TestInstantPathsRunTheSameMachine(t *testing.T) {
 			}
 			// The instant surface holds no wake deadlines: the loop
 			// parks immediately after.
-			if _, ok := anim.Next(); ok {
+			if _, ok := animclock.Next(); ok {
 				t.Error("instant path left a tween scheduled")
 			}
 		})
