@@ -99,8 +99,5 @@ live in [architecture.md](architecture.md#non-goals).
 
 ## Known gaps
 
-The demos still use `internal/` packages instead of showing the
-public API ([#138](https://github.com/stubbedev/gelm/issues/138)).
-
 The Hyprland gate is allow-failure until it has been green for a
 sustained window; sway is the required gate.

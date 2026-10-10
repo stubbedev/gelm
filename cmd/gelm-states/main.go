@@ -17,10 +17,6 @@ import (
 	"github.com/unxed/xkb-go"
 
 	"github.com/stubbedev/gelm/app"
-	"github.com/stubbedev/gelm/internal/debug"
-	"github.com/stubbedev/gelm/internal/sysfont"
-	"github.com/stubbedev/gelm/internal/window"
-	"github.com/stubbedev/gelm/internal/wlsession"
 	"github.com/stubbedev/gelm/widget"
 )
 
@@ -38,12 +34,12 @@ func main() {
 }
 
 func run() error {
-	sess, err := wlsession.Connect()
+	sess, err := app.Connect()
 	if err != nil {
 		return err
 	}
 	defer sess.Close()
-	tf, err := sysfont.Sans()
+	tf, err := app.Font("sans-serif", 14)
 	if err != nil {
 		return err
 	}
@@ -53,7 +49,7 @@ func run() error {
 	// instead of exiting: the headless reconnect test's probe.
 	if os.Getenv("GELM_DEMO_RECONNECT") != "" {
 		application.SetReconnect(&app.ReconnectOptions{
-			OnReconnected: func() { debug.Log("demo", "reconnected") },
+			OnReconnected: func() { app.Trace("demo", "reconnected") },
 		})
 	}
 
@@ -71,17 +67,17 @@ func run() error {
 		Height:     280,
 		Root:       root,
 		Background: widget.Current().Bg,
-		OnClosed:   func() { debug.Log("demo", "closed") },
-		OnKey: func(_ *widget.Router, code uint32, mods wlsession.Mods) {
-			debug.Log("demo", "key sym=%v mods=%#x", application.KeySym(code), uint32(mods))
-			if mods&wlsession.ModAlt != 0 {
+		OnClosed:   func() { app.Trace("demo", "closed") },
+		OnKey: func(_ *widget.Router, code uint32, mods app.Mods) {
+			app.Trace("demo", "key sym=%v mods=%#x", application.KeySym(code), uint32(mods))
+			if mods&app.ModAlt != 0 {
 				return
 			}
 			// Every chord traces the request it sends, so the harness can
 			// tell a refused request (no confirming configure follows) from
 			// one it never issued.
 			request := func(name string, fn func()) {
-				debug.Log("demo", "requested %s", name)
+				app.Trace("demo", "requested %s", name)
 				fn()
 			}
 			switch application.KeySym(code) {
@@ -100,7 +96,7 @@ func run() error {
 				// changes, so an unchanged state is silent until asked.
 				st := w.State()
 				sw, sh := w.Size()
-				debug.Log("demo", "polled maximized=%v fullscreen=%v %dx%d",
+				app.Trace("demo", "polled maximized=%v fullscreen=%v %dx%d",
 					st.Maximized, st.Fullscreen, sw, sh)
 			case xkb.KeyEscape:
 				w.Close()
@@ -115,7 +111,7 @@ func run() error {
 	// the harness asserts on) follow Window.State - what the last
 	// configure confirmed, never what a chord asked for. Traces fire on
 	// state or size change, so a transition produces one line.
-	var last window.State
+	var last app.WindowState
 	lastW, lastH := -1, -1
 	application.Every(50*time.Millisecond, func() {
 		if w.EnsureUsable() != nil {
@@ -131,7 +127,7 @@ func run() error {
 		// Flag-form (not State's joined string) so the harness can match
 		// one state bit regardless of the tiled_* and activated bits the
 		// compositor carries alongside it.
-		debug.Log("demo", "state maximized=%v fullscreen=%v %dx%d",
+		app.Trace("demo", "state maximized=%v fullscreen=%v %dx%d",
 			st.Maximized, st.Fullscreen, sw, sh)
 	})
 

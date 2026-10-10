@@ -14,9 +14,6 @@ import (
 	"github.com/unxed/xkb-go"
 
 	"github.com/stubbedev/gelm/app"
-	"github.com/stubbedev/gelm/internal/layersurface"
-	"github.com/stubbedev/gelm/internal/sysfont"
-	"github.com/stubbedev/gelm/internal/wlsession"
 	"github.com/stubbedev/gelm/render"
 	"github.com/stubbedev/gelm/widget"
 )
@@ -28,20 +25,20 @@ func main() {
 }
 
 func run() error {
-	sess, err := wlsession.Connect()
+	sess, err := app.Connect()
 	if err != nil {
 		return err
 	}
 	defer sess.Close()
-	tf, err := sysfont.Sans()
+	tf, err := app.Font("sans-serif", 14)
 	if err != nil {
 		return err
 	}
 
 	application := app.NewApplication(sess)
 	application.SetTooltipFace(tf)
-	application.OnKey(func(_ *widget.Router, code uint32, mods wlsession.Mods) {
-		if mods&wlsession.ModAlt == 0 && sess.KeySym(code) == xkb.KeyEscape {
+	application.OnKey(func(_ *widget.Router, code uint32, mods app.Mods) {
+		if mods&app.ModAlt == 0 && sess.KeySym(code) == xkb.KeyEscape {
 			log.Printf("gelm-multi: escape quits the application")
 			application.Quit()
 		}
@@ -56,7 +53,7 @@ func run() error {
 		_ = w
 	}
 
-	barFor := func(out *wlsession.Output) {
+	barFor := func(out *app.Output) {
 		if _, err := application.NewLayer(newBarConfig(tf, out, spawn)); err != nil {
 			log.Printf("gelm-multi: bar: %v", err)
 		}
@@ -73,7 +70,7 @@ func run() error {
 
 // newBarConfig declares a 28px top bar with an exclusive zone: the
 // compositor keeps regular windows out of the strip it covers.
-func newBarConfig(tf *render.Typeface, out *wlsession.Output, spawn func()) app.LayerConfig {
+func newBarConfig(tf *render.Typeface, out *app.Output, spawn func()) app.LayerConfig {
 	label := widget.NewLabel(tf, 12, "gelm-multi bar", widget.Current().Text)
 	plus := widget.NewButton(
 		widget.NewBox(widget.Row, 6, 0).
@@ -87,8 +84,8 @@ func newBarConfig(tf *render.Typeface, out *wlsession.Output, spawn func()) app.
 
 	return app.LayerConfig{
 		Output:        out,
-		Layer:         layersurface.LayerTop,
-		Anchor:        layersurface.AnchorTop | layersurface.AnchorLeft | layersurface.AnchorRight,
+		Layer:         app.LayerTop,
+		Anchor:        app.AnchorTop | app.AnchorLeft | app.AnchorRight,
 		Height:        28,
 		ExclusiveZone: 28,
 		Namespace:     "gelm-multi-bar",

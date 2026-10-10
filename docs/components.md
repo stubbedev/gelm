@@ -124,9 +124,12 @@ ctrl, win, err := component.Window(application, app.WindowConfig{
 }, &Counter{env: ui.Env{Face: face, Size: 15}})
 ```
 
-`component.Window` and `component.Layer` are relm4's `RelmApp::run`:
-the component becomes the window's root and shuts down when the window
-closes. `component.Launch(loop, c)` starts a component without a
+`component.Run(cfg, setup)` is relm4's `RelmApp::run`: it connects,
+calls `setup` with the `*app.Application` to build the root component,
+opens it as a window's root, and runs the loop. `component.Window` and
+`component.Layer` do the middle step on an application you hold: the
+component becomes the root of a toplevel or layer surface and shuts
+down when it closes. `component.Launch(loop, c)` starts a component without a
 window, for embedding its widget yourself.
 
 A `*Controller[In, Out]` gives you:

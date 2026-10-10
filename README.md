@@ -18,7 +18,8 @@ go get github.com/stubbedev/gelm@latest
 ```
 
 Apps import the public packages: `component` (the component
-framework), `ui` (typed view builders), `app` (session, windows, loop, dialogs, desktop services),
+framework, headless tests through `component/componenttest`), `ui`
+(typed view builders), `app` (session, windows, loop, dialogs, desktop services),
 `widget` (the widget tree, theme, CSS), `anim`, `appearance`, `render`,
 `transfer`, `highlight`, `capture`, and `widget/css`.
 Everything under `internal/` is implementation.
@@ -29,53 +30,69 @@ Everything under `internal/` is implementation.
 package main
 
 import (
-	"errors"
-	"fmt"
 	"log"
+	"strconv"
 
 	"github.com/stubbedev/gelm/app"
+	"github.com/stubbedev/gelm/component"
+	"github.com/stubbedev/gelm/ui"
 	"github.com/stubbedev/gelm/widget"
 )
 
+type Msg int
+
+const (
+	Increment Msg = iota
+	Decrement
+)
+
+type Counter struct {
+	env ui.Env
+	n   int
+}
+
+func (c *Counter) Init(cx *component.Context[Msg, int]) widget.Widget {
+	return ui.Mount(cx, c.env, ui.Row(
+		ui.Button(ui.Label("-"), 8, 6).OnClick(func() { cx.Input(Decrement) }),
+		ui.Expand(ui.Label("").WatchText(func() string { return strconv.Itoa(c.n) })),
+		ui.Button(ui.Label("+"), 8, 6).OnClick(func() { cx.Input(Increment) }),
+	).Spacing(6))
+}
+
+func (c *Counter) Update(cx *component.Context[Msg, int], msg Msg) {
+	switch msg {
+	case Increment:
+		c.n++
+	case Decrement:
+		c.n--
+	}
+	cx.Output(c.n)
+}
+
 func main() {
-	if err := run(); err != nil && !errors.Is(err, app.ErrClosed) {
+	err := component.Run(app.WindowConfig{Title: "counter", AppID: "dev.example.counter"},
+		func(a *app.Application) (*Counter, error) {
+			face, err := app.Font("sans-serif", 15)
+			if err != nil {
+				return nil, err
+			}
+			if err := a.AddAccel("Escape", widget.NewAction("quit", a.Quit)); err != nil {
+				return nil, err
+			}
+			return &Counter{env: ui.Env{Face: face, Size: 15}}, nil
+		})
+	if err != nil {
 		log.Fatal(err)
 	}
 }
-
-func run() error {
-	sess, err := app.Connect()
-	if err != nil {
-		return err
-	}
-	defer sess.Close()
-	face, err := app.Font("sans", 15)
-	if err != nil {
-		return err
-	}
-
-	clicks := 0
-	count := widget.NewLabel(face, 15, "clicked 0 times", widget.Current().Text)
-	button := widget.NewButton(count, 10, 8)
-	button.OnClick = func() {
-		clicks++
-		count.SetText(fmt.Sprintf("clicked %d times", clicks))
-	}
-
-	application := app.NewApplication(sess)
-	if _, err := application.NewWindow(app.WindowConfig{
-		Title: "hello", AppID: "dev.stubbe.gelm.hello",
-		Width: 320, Height: 120,
-		Root: button, Background: widget.Current().Bg,
-	}); err != nil {
-		return err
-	}
-	return application.Run()
-}
 ```
 
-This program is kept compiling as `ExampleApplication` in
-`app/example_test.go`.
+This program is kept compiling as `ExampleRun` in
+`component/example_test.go`. [docs/components.md](docs/components.md)
+walks through components, the typed builders, factories, workers and
+actions. `app.NewApplication` and `NewWindow` remain the lower-level
+path for apps that want the widget tree without components
+(`ExampleApplication` in `app/example_test.go`).
 
 ## Development
 
@@ -111,11 +128,11 @@ toolchain. Pushing a `v*` tag releases the demo binaries
 
 | Command | What it shows |
 | --- | --- |
-| `cmd/gelm-hello` | the showcase: every core widget, drag and drop, context menu, tooltips, Tab focus |
+| `cmd/gelm-hello` | the showcase as a component: core widgets, a context menu on typed actions, tooltips, Tab focus, drag-to-move |
 | `cmd/gelm-bar` | a layer-shell top bar repainting only what changed each second |
 | `cmd/gelm-panel` | a right-anchored layer-shell panel with live widgets |
 | `cmd/gelm-multi` | one loop: per-output layer bars, on-demand windows, close-request veto |
-| `cmd/gelm-invoke` | goroutines reaching the loop through `Invoke` and `Every` |
+| `cmd/gelm-invoke` | a lifetime-bound spawned command and `Every` feeding a component |
 | `cmd/gelm-messages` | the typed messaging layer and single-instance forwarding |
 | `cmd/gelm-settings` | a preferences app over typed persisted settings |
 | `cmd/gelm-columns` | ten thousand sorted, filtered rows; the tree view; drag-to-reorder |

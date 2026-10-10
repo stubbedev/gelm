@@ -352,8 +352,11 @@ func TestHeadlessPopupGrabOpenAndDismiss(t *testing.T) {
 	if err := in.ClickAt(10, showcaseH-10, BTNLeft); err != nil {
 		t.Fatalf("outside click: %v", err)
 	}
-	if _, err := w.Wait("input", " closed", traceTimeout); err != nil {
+	if _, err := w.Wait("input", " dismissed", traceTimeout); err != nil {
 		t.Errorf("popup grab never dismissed on outside click: %v", err)
+	}
+	if _, err := w.Wait("input", " destroyed", traceTimeout); err != nil {
+		t.Errorf("the dismissed popup surface was never torn down: %v", err)
 	}
 
 	// Escape dismisses too.
@@ -361,8 +364,11 @@ func TestHeadlessPopupGrabOpenAndDismiss(t *testing.T) {
 	if err := in.Tap(KeyEscape); err != nil {
 		t.Fatalf("escape: %v", err)
 	}
-	if _, err := w.Wait("input", " closed", traceTimeout); err != nil {
+	if _, err := w.Wait("input", " dismissed", traceTimeout); err != nil {
 		t.Errorf("popup never dismissed on escape: %v", err)
+	}
+	if _, err := w.Wait("input", " destroyed", traceTimeout); err != nil {
+		t.Errorf("the escaped popup surface was never torn down: %v", err)
 	}
 
 	// Keyboard through the grab: Home selects the first row - not the

@@ -1,9 +1,10 @@
-// Command gelm-hello is the showcase demo: one xdg_toplevel window
-// exercising every widget - labels, button, slider, progress bar,
-// switch, checkbox, text entry, multi-line text area, a scrollable
-// list, hover tooltips, animated tweens, the right-click context menu,
-// Tab focus traversal with the focus ring, drag-to-move, and Escape to
-// close.
+// Command gelm-hello is the showcase demo, built the way an app outside
+// this module builds one: a component whose view is declared with the
+// typed ui builders, hosted in one toplevel window. It exercises the
+// core widgets - labels, button, slider, progress bar, switch,
+// checkbox, entry, text area, a scrollable list - plus tooltips, an
+// animated tween, a right-click context menu bound to typed actions,
+// Tab focus traversal, drag-to-move on the chrome, and Escape to close.
 package main
 
 import (
@@ -11,224 +12,134 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"slices"
 	"strconv"
 	"time"
 
-	"github.com/unxed/xkb-go"
-
 	"github.com/stubbedev/gelm/anim"
 	"github.com/stubbedev/gelm/app"
-	"github.com/stubbedev/gelm/internal/clipboard"
-	"github.com/stubbedev/gelm/internal/debug"
-	"github.com/stubbedev/gelm/internal/popup"
-	"github.com/stubbedev/gelm/internal/scale"
-	"github.com/stubbedev/gelm/internal/sysfont"
-	"github.com/stubbedev/gelm/internal/window"
-	"github.com/stubbedev/gelm/internal/wlsession"
+	"github.com/stubbedev/gelm/component"
 	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/gelm/ui"
 	"github.com/stubbedev/gelm/widget"
 )
 
+const width, height = 640, 470
+
 func main() {
-	if err := run(); err != nil {
+	err := run()
+	switch {
+	case err == nil, errors.Is(err, app.ErrClosed):
+	case errors.Is(err, app.ErrDisconnected):
+		os.Exit(app.DisconnectExitCode)
+	default:
 		log.Fatal(err)
 	}
 }
 
 func run() error {
-	sess, err := wlsession.Connect()
+	sess, err := app.Connect()
 	if err != nil {
 		return err
 	}
 	defer sess.Close()
-	if sess.WmBase() == nil {
-		return errors.New("gelm-hello: compositor has no xdg_wm_base; windows unsupported")
-	}
-	tf, err := sysfont.Sans()
-	if err != nil {
-		return err
-	}
-	// Fallback chains cover what the default sans lacks: CJK, emoji,
-	// Cyrillic — anything the system store has a face for.
-	font := sysfont.Fallback(tf)
-
-	surf, err := sess.Compositor().CreateSurface()
-	if err != nil {
-		return fmt.Errorf("gelm-hello: create surface: %w", err)
-	}
-	win, err := window.New(sess.WmBase(), surf, window.Config{
-		Title:  "gelm showcase",
-		AppID:  "dev.stubbe.gelm.hello",
-		Width:  640,
-		Height: 470,
-	})
+	face, err := app.Font("sans-serif", 15)
 	if err != nil {
 		return err
 	}
 
-	show := buildUI(font)
+	application := app.NewApplication(sess)
+	application.SetTooltipFace(face)
+	application.SetClipboard(app.NewClipboard(sess))
+	application.SetInspect(true)
 
-	if err := surf.Commit(); err != nil {
-		return fmt.Errorf("gelm-hello: initial commit: %w", err)
-	}
-	// The configure events can land after a sync callback completes, so
-	// dispatch until the handshake finishes.
-	for range 20 {
-		if win.EnsureUsable() == nil {
-			break
-		}
-		if err := sess.Roundtrip(); err != nil {
-			return fmt.Errorf("gelm-hello: configure roundtrip: %w", err)
-		}
-	}
-	if err := win.EnsureUsable(); err != nil {
-		return fmt.Errorf("gelm-hello: %w", err)
-	}
-	w, h := win.Size()
-	if err := win.Decorate(sess.DecorationManager()); err != nil {
-		log.Printf("gelm-hello: server decorations unavailable: %v", err)
-	}
-	log.Printf("gelm-hello: mapped at %dx%d", w, h)
-
-	// Deterministic geometry for the headless input tests
-	// (internal/headlesstest): lay the tree out at the mapped size and
-	// trace each control's center, so the harness clicks real widgets
-	// instead of hardcoded coordinates. app.Run re-arranges at the same
-	// size on every draw, so this pre-arrange changes nothing.
-	debug.Log("demo", "mapped %dx%d", w, h)
-	// GELM_DEMO_IDLE_MS watches the seat for that much idleness and
-	// traces idle and resume: the headless idle-notify test's probe.
-	if ms, err := strconv.Atoi(os.Getenv("GELM_DEMO_IDLE_MS")); err == nil && ms > 0 {
-		if n, err := sess.IdleNotify(time.Duration(ms)*time.Millisecond, false); err == nil {
-			n.OnIdle = func() { debug.Log("demo", "idle") }
-			n.OnResume = func() { debug.Log("demo", "resumed") }
+	show := &showcase{env: ui.Env{Face: app.FontFallback(face), Size: 14}}
+	theme := widget.NewStateAction("theme", "dark", func(name string) {
+		if name == "light" {
+			widget.SetTheme(widget.LightTheme())
 		} else {
-			debug.Log("demo", "idle notify unavailable: %v", err)
+			widget.SetTheme(widget.DarkTheme())
+		}
+		app.Trace("demo", "theme %s", name)
+	})
+
+	var win *app.Window
+	var ctrl *component.Controller[showMsg, struct{}]
+	pointer := render.Rect{W: 1, H: 1}
+	menu := func() []widget.MenuItem {
+		return []widget.MenuItem{
+			widget.ActionItem("Say hello", widget.NewAction("hello", func() { ctrl.Send(bump{}) })),
+			widget.RadioItem("Light theme", theme.Target("light")),
+			widget.RadioItem("Dark theme", theme.Target("dark")),
+			widget.MenuSeparator(),
+			widget.ActionItem("Close window", widget.NewAction("close", func() { win.Close() })),
 		}
 	}
-	show.root.Measure(widget.Constraints{Max: widget.Size{W: w, H: h}})
-	show.root.Arrange(render.Rect{X: 0, Y: 0, W: w, H: h})
-	for _, c := range []struct {
-		name string
-		w    interface {
-			Bounds() render.Rect
-		}
-	}{
-		{"button", show.button},
-		{"slider", show.slider},
-		{"switch", show.sw},
-		{"checkbox", show.check},
-		{"entry", show.entry},
-		{"textarea", show.area},
-		{"scroll", show.scrolled},
-	} {
-		b := c.w.Bounds()
-		debug.Log("demo", "control %s center (%d,%d)", c.name, b.X+b.W/2, b.Y+b.H/2)
-	}
-
-	sess.OnWmBasePing = win.Pong
-
-	posX, posY := 0, 0
-	var menuPopup *popup.Popup
-	onPress := func(btn, serial uint32, over widget.Widget) {
-		// A press landing on the window while the menu's grab is live is
-		// an outside click: sway passes same-client presses through an
-		// xdg_popup grab without a popup_done, so the dismissal is ours
-		// to make. Closing the popup ends popup.Run and unwinds the grab.
-		if menuPopup != nil && !menuPopup.Closed() {
-			menuPopup.Close()
-			menuPopup = nil
-			return
-		}
-		switch btn {
-		case widget.BTNLeft:
-			// Presses on plain chrome move the window; presses on or
-			// inside an interactive control belong to the widgets.
-			// Hit tests return the deepest widget (a label inside the
-			// button, a row inside the scroll), so walk the parents.
-			if !widget.IsInteractive(over) {
-				_ = win.Toplevel.Move(sess.Seat(), serial)
-			}
-		case widget.BTNRight:
-			items := []widget.MenuItem{
-				{Label: "Say hello", OnClick: show.bump},
-				{Label: "Light theme", OnClick: func() {
-					widget.SetTheme(widget.LightTheme())
-					// Traced for the headless input tests, which assert
-					// keyboard activation through the popup grab on it.
-					debug.Log("demo", "theme light")
-				}},
-				{Label: "Dark theme", OnClick: func() {
-					widget.SetTheme(widget.DarkTheme())
-					debug.Log("demo", "theme dark")
-				}},
-				{},
-				{Label: "Close window", OnClick: win.Close},
-			}
-			menu := widget.NewMenu(font, 13, items...)
-			mSize := menu.Measure(widget.Constraints{Max: widget.Size{W: 200, H: 400}})
-			debug.Log("demo", "menu open %dx%d at (%d,%d)", mSize.W, mSize.H, posX, posY)
-			gutter := widget.Current().ShadowGutter()
-			p, err := popup.New(sess, popup.Config{
-				Parent: win.XdgSurface,
-				X:      posX - gutter, Y: posY - gutter,
-				Width: mSize.W + 2*gutter, Height: mSize.H + 2*gutter,
-				Gutter: gutter,
-				Serial: serial,
-			})
-			if err != nil {
-				log.Printf("gelm-hello: popup: %v", err)
-				return
-			}
-			menu.OnDismiss = p.Close
-			menuPopup = p
-			_ = popup.Run(sess, p, scale.Denom, menu, widget.Current().Surface, menu)
-			menuPopup = nil
-		}
-	}
-
-	if err := app.Run(app.Config{
-		Session:       sess,
-		Host:          win,
-		Scale:         1,
-		Root:          show.root,
+	cfg := app.WindowConfig{
+		Title: "gelm showcase", AppID: "dev.stubbe.gelm.hello",
+		Width: width, Height: height,
 		Background:    widget.Current().Bg,
-		OnPress:       onPress,
-		OnPointerMove: func(x, y float64) { posX, posY = int(x), int(y) },
-		TooltipFace:   tf,
-		Clipboard:     clipboard.New(sess),
-		// The showcase arms the debug inspector: ctrl+shift+i toggles
-		// the widget-tree overlay, ctrl+shift+d dumps the tree to
-		// stdout. GELM_INSPECT=1 does the same for any gelm app.
-		Inspect: true,
-		OnKey: func(_ *widget.Router, code uint32, _ wlsession.Mods) {
-			debug.Log("demo", "app key code=%d sym=%v", code, sess.KeySym(code))
-			if sess.KeySym(code) == xkb.KeyEscape {
-				win.Close()
+		OnPointerMove: func(x, y float64) { pointer.X, pointer.Y = int(x), int(y) },
+		OnResize:      func(w, h int) { show.mapped(w, h) },
+		OnPress: func(button, serial uint32, over widget.Widget) {
+			switch button {
+			case widget.BTNLeft:
+				if !widget.IsInteractive(over) {
+					win.BeginMove()
+				}
+			case widget.BTNRight:
+				app.Trace("demo", "menu open at (%d,%d)", pointer.X, pointer.Y)
+				if _, err := application.OpenMenuPopover(win, app.MenuPopoverConfig{
+					Anchor: anchor(pointer), Face: show.env.Face, SizePx: 13,
+					Items: menu(), Serial: serial,
+				}); err != nil {
+					log.Printf("gelm-hello: menu: %v", err)
+				}
 			}
 		},
-	}); err != nil {
-		switch {
-		case errors.Is(err, app.ErrClosed):
-			// Normal close: a window ended the loop.
-		case errors.Is(err, app.ErrDisconnected):
-			// The compositor went away (restart, crash, reload). Exit
-			// with the distinct disconnect code so a supervisor
-			// (systemd Restart=on-failure, a wayle supervisor) respawns
-			// us on the new session.
-			os.Exit(app.DisconnectExitCode)
-		default:
-			return err
+		OnKey: func(_ *widget.Router, code uint32, _ app.Mods) {
+			app.Trace("demo", "app key code=%d sym=%v", code, application.KeySym(code))
+		},
+	}
+	ctrl, win, err = component.Window(application, cfg, show)
+	if err != nil {
+		return err
+	}
+	if err := application.AddScopedAccel(ctrl.Widget(), "Escape", widget.NewAction("close", win.Close)); err != nil {
+		return err
+	}
+	if ms, err := strconv.Atoi(os.Getenv("GELM_DEMO_IDLE_MS")); err == nil && ms > 0 {
+		idle := func() { app.Trace("demo", "idle") }
+		resume := func() { app.Trace("demo", "resumed") }
+		if _, err := application.OnIdle(time.Duration(ms)*time.Millisecond, idle, resume); err != nil {
+			app.Trace("demo", "idle notify unavailable: %v", err)
 		}
 	}
-	return nil
+	return application.Run()
 }
 
-// showcase bundles the widgets the input hooks need.
+type anchor render.Rect
+
+func (a anchor) Bounds() render.Rect { return render.Rect(a) }
+
+type showMsg interface{ showMsg() }
+
+type bump struct{}
+
+type noted struct{ text string }
+
+func (bump) showMsg()  {}
+func (noted) showMsg() {}
+
 type showcase struct {
-	root     widget.Widget
-	bump     func()
+	env    ui.Env
+	count  int
+	status string
+	root   widget.Widget
+	shown  bool
+
 	button   *widget.Button
+	progress *widget.ProgressBar
 	slider   *widget.Slider
 	sw       *widget.Switch
 	check    *widget.CheckButton
@@ -237,120 +148,118 @@ type showcase struct {
 	scrolled *widget.Scroll
 }
 
-// buildUI assembles the full widget showcase: controls on the left,
-// text and a scrollable list on the right, an event line below. Font is
-// a fallback chain, so mixed-script demo text renders past .notdef.
-func buildUI(font render.Font) showcase {
-	t := widget.Current()
-	status := widget.NewLabel(font, 12, "events land here", t.TextMuted)
-	note := func(format string, args ...any) {
-		status.SetText(fmt.Sprintf(format, args...))
-		// Trace what the demo did, so the headless input tests can assert
-		// on the showcase's own reactions (gelmdebug builds only).
-		debug.Log("demo", format, args...)
+func (s *showcase) Init(cx *component.Context[showMsg, struct{}]) widget.Widget {
+	s.status = "events land here"
+	note := func(format string, args ...any) func() {
+		return func() { cx.Input(noted{text: fmt.Sprintf(format, args...)}) }
+	}
+	muted := widget.Current().TextMuted
+	caption := func(text string) ui.Node { return ui.Label(text).Font(nil, 11).Ink(muted) }
+
+	servers := make([]string, 48)
+	for i := range servers {
+		servers[i] = fmt.Sprintf("server-%02d.example   up   41ms", i+1)
 	}
 
-	count := 0
-	countLabel := widget.NewLabel(font, 15, "clicked 0 times", t.Text)
-	progress := widget.NewProgressBar(0)
-	button := widget.NewButton(
-		widget.NewBox(widget.Row, 8, 0).
-			Append(widget.NewLabel(font, 15, "click me", t.Text), false),
-		10, 8)
-	bump := func() {
-		count++
-		countLabel.SetText(fmt.Sprintf("clicked %d times", count))
-		note("button clicked %d times", count)
+	header := ui.Column(
+		ui.Label("gelm showcase").Font(nil, 18).Ink(widget.Current().Accent),
+		caption("every widget in one window; drag the chrome to move, esc closes"),
+		ui.Label("fallback check: 你好 world 😀 Привет").Font(nil, 13),
+	).Spacing(2)
+
+	controls := ui.Column(
+		ui.Button(ui.Row(ui.Label("click me").Font(nil, 15)).Spacing(8), 10, 8).Ref(&s.button).
+			OnClick(func() { cx.Input(bump{}) }).
+			Tooltip("increments the counter and animates the bar").DebugName("demo:increment"),
+		ui.Label("").Font(nil, 15).WatchText(func() string { return fmt.Sprintf("clicked %d times", s.count) }).
+			Tooltip("your click total").DebugName("demo:count"),
+		ui.ProgressBar(0).Ref(&s.progress),
+		ui.Slider(0, 1, 0.05, 0).Ref(&s.slider).
+			OnChanged(func(v float64) {
+				s.progress.SetValue(v)
+				note("slider at %.0f%%", v*100)()
+			}).
+			Tooltip("drag, or Tab here and use the arrows").DebugName("demo:slider"),
+		ui.Row(
+			ui.Label("notifications"),
+			ui.Switch(true).Ref(&s.sw).OnChanged(func(on bool) { note("switch %v", on)() }).Tooltip("toggles a boolean"),
+		).Spacing(8),
+		ui.Row(
+			ui.CheckButton(false).Ref(&s.check).OnChanged(func(c bool) { note("checkbox %v", c)() }).Tooltip("checkbox state"),
+			ui.Label("remember me"),
+		).Spacing(8),
+	).Spacing(10)
+
+	texts := ui.Column(
+		caption("entry"),
+		ui.Entry().Ref(&s.entry).Placeholder("type here; ctrl+c/x/v work").
+			OnChanged(func(text string) { note("entry: %q", text)() }).
+			Tooltip("single-line entry; double-click selects a word").DebugName("demo:entry"),
+		caption("text area"),
+		ui.TextArea().Font(nil, 13).Ref(&s.area).
+			Text("multi-line text area:\nenter splits, backspace joins,\nselection spans lines.").
+			Tooltip("multi-line editing"),
+		caption("list"),
+		ui.Expand(ui.Scroll(ui.Column(ui.Each(slices.Values(servers), func(line string) ui.Node {
+			return ui.Label(line).Font(nil, 12)
+		})...).Spacing(4)).Ref(&s.scrolled).ShowBars(true).
+			OnScrolled(func(x, y int) { note("list scrolled to %d,%d", x, y)() }).
+			Tooltip("scrollable list").DebugName("demo:list")),
+	).Spacing(6)
+
+	s.root = ui.Mount(cx, s.env, ui.Column(
+		header,
+		ui.Expand(ui.Row(ui.Expand(controls), ui.Expand(texts)).Spacing(24)),
+		ui.Label("").Font(nil, 12).Ink(muted).WatchText(func() string { return s.status }),
+	).Spacing(12).Padding(render.UniformInsets(16)))
+	return s.root
+}
+
+func (s *showcase) Update(_ *component.Context[showMsg, struct{}], msg showMsg) {
+	switch m := msg.(type) {
+	case bump:
+		s.count++
+		s.progress.SetValue(0)
+		anim.Start(600*time.Millisecond, s.progress.SetValue)
+		s.note(fmt.Sprintf("button clicked %d times", s.count))
+	case noted:
+		s.note(m.text)
 	}
-	button.OnClick = func() {
-		bump()
-		progress.SetValue(0)
-		anim.Start(600*time.Millisecond, func(v float64) {
-			progress.SetValue(v)
-		})
+}
+
+func (s *showcase) note(text string) {
+	s.status = text
+	app.Trace("demo", "%s", text)
+}
+
+type control struct {
+	name string
+	w    interface{ Bounds() render.Rect }
+}
+
+func (s *showcase) controls() []control {
+	return []control{
+		{"button", s.button},
+		{"slider", s.slider},
+		{"switch", s.sw},
+		{"checkbox", s.check},
+		{"entry", s.entry},
+		{"textarea", s.area},
+		{"scroll", s.scrolled},
 	}
-	button.SetTooltip("increments the counter and animates the bar")
-	button.SetDebugName("demo:increment")
-	countLabel.SetTooltip("your click total")
-	countLabel.SetDebugName("demo:count")
+}
 
-	slider := widget.NewSlider(0, 1, 0.05, 0)
-	slider.OnChanged = func(v float64) {
-		progress.SetValue(v)
-		note("slider at %.0f%%", v*100)
+func (s *showcase) mapped(w, h int) {
+	if s.shown {
+		return
 	}
-	slider.SetTooltip("drag, or Tab here and use the arrows")
-	slider.SetDebugName("demo:slider")
-
-	sw := widget.NewSwitch(true)
-	sw.OnChanged = func(on bool) { note("switch %v", on) }
-	sw.SetTooltip("toggles a boolean")
-	swLabel := widget.NewLabel(font, 14, "notifications", t.Text)
-
-	check := widget.NewCheckButton(false)
-	check.OnChanged = func(c bool) { note("checkbox %v", c) }
-	check.SetTooltip("checkbox state")
-	checkLabel := widget.NewLabel(font, 14, "remember me", t.Text)
-
-	entry := widget.NewEntry(font, 14, t.Text)
-	entry.SetPlaceholder("type here; ctrl+c/x/v work")
-	entry.SetTooltip("single-line entry; double-click selects a word")
-	entry.SetDebugName("demo:entry")
-	entry.OnChanged = func(s string) { note("entry: %q", s) }
-
-	area := widget.NewTextArea(font, 13, t.Text)
-	area.SetText("multi-line text area:\nenter splits, backspace joins,\nselection spans lines.")
-	area.SetTooltip("multi-line editing")
-
-	list := widget.NewBox(widget.Column, 4, 0)
-	for i := 1; i <= 48; i++ {
-		list.Append(widget.NewLabel(font,
-			12, fmt.Sprintf("server-%02d.example   up   41ms", i), t.Text),
-			false)
-	}
-	scrolled := widget.NewScroll(list)
-	scrolled.ShowBars = true
-	scrolled.SetTooltip("scrollable list")
-	scrolled.SetDebugName("demo:list")
-	scrolled.OnScrolled = func(x, y int) {
-		note("list scrolled to %d,%d", x, y)
-	}
-
-	header := widget.NewBox(widget.Column, 2, 0)
-	header.Append(widget.NewLabel(font, 18, "gelm showcase", t.Accent), false)
-	header.Append(widget.NewLabel(font, 11, "every widget in one window; drag the chrome to move, esc closes", t.TextMuted), false)
-	header.Append(widget.NewLabel(font, 13, "fallback check: 你好 world 😀 Привет", t.Text), false)
-
-	left := widget.NewBox(widget.Column, 10, 0)
-	left.Append(button, false)
-	left.Append(countLabel, false)
-	left.Append(progress, false)
-	left.Append(slider, false)
-	left.Append(widget.NewBox(widget.Row, 8, 0).
-		Append(swLabel, false).Append(sw, false), false)
-	left.Append(widget.NewBox(widget.Row, 8, 0).
-		Append(check, false).Append(checkLabel, false), false)
-
-	right := widget.NewBox(widget.Column, 6, 0)
-	right.Append(widget.NewLabel(font, 11, "entry", t.TextMuted), false)
-	right.Append(entry, false)
-	right.Append(widget.NewLabel(font, 11, "text area", t.TextMuted), false)
-	right.Append(area, false)
-	right.Append(widget.NewLabel(font, 11, "list", t.TextMuted), false)
-	right.Append(scrolled, true)
-
-	columns := widget.NewBox(widget.Row, 24, 0)
-	columns.Append(left, true)
-	columns.Append(right, true)
-
-	root := widget.NewBox(widget.Column, 12, 16)
-	root.Append(header, false)
-	root.Append(columns, true)
-	root.Append(status, false)
-
-	return showcase{
-		root: root, bump: bump,
-		button: button, slider: slider, sw: sw, check: check,
-		entry: entry, area: area, scrolled: scrolled,
+	s.shown = true
+	log.Printf("gelm-hello: mapped at %dx%d", w, h)
+	app.Trace("demo", "mapped %dx%d", w, h)
+	s.root.Measure(widget.Constraints{Max: widget.Size{W: w, H: h}})
+	s.root.Arrange(render.Rect{W: w, H: h})
+	for _, c := range s.controls() {
+		b := c.w.Bounds()
+		app.Trace("demo", "control %s center (%d,%d)", c.name, b.X+b.W/2, b.Y+b.H/2)
 	}
 }
