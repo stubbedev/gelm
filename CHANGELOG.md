@@ -15,6 +15,16 @@
 - Fix: the GlobalShortcuts portal session token held a `-`, which is
   not a valid object path element, so a real portal refused it.
 
+- Media playback (GtkVideo, GtkMediaControls, GtkMediaStream): new
+  `media` package with `Stream` (play, pause, seek, loop, volume, mute;
+  decoding a few frames ahead on its own goroutine; the clock follows
+  the audio when there is sound) over `Source`s: `NewAnimation`
+  (GIF/APNG), `NewY4M` (YUV4MPEG2 decoded in pure Go, seekable over a
+  file) and `OpenFile` (anything ffmpeg reads, picture and sound, via
+  ffmpeg subprocesses). Sound plays through the PulseAudio protocol
+  (`github.com/jfreymuth/pulse`). `widget.Video` and
+  `widget.MediaControls` show and drive a stream; `cmd/gelm-video`
+  demonstrates both. `render.ResampleInto` scales into a reused raster.
 - Printing (GtkPrintDialog): `Application.Print` runs the Print
   portal's dialog, paints the job's pages on the loop at the confirmed
   page setup (in CSS pixels at the job's DPI) into a PDF and hands it

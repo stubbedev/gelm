@@ -109,13 +109,14 @@ var classRules = [][2]string{
 	{css.Keycap, "font-size: 12px; padding: 2px 6px; border: 1px solid @borders; border-radius: 6px; background-color: @card_bg_color;"},
 }
 
-// partRules style widget parts whose default paint is a named color:
-// the level bar's trough and offset classes.
+// partRules style widget parts: the level bar's trough and offset
+// classes, and the media controls' volume slider length.
 var partRules = [][2]string{
 	{"levelbar trough", "background-color: @view_bg_color;"},
 	{"levelbar block." + LevelBarOffsetLow, "background-color: @warning_bg_color;"},
 	{"levelbar block." + LevelBarOffsetHigh, "background-color: @accent_bg_color;"},
 	{"levelbar block." + LevelBarOffsetFull, "background-color: @success_bg_color;"},
+	{"controls .volume trough", "min-width: 80px;"},
 }
 
 // themeCSS renders the theme layer for t.
