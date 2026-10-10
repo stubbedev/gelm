@@ -6266,3 +6266,49 @@ func (b *WindowControlsBuilder) OnMaximize(fn func()) *WindowControlsBuilder {
 	b.do(func(_ *Scope, w *widget.WindowControls) { w.OnMaximize = fn })
 	return b
 }
+
+// WindowTitleBuilder builds a widget.WindowTitle.
+type WindowTitleBuilder struct {
+	base[*widget.WindowTitle, *WindowTitleBuilder]
+	face render.Font
+	size float64
+}
+
+// WindowTitle builds a widget.WindowTitle with widget.NewWindowTitle.
+func WindowTitle(title string, subtitle string) *WindowTitleBuilder {
+	b := &WindowTitleBuilder{}
+	b.init(b, func(s *Scope) *widget.WindowTitle {
+		return widget.NewWindowTitle(s.face(b.face), s.size(b.size), title, subtitle)
+	})
+	return b
+}
+
+// Font overrides the environment's typeface and size for this widget; zero values keep the environment's.
+func (b *WindowTitleBuilder) Font(face render.Font, sizePx float64) *WindowTitleBuilder {
+	b.face, b.size = face, sizePx
+	return b
+}
+
+// Subtitle calls (*widget.WindowTitle).SetSubtitle.
+func (b *WindowTitleBuilder) Subtitle(text string) *WindowTitleBuilder {
+	b.do(func(s *Scope, w *widget.WindowTitle) { w.SetSubtitle(text) })
+	return b
+}
+
+// WatchSubtitle re-applies SetSubtitle with get's value after every update.
+func (b *WindowTitleBuilder) WatchSubtitle(get func() string) *WindowTitleBuilder {
+	b.watch(func(w *widget.WindowTitle) { w.SetSubtitle(get()) })
+	return b
+}
+
+// Title calls (*widget.WindowTitle).SetTitle.
+func (b *WindowTitleBuilder) Title(text string) *WindowTitleBuilder {
+	b.do(func(s *Scope, w *widget.WindowTitle) { w.SetTitle(text) })
+	return b
+}
+
+// WatchTitle re-applies SetTitle with get's value after every update.
+func (b *WindowTitleBuilder) WatchTitle(get func() string) *WindowTitleBuilder {
+	b.watch(func(w *widget.WindowTitle) { w.SetTitle(get()) })
+	return b
+}

@@ -7,6 +7,9 @@
 - Fix: accelerators with shift+Tab never matched (xkb reports
   ISO_Left_Tab).
 
+- `widget.WindowTitle` (AdwWindowTitle) and `Application.AdaptiveDialog`
+  (adaptive AdwDialog): floating over a wide parent, a bottom sheet
+  inside a narrow one, or forced either way.
 - `widget.PreferencesView` and `Application.PreferencesDialog`
   (AdwPreferencesDialog): page switcher, search across every page's
   rows (`ActionRow.SetSearchable` opts out) with results that jump to
