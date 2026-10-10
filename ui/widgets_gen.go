@@ -5903,6 +5903,108 @@ func (b *ToggleGroupBuilder) OnChanged(fn func(i int)) *ToggleGroupBuilder {
 	return b
 }
 
+// ToolbarViewBuilder builds a widget.ToolbarView.
+type ToolbarViewBuilder struct {
+	base[*widget.ToolbarView, *ToolbarViewBuilder]
+}
+
+// ToolbarView builds a widget.ToolbarView with widget.NewToolbarView.
+func ToolbarView(content Node) *ToolbarViewBuilder {
+	b := &ToolbarViewBuilder{}
+	b.init(b, func(s *Scope) *widget.ToolbarView { return widget.NewToolbarView(build(s, content)) })
+	return b
+}
+
+// AddBottomBar calls (*widget.ToolbarView).AddBottomBar.
+func (b *ToolbarViewBuilder) AddBottomBar(bar Node) *ToolbarViewBuilder {
+	b.do(func(s *Scope, w *widget.ToolbarView) { w.AddBottomBar(build(s, bar)) })
+	return b
+}
+
+// AddTopBar calls (*widget.ToolbarView).AddTopBar.
+func (b *ToolbarViewBuilder) AddTopBar(bar Node) *ToolbarViewBuilder {
+	b.do(func(s *Scope, w *widget.ToolbarView) { w.AddTopBar(build(s, bar)) })
+	return b
+}
+
+// BottomBarStyle calls (*widget.ToolbarView).SetBottomBarStyle.
+func (b *ToolbarViewBuilder) BottomBarStyle(toolbarStyle widget.ToolbarStyle) *ToolbarViewBuilder {
+	b.do(func(s *Scope, w *widget.ToolbarView) { w.SetBottomBarStyle(toolbarStyle) })
+	return b
+}
+
+// WatchBottomBarStyle re-applies SetBottomBarStyle with get's value after every update.
+func (b *ToolbarViewBuilder) WatchBottomBarStyle(get func() widget.ToolbarStyle) *ToolbarViewBuilder {
+	b.watch(func(w *widget.ToolbarView) { w.SetBottomBarStyle(get()) })
+	return b
+}
+
+// Content calls (*widget.ToolbarView).SetContent.
+func (b *ToolbarViewBuilder) Content(child Node) *ToolbarViewBuilder {
+	b.do(func(s *Scope, w *widget.ToolbarView) { w.SetContent(build(s, child)) })
+	return b
+}
+
+// ExtendContentToBottomEdge calls (*widget.ToolbarView).SetExtendContentToBottomEdge.
+func (b *ToolbarViewBuilder) ExtendContentToBottomEdge(on bool) *ToolbarViewBuilder {
+	b.do(func(s *Scope, w *widget.ToolbarView) { w.SetExtendContentToBottomEdge(on) })
+	return b
+}
+
+// WatchExtendContentToBottomEdge re-applies SetExtendContentToBottomEdge with get's value after every update.
+func (b *ToolbarViewBuilder) WatchExtendContentToBottomEdge(get func() bool) *ToolbarViewBuilder {
+	b.watch(func(w *widget.ToolbarView) { w.SetExtendContentToBottomEdge(get()) })
+	return b
+}
+
+// ExtendContentToTopEdge calls (*widget.ToolbarView).SetExtendContentToTopEdge.
+func (b *ToolbarViewBuilder) ExtendContentToTopEdge(on bool) *ToolbarViewBuilder {
+	b.do(func(s *Scope, w *widget.ToolbarView) { w.SetExtendContentToTopEdge(on) })
+	return b
+}
+
+// WatchExtendContentToTopEdge re-applies SetExtendContentToTopEdge with get's value after every update.
+func (b *ToolbarViewBuilder) WatchExtendContentToTopEdge(get func() bool) *ToolbarViewBuilder {
+	b.watch(func(w *widget.ToolbarView) { w.SetExtendContentToTopEdge(get()) })
+	return b
+}
+
+// RevealBottomBars calls (*widget.ToolbarView).SetRevealBottomBars.
+func (b *ToolbarViewBuilder) RevealBottomBars(on bool) *ToolbarViewBuilder {
+	b.do(func(s *Scope, w *widget.ToolbarView) { w.SetRevealBottomBars(on) })
+	return b
+}
+
+// WatchRevealBottomBars re-applies SetRevealBottomBars with get's value after every update.
+func (b *ToolbarViewBuilder) WatchRevealBottomBars(get func() bool) *ToolbarViewBuilder {
+	b.watch(func(w *widget.ToolbarView) { w.SetRevealBottomBars(get()) })
+	return b
+}
+
+// RevealTopBars calls (*widget.ToolbarView).SetRevealTopBars.
+func (b *ToolbarViewBuilder) RevealTopBars(on bool) *ToolbarViewBuilder {
+	b.do(func(s *Scope, w *widget.ToolbarView) { w.SetRevealTopBars(on) })
+	return b
+}
+
+// WatchRevealTopBars re-applies SetRevealTopBars with get's value after every update.
+func (b *ToolbarViewBuilder) WatchRevealTopBars(get func() bool) *ToolbarViewBuilder {
+	b.watch(func(w *widget.ToolbarView) { w.SetRevealTopBars(get()) })
+	return b
+}
+
+// TopBarStyle calls (*widget.ToolbarView).SetTopBarStyle.
+func (b *ToolbarViewBuilder) TopBarStyle(toolbarStyle widget.ToolbarStyle) *ToolbarViewBuilder {
+	b.do(func(s *Scope, w *widget.ToolbarView) { w.SetTopBarStyle(toolbarStyle) })
+	return b
+}
+
+// WatchTopBarStyle re-applies SetTopBarStyle with get's value after every update.
+func (b *ToolbarViewBuilder) WatchTopBarStyle(get func() widget.ToolbarStyle) *ToolbarViewBuilder {
+	b.watch(func(w *widget.ToolbarView) { w.SetTopBarStyle(get()) })
+	return b
+}
+
 // ViewSwitcherBuilder builds a widget.ViewSwitcher.
 type ViewSwitcherBuilder struct {
 	base[*widget.ViewSwitcher, *ViewSwitcherBuilder]
