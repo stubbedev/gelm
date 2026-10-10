@@ -1,0 +1,53 @@
+# Norwegian Bokmål catalog for gelm-i18n: gelm's built-in chrome and
+# the demo's own strings, one table.
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "OK"
+msgstr "OK"
+
+msgid "Cancel"
+msgstr "Avbryt"
+
+msgid "Close"
+msgstr "Lukk"
+
+msgid "Open"
+msgstr "Åpne"
+
+msgid "Save"
+msgstr "Lagre"
+
+msgid "Select"
+msgstr "Velg"
+
+msgid "Up"
+msgstr "Opp"
+
+msgid "Home"
+msgstr "Hjem"
+
+msgid "Recent"
+msgstr "Nylig"
+
+msgid "Name:"
+msgstr "Navn:"
+
+msgid "Filter:"
+msgstr "Filter:"
+
+msgid "question"
+msgstr "Norsk eller engelsk?"
+
+msgid "greeting"
+msgstr "Hei, gelm"
+
+msgid "%d click"
+msgid_plural "%d clicks"
+msgstr[0] "%d klikk"
+msgstr[1] "%d klikk"
+
+msgid "the buttons and dialogs follow the catalog; Escape quits"
+msgstr "knappene og dialogene følger katalogen; Escape avslutter"

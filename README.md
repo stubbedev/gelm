@@ -20,7 +20,8 @@ go get github.com/stubbedev/gelm@latest
 Apps import the public packages: `component` (the component
 framework, headless tests through `component/componenttest`), `ui`
 (typed view builders), `app` (session, windows, loop, dialogs, desktop services),
-`widget` (the widget tree, theme, CSS), `anim`, `appearance`, `render`,
+`widget` (the widget tree, theme, CSS), `i18n` (gettext), `anim`,
+`appearance`, `render`,
 `transfer`, `highlight`, `capture`, and `widget/css`.
 Everything under `internal/` is implementation.
 
@@ -136,7 +137,7 @@ toolchain. Pushing a `v*` tag releases the demo binaries
 | `cmd/gelm-messages` | the typed messaging layer and single-instance forwarding |
 | `cmd/gelm-settings` | a preferences app over typed persisted settings |
 | `cmd/gelm-columns` | ten thousand sorted, filtered rows; the tree view; drag-to-reorder |
-| `cmd/gelm-i18n` | the message catalog localizing every built-in string |
+| `cmd/gelm-i18n` | a gettext .po catalog (plurals included) localizing built-in and app strings |
 | `cmd/gelm-states`, `cmd/gelm-multilist`, `cmd/gelm-popover` | the clients the headless suite drives: window states, multi-select, popovers |
 | `cmd/wlpointer`, `cmd/zz-vpclick` | synthetic input for the headless suite |
 

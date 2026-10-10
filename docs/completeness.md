@@ -21,7 +21,7 @@ live in [architecture.md](architecture.md#non-goals).
 | relm4 `binding` module | `widget.Binding[T]` + the widget `Bind*` connectors | widget/binding.go |
 | GApplication single instance, `command-line`, `open` | `app.ClaimInstance` + `InstanceConfig` hooks | app/instance.go |
 | GSettings | `app.NewSettings` + typed `Key[T]`, persisted atomically | app/settings.go |
-| gettext for built-in strings | `widget.SetMessageCatalog`, `widget.Tr` | widget/message.go |
+| gettext (`gettext`, `ngettext`, `pgettext`, catalogs, locales) | `i18n`: pure-Go `.mo`/`.po` parsing, Plural-Forms, contexts, `Locales()`, `Load`/`LoadSystem`; `widget.SetMessageCatalog`, `Tr`, `TrN`, `TrCtx` for built-in and app strings | i18n/, widget/message.go |
 | `RelmAction`, `RelmActionGroup`, `menu!`, `set_accels_for_action` | typed `widget.Action`, `ParamAction[P]` and `StateAction[S]` (`Toggle`, `Target`); `ActionItem`/`CheckItem`/`RadioItem` menu rows; `BindAction` on buttons and toggles; `AddAccel` (chords) and subtree-scoped `AddScopedAccel` | widget/action.go, app/accel.go |
 | library logging | injectable `*slog.Logger` (`app.SetLogger`), silent by default | internal/logutil |
 | GTK inspector | `GELM_INSPECT=1`, `Application.SetInspect`, `widget.DumpTree` | app/inspect.go, [inspector.md](inspector.md) |
