@@ -352,6 +352,30 @@ func (s *selection) inserted(i int) {
 	s.host.selectionSync()
 }
 
+// moved follows item from to index to, shifting the items between.
+func (s *selection) moved(from, to int) {
+	shift := func(j int) int {
+		switch {
+		case j == from:
+			return to
+		case from < to && j > from && j <= to:
+			return j - 1
+		case from > to && j >= to && j < from:
+			return j + 1
+		}
+		return j
+	}
+	s.sel, s.cursor = shift(s.sel), shift(s.cursor)
+	if s.multi != nil {
+		set := make(map[int]struct{}, len(s.multi))
+		for j := range s.multi {
+			set[shift(j)] = struct{}{}
+		}
+		s.multi = set
+	}
+	s.host.selectionSync()
+}
+
 // removed drops item i and shifts the rest down, notifying when the
 // removed item was selected.
 func (s *selection) removed(i int) {

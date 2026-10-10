@@ -1,6 +1,8 @@
 package widget
 
 import (
+	"slices"
+
 	"github.com/stubbedev/gelm/internal/style"
 	"github.com/stubbedev/gelm/render"
 )
@@ -119,8 +121,16 @@ func (n *Notebook) styleChildren() []Widget {
 
 // AppendTab adds a page under name; the first page added becomes the
 // selected one.
-func (n *Notebook) AppendTab(name string, w Widget) {
-	n.tabs = append(n.tabs, notebookTab{name: name, w: w})
+func (n *Notebook) AppendTab(name string, w Widget) { n.InsertTab(len(n.tabs), name, w) }
+
+// InsertTab adds a page under name at index i (clamped); the selected
+// page stays selected.
+func (n *Notebook) InsertTab(i int, name string, w Widget) {
+	i = min(max(i, 0), len(n.tabs))
+	if len(n.tabs) > 0 && i <= n.selected {
+		n.selected++
+	}
+	n.tabs = slices.Insert(n.tabs, i, notebookTab{name: name, w: w})
 	n.syncTabs()
 	n.InvalidateLayout()
 }
@@ -175,9 +185,9 @@ func (n *Notebook) revealTab(i int) {
 	}
 }
 
-// moveTab moves tab from to index to, the selection following its
+// MoveTab moves tab from to index to, the selection following its
 // page, and fires OnReorder.
-func (n *Notebook) moveTab(from, to int) {
+func (n *Notebook) MoveTab(from, to int) {
 	if from == to || from < 0 || to < 0 || from >= len(n.tabs) || to >= len(n.tabs) {
 		return
 	}
@@ -470,7 +480,7 @@ func (n *Notebook) DragMove(p Point) {
 		return
 	}
 	if i := n.tabAt(Point{X: p.X, Y: n.bounds.Y + 1}); i >= 0 && i != n.dragTab {
-		n.moveTab(n.dragTab, i)
+		n.MoveTab(n.dragTab, i)
 		n.dragTab = i
 	}
 }

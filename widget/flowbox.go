@@ -1,6 +1,8 @@
 package widget
 
 import (
+	"slices"
+
 	"github.com/stubbedev/gelm/internal/style"
 	"github.com/stubbedev/gelm/render"
 )
@@ -204,6 +206,23 @@ func (f *FlowBox) RemoveAt(i int) {
 	f.removed(i)
 	notifyRemoved(c.child)
 	clearParents(c, c.child)
+	f.InvalidateLayout()
+	restyleChildren(f)
+}
+
+// Move moves the child at index from to index to (both clamped), in
+// place: the child stays attached and its selection follows it.
+func (f *FlowBox) Move(from, to int) {
+	if from < 0 || from >= len(f.kids) {
+		return
+	}
+	to = min(max(to, 0), len(f.kids)-1)
+	if from == to {
+		return
+	}
+	c := f.kids[from]
+	f.kids = slices.Insert(slices.Delete(f.kids, from, from+1), to, c)
+	f.selection.moved(from, to)
 	f.InvalidateLayout()
 	restyleChildren(f)
 }

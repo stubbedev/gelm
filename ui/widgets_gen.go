@@ -3270,6 +3270,12 @@ func (b *NotebookBuilder) AppendTab(name string, child Node) *NotebookBuilder {
 	return b
 }
 
+// InsertTab calls (*widget.Notebook).InsertTab.
+func (b *NotebookBuilder) InsertTab(i int, name string, child Node) *NotebookBuilder {
+	b.do(func(s *Scope, w *widget.Notebook) { w.InsertTab(i, name, build(s, child)) })
+	return b
+}
+
 // OnSelect sets the widget's OnSelect field.
 func (b *NotebookBuilder) OnSelect(fn func(name string)) *NotebookBuilder {
 	b.do(func(_ *Scope, w *widget.Notebook) { w.OnSelect = fn })

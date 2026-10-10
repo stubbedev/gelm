@@ -198,6 +198,22 @@ func (b *Box) InsertAt(i int, w Widget, expand bool) {
 	restyleChildren(b)
 }
 
+// Move moves the child at index from to index to (both clamped), in
+// place: the child stays attached, so its focus and state survive.
+func (b *Box) Move(from, to int) {
+	if from < 0 || from >= len(b.child) {
+		return
+	}
+	to = min(max(to, 0), len(b.child)-1)
+	if from == to {
+		return
+	}
+	c := b.child[from]
+	b.child = slices.Insert(slices.Delete(b.child, from, from+1), to, c)
+	b.InvalidateLayout()
+	restyleChildren(b)
+}
+
 // SetEnabled turns the box's subtree on or off: the per-query enable
 // walk (IsEnabled) folds the box's flag into every descendant, whose
 // own flag stays untouched — re-enabling the box never resurrects a
