@@ -11,7 +11,6 @@ package style
 // style cache, the same channels the transitions use.
 
 import (
-	"math"
 	"slices"
 	"sort"
 	"strings"
@@ -604,26 +603,4 @@ func resolveKeyframes(v *Values, layers []Layer) {
 func sortFrames(kf *Keyframes) {
 	sort.SliceStable(kf.Frames, func(i, j int) bool { return kf.Frames[i].Offset < kf.Frames[j].Offset })
 	kf.Mask = kf.mask()
-}
-
-// angleOf parses one angle token: deg, grad, rad, or turn, returned in
-// degrees clockwise; a bare 0 is allowed.
-func angleOf(t token) (float64, bool) {
-	if t.kind != tkDim {
-		if t.kind == tkNumber && t.num == 0 {
-			return 0, true
-		}
-		return 0, false
-	}
-	switch t.s {
-	case "deg":
-		return t.num, true
-	case "grad":
-		return t.num * 0.9, true
-	case "rad":
-		return t.num * 180 / math.Pi, true
-	case "turn":
-		return t.num * 360, true
-	}
-	return 0, false
 }

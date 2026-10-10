@@ -2,6 +2,7 @@ package style
 
 import (
 	"math"
+	"slices"
 	"strings"
 
 	"github.com/stubbedev/gelm/render"
@@ -40,9 +41,11 @@ type colorVal struct {
 }
 
 // parseColor parses one color component: hex, a named color,
-// transparent, currentColor, rgb()/rgba(), hsl()/hsla(), and
-// color-mix(in srgb, ...). GTK's alpha(), shade(), and mix() are
-// accepted too, since GTK stylesheets use them.
+// transparent, currentColor, a system color, rgb()/rgba(),
+// hsl()/hsla(), hwb(), lab(), lch(), oklab(), oklch(), color(),
+// light-dark(), relative color syntax, and color-mix(). GTK's
+// alpha(), shade(), and mix() are accepted too, since GTK stylesheets
+// use them.
 func parseColor(ts []token, cx *ctx) (colorVal, bool) {
 	ts = trimWS(ts)
 	if len(ts) == 0 {
@@ -67,6 +70,9 @@ func parseColor(ts []token, cx *ctx) (colorVal, bool) {
 		if name == "transparent" {
 			return colorVal{}, true
 		}
+		if c, ok := cx.sysColor(name); ok {
+			return colorVal{c: c}, true
+		}
 		c, ok := namedColors[name]
 		return colorVal{c: c}, ok
 	case tkFunc:
@@ -76,13 +82,27 @@ func parseColor(ts []token, cx *ctx) (colorVal, bool) {
 		args := funcArgs(ts)
 		switch t.s {
 		case "rgb", "rgba":
-			c, ok := rgbFunc(args, cx)
-			return colorVal{c: c}, ok
+			return spaceFunc(rgbDef, commaToWS(args), cx, nil)
 		case "hsl", "hsla":
-			c, ok := hslFunc(args, cx)
-			return colorVal{c: c}, ok
+			return spaceFunc(hslDef, commaToWS(args), cx, nil)
+		case "hwb":
+			return spaceFunc(hwbDef, args, cx, nil)
+		case "lab":
+			return spaceFunc(labDef, args, cx, nil)
+		case "lch":
+			return spaceFunc(lchDef, args, cx, nil)
+		case "oklab":
+			return spaceFunc(oklabDef, args, cx, nil)
+		case "oklch":
+			return spaceFunc(oklchDef, args, cx, nil)
+		case "color":
+			return colorFunc(args, cx)
+		case "light-dark":
+			return lightDark(args, cx)
 		case "color-mix":
 			return colorMix(args, cx)
+		case "attr":
+			return attrColor(args, cx)
 		case "alpha":
 			return gtkAlpha(args, cx)
 		case "shade":
@@ -134,138 +154,64 @@ func hexColor(h string) (render.Color, bool) {
 	return render.RGBA(ch[0], ch[1], ch[2], ch[3]), true
 }
 
-// funcNumbers splits color function arguments into numeric components,
-// accepting both the legacy comma form and the space form with an
-// optional `/ alpha`.
-func funcNumbers(args []token, cx *ctx) ([]numeric, bool) {
-	var parts [][]token
-	if len(splitTop(args, tkComma)) > 1 {
-		parts = splitTop(args, tkComma)
-	} else {
-		for _, c := range components(args) {
-			if len(c) == 1 && c[0].is('/') {
-				continue
+// commaToWS rewrites top-level commas to whitespace, so the legacy
+// `rgb(255, 0, 0)` form reads like the space form.
+func commaToWS(args []token) []token {
+	if !slices.ContainsFunc(args, func(t token) bool { return t.kind == tkComma }) {
+		return args
+	}
+	out := slices.Clone(args)
+	depth := 0
+	for i := range out {
+		switch out[i].kind {
+		case tkFunc, tkLParen, tkLBrack, tkLBrace:
+			depth++
+		case tkRParen, tkRBrack, tkRBrace:
+			depth--
+		case tkComma:
+			if depth == 0 {
+				out[i] = token{kind: tkWS, pos: out[i].pos, end: out[i].end}
 			}
-			parts = append(parts, c)
 		}
 	}
-	out := make([]numeric, 0, len(parts))
-	for _, p := range parts {
-		n, ok := evalNumeric(trimWS(p), cx)
-		if !ok {
-			return nil, false
-		}
-		out = append(out, n)
-	}
-	return out, true
+	return out
 }
 
-// channel reads an rgb() channel: a number 0..255 or a percentage.
-func channel(n numeric) (float64, bool) {
-	switch n.kind {
-	case numNumber:
-		return n.v / 255, true
-	case numPercent:
-		return n.v / 100, true
-	}
-	return 0, false
-}
-
-// alphaOf reads an alpha component: a number 0..1 or a percentage.
-func alphaOf(n numeric) (float64, bool) {
-	switch n.kind {
-	case numNumber:
-		return n.v, true
-	case numPercent:
-		return n.v / 100, true
-	}
-	return 0, false
-}
-
-func rgbFunc(args []token, cx *ctx) (render.Color, bool) {
-	ns, ok := funcNumbers(args, cx)
-	if !ok || len(ns) < 3 || len(ns) > 4 {
-		return 0, false
-	}
-	var c rgbaf
-	c.a = 1
-	var ok1, ok2, ok3 bool
-	c.r, ok1 = channel(ns[0])
-	c.g, ok2 = channel(ns[1])
-	c.b, ok3 = channel(ns[2])
-	if !ok1 || !ok2 || !ok3 {
-		return 0, false
-	}
-	if len(ns) == 4 {
-		a, ok := alphaOf(ns[3])
-		if !ok {
-			return 0, false
-		}
-		c.a = a
-	}
-	return c.color(), true
-}
-
-func hslFunc(args []token, cx *ctx) (render.Color, bool) {
-	ns, ok := funcNumbers(args, cx)
-	if !ok || len(ns) < 3 || len(ns) > 4 {
-		return 0, false
-	}
-	h := ns[0].v
-	if ns[0].kind == numAngle {
-		h = ns[0].v // already degrees
-	} else if ns[0].kind != numNumber {
-		return 0, false
-	}
-	if ns[1].kind != numPercent || ns[2].kind != numPercent {
-		return 0, false
-	}
-	s, l := ns[1].v/100, ns[2].v/100
-	a := 1.0
-	if len(ns) == 4 {
-		v, ok := alphaOf(ns[3])
-		if !ok {
-			return 0, false
-		}
-		a = v
-	}
-	h = math.Mod(math.Mod(h, 360)+360, 360) / 360
-	hue := func(p, q, t float64) float64 {
-		t = math.Mod(t+1, 1)
-		switch {
-		case t < 1.0/6:
-			return p + (q-p)*6*t
-		case t < 0.5:
-			return q
-		case t < 2.0/3:
-			return p + (q-p)*(2.0/3-t)*6
-		}
-		return p
-	}
-	var q float64
-	if l < 0.5 {
-		q = l * (1 + s)
-	} else {
-		q = l + s - l*s
-	}
-	p := 2*l - q
-	return rgbaf{r: hue(p, q, h+1.0/3), g: hue(p, q, h), b: hue(p, q, h-1.0/3), a: a}.color(), true
-}
-
-// colorMix is CSS Color 5's color-mix(in srgb, A [p%], B [q%]): the
-// percentages normalize to sum 100, the interpolation runs on
-// premultiplied channels, and a sum under 100 scales the result's alpha.
-// Any color space other than srgb (and srgb-linear, mixed linearly
-// here too) is rejected.
+// colorMix is CSS Color 5's color-mix(in <space> [hue method], A
+// [p%], B [q%]): the percentages normalize to sum 100, the
+// interpolation runs on premultiplied channels in the named space
+// with the named hue method, and a sum under 100 scales the alpha.
 func colorMix(args []token, cx *ctx) (colorVal, bool) {
 	parts := splitTop(args, tkComma)
 	if len(parts) != 3 {
 		return colorVal{}, false
 	}
 	space := components(parts[0])
-	if len(space) != 2 || !space[0][0].ident("in") ||
-		(!space[1][0].ident("srgb") && !space[1][0].ident("srgb-linear")) {
+	if len(space) < 2 || !space[0][0].ident("in") {
 		return colorVal{}, false
+	}
+	sp, ok := mixSpaceOf(space[1])
+	if !ok {
+		return colorVal{}, false
+	}
+	hue := hueShorter
+	for _, m := range space[2:] {
+		if len(m) != 1 {
+			return colorVal{}, false
+		}
+		switch {
+		case m[0].ident("hue"):
+		case m[0].ident("shorter"):
+			hue = hueShorter
+		case m[0].ident("longer"):
+			hue = hueLonger
+		case m[0].ident("increasing"):
+			hue = hueIncreasing
+		case m[0].ident("decreasing"):
+			hue = hueDecreasing
+		default:
+			return colorVal{}, false
+		}
 	}
 	type side struct {
 		c   colorVal
@@ -329,7 +275,37 @@ func colorMix(args []token, cx *ctx) (colorVal, bool) {
 	if sum == 0 {
 		return colorVal{}, false
 	}
-	return colorVal{c: mixPremul(ca, cb, pa/sum, math.Min(sum, 100)/100)}, true
+	wa, scale := pa/sum, math.Min(sum, 100)/100
+	if sp == spSrgb {
+		return colorVal{c: mixPremul(ca, cb, wa, scale)}, true
+	}
+	return colorVal{c: mixSpace(fromColor(ca), fromColor(cb), wa, sp, hue, scale).color()}, true
+}
+
+// mixSpaceOf maps an interpolation space name onto its space.
+func mixSpaceOf(ts []token) (space, bool) {
+	if len(ts) != 1 || ts[0].kind != tkIdent {
+		return 0, false
+	}
+	switch ts[0].s {
+	case "srgb":
+		return spSrgb, true
+	case "srgb-linear":
+		return spSrgbLinear, true
+	case "lab":
+		return spLab, true
+	case "lch":
+		return spLch, true
+	case "oklab":
+		return spOklab, true
+	case "oklch":
+		return spOklch, true
+	case "hsl":
+		return spHsl, true
+	case "hwb":
+		return spHwb, true
+	}
+	return 0, false
 }
 
 // mixPremul interpolates premultiplied channels: wa is the first color's

@@ -536,7 +536,7 @@ func TestColors(t *testing.T) {
 		t.Errorf("gtk alpha/mix: %08x %08x", uint32(v.Color), uint32(v.Background))
 	}
 	warns := capture(t)
-	Parse(`x { color: color-mix(in oklch, red, blue); } y { color: #12345; } z { color: rgb(1, 2); }`)
+	Parse(`x { color: color-mix(in xyz, red, blue); } y { color: #12345; } z { color: rgb(1, 2); }`)
 	if len(*warns) != 3 {
 		t.Errorf("invalid colors: %d warnings, want 3", len(*warns))
 	}
@@ -570,9 +570,9 @@ func TestUnitsAndCalc(t *testing.T) {
 		t.Errorf("max/clamp: %d %d", v.MinWidth, v.MinHeight)
 	}
 	warns := capture(t)
-	Parse(`x { padding: calc(1px * 2px); } y { padding: calc(1px + 2); } z { padding: calc(1px / 0); } w { padding: 3vh; }`)
-	if len(*warns) != 4 {
-		t.Errorf("type errors: %d warnings, want 4: %v", len(*warns), *warns)
+	Parse(`x { padding: calc(1px * 2px); } y { padding: calc(1px + 2); } z { padding: calc(1px / 0); }`)
+	if len(*warns) != 3 {
+		t.Errorf("type errors: %d warnings, want 3: %v", len(*warns), *warns)
 	}
 }
 

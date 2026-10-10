@@ -141,13 +141,56 @@ box.AttachStylesheet(widget.NewStylesheet(css, widget.StylePriorityApplication))
 
 - **Custom properties.** `--x` is inherited and computed where it is
   declared, and cycles are invalid. `var()` takes fallbacks, and an
-  unresolvable `var()` acts as `unset`.
-- **Math.** `calc()`, `min()`, `max()` and `clamp()`.
-- **Units.** px, rem, em, pt, pc, in, cm, mm, %, deg, s and ms.
+  unresolvable `var()` acts as `unset`. `var()` works everywhere a
+  value can appear, including inside shorthand expansion
+  (`border: var(--w) solid var(--c)`).
+- **Math.** `calc()`, `min()`, `max()` and `clamp()`, plus the CSS
+  Values 4 set: `round()` (with the `nearest`/`up`/`down`/`to-zero`
+  strategies), `mod()`, `rem()`, `abs()`, `sign()`, `sin()`, `cos()`,
+  `tan()`, `asin()`, `acos()`, `atan()`, `atan2()` (number arguments
+  are radians, the inverse functions return angles), `pow()`,
+  `sqrt()`, `hypot()`, `log()` (with an optional base) and `exp()`,
+  all nestable inside `calc()`.
+- **Units.** px, rem, em, ch, ex, cap, ic, lh and rlh (the
+  font-relative family: ch/ex/cap/ic resolve against the default
+  face's metrics scaled by the node's font size — `render.Font.Metrics`
+  — with the CSS fallback ratios when the face reports none; lh is
+  the node's computed line-height, rlh the root's), vw, vh, vmin and
+  vmax (the media viewport the `@media` size features read), pt, pc,
+  in, cm, mm, %, deg, grad, rad, turn, s and ms. Container-query
+  units (cqw/cqh/…) are not supported yet — container queries are a
+  separate item.
+- **env()** answers the safe-area and keyboard inset family
+  (`env(safe-area-inset-top)`, `env(keyboard-inset-height)`, ...) as
+  zero lengths, the desktop value; unknown names are invalid.
+- **attr()** reads the node's attributes (the optional `StyleAttr`
+  hook a widget implements) as typed values — `attr(name px)`, a
+  unitless number, or `attr(name color)` — wherever a length or color
+  is taken. A missing attribute behaves as `unset`. This is the
+  engine's one attr() implementation.
 - **Colors.**
   - Hex (3/4/6/8 digits), named colors, `transparent` and
-    `currentColor`.
-  - `rgb[a]()`, `hsl[a]()` and `color-mix(in srgb, …)`.
+    `currentColor` (valid wherever a color is, including inside every
+    function below).
+  - `rgb[a]()`, `hsl[a]()`, `hwb()`, `lab()`, `lch()`, `oklab()`,
+    `oklch()` and `color()` — the predefined spaces `srgb`,
+    `srgb-linear`, `display-p3`, `a98-rgb`, `prophoto-rgb`, `rec2020`,
+    `xyz`, `xyz-d65` and `xyz-d50`, mapped to sRGB (out-of-gamut
+    colors clamp).
+  - Relative color syntax: `rgb(from <color> r g b / a)`, and the
+    same `from` form for hsl, hwb, lab, lch, oklab and oklch, each
+    channel an expression over the origin's channel keywords (`l`,
+    `c`, `h`, `r`, `alpha`, ...) in `calc()`.
+  - `color-mix(in <space>, A, B)` in every interpolation space
+    (`srgb`, `srgb-linear`, `lab`, `lch`, `oklab`, `oklch`, `hsl`,
+    `hwb`) with the hue methods `shorter` (default), `longer`,
+    `increasing` and `decreasing`.
+  - `light-dark(a, b)` follows the active theme's color scheme.
+  - System colors — `Canvas`, `CanvasText`, `LinkText`, `VisitedText`,
+    `GrayText`, `Highlight`, `HighlightText`, `Mark`, `MarkText`,
+    `ButtonFace`, `ButtonText`, `ButtonBorder`, `Field`, `FieldText` —
+    map onto the active theme (background, text, accent, borders) and
+    re-derive on `SetTheme`.
   - GTK's `alpha()`, `shade()` and `mix()`.
   - `@define-color name value;` with `@name` references, which compile
     to `var(--name)`, so a subtree's `--name` overrides them. The

@@ -1131,10 +1131,12 @@ func wideOf(val []token) cssWide {
 	return wideNone
 }
 
-// containsVar reports a var() call anywhere in the value.
+// containsVar reports a var() or attr() call anywhere in the value:
+// both resolve per node, so the declaration parses after substitution
+// instead of at parse time.
 func containsVar(ts []token) bool {
 	for _, t := range ts {
-		if t.kind == tkFunc && t.s == "var" {
+		if t.kind == tkFunc && (t.s == "var" || t.s == "attr") {
 			return true
 		}
 	}
