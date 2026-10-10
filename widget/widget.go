@@ -454,6 +454,7 @@ func (n *node) markSubInvalid() {
 // painting too).
 func (n *node) InvalidateLayout() {
 	n.measureDirty = true
+	n.dropMeasureCache()
 	n.layout.dropExpand()
 	n.Invalidate()
 	n.markSubLayout()
@@ -482,8 +483,15 @@ func (n *node) markSubLayout() {
 func (n *node) markMeasureDirty() bool {
 	was := n.measureDirty
 	n.measureDirty = true
+	n.dropMeasureCache()
 	n.layout.dropExpand()
 	return was
+}
+
+func (n *node) dropMeasureCache() {
+	n.measureSeen = false
+	n.measureIn, n.measureOut = Constraints{}, Size{}
+	n.measureIn2, n.measureOut2 = Constraints{}, Size{}
 }
 
 // measureHit returns the cached natural size when it is still valid
