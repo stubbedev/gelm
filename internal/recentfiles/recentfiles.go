@@ -13,6 +13,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/stubbedev/gelm/internal/atomicfile"
 	"github.com/stubbedev/gelm/transfer"
 )
 
@@ -171,11 +172,7 @@ func (m *Manager) Save() error {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
-	tmp := m.path + ".tmp"
-	if err := os.WriteFile(tmp, body, 0o600); err != nil {
-		return err
-	}
-	return os.Rename(tmp, m.path)
+	return atomicfile.WriteFile(m.path, body, 0o600)
 }
 
 // xbel is the on-disk document; only the fields gelm writes and reads
