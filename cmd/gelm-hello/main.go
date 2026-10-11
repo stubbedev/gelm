@@ -5,6 +5,12 @@
 // checkbox, entry, text area, a scrollable list - plus tooltips, an
 // animated tween, a right-click context menu bound to typed actions,
 // Tab focus traversal, drag-to-move on the chrome, and Escape to close.
+// Below the fold (the root scrolls) sits the sixth-pass section: a
+// ListBox with filter/sort toggles, a Fixed with positioned children,
+// a DrawSurface painting incrementally off a timer, a recycling
+// TypedList, an OpenButton, and a stylesheet whose @media rule and
+// ::before/::after content run the CSS at-rule and pseudo-element
+// paths under the compositor.
 package main
 
 import (
@@ -12,8 +18,10 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/stubbedev/gelm/anim"
@@ -25,6 +33,23 @@ import (
 )
 
 const width, height = 640, 470
+
+// showcaseCSS is the showcase's application stylesheet: the @media
+// rule keys off the live window width (app reports every configure to
+// the stylesheet engine) and the ::before/::after rules give the
+// sixth-pass heading its content, so both CSS paths execute on a real
+// session. The window is 640 wide, so the min-width branch matches.
+const showcaseCSS = `
+@media (min-width: 600px) {
+	.sixth-heading::before { content: "sixth "; }
+}
+.sixth-heading::after { content: " pass"; }
+`
+
+// surfaceTickEvery is how often the DrawSurface demo draws its next
+// incremental patch: fast enough for the headless cadence check to
+// see several ticks, slow enough not to load a software-rendered gate.
+const surfaceTickEvery = 700 * time.Millisecond
 
 func main() {
 	err := run()
@@ -54,6 +79,7 @@ func run() error {
 	application.SetInspect(true)
 
 	show := &showcase{env: ui.Env{Face: app.FontFallback(face), Size: 14}}
+	widget.LoadStylesheet(showcaseCSS)
 	theme := widget.NewStateAction("theme", "dark", func(name string) {
 		if name == "light" {
 			widget.SetTheme(widget.LightTheme())
@@ -84,7 +110,7 @@ func run() error {
 		OnPress: func(button, serial uint32, over widget.Widget) {
 			switch button {
 			case widget.BTNLeft:
-				if !widget.IsInteractive(over) {
+				if show.chromeDrag(over) {
 					win.BeginMove()
 				}
 			case widget.BTNRight:
@@ -101,10 +127,19 @@ func run() error {
 			app.Trace("demo", "app key code=%d sym=%v", code, application.KeySym(code))
 		},
 	}
+	open, err := application.NewOpenButton(nil, app.OpenButtonConfig{
+		Label: "open a file", StartDir: os.TempDir(), Recents: 3,
+		OnOpen: func(path string) { app.Trace("demo", "opened %s", filepath.Base(path)) },
+	})
+	if err != nil {
+		return err
+	}
+	show.open = open
 	ctrl, win, err = component.Window(application, cfg, show)
 	if err != nil {
 		return err
 	}
+	application.Every(surfaceTickEvery, show.surfaceTick)
 	if err := application.AddScopedAccel(ctrl.Widget(), "Escape", widget.NewAction("close", win.Close)); err != nil {
 		return err
 	}
@@ -146,6 +181,25 @@ type showcase struct {
 	entry    *widget.Entry
 	area     *widget.TextArea
 	scrolled *widget.Scroll
+
+	rootScroll   *widget.Scroll
+	sixthHead    *widget.Label
+	listbox      *widget.ListBox
+	listNames    []string
+	listSorted   bool
+	listFiltered bool
+	listFilter   *widget.Button
+	listSort     *widget.Button
+	typedSort    *widget.Button
+	fixed        *widget.Fixed
+	fixedLabel   *widget.Label
+	fixedBtn     *widget.Button
+	fixedX       int
+	surface      *widget.DrawSurface
+	surfaceN     int
+	typed        *widget.TypedList[string]
+	typedOn      bool
+	open         *app.OpenButton
 }
 
 func (s *showcase) Init(cx *component.Context[showMsg, struct{}]) widget.Widget {
@@ -200,19 +254,160 @@ func (s *showcase) Init(cx *component.Context[showMsg, struct{}]) widget.Widget 
 			Text("multi-line text area:\nenter splits, backspace joins,\nselection spans lines.").
 			Tooltip("multi-line editing"),
 		caption("list"),
-		ui.Expand(ui.Scroll(ui.Column(ui.Each(slices.Values(servers), func(line string) ui.Node {
+		ui.Scroll(ui.Column(ui.Each(slices.Values(servers), func(line string) ui.Node {
 			return ui.Label(line).Font(nil, 12)
-		})...).Spacing(4)).Ref(&s.scrolled).ShowBars(true).
+		})...).Spacing(4)).Ref(&s.scrolled).MaxContentHeight(170).ShowBars(true).
 			OnScrolled(func(x, y int) { note("list scrolled to %d,%d", x, y)() }).
-			Tooltip("scrollable list").DebugName("demo:list")),
+			Tooltip("scrollable list").DebugName("demo:list"),
 	).Spacing(6)
 
-	s.root = ui.Mount(cx, s.env, ui.Column(
+	s.listNames = []string{"delta", "alpha", "echo", "bravo", "foxtrot", "charlie"}
+	s.root = ui.Mount(cx, s.env, ui.Scroll(ui.Column(
 		header,
 		ui.Expand(ui.Row(ui.Expand(controls), ui.Expand(texts)).Spacing(24)),
 		ui.Label("").Font(nil, 12).Ink(muted).WatchText(func() string { return s.status }),
-	).Spacing(12).Padding(render.UniformInsets(16)))
+		s.sixth(cx, caption),
+	).Spacing(12).Padding(render.UniformInsets(16))).
+		VerticalOnly(true).ShowBars(true).Ref(&s.rootScroll).
+		OnScrolled(func(x, y int) { app.Trace("demo", "root scrolled to %d,%d", x, y) }))
+	for _, name := range s.listNames {
+		s.listbox.Append(widget.NewLabel(s.env.Face, 12, name, widget.Current().Text))
+	}
 	return s.root
+}
+
+// sixth builds the sixth-pass section: the widgets that landed in the
+// sixth parity pass, each wired to a demo trace so the headless suite
+// can drive it through a live compositor.
+func (s *showcase) sixth(cx *component.Context[showMsg, struct{}], caption func(string) ui.Node) ui.Node {
+	note := func(format string, args ...any) func() {
+		return func() { cx.Input(noted{text: fmt.Sprintf(format, args...)}) }
+	}
+	muted := widget.Current().TextMuted
+	items := make([]string, 100)
+	for i := range items {
+		items[i] = fmt.Sprintf("item-%02d", i)
+	}
+	factory := widget.TypedFactory[string]{
+		Setup: func() widget.Widget {
+			return widget.NewLabel(s.env.Face, 12, "", widget.Current().Text)
+		},
+		Bind: func(item string, row widget.Widget) {
+			if l, ok := row.(*widget.Label); ok {
+				l.SetText(item)
+			}
+		},
+	}
+	name := func(rows []int) string {
+		picked := make([]string, len(rows))
+		for i, r := range rows {
+			picked[i] = s.listNames[r]
+		}
+		return strings.Join(picked, ",")
+	}
+	filter := func(r *widget.ListBoxRow) bool { return len(s.listNames[r.Index()]) <= 5 }
+	sortRows := func(a, b *widget.ListBoxRow) int {
+		return strings.Compare(s.listNames[a.Index()], s.listNames[b.Index()])
+	}
+	openNode := ui.Node(ui.Label("(open button needs a session)").Font(nil, 11).Ink(muted))
+	if s.open != nil {
+		openNode = ui.Use(s.open.Widget)
+	}
+	left := ui.Column(
+		ui.Label("").Font(nil, 12).Ink(muted).Ref(&s.sixthHead).Classes("sixth-heading"),
+		caption("listbox"),
+		ui.ListBox().Ref(&s.listbox).
+			OnSelectionChanged(func(rows []int) { note("listbox select %s", name(rows))() }).
+			OnActivate(func(i int) { note("listbox activate %s", s.listNames[i])() }).
+			HeaderFunc(func(r *widget.ListBoxRow) widget.Widget {
+				if r.Index() != 0 {
+					return nil
+				}
+				return widget.NewLabel(s.env.Face, 11, "servers", muted)
+			}).
+			Tooltip("non-virtualized list with filter and sort").DebugName("demo:listbox"),
+		ui.Row(
+			ui.Button(ui.Label("filter").Font(nil, 11), 4, 8).Ref(&s.listFilter).
+				OnClick(func() {
+					s.listFiltered = !s.listFiltered
+					if s.listFiltered {
+						s.listbox.SetFilterFunc(filter)
+					} else {
+						s.listbox.SetFilterFunc(nil)
+					}
+					note("listbox filter %v", s.listFiltered)()
+				}).Tooltip("hides the rows longer than five letters").DebugName("demo:listfilter"),
+			ui.Button(ui.Label("sort").Font(nil, 11), 4, 8).Ref(&s.listSort).
+				OnClick(func() {
+					s.listSorted = !s.listSorted
+					if s.listSorted {
+						s.listbox.SetSortFunc(sortRows)
+					} else {
+						s.listbox.SetSortFunc(nil)
+					}
+					note("listbox sort %v", s.listSorted)()
+				}).Tooltip("sorts the rows alphabetically").DebugName("demo:listsort"),
+			ui.Button(ui.Label("typed sort").Font(nil, 11), 4, 8).Ref(&s.typedSort).
+				OnClick(func() {
+					s.typedOn = !s.typedOn
+					if s.typedOn {
+						s.typed.SetSort(strings.Compare)
+					} else {
+						s.typed.SetSort(nil)
+					}
+					note("typed sort %v", s.typedOn)()
+				}).Tooltip("sorts the typed list").DebugName("demo:typedsort"),
+		).Spacing(6),
+		caption("fixed"),
+		ui.Fixed().Ref(&s.fixed).
+			Put(ui.Button(ui.Label("move").Font(nil, 11), 4, 8).Ref(&s.fixedBtn).
+				OnClick(func() {
+					s.fixedX -= 20
+					s.fixed.Move(s.fixedLabel, s.fixedX, 6)
+					note("fixed moved to (%d,6)", s.fixedX)()
+				}).Tooltip("moves the fixed label 20px left").DebugName("demo:fixedbtn"), 4, 2).
+			Put(ui.Label("positioned").Font(nil, 11).Ink(muted).Ref(&s.fixedLabel), 96, 6),
+	).Spacing(6)
+	right := ui.Column(
+		caption("draw surface"),
+		ui.DrawSurface(240, 64).Ref(&s.surface).
+			OnResize(func(cv *render.Canvas) {
+				cv.FillRectDevice(cv.Rect(), widget.Current().Bg)
+			}).
+			Tooltip("a retained canvas painted incrementally").DebugName("demo:surface"),
+		caption("typed list"),
+		ui.TypedList(widget.NewTypedItems(items...), factory, 22).MaxHeight(110).Ref(&s.typed).
+			OnSelectionChanged(func(picked []string) {
+				if len(picked) > 0 {
+					note("typed select %s", picked[0])()
+				}
+			}).
+			OnActivate(func(item string) { note("typed activate %s", item)() }).
+			Tooltip("100 rows through a recycling viewport").DebugName("demo:typedlist"),
+		caption("open button"),
+		openNode,
+	).Spacing(6)
+	return ui.Row(ui.Expand(left), ui.Expand(right)).Spacing(24)
+}
+
+// surfaceTick paints one incremental patch on the DrawSurface: the
+// retained canvas means only the new rect is drawn and damaged, never
+// the surface's history. It runs on the loop from the application's
+// timer wheel.
+func (s *showcase) surfaceTick() {
+	if s.surface == nil {
+		return
+	}
+	b := s.surface.Bounds()
+	if b.W < 40 {
+		return
+	}
+	s.surfaceN++
+	r := render.Rect{X: (s.surfaceN * 14) % (b.W - 14), Y: 10, W: 12, H: 12}
+	s.surface.Draw(r, func(cv *render.Canvas) {
+		cv.FillRect(r, widget.Current().Accent)
+	})
+	app.Trace("demo", "surface drew %d", s.surfaceN)
 }
 
 func (s *showcase) Update(_ *component.Context[showMsg, struct{}], msg showMsg) {
@@ -238,7 +433,7 @@ type control struct {
 }
 
 func (s *showcase) controls() []control {
-	return []control{
+	out := []control{
 		{"button", s.button},
 		{"slider", s.slider},
 		{"switch", s.sw},
@@ -246,7 +441,25 @@ func (s *showcase) controls() []control {
 		{"entry", s.entry},
 		{"textarea", s.area},
 		{"scroll", s.scrolled},
+		{"listbox", s.listbox},
+		{"listfilter", s.listFilter},
+		{"listsort", s.listSort},
+		{"typedsort", s.typedSort},
+		{"fixedbtn", s.fixedBtn},
+		{"typedlist", s.typed},
+		{"surface", s.surface},
 	}
+	if s.open != nil {
+		if box, ok := s.open.Widget.(interface{ Children() []widget.Widget }); ok && len(box.Children()) == 2 {
+			kids := box.Children()
+			btn, bok := kids[0].(interface{ Bounds() render.Rect })
+			dd, dok := kids[1].(interface{ Bounds() render.Rect })
+			if bok && dok {
+				out = append(out, control{"openfile", btn}, control{"openrecents", dd})
+			}
+		}
+	}
+	return out
 }
 
 func (s *showcase) mapped(w, h int) {
@@ -258,8 +471,42 @@ func (s *showcase) mapped(w, h int) {
 	app.Trace("demo", "mapped %dx%d", w, h)
 	s.root.Measure(widget.Constraints{Max: widget.Size{W: w, H: h}})
 	s.root.Arrange(render.Rect{W: w, H: h})
+	mw, mh := widget.MediaViewport()
+	app.Trace("demo", "media viewport %dx%d", mw, mh)
+	app.Trace("demo", "css before %q after %q",
+		widget.PseudoContent(s.sixthHead, "before"), widget.PseudoContent(s.sixthHead, "after"))
 	for _, c := range s.controls() {
 		b := c.w.Bounds()
 		app.Trace("demo", "control %s center (%d,%d)", c.name, b.X+b.W/2, b.Y+b.H/2)
 	}
+}
+
+// chromeDrag reports whether a left press that landed on over should
+// start a window move: interactive controls keep their press, and so
+// do the sixth-pass widgets whose children the move grab would starve
+// of the release - a ListBox row clicks on release, and a DrawSurface
+// press belongs to the canvas, not the frame. The root scroll the
+// whole showcase sits in counts as chrome, not as a control, so a
+// press on a label still moves the window the way it did before the
+// showcase grew scrollable content.
+func (s *showcase) chromeDrag(over widget.Widget) bool {
+	for w := over; w != nil; {
+		switch v := w.(type) {
+		case *widget.Button, *widget.Slider, *widget.Switch, *widget.CheckButton,
+			*widget.Entry, *widget.TextArea, *widget.Dropdown, *widget.List:
+			return false
+		case *widget.Scroll:
+			if v != widget.Widget(s.rootScroll) {
+				return false
+			}
+		case *widget.ListBox, *widget.ListBoxRow, *widget.Fixed, *widget.DrawSurface:
+			return false
+		}
+		p, ok := w.(interface{ Parent() widget.Widget })
+		if !ok {
+			return true
+		}
+		w = p.Parent()
+	}
+	return true
 }
