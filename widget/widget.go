@@ -229,7 +229,7 @@ type node struct {
 	// pseudo holds the computed ::before/::after styles (stylepart
 	// pseudo-elements style through the parts themselves), stamped with
 	// the cascade generation.
-	pseudo    [2]style.Values
+	pseudo    [3]style.Values
 	pseudoGen uint64
 
 	// disabled is the widget's own half of the enable state: false (the
@@ -577,6 +577,13 @@ func (n *node) Arrange(r render.Rect) {
 	if !n.bounds.Empty() && r != n.bounds {
 		n.InvalidateRect(n.ink.Grow(n.bounds))
 		n.Invalidate()
+	}
+	// A resized widget can be a query container: its descendants'
+	// @container conditions and container units recompute against the
+	// new bounds, like a viewport change restyles @media rules.
+	if r != n.bounds && sensNow.media {
+		styleGen++
+		markDamage()
 	}
 	n.bounds = r
 }

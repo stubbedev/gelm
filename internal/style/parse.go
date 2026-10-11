@@ -134,9 +134,24 @@ type Sheet struct {
 	// unconditional.
 	mediaQs []mediaQuery
 
-	// layerNames is the sheet's @layer order of first appearance;
+	// containerQs holds the distinct @container conditions the sheet's
+	// rules carry, by first use; a rule's cq indexes it, -1 when the
+	// rule is not container-conditional.
+	containerQs []containerQuery
+
+	// layerNames is the sheet's @layer paths of first appearance;
 	// rules carry the index of their layer, 255 when unlayered.
+	// layerRanks maps those indices onto the cascade order dotted
+	// names define: nested layers sort below their parent.
 	layerNames []string
+	layerRanks []uint8
+
+	// fontFaces holds the sheet's @font-face rules in source order.
+	fontFaces []*FontFace
+
+	// properties holds the sheet's @property registrations by custom
+	// property name; a later registration replaces an earlier one.
+	properties map[string]*PropertyReg
 
 	// keyframes holds the sheet's @keyframes rules by (lowercased)
 	// name; a later rule of the same name replaces an earlier one.
@@ -176,6 +191,16 @@ type Sensitivity struct {
 	// Counters reports counter-reset or counter-increment in play: the
 	// widget layer then chains siblings' counter scopes.
 	Counters bool
+	// Container reports a @container rule and CqUnits a
+	// container-query unit: either makes the per-compute container
+	// resolution (and a viewport change's restyle) necessary, since
+	// containers resize with the window.
+	Container bool
+	CqUnits   bool
+	// RevertLayer reports a revert-layer value: the cascade then
+	// tracks each layer's best declaration, the chain revert-layer
+	// walks down.
+	RevertLayer bool
 }
 
 // Sensitivity returns the sheet's selector summary.
@@ -184,6 +209,15 @@ func (s *Sheet) Sensitivity() *Sensitivity { return &s.sens }
 // MediaQueries reports how many distinct @media conditions the
 // sheet's rules carry: zero when nothing in it is media-conditional.
 func (s *Sheet) MediaQueries() int { return len(s.mediaQs) }
+
+// ContainerQueries reports how many distinct @container conditions
+// the sheet's rules carry: zero when nothing in it is
+// container-conditional.
+func (s *Sheet) ContainerQueries() int { return len(s.containerQs) }
+
+// FontFaces returns the sheet's @font-face rules in source order, for
+// the widget layer to load and register by family.
+func (s *Sheet) FontFaces() []*FontFace { return s.fontFaces }
 
 // Keyframes returns the sheet's @keyframes rule of that name, nil when
 // it declares none.
@@ -204,16 +238,24 @@ func (s *Sheet) addKeyframes(kf *Keyframes) {
 }
 
 // rule is one selector of one stylesheet rule with its specificity,
-// declarations, @media condition, cascade layer, and — when the rule
-// carries one — its @starting-style block.
+// declarations, @media condition, cascade layer, @container
+// condition, scoping, and — when the rule carries one — its
+// @starting-style block.
 type rule struct {
 	sel   selector
 	spec  spec
 	block *Block
 	mq    int32
 	layer uint8
-	// pseudo names the ::before/::after pseudo-element this rule
-	// addresses; empty styles the element itself.
+	// cq indexes the sheet's @container conditions, -1 when the rule
+	// is not container-conditional.
+	cq int32
+	// scopeDepth is the @scope nesting the rule sits in: proximity
+	// ranks above specificity, so an inner scope beats an outer one
+	// at equal specificity.
+	scopeDepth uint8
+	// pseudo names the ::before/::after/::first-letter pseudo-element
+	// this rule addresses; empty styles the element itself.
 	pseudo string
 	// start is the rule's @starting-style block, the entry
 	// transition's declarations; nil when the rule carries none.
@@ -247,9 +289,17 @@ func ParseImporting(css, base string, resolve ImportResolver) (*Sheet, []string)
 }
 
 func parseSheet(css, base string, resolve ImportResolver, warn func(string)) *Sheet {
-	p := parser{src: css, warn: warn, resolve: resolve, base: base, layer: 255}
+	p := parser{src: css, warn: warn, resolve: resolve, base: base, layerPath: "", cq: -1}
 	p.stylesheet(tokenize(css))
-	return &p.sheet
+	s := &p.sheet
+	s.orderLayers()
+	for i := range s.rules {
+		r := &s.rules[i]
+		if r.layer != 255 && int(r.layer) < len(s.layerRanks) {
+			r.layer = s.layerRanks[r.layer]
+		}
+	}
+	return s
 }
 
 // parser walks the token stream once.
@@ -263,12 +313,21 @@ type parser struct {
 	// warn, when set, receives this parse's warnings instead of the
 	// sink (ParseCollecting).
 	warn func(msg string)
-	// mq is the active @media condition (nil: everything) and layer
-	// the active cascade layer rank (255: unlayered); dead is the
+	// mq is the active @media condition (nil: everything), cq the
+	// active @container condition (-1: none), and layerPath the
+	// active cascade layer's dotted path ("": unlayered); dead is the
 	// nesting depth of @supports branches that evaluated false.
-	mq    mediaQuery
-	layer uint8
-	dead  int
+	mq        mediaQuery
+	cq        int32
+	layerPath string
+	dead      int
+	// scopeRoot is the active @scope root selector's tokens,
+	// scopeUpper its upper bound selectors, scopeDepth the @scope
+	// nesting; anonSeq names fresh anonymous layers.
+	scopeRoot  []token
+	scopeUpper []selector
+	scopeDepth int
+	anonSeq    int
 	// resolve loads @import targets; base is the importing file's
 	// path, importStack the active import chain for cycle detection.
 	resolve     ImportResolver
@@ -305,8 +364,9 @@ func (p *parser) stylesheet(ts []token) {
 }
 
 // atRule consumes one at-rule: through its block, or to its
-// semicolon. @keyframes, @define-color, @media, @supports, @layer and
-// @import participate; the rest skip with a warning.
+// semicolon. @keyframes, @define-color, @media, @supports, @layer,
+// @import, @container, @font-face, @property and @scope participate;
+// the rest skip with a warning.
 func (p *parser) atRule(ts []token, i int) int {
 	name := ts[i].s
 	switch name {
@@ -322,6 +382,14 @@ func (p *parser) atRule(ts []token, i int) int {
 		return p.layerRule(ts, i)
 	case "import":
 		return p.importRule(ts, i)
+	case "container":
+		return p.containerRule(ts, i)
+	case "font-face":
+		return p.fontFaceRule(ts, i)
+	case "property":
+		return p.propertyRule(ts, i)
+	case "scope":
+		return p.scopeRule(ts, i)
 	}
 	j := i + 1
 	for ; j < len(ts); j++ {
@@ -611,17 +679,21 @@ func (p *parser) supportsRule(ts []token, i int) int {
 	return end
 }
 
-// layerRule parses one @layer: `@layer a, b;` fixes the order of
-// first appearance, `@layer name { ... }` styles in name's layer (the
-// block's last name), `@layer { ... }` in a fresh anonymous layer.
-// Unlayered rules outrank every layer.
+// layerRule parses one @layer: `@layer a, b.c;` fixes the order of
+// first appearance (registering the dotted prefixes), `@layer name {
+// ... }` styles in name's layer (the block's last name, nested under
+// any enclosing layer), `@layer { ... }` in a fresh anonymous layer.
+// Unlayered rules outrank every layer; a nested layer sorts below
+// its parent.
 func (p *parser) layerRule(ts []token, i int) int {
 	j := i + 1
 	for ; j < len(ts); j++ {
 		switch ts[j].kind {
 		case tkSemi:
 			for _, name := range splitTop(trimWS(ts[i+1:j]), tkComma) {
-				p.layerOf(rawName(name))
+				if n := dottedName(name); n != "" {
+					p.layerOf(joinLayer(p.layerPath, n))
+				}
 			}
 			return j + 1
 		case tkLBrace:
@@ -639,20 +711,23 @@ block:
 		p.warnf("@layer skipped: unterminated block")
 		return len(ts)
 	}
-	var last string
-	have := false
+	last := ""
 	for _, name := range names {
-		last, have = rawName(name), true
-		p.layerOf(last)
+		n := dottedName(name)
+		if n == "" {
+			n = p.anonLayer()
+		}
+		last = n
+		p.layerOf(joinLayer(p.layerPath, n))
 	}
-	save := p.layer
-	if have {
-		p.layer = p.layerOf(last)
-	} else {
-		p.layer = p.layerOf("")
+	if last == "" {
+		last = p.anonLayer()
+		p.layerOf(joinLayer(p.layerPath, last))
 	}
+	save := p.layerPath
+	p.layerPath = joinLayer(p.layerPath, last)
 	p.stylesheet(ts[j+1 : end-1])
-	p.layer = save
+	p.layerPath = save
 	return end
 }
 
@@ -664,24 +739,86 @@ func rawName(ts []token) string {
 	return strings.ToLower(ts[0].s)
 }
 
-// layerOf returns name's rank, registering it (a "" name is a fresh
-// anonymous layer) on first use.
-func (p *parser) layerOf(name string) uint8 {
-	if name != "" {
-		if i := slices.Index(p.sheet.layerNames, name); i >= 0 {
-			return uint8(i)
+// layerOf returns path's index in the sheet's layer list,
+// registering the path and every dotted prefix on first use.
+func (p *parser) layerOf(path string) uint8 {
+	if path == "" {
+		return 255
+	}
+	if i := slices.Index(p.sheet.layerNames, path); i >= 0 {
+		return uint8(i)
+	}
+	full := ""
+	for part := range strings.SplitSeq(path, ".") {
+		if full == "" {
+			full = part
+		} else {
+			full += "." + part
+		}
+		if !slices.Contains(p.sheet.layerNames, full) {
+			if n := len(p.sheet.layerNames); n < 254 {
+				p.sheet.layerNames = append(p.sheet.layerNames, full)
+			} else {
+				return 253
+			}
 		}
 	}
-	if n := len(p.sheet.layerNames); n < 254 {
-		p.sheet.layerNames = append(p.sheet.layerNames, name)
-		return uint8(n)
+	if i := slices.Index(p.sheet.layerNames, path); i >= 0 {
+		return uint8(i)
 	}
 	return 253
 }
 
-// importRule loads one `@import "file" layer? media?;` through the
-// resolver and inlines its rules in place, tracking the import chain
-// so a cycle reports precisely instead of looping.
+// curLayer is the index of the parser's active layer path.
+func (p *parser) curLayer() uint8 {
+	if p.layerPath == "" {
+		return 255
+	}
+	return p.layerOf(p.layerPath)
+}
+
+// containerRule parses one @container: the optional name filter and
+// size query become the context of every rule in the block,
+// intersecting any enclosing @container's conditions and adding its
+// name to the names both must match.
+func (p *parser) containerRule(ts []token, i int) int {
+	prelude, body, end, ok := p.atBlock(ts, i, "@container")
+	if !ok {
+		return end
+	}
+	q, okq := parseContainerQuery(prelude)
+	if !okq {
+		p.warnf("@container skipped: bad query %q", badText(rawText(p.src, prelude)))
+		return end
+	}
+	saveCQ := p.cq
+	if p.cq >= 0 {
+		outer := p.sheet.containerQs[p.cq]
+		q.q = intersectMedia(outer.q, q.q)
+		q.name = strings.TrimSpace(outer.name + " " + q.name)
+	}
+	p.cq = int32(len(p.sheet.containerQs))
+	for i, other := range p.sheet.containerQs {
+		if other.name == q.name && queryEqual(other.q, q.q) {
+			p.cq = int32(i)
+			break
+		}
+	}
+	if int(p.cq) == len(p.sheet.containerQs) {
+		p.sheet.containerQs = append(p.sheet.containerQs, q)
+	}
+	p.stylesheet(body)
+	p.cq = saveCQ
+	return end
+}
+
+// importRule loads one `@import "file" layer? supports? media?;`
+// through the resolver and inlines its rules in place, tracking the
+// import chain so a cycle reports precisely instead of looping. The
+// layer() qualifier (bare or named, dotted names nest) files the
+// imported rules in that cascade layer; supports() evaluates at
+// parse time like @supports, and a false import drops with a
+// warning.
 func (p *parser) importRule(ts []token, i int) int {
 	j := i + 1
 	for ; j < len(ts); j++ {
@@ -718,11 +855,36 @@ found:
 		p.warnf("@import skipped: want a string or url() target")
 		return j + 1
 	}
-	if strings.Contains(rest2s(rest), "supports(") || strings.Contains(rest2s(rest), "layer(") {
-		p.warnf("@import skipped: supports()/layer() qualifiers are not supported")
-		return j + 1
+	var mqTokens []token
+	layerName, hasLayer := "", false
+	for _, comp := range components(rest) {
+		if len(comp) == 0 {
+			continue
+		}
+		switch {
+		case comp[0].kind == tkIdent && strings.EqualFold(comp[0].s, "layer") && len(comp) == 1:
+			hasLayer = true
+			layerName = p.anonLayer()
+		case comp[0].kind == tkFunc && comp[0].s == "layer":
+			end := blockEnd(comp, 0)
+			layerName = dottedName(trimWS(funcArgs(comp[:end])))
+			hasLayer = true
+			if layerName == "" {
+				layerName = p.anonLayer()
+			}
+		case comp[0].kind == tkFunc && comp[0].s == "supports":
+			end := blockEnd(comp, 0)
+			cond := append([]token{{kind: tkLParen}}, trimWS(funcArgs(comp[:end]))...)
+			cond = append(cond, token{kind: tkRParen})
+			if !evalSupports(cond) {
+				p.warnf("@import %s skipped: supports() is false", ref)
+				return j + 1
+			}
+		default:
+			mqTokens = append(mqTokens, comp...)
+		}
 	}
-	q, okq := parseMediaQuery(trimWS(rest))
+	q, okq := parseMediaQuery(trimWS(mqTokens))
 	if !okq {
 		p.warnf("@import %s skipped: bad query", ref)
 		return j + 1
@@ -743,22 +905,18 @@ found:
 			return j + 1
 		}
 	}
-	saveMQ, saveBase := p.mq, p.base
+	saveMQ, saveBase, saveLayer := p.mq, p.base, p.layerPath
 	p.mq = intersectMedia(p.mq, q)
 	p.base = path
+	if hasLayer {
+		p.layerPath = joinLayer(p.layerPath, layerName)
+		p.layerOf(p.layerPath)
+	}
 	p.importStack = append(p.importStack, path)
 	p.stylesheet(tokenize(content))
 	p.importStack = p.importStack[:len(p.importStack)-1]
-	p.mq, p.base = saveMQ, saveBase
+	p.mq, p.base, p.layerPath = saveMQ, saveBase, saveLayer
 	return j + 1
-}
-
-func rest2s(ts []token) string {
-	var b strings.Builder
-	for _, t := range ts {
-		b.WriteString(t.s)
-	}
-	return strings.ToLower(b.String())
 }
 
 // atBlock locates an at-rule's `{`, returning its trimmed prelude and
@@ -861,6 +1019,9 @@ func (p *parser) ruleBody(ts []token, parents [][]token) {
 	starting := p.startBlock
 	p.startBlock = nil
 	for _, par := range parents {
+		if p.scopeRoot != nil {
+			par = scopeSplice(par, p.scopeRoot)
+		}
 		sels, ok := parseSelectorList(p.src, par)
 		if !ok {
 			p.warnf("rule skipped: bad selector %q", badText(rawText(p.src, par)))
@@ -870,6 +1031,30 @@ func (p *parser) ruleBody(ts []token, parents [][]token) {
 			p.add(sel, block, starting)
 		}
 	}
+}
+
+// scopeSplice scopes one selector's tokens to an @scope root: every
+// `:scope` pseudo-class becomes the root selector, and a selector
+// without one descends from it.
+func scopeSplice(n, root []token) []token {
+	out := make([]token, 0, len(n)+len(root)+1)
+	used := false
+	for i := 0; i < len(n); i++ {
+		if n[i].kind == tkColon && i+1 < len(n) && n[i+1].ident("scope") {
+			out = append(out, root...)
+			used = true
+			i++
+			continue
+		}
+		out = append(out, n[i])
+	}
+	if used {
+		return out
+	}
+	spliced := make([]token, 0, len(n)+len(root)+1)
+	spliced = append(spliced, root...)
+	spliced = append(spliced, token{kind: tkWS})
+	return append(spliced, n...)
 }
 
 // atSegmentStart reports whether the token at i begins a fresh
@@ -958,20 +1143,23 @@ func (p *parser) nestedAt(ts []token, i int, parents [][]token) int {
 		p.dead = save
 	case "layer":
 		names := splitTop(prelude, tkComma)
-		var last string
-		have := false
+		last := ""
 		for _, name := range names {
-			last, have = rawName(name), true
-			p.layerOf(last)
+			n := dottedName(name)
+			if n == "" {
+				n = p.anonLayer()
+			}
+			last = n
+			p.layerOf(joinLayer(p.layerPath, n))
 		}
-		save := p.layer
-		if have {
-			p.layer = p.layerOf(last)
-		} else {
-			p.layer = p.layerOf("")
+		if last == "" {
+			last = p.anonLayer()
+			p.layerOf(joinLayer(p.layerPath, last))
 		}
+		save := p.layerPath
+		p.layerPath = joinLayer(p.layerPath, last)
 		p.ruleBody(body, parents)
-		p.layer = save
+		p.layerPath = save
 	case "starting-style":
 		p.startBlock = &Block{decls: p.declarations(body)}
 	default:
@@ -1090,6 +1278,9 @@ func (p *parser) declaration(ts []token) (decl, bool) {
 		p.warnf("declaration skipped: %s: %s", name, badText(rawText(p.src, val)))
 		return decl{}, false
 	}
+	if cx.cqRead {
+		p.sheet.sens.CqUnits = true
+	}
 	if !cx.dep {
 		d.pre = &scratch
 		if cx.usedRem {
@@ -1156,14 +1347,25 @@ func containsVar(ts []token) bool {
 
 // add files one compiled rule into the index and folds its selector
 // into the sensitivity summary, carrying the parser's active @media
-// condition and cascade layer.
+// condition, cascade layer, @container condition, @scope depth,
+// and @starting-style block.
 func (p *parser) add(sel selector, block, start *Block) {
 	if p.dead > 0 {
 		return
 	}
 	s := &p.sheet
 	idx := int32(len(s.rules))
-	r := rule{sel: sel, spec: sel.spec(), block: block, mq: -1, layer: p.layer, pseudo: sel.parts[len(sel.parts)-1].pseudo, start: start}
+	sel.upper = p.scopeUpper
+	r := rule{
+		sel: sel, spec: sel.spec(), block: block, mq: -1, cq: -1, layer: p.curLayer(),
+		scopeDepth: uint8(min(p.scopeDepth, 7)),
+		pseudo:     sel.parts[len(sel.parts)-1].pseudo,
+		start:      start,
+	}
+	if p.cq >= 0 {
+		r.cq = p.cq
+		s.sens.Container = true
+	}
 	if p.mq != nil {
 		r.mq = int32(len(s.mediaQs))
 		for i, q := range s.mediaQs {
@@ -1197,6 +1399,11 @@ func (p *parser) add(sel selector, block, start *Block) {
 			if d.name == "counter-reset" || d.name == "counter-increment" || counterContent(d.val) {
 				s.sens.Counters = true
 			}
+			if d.wide == wideRevertLayer {
+				s.sens.RevertLayer = true
+			}
+		} else if !d.custom && d.wide == wideRevertLayer {
+			s.sens.RevertLayer = true
 		}
 	}
 	right := &sel.parts[len(sel.parts)-1]

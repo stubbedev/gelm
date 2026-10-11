@@ -59,6 +59,8 @@ func init() {
 		"perspective":         {setOf(PropPerspective), parsePerspective},
 		"transform-style":     {setOf(PropTransformStyle), parseTransformStyle},
 		"backface-visibility": {setOf(PropBackfaceVisibility), parseBackfaceVisibility},
+		"container-type":      {setOf(PropContainerType), parseContainerType},
+		"container-name":      {setOf(PropContainerName), parseContainerName},
 
 		"padding":        {setOf(PropPaddingTop, PropPaddingRight, PropPaddingBottom, PropPaddingLeft), sidesInto(func(v *Values) *Sides { return &v.Padding }, false)},
 		"padding-top":    {setOf(PropPaddingTop), sideInto(func(v *Values) *int { return &v.Padding.Top }, false)},

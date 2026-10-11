@@ -36,9 +36,10 @@ box.AttachStylesheet(widget.NewStylesheet(css, widget.StylePriorityApplication))
   through `widget.SetParseWarn`; a load that cannot read or parse it
   fails with an error carrying the path.
 - **Fonts.** `font-family` and `font-weight` resolve through
-  `widget.SetFaceResolver` (for example over `app.FontWeighted`).
-  Without a resolver they keep the constructor face. A variable face
-  still takes `font-weight` on its wght axis.
+  `widget.SetFaceResolver` (for example over `app.FontWeighted`),
+  with `@font-face` families consulted first (above). Without a
+  resolver they keep the constructor face. A variable face still
+  takes `font-weight` on its wght axis.
 - **Warnings.** Parse warnings go to the library logger, or to
   `widget.SetParseWarn`.
 - **Units.** `widget.SetRootFontSize` sets what 1rem is (16 by default).
@@ -59,15 +60,47 @@ box.AttachStylesheet(widget.NewStylesheet(css, widget.StylePriorityApplication))
   property and selector support: `(prop: value)`, `selector(...)`,
   `not`, `and`, `or`, and parens. A false block's rules never
   compile; unknown properties are false.
-- `@import "file.css";` (or `url(...)`, with an optional trailing
-  media query) loads and inlines its target relative to the importing
-  stylesheet's path — file loads resolve beside the file, string
-  stylesheets relative to the working directory. Cycles are detected
-  per import chain and reported precisely
-  (`@import cycle: a.css -> b.css -> a.css`); a missing file or a
-  malformed import warns and drops that import only. `layer()` and
-  `supports()` qualifiers are not supported yet.
-- `@layer` orders cascade layers (below).
+- `@import "file.css";` (or `url(...)`, with the optional `layer`
+  and `layer(name)` qualifiers — dotted names nest — the optional
+  `supports(...)` qualifier evaluated at parse time like `@supports`,
+  and an optional trailing media query) loads and inlines its target
+  relative to the importing stylesheet's path — file loads resolve
+  beside the file, string stylesheets relative to the working
+  directory. Cycles are detected per import chain and reported
+  precisely (`@import cycle: a.css -> b.css -> a.css`); a missing
+  file, a false `supports()`, or a malformed import warns and drops
+  that import only.
+- `@layer` orders cascade layers (below). Dotted names nest:
+  `@layer a.b` is a layer below `a` (the parent outranks its nested
+  layers), `@layer a { @layer b { ... } }` means `a.b`, and a name
+  statement registers the dotted prefixes it names.
+- `@container` evaluates per compute against the nearest query
+  container — a widget with `container-type` set in the node's
+  ancestry (below).
+- `@font-face` declares app fonts: `font-family`, `src: url(...)`
+  with `format()` hints (truetype/opentype load; an unsupported
+  format warns and falls through to the next src), the `font-weight`
+  range, and `font-style`. The face loads on the next relayer and
+  the font-family resolver serves it before the app's own; a src
+  that cannot be resolved or read reports through the stylesheet
+  error path (a file load fails with its path). `font-stretch` and
+  the other descriptors parse and are unused — the loader has no
+  matching knob.
+- `@property` registers typed custom properties: `syntax` (the
+  known type names and `*`, pipe lists with the trailing `+`),
+  `inherits`, and an `initial-value` validated against the syntax.
+  A registered name's initial value answers var() wherever nothing
+  declares it; `inherits: false` resolves the name to its initial
+  value on nodes that do not declare it, however their ancestors
+  set it. Animating a registered property is deferred: the
+  transition engine keys on the longhand table, which custom
+  properties sit outside.
+- `@scope (root) to (upper)? { ... }` scopes the block's rules:
+  each subject must descend from an element matching the root
+  without crossing the upper boundary, and `:scope` in a selector
+  names that root. Scoping proximity ranks above specificity — an
+  inner scope beats an outer one at equal specificity — and below
+  provider priority.
 - Native nesting: a nested block desugars `&` to the parent selector
   (`&:hover`, `& > .child`); a nested selector without `&` is the
   parent's descendant, comma lists cross with the parent list, and
@@ -111,13 +144,18 @@ box.AttachStylesheet(widget.NewStylesheet(css, widget.StylePriorityApplication))
   siblings), `:nth-of-type()`, `:nth-last-of-type()`,
   `:first-of-type`, `:last-of-type`, `:only-of-type` (over visible
   siblings of the same element name), `:root`, `:empty`, and `:not()`
-  with compound lists and Level 4 specificity.
+  with compound lists and Level 4 specificity. `:nth-child(an+b of
+  S)` counts only the siblings matching the selector list S.
 - **Pseudo-elements.** `::before` and `::after` cascade their own
   style (inherited from the element's) with `content:` of strings,
   `attr(name)` (the built-ins and data attributes), `counter(name)`
   and `counters(name, sep)`; `counter-reset` and
   `counter-increment` count in document order (through previous
-  siblings). The pseudo-element's box layers and content paint over
+  siblings); `content: url(...)` paints an image as the generated
+  content, beside the text, and the quote keywords
+  `open-quote`/`close-quote`/`no-open-quote`/`no-close-quote` emit
+  the typographic quote pairs over the inherited quote nesting
+  counter. The pseudo-element's box layers and content paint over
   the widget's background — content at the content start (`::before`)
   and end (`::after`), in the pseudo-element's own color and
   font-size — wherever the widget paints box layers (`PaintBoxLayers`)
@@ -127,6 +165,14 @@ box.AttachStylesheet(widget.NewStylesheet(css, widget.StylePriorityApplication))
   machinery: `entry::placeholder` styles the entry's `placeholder`
   part (as a descendant part selector) and `::selection` its
   `selection` part; `::marker` matches a `marker` part.
+  `::first-letter` cascades its own pseudo style and paints on
+  `Label`'s single-line draw: the first grapheme cluster in its own
+  color, font-family, weight, and size, the remainder in the
+  label's style. `::first-line` parses but never matches: line
+  fragmentation happens inside the text shaper at paint time, and a
+  widget's text is one shaped run with no per-line box the cascade
+  could address — styling the first line would need the wrapper to
+  expose wrap rows to the cascade.
 - **Element names.** These are GTK's CSS node names where gelm has the
   GTK widget (`button`, `label`, `entry`, `scale`, `scrolledwindow`,
   `textview`, `listview`, `row`, `gridview`, `child`, `flowboxchild`, ...), and otherwise
@@ -156,10 +202,11 @@ box.AttachStylesheet(widget.NewStylesheet(css, widget.StylePriorityApplication))
   face's metrics scaled by the node's font size — `render.Font.Metrics`
   — with the CSS fallback ratios when the face reports none; lh is
   the node's computed line-height, rlh the root's), vw, vh, vmin and
-  vmax (the media viewport the `@media` size features read), pt, pc,
-  in, cm, mm, %, deg, grad, rad, turn, s and ms. Container-query
-  units (cqw/cqh/…) are not supported yet — container queries are a
-  separate item.
+  vmax (the media viewport the `@media` size features read), cqw,
+  cqh, cqi, cqb, cqmin and cqmax (the container-query units, against
+  the nearest query container; without one they resolve to zero,
+  the same unset-viewport reading the vw family takes at 0×0), pt,
+  pc, in, cm, mm, %, deg, grad, rad, turn, s and ms.
 - **env()** answers the safe-area and keyboard inset family
   (`env(safe-area-inset-top)`, `env(keyboard-inset-height)`, ...) as
   zero lengths, the desktop value; unknown names are invalid.
@@ -469,17 +516,19 @@ The origins, from highest to lowest precedence:
 2. stylesheet declarations, ordered by `!important` first (an
    important declaration at any priority beats every normal one;
    among importants the normal order applies), then priority, then
-   cascade layer (unlayered rules outrank every `@layer`; among
-   layers, the later-declared wins — `@layer a, b;` fixes the order,
-   `@layer name { ... }` styles in it), then specificity `(ids,
+   @scope proximity (an inner scope beats an outer one at equal
+   specificity), then cascade layer (unlayered rules outrank every
+   `@layer`; among layers, the later-declared wins — `@layer a, b;`
+   fixes the order, `@layer name { ... }` styles in it, and a dotted
+   name's parent outranks it), then specificity `(ids,
    classes+states, elements)`, then source order
 3. the `Theme` and its derived state colors
 
 `revert` rolls back to the theme origin — it behaves as `unset`, the
 next origin down. `revert-layer` rolls to the next cascade layer
-down within the same origin (one `revert-layer` chain step; a
-revert-layer beneath a revert-layer behaves as `unset`), and as
-`unset` when no lower layer declares the property.
+down within the same origin, and walks the chain: a revert-layer
+beneath a revert-layer rolls another layer down, until a concrete
+declaration or the bottom (then `unset`).
 
 Constructor metrics (a button's padding, a label's size) are
 defaults that a stylesheet overrides. `color`, the `font-*` group,
@@ -492,10 +541,14 @@ defaults that a stylesheet overrides. `color`, the `font-*` group,
 `@media` conditions evaluate per compute against the tree's media
 state:
 
-- **Viewport.** `widget.SetMediaViewport(w, h)` — the app feeds it
-  from the window's resize callback (the last resized window wins);
-  width, height, aspect-ratio and orientation features read it.
-  Until set, the viewport is 0×0, so min-conditions never match.
+- **Viewport.** `widget.SetMediaViewportFor(root, w, h)` — the app
+  layer feeds it from each window's resize callback, and every
+  window's tree computes against its own size (one stylesheet, two
+  windows, two results). `widget.SetMediaViewport` remains the
+  process-wide fallback for trees whose root reported nothing (the
+  last value set wins there); width, height, aspect-ratio and
+  orientation features read the tree's own viewport. Until set, the
+  viewport is 0×0, so min-conditions never match.
 - **Appearance.** `prefers-color-scheme` derives from the active
   theme's polarity (`Theme.IsDark`) and `prefers-reduced-motion`
   from its animation gate, so `SetTheme` re-evaluates them;
@@ -507,6 +560,21 @@ A viewport or preference change restyles the whole tree — but only
   when some loaded stylesheet carries `@media` rules; without one,
   the setters record the state and style nothing.
 
+## Container queries
+
+`container-type: inline-size | size | normal` and `container-name:`
+make a widget a query container; `@container <name>? (query)` rules
+evaluate per compute against the nearest container in the node's
+ancestry (its arranged bounds), and the container units resolve
+against the same container. A `size` container queries both axes;
+an `inline-size` container's block axis — and the two-axis features,
+`aspect-ratio` and `orientation` — read as unknown (false, negated
+under `not`). A name filter matches the container's `container-name`
+list, and nested `@container` blocks intersect. A container's
+resize restyles its subtree like a viewport change does, so queries
+re-evaluate on window resize (and on any relayout that moves a
+container's bounds when a sheet reads them).
+
 ## Performance
 
 Style is cached per widget and invalidated, never re-matched per paint:
@@ -515,8 +583,10 @@ Style is cached per widget and invalidated, never re-matched per paint:
 - `Sheet.Match` allocates nothing (`TestValuesNoAllocationPerMatch`);
   the new selector forms keep that: attribute tests read the filled
   target, nested `:is()`/`:not()` reuse a fixed buffer pool per
-  nesting level, and `:has()` is the only downward walk — budgeted
-  (above).
+  nesting level, `:nth-child(of S)` fills a per-depth sibling buffer,
+  and `:has()` is the only downward walk — budgeted (above). The
+  revert-layer chain records declarations only when a loaded sheet
+  carries a `revert-layer` value.
 - A stylesheet load bumps a generation, and widgets recompute lazily by
   stamp compare, so nothing walks the tree.
 - A class, id or state flip restyles the subtree only when a loaded

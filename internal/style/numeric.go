@@ -67,15 +67,26 @@ type ctx struct {
 	self *Target
 	// counters is the node's counter scope, counter()/counters() read.
 	counters *CounterScope
+	// quoteDepth is the inherited open-quote nesting depth the
+	// content quote keywords count from.
+	quoteDepth int
 	// usedRem records a rem read: a cached value is only valid under
 	// the base it was computed with.
 	usedRem bool
+
+	// cq records a container-query unit read, for the sheet summary
+	// that gates the per-compute container resolution.
+	cqRead bool
 
 	vpW, vpH float64
 	font     FontMetrics
 	lh, rlh  float64
 	dark     bool
 	attrs    attrNode
+	// cq is the nearest query container the container units resolve
+	// against; cqHave reports whether one exists.
+	cq     Container
+	cqHave bool
 }
 
 // emPx returns the em base, noting the node dependence.
@@ -153,6 +164,11 @@ func (cx *ctx) unitScale(unit string) (numKind, float64, bool) {
 	case "vmax":
 		cx.dep = true
 		return numLength, math.Max(cx.vpW, cx.vpH) / 100, true
+	case "cqw", "cqh", "cqi", "cqb", "cqmin", "cqmax":
+		cx.dep = true
+		cx.cqRead = true
+		v, _ := cqUnit(unit, cx.cq, cx.cqHave)
+		return numLength, v, true
 	case "pt":
 		return numLength, 96.0 / 72, true
 	case "pc":
