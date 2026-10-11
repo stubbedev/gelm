@@ -105,7 +105,7 @@ func (m *meter) paintMeter(cv *render.Canvas, from, to float64) {
 	if m.self != nil {
 		fill = accentOf(m.style(m.self), fill)
 	}
-	fxp := pushEffects(cv, &m.node, fv, fr, radiusOr(fv, inner.H/2))
+	fxp := pushEffects(cv, &m.trough.fill.node, fv, fr, radiusOr(fv, inner.H/2))
 	cv = fxp.cv
 	paintBoxBehind(cv, fv, fr, radiusOr(fv, inner.H/2), borderOf(fv), pickc(0, fv, style.PropBackgroundColor, fill))
 	fxp.pop()

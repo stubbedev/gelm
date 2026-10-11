@@ -57,6 +57,12 @@ type Xform struct {
 	Parts    []XformPart
 }
 
+// Equal reports whether two transforms map the same: the composed
+// affine and plane map, and which face shows.
+func (x *Xform) Equal(o *Xform) bool {
+	return x.M == o.M && x.P == o.P && x.Backface == o.Backface
+}
+
 // XformIdentity moves nothing.
 var XformIdentity = Xform{M: render.Identity, P: render.Identity3, m4: render.Identity4}
 

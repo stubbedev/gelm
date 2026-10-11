@@ -71,6 +71,10 @@ type Box struct {
 	// relative to the content box, when cssHasBase.
 	cssBase    int
 	cssHasBase bool
+	// cssDefH is whether the last CSS flow measure found the content
+	// box's height definite: the arrange resolves the items'
+	// percentage heights against it exactly when the measure did.
+	cssDefH bool
 }
 
 // Children exposes the box's children in append order for focus
@@ -612,7 +616,7 @@ func (b *Box) ArrangeRoot(r render.Rect) {
 // transform applies to the children as one.
 func (b *Box) Paint(cv *render.Canvas) {
 	v := b.style(b)
-	if v.Has(style.PropTransform) && (v.Transform.M != render.Identity || !v.Transform.P.Flat()) {
+	if v.Has(style.PropTransform) && (v.Transform.M != render.Identity || v.Transform.P != render.Identity3) {
 		b.paintTransformed(cv, v)
 		return
 	}
@@ -679,17 +683,21 @@ func (b *Box) restack(mode layoutMode) {
 // extends: further than any tree reaches.
 const overflowReach = 1 << 24
 
-// overflowClip is the clip a clipping overflow (hidden, clip, and
-// scroll and auto, which add no scrollbars outside a Scroll) puts on
-// the children: the padding box on each clipping axis, unbounded on a
-// visible one.
-func (b *Box) overflowClip(v *style.Values) (render.Rect, bool) {
+// overflowClip is the clip a clipping overflow puts on the children;
+// see overflowClipOf.
+func (b *Box) overflowClip(v *style.Values) (render.Rect, bool) { return overflowClipOf(v, b.bounds) }
+
+// overflowClipOf is the clip a clipping overflow (hidden, clip, and
+// scroll and auto, which add no scrollbars outside a Scroll) puts on a
+// widget's content: the padding box of bounds on each clipping axis,
+// unbounded on a visible one.
+func overflowClipOf(v *style.Values, bounds render.Rect) (render.Rect, bool) {
 	cx := v.Has(style.PropOverflowX) && v.Layout.OverflowX.Clips()
 	cy := v.Has(style.PropOverflowY) && v.Layout.OverflowY.Clips()
 	if !cx && !cy {
 		return render.Rect{}, false
 	}
-	r := borderOf(v).Shrink(b.bounds)
+	r := borderOf(v).Shrink(bounds)
 	if !cx {
 		r.X, r.W = r.X-overflowReach, r.W+2*overflowReach
 	}
@@ -703,10 +711,19 @@ func (b *Box) overflowClip(v *style.Values) (render.Rect, bool) {
 // it through the CSS transform about the transform-origin: the pivot
 // the stylesheet's fractions and offsets name, the box's center by
 // default. The layer is the transformed bounds, so a swatch swung past
-// its box still lands.
+// its box still lands. The box's own effects — opacity, filters, the
+// clip and the mask — apply inside the layer, in the box's local
+// space, before the transform maps the result; the backdrop filter
+// samples the canvas under the untransformed box first.
 func (b *Box) paintTransformed(cv *render.Canvas, v *style.Values) {
-	ox := float64(b.bounds.X) + v.OriginFrac[0]*float64(b.bounds.W) + v.OriginPx[0]
-	oy := float64(b.bounds.Y) + v.OriginFrac[1]*float64(b.bounds.H) + v.OriginPx[1]
+	radii := radiusOr(v, 0)
+	if backfaceHidden(v) {
+		return
+	}
+	paintBackdropOf(cv, &b.node, v, b.bounds, radii)
+	frac, off := v.Origin()
+	ox := float64(b.bounds.X) + frac[0]*float64(b.bounds.W) + off[0]
+	oy := float64(b.bounds.Y) + frac[1]*float64(b.bounds.H) + off[1]
 	m := v.Transform.M.About(ox, oy)
 	region := m.MapBounds(b.bounds)
 	region = region.Union(b.bounds)
@@ -720,14 +737,9 @@ func (b *Box) paintTransformed(cv *render.Canvas, v *style.Values) {
 	}
 	l := cv.Layer(b.layer, region)
 	b.layer = l
-	lc := l.Canvas()
-	var fx effects
-	fx.pushFast(lc, v)
-	b.paintBox(lc, v, radiusOr(v, 0))
-	fx.popFast()
-	if v.BackfaceHidden && v.Transform.Backface {
-		return
-	}
+	fx := pushLayerEffects(l.Canvas(), &b.node, v, b.bounds, radii)
+	b.paintBox(fx.cv, v, radii)
+	fx.pop()
 	if v.Transform.P != render.Identity3 || v.Perspective > 0 {
 		cv.CompositeProjective(l, region, p3, 1)
 		return

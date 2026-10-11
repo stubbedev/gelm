@@ -8,6 +8,8 @@ package style
 // travel together as NumVal and the renderer does the arithmetic.
 
 import (
+	"slices"
+
 	"github.com/stubbedev/gelm/render"
 )
 
@@ -79,43 +81,15 @@ type ClipShape struct {
 	Path string
 }
 
+// Equal reports whether two clip shapes are the same.
+func (c *ClipShape) Equal(o *ClipShape) bool {
+	return c.Kind == o.Kind && c.Inset == o.Inset && c.InsetRad == o.InsetRad && c.Rad == o.Rad &&
+		c.RadX == o.RadX && c.RadY == o.RadY && c.CenterX == o.CenterX && c.CenterY == o.CenterY &&
+		c.Path == o.Path && slices.Equal(c.Poly, o.Poly)
+}
+
 // Empty reports a shape that clips nothing.
 func (c ClipShape) Empty() bool { return c.Kind == ClipNone }
-
-// MaskKind names mask-image's source.
-type MaskKind uint8
-
-// The mask sources.
-const (
-	MaskNone MaskKind = iota
-	MaskGradient
-	MaskURL
-)
-
-// MaskSizeKind names the mask-size keyword, if any.
-type MaskSizeKind uint8
-
-// The mask-size forms.
-const (
-	MaskSizeAuto MaskSizeKind = iota
-	MaskSizeLength
-	MaskSizeCover
-	MaskSizeContain
-)
-
-// Mask is the computed mask-image group: the source (a gradient or an
-// image URL), the position, the size, whether it repeats, and whether
-// the mask reads luminance instead of alpha.
-type Mask struct {
-	Kind         MaskKind
-	Image        Gradient
-	URL          string
-	PosX, PosY   NumVal
-	SizeW, SizeH NumVal
-	SizeKind     MaskSizeKind
-	Repeat       bool
-	Luminance    bool
-}
 
 // parseFilterList parses a filter or backdrop-filter value: `none` or
 // a function list, every function CSS's filter-effects defines here.
@@ -284,74 +258,6 @@ func parseFilter(ts []token, cx *ctx, v *Values) bool {
 	v.Filter = render.Filters{}
 	v.Brightness = 1
 	return parseFilterList(ts, cx, v, &v.Filter)
-}
-
-// parseMask parses the mask shorthand's component order: the image,
-// then any mix of position, size (after a slash), repeat, and mode.
-func parseMask(ts []token, cx *ctx, v *Values) bool {
-	comps := components(ts)
-	if len(comps) == 0 || !parseMaskImage(comps[0], cx, v) {
-		return false
-	}
-	i := 1
-	var pos [][]token
-	for i < len(comps) {
-		c := comps[i]
-		if len(c) == 1 && c[0].kind == tkDelim && c[0].s == "/" {
-			if i+1 >= len(comps) {
-				return false
-			}
-			n := 1
-			if _, ok := numValOf(comps[i+1], cx); ok && i+2 < len(comps) {
-				if _, ok2 := numValOf(comps[i+2], cx); ok2 {
-					n = 2
-				}
-			}
-			if !parseMaskSize(joinComps(comps[i+1:i+1+n]), cx, v) {
-				return false
-			}
-			i += 1 + n
-			continue
-		}
-		switch rawName(c) {
-		case "repeat", "no-repeat", "round", "space", "repeat-x", "repeat-y":
-			if !parseMaskRepeat(c, cx, v) {
-				return false
-			}
-		case "alpha", "luminance", "match-source":
-			if !parseMaskMode(c, cx, v) {
-				return false
-			}
-		case "cover", "contain", "auto":
-			if !parseMaskSize(c, cx, v) {
-				return false
-			}
-		default:
-			if len(pos) == 2 {
-				return false
-			}
-			pos = append(pos, c)
-		}
-		i++
-	}
-	if len(pos) > 0 {
-		if !parseMaskPosition(joinComps(pos), cx, v) {
-			return false
-		}
-	}
-	return true
-}
-
-// joinComps concatenates components with a space between them.
-func joinComps(comps [][]token) []token {
-	var out []token
-	for i, c := range comps {
-		if i > 0 {
-			out = append(out, token{kind: tkWS})
-		}
-		out = append(out, c...)
-	}
-	return out
 }
 
 // parseBackdropFilter parses the backdrop-filter property: the same
@@ -578,128 +484,6 @@ func parseClipPathData(args [][]token, v *Values) bool {
 		return false
 	}
 	v.Clip = ClipShape{Kind: ClipPathData, Path: args[0][0].s}
-	return true
-}
-
-// parseMaskImage parses mask-image: none, a gradient, or a url().
-func parseMaskImage(ts []token, cx *ctx, v *Values) bool {
-	comps := components(ts)
-	if len(comps) == 1 && comps[0][0].ident("none") {
-		v.Mask = Mask{}
-		return true
-	}
-	if len(comps) != 1 {
-		return false
-	}
-	if u, ok := backgroundImageURL(comps[0]); ok {
-		v.Mask = Mask{Kind: MaskURL, URL: u, Repeat: true}
-		return true
-	}
-	if g, ok := gradientOf(comps[0], cx); ok {
-		v.Mask = Mask{Kind: MaskGradient, Image: g, Repeat: true}
-		return true
-	}
-	return false
-}
-
-// parseMaskPosition parses one or two position values.
-func parseMaskPosition(ts []token, cx *ctx, v *Values) bool {
-	comps := components(ts)
-	if len(comps) < 1 || len(comps) > 2 {
-		return false
-	}
-	x, ok := maskPos(comps[0], cx)
-	if !ok {
-		return false
-	}
-	y := NumVal{V: 50, Pct: true}
-	if len(comps) == 2 {
-		if y, ok = maskPos(comps[1], cx); !ok {
-			return false
-		}
-	}
-	v.Mask.PosX, v.Mask.PosY = x, y
-	return true
-}
-
-// maskPos reads one position component: a length, a percentage, or
-// the left/top/center/right/bottom keywords.
-func maskPos(ts []token, cx *ctx) (NumVal, bool) {
-	if len(ts) == 1 {
-		switch rawName(ts[:1]) {
-		case "left", "top":
-			return NumVal{}, true
-		case "center":
-			return NumVal{V: 50, Pct: true}, true
-		case "right", "bottom":
-			return NumVal{V: 100, Pct: true}, true
-		}
-	}
-	return numValOf(ts, cx)
-}
-
-// parseMaskSize parses the mask-size value: auto, cover, contain, or
-// one or two lengths/percentages.
-func parseMaskSize(ts []token, cx *ctx, v *Values) bool {
-	comps := components(ts)
-	switch {
-	case len(comps) == 1 && comps[0][0].ident("auto"):
-		v.Mask.SizeKind = MaskSizeAuto
-	case len(comps) == 1 && comps[0][0].ident("cover"):
-		v.Mask.SizeKind = MaskSizeCover
-	case len(comps) == 1 && comps[0][0].ident("contain"):
-		v.Mask.SizeKind = MaskSizeContain
-	case len(comps) >= 1 && len(comps) <= 2:
-		w, ok := numValOf(comps[0], cx)
-		if !ok {
-			return false
-		}
-		h := w
-		if len(comps) == 2 {
-			if h, ok = numValOf(comps[1], cx); !ok {
-				return false
-			}
-		}
-		v.Mask.SizeKind = MaskSizeLength
-		v.Mask.SizeW, v.Mask.SizeH = w, h
-	default:
-		return false
-	}
-	return true
-}
-
-// parseMaskRepeat parses the mask-repeat basics: repeat and no-repeat
-// (round and space fall back to repeat, the tile they most resemble).
-func parseMaskRepeat(ts []token, cx *ctx, v *Values) bool {
-	comps := components(ts)
-	if len(comps) != 1 {
-		return false
-	}
-	switch rawName(comps[0]) {
-	case "repeat", "round", "space", "repeat-x", "repeat-y":
-		v.Mask.Repeat = true
-	case "no-repeat":
-		v.Mask.Repeat = false
-	default:
-		return false
-	}
-	return true
-}
-
-// parseMaskMode parses mask-mode: match-source, alpha or luminance.
-func parseMaskMode(ts []token, cx *ctx, v *Values) bool {
-	comps := components(ts)
-	if len(comps) != 1 {
-		return false
-	}
-	switch rawName(comps[0]) {
-	case "match-source", "alpha":
-		v.Mask.Luminance = false
-	case "luminance":
-		v.Mask.Luminance = true
-	default:
-		return false
-	}
 	return true
 }
 

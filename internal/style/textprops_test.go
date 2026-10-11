@@ -214,8 +214,8 @@ func TestFontSynthesisOpticalSizing(t *testing.T) {
 	}
 	root := el("label")
 	kid := root.add("span")
-	if cv := computeTree(s, kid); cv.Has(PropFontSynthesis) {
-		t.Error("font-synthesis inherited (it must not)")
+	if cv := computeTree(s, kid); !cv.Has(PropFontSynthesis) {
+		t.Error("font-synthesis did not inherit (CSS Fonts 4 inherits it)")
 	}
 }
 

@@ -1,8 +1,10 @@
 package style
 
 import (
+	"math"
 	"testing"
 
+	"github.com/stubbedev/gelm/anim"
 	"github.com/stubbedev/gelm/render"
 )
 
@@ -91,8 +93,8 @@ func TestScrollChildProps(t *testing.T) {
 	}
 }
 
-// scrollbar-color and scrollbar-width inherit; the container group
-// does not.
+// scrollbar-color inherits; scrollbar-width and the container group
+// do not (CSS Scrollbars 1).
 func TestScrollbarPropsInherit(t *testing.T) {
 	s := parseOne(t, `box { scrollbar-color: #101010 #202020; scrollbar-width: thin; scroll-behavior: smooth; }`)
 	var sc Scratch
@@ -102,8 +104,8 @@ func TestScrollbarPropsInherit(t *testing.T) {
 	if !child.Has(PropScrollbarColor) || child.BarThumb != render.RGB(0x10, 0x10, 0x10) {
 		t.Error("scrollbar-color did not inherit")
 	}
-	if !child.Has(PropScrollbarWidth) || child.BarWidth != BarWidthThin {
-		t.Error("scrollbar-width did not inherit")
+	if child.Has(PropScrollbarWidth) {
+		t.Error("scrollbar-width inherited")
 	}
 	if child.Has(PropScrollBehavior) {
 		t.Error("scroll-behavior inherited")
@@ -113,22 +115,23 @@ func TestScrollbarPropsInherit(t *testing.T) {
 // steps() takes its jump position, and linear() parses its point list
 // with optional percent stops, wherever a timing function goes.
 func TestTimingStepsAndLinear(t *testing.T) {
+	timing := func(v Values) Timing { return listAt(v.Transition.Timings, 0, TimingEase) }
 	v := scrollRun(t, `box { transition: opacity 1s steps(3, jump-start); }`)
-	if v.Transition.Timing.Steps != 3 || v.Transition.Timing.StepPos != uint8(jumpPosOf("jump-start")) {
-		t.Errorf("steps timing = %+v, want steps(3, jump-start)", v.Transition.Timing)
+	if tm := timing(v); tm.Steps != 3 || tm.StepPos != anim.JumpStart {
+		t.Errorf("steps timing = %+v, want steps(3, jump-start)", tm)
 	}
 	v = scrollRun(t, `box { transition-timing-function: steps(2, jump-both); }`)
-	if v.Transition.Timing.Steps != 2 || v.Transition.Timing.StepPos != uint8(jumpPosOf("jump-both")) {
-		t.Errorf("jump-both timing = %+v", v.Transition.Timing)
+	if tm := timing(v); tm.Steps != 2 || tm.StepPos != anim.JumpBoth {
+		t.Errorf("jump-both timing = %+v", tm)
 	}
 	v = scrollRun(t, `box { transition-timing-function: steps(4); }`)
-	if v.Transition.Timing.StepPos != 0 {
-		t.Errorf("bare steps = %+v, want the jump-end default", v.Transition.Timing)
+	if tm := timing(v); tm.StepPos != anim.JumpEnd {
+		t.Errorf("bare steps = %+v, want the jump-end default", tm)
 	}
 	v = scrollRun(t, `box { transition: opacity 1s linear(0, 0.5 25%, 1); }`)
-	tm := v.Transition.Timing
-	if tm.LinN != 3 || !tm.Lin[0].HasPos == false || !tm.Lin[1].HasPos || tm.Lin[1].Pos != 0.25 || tm.Lin[2].Value != 1 {
-		t.Errorf("linear() timing = %+v, want 0, 0.5@25%%, 1", tm)
+	tm := timing(v)
+	if tm.LinN != 3 || tm.Lin[0].Pos != 0 || tm.Lin[1].Pos != 0.25 || tm.Lin[2].Pos != 1 || tm.Lin[2].Value != 1 {
+		t.Errorf("linear() timing = %+v, want 0@0%%, 0.5@25%%, 1@100%%", tm)
 	}
 	v = scrollRun(t, `@keyframes k { to { opacity: 1; } } box { animation: k 1s linear(1 10%, 0 90%, 1); }`)
 	if first(v).Timing.LinN != 3 || first(v).Timing.Lin[0].Pos != 0.1 || first(v).Timing.Lin[1].Pos != 0.9 {
@@ -136,42 +139,81 @@ func TestTimingStepsAndLinear(t *testing.T) {
 	}
 }
 
-// jumpPosOf maps a keyword to its StepPos value for the assertions.
-func jumpPosOf(kw string) int {
-	p, _ := timingJump(kw)
-	return int(p)
-}
-
 // transition-behavior parses alone and inside the shorthand.
 func TestTransitionBehavior(t *testing.T) {
+	discrete := func(v Values) bool {
+		tt, ok := v.Transition.For(PropOpacity)
+		return ok && tt.Discrete
+	}
 	v := scrollRun(t, `box { transition-duration: 100ms; transition-behavior: allow-discrete; }`)
-	if !v.Transition.Discrete {
+	if !discrete(v) {
 		t.Error("transition-behavior: allow-discrete did not compute")
 	}
 	v = scrollRun(t, `box { transition: opacity 100ms allow-discrete; }`)
-	if !v.Transition.Discrete || v.Transition.Duration != 0.1 {
+	if tt, _ := v.Transition.For(PropOpacity); !tt.Discrete || tt.Duration != 0.1 {
 		t.Errorf("shorthand = %+v, want 100ms allow-discrete", v.Transition)
 	}
 	v = scrollRun(t, `box { transition: opacity 100ms allow-discrete; transition-behavior: normal; }`)
-	if v.Transition.Discrete {
+	if discrete(v) {
 		t.Error("the longhand did not reset the shorthand")
 	}
 }
 
-// animation-composition parses alone, inside the shorthand, and zips
-// onto the group.
+// The timing functions evaluate per CSS Easing 2: the keywords, steps
+// with every jump position and the before flag, and linear().
+func TestTimingAt(t *testing.T) {
+	for _, c := range []struct {
+		css    string
+		at     float64
+		before bool
+		want   float64
+	}{
+		{"ease", 0.5, false, 0.8024033877399112},
+		{"step-start", 0, false, 1},
+		{"step-end", 0.99, false, 0},
+		{"steps(4, jump-start)", 0, true, 0},
+		{"steps(4, jump-start)", 0, false, 0.25},
+		{"steps(4, jump-none)", 0.5, false, 2.0 / 3},
+		{"steps(4, jump-both)", 0.3, false, 0.4},
+		{"linear(0, 0.25, 1)", 0.25, false, 0.125},
+		{"linear(0, 0.5 25% 75%, 1)", 0.5, false, 0.5},
+		{"linear(0, 1)", 1.5, false, 1.5},
+	} {
+		var cx ctx
+		tm, ok := timingOf(tokenize(c.css), &cx)
+		if !ok {
+			t.Errorf("%s did not parse", c.css)
+			continue
+		}
+		if got := tm.At(c.at, c.before); math.Abs(got-c.want) > 1e-6 {
+			t.Errorf("%s at %v (before %v) = %v, want %v", c.css, c.at, c.before, got, c.want)
+		}
+	}
+	for _, bad := range []string{"steps(1, jump-none)", "steps(2.5)", "steps(0)", "cubic-bezier(1.5, 0, 0, 1)", "linear(0.5)", "bogus"} {
+		var cx ctx
+		if _, ok := timingOf(tokenize(bad), &cx); ok {
+			t.Errorf("%s parsed", bad)
+		}
+	}
+}
+
+// animation-composition parses as its own longhand list, zips onto the
+// group, and stays out of the shorthand, which neither takes nor
+// resets it (css-animations-2 §3).
 func TestAnimationComposition(t *testing.T) {
-	v := scrollRun(t, `@keyframes k { to { opacity: 0; } } box { animation: k 1s add; }`)
+	const kf = `@keyframes k { to { opacity: 0; } } `
+	v := scrollRun(t, kf+`box { animation-composition: add; animation: k 1s; }`)
 	if first(v).Composition != CompAdd {
-		t.Errorf("shorthand composition = %v, want add", first(v).Composition)
+		t.Errorf("composition before the shorthand = %v, want add kept", first(v).Composition)
 	}
-	v = scrollRun(t, `box { animation: k 1s; animation-composition: accumulate; }`)
-	if first(v).Composition != CompAccumulate {
-		t.Errorf("longhand composition = %v, want accumulate", first(v).Composition)
+	v = scrollRun(t, kf+`box { animation: k 1s, k 2s; animation-composition: accumulate, replace; }`)
+	if v.Animation[0].Composition != CompAccumulate || v.Animation[1].Composition != CompReplace {
+		t.Errorf("longhand compositions = %+v, want accumulate, replace", v.Animation)
 	}
-	v = scrollRun(t, `box { animation: k 1s; animation-composition: replace; }`)
-	if first(v).Composition != CompReplace {
-		t.Errorf("longhand composition = %v, want replace", first(v).Composition)
+	warns := capture(t)
+	Parse(kf + `box { animation: k 1s add; }`)
+	if len(*warns) != 1 {
+		t.Errorf("a composition keyword in the shorthand: %d warnings, want 1", len(*warns))
 	}
 }
 

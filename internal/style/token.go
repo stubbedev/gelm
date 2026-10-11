@@ -358,10 +358,16 @@ func funcArgs(ts []token) []token {
 	return ts[1 : len(ts)-1]
 }
 
-// rawText re-reads the source bytes a token span covers.
+// rawText re-reads the source bytes a token span covers: from its
+// earliest token to its latest, since a desugared nested selector
+// splices its parent's tokens out of source order.
 func rawText(src string, ts []token) string {
 	if len(ts) == 0 {
 		return ""
 	}
-	return src[ts[0].pos:ts[len(ts)-1].end]
+	lo, hi := ts[0].pos, ts[0].end
+	for _, t := range ts[1:] {
+		lo, hi = min(lo, t.pos), max(hi, t.end)
+	}
+	return src[lo:hi]
 }

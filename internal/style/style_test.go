@@ -32,8 +32,13 @@ type node struct {
 	hasCont bool
 }
 
-// StyleContainer reports the node's stand-in query container.
-func (n *node) StyleContainer() (Container, bool) { return n.cont, n.hasCont }
+// StyleContainers reports the node's stand-in query container.
+func (n *node) StyleContainers(buf []Container) []Container {
+	if n.hasCont {
+		buf = append(buf, n.cont)
+	}
+	return buf
+}
 
 func (n *node) StyleTarget(t *Target) { *t = n.target }
 
@@ -543,7 +548,7 @@ func TestColors(t *testing.T) {
 		t.Errorf("gtk alpha/mix: %08x %08x", uint32(v.Color), uint32(v.Background))
 	}
 	warns := capture(t)
-	Parse(`x { color: color-mix(in xyz, red, blue); } y { color: #12345; } z { color: rgb(1, 2); }`)
+	Parse(`x { color: color-mix(in cmyk, red, blue); } y { color: #12345; } z { color: rgb(1, 2); }`)
 	if len(*warns) != 3 {
 		t.Errorf("invalid colors: %d warnings, want 3", len(*warns))
 	}
@@ -577,9 +582,14 @@ func TestUnitsAndCalc(t *testing.T) {
 		t.Errorf("max/clamp: %d %d", v.Layout.MinWidth.Px(), v.Layout.MinHeight.Px())
 	}
 	warns := capture(t)
-	Parse(`x { padding: calc(1px * 2px); } y { padding: calc(1px + 2); } z { padding: calc(1px / 0); }`)
-	if len(*warns) != 3 {
-		t.Errorf("type errors: %d warnings, want 3: %v", len(*warns), *warns)
+	zs := Parse(`x { padding: calc(1px * 2px); } y { padding: calc(1px + 2); } z { padding: calc(1px / 0); }`)
+	if len(*warns) != 2 {
+		t.Errorf("type errors: %d warnings, want 2: %v", len(*warns), *warns)
+	}
+	// Values 4: a division by zero is an infinity, not a type error,
+	// and a top-level infinity clamps to the largest value.
+	if v := computeTree(zs, el("z")); v.Padding.Top != calcLimit {
+		t.Errorf("calc(1px / 0) padding %d, want the clamped %d", v.Padding.Top, calcLimit)
 	}
 }
 
@@ -712,6 +722,13 @@ func TestInheritanceSet(t *testing.T) {
 	}
 }
 
+// transitionFor reports whether a change of p transitions for dur
+// seconds under v.
+func transitionFor(v Values, p Prop, dur float64) bool {
+	tt, ok := v.Transition.For(p)
+	return ok && tt.Duration == dur
+}
+
 func TestBoxShadowGradientFilterTransition(t *testing.T) {
 	s := parseOne(t, `
 		a { box-shadow: inset 0 -2px 0 0 #ff0000, 0 4px 8px rgba(0,0,0,0.5); }
@@ -734,31 +751,34 @@ func TestBoxShadowGradientFilterTransition(t *testing.T) {
 		t.Error("box-shadow: none")
 	}
 	v = computeTree(s, el("c"))
-	if v.Image.N != 3 || v.Image.Angle != 90 || v.Image.Stops[1].Pos != 0.25 || v.Image.Stops[2].Pos != 1 {
-		t.Errorf("gradient to right: %+v", v.Image)
+	var buf [MaxResolvedStops]render.GradientStop
+	if g := bgGradient(v); g.N != 3 || g.Angle != 90 || g.Resolve(100, buf[:0])[1].Pos != 0.25 || g.Resolve(100, buf[:0])[2].Pos != 1 {
+		t.Errorf("gradient to right: %+v", v.Bg)
 	}
 	if !v.Has(PropBackgroundColor) || v.Background != 0 {
 		t.Error("background shorthand must reset the color")
 	}
 	v = computeTree(s, el("d"))
-	if v.Image.Angle != 45 || v.Image.Stops[0].Pos != 0.1 || v.Background != render.RGB(0x12, 0x34, 0x56) {
-		t.Errorf("gradient angle: %+v", v.Image)
+	if g := bgGradient(v); g.Angle != 45 || g.Stops[0].Pos != 0.1 || v.Background != render.RGB(0x12, 0x34, 0x56) {
+		t.Errorf("gradient angle: %+v", v.Bg)
 	}
-	if v := computeTree(s, el("e")); v.Background != render.RGB(0xab, 0xcd, 0xef) || v.Image.N != 0 {
+	if v := computeTree(s, el("e")); v.Background != render.RGB(0xab, 0xcd, 0xef) || v.Bg.Painted() {
 		t.Errorf("background color: %+v", v)
 	}
 	if v := computeTree(s, el("f")); v.Brightness != 2.3 || v.Opacity != 0.5 {
 		t.Errorf("filter/opacity: %v %v", v.Brightness, v.Opacity)
 	}
 	v = computeTree(s, el("g"))
-	if !v.Transition.Covers(PropBackgroundColor) || !v.Transition.Covers(PropColor) || v.Transition.Covers(PropOpacity) ||
-		v.Transition.Duration != 0.3 || v.Transition.Delay != 0.1 {
+	bg, okBg := v.Transition.For(PropBackgroundColor)
+	fg, okFg := v.Transition.For(PropColor)
+	if _, okOp := v.Transition.For(PropOpacity); !okBg || !okFg || okOp ||
+		bg.Duration != 0.15 || bg.Timing != TimingEaseInOut || fg.Duration != 0.3 || fg.Delay != 0.1 || fg.Timing != TimingLinear {
 		t.Errorf("transition list: %+v", v.Transition)
 	}
-	if v := computeTree(s, el("h")); !v.Transition.Covers(PropOpacity) || v.Transition.Duration != 0.2 {
+	if v := computeTree(s, el("h")); !transitionFor(v, PropOpacity, 0.2) {
 		t.Errorf("transition all: %+v", v.Transition)
 	}
-	if v := computeTree(s, el("i")); !v.Transition.Covers(PropOpacity) || v.Transition.Covers(PropColor) {
+	if v := computeTree(s, el("i")); !transitionFor(v, PropOpacity, 1) || transitionFor(v, PropColor, 1) {
 		t.Errorf("transition longhands: %+v", v.Transition)
 	}
 }

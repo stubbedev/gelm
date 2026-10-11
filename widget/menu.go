@@ -439,8 +439,7 @@ func (m *Menu) Paint(cv *render.Canvas) {
 	m.contents.Arrange(rowsRect)
 	cradii := radiusOr(cw, 0)
 	cfx := pushEffects(cv, &m.contents.node, cw, rowsRect, cradii)
-	cv = fx.cv
-	paintBoxBehind(cv, cw, rowsRect, cradii, borderOf(cw), pickc(0, cw, style.PropBackgroundColor, 0))
+	paintBoxBehind(cfx.cv, cw, rowsRect, cradii, borderOf(cw), pickc(0, cw, style.PropBackgroundColor, 0))
 	cfx.pop()
 
 	lineH := m.face.Shape("lg", m.sizePx).LineHeight()
@@ -460,12 +459,11 @@ func (m *Menu) Paint(cv *render.Canvas) {
 		rp.Arrange(row)
 		rradii := radiusOr(rv, t.Radius)
 		rfx := pushEffects(cv, &rp.node, rv, row, rradii)
-		cv = fx.cv
 		var hoverBg render.Color
 		if i == m.hovered && m.selectable(i) {
 			hoverBg = t.HoverAccent()
 		}
-		paintBoxBehind(cv, rv, row, rradii, borderOf(rv), pickc(0, rv, style.PropBackgroundColor, hoverBg))
+		paintBoxBehind(rfx.cv, rv, row, rradii, borderOf(rv), pickc(0, rv, style.PropBackgroundColor, hoverBg))
 		rfx.pop()
 		if it.Kind == ItemSeparator {
 			y := row.Y + row.H/2

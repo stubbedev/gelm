@@ -37,10 +37,15 @@ type effects struct {
 }
 
 // effectsHeavy reports whether v's effect declarations need the
-// offscreen layer: a filter beyond brightness, a clip-path, a mask, a
-// blend mode other than normal, or isolation (whose group the
+// offscreen layer: an opacity under one (CSS group opacity: the
+// subtree composites as one image, so its overlapping paints do not
+// show through each other), a filter beyond brightness, a clip-path, a
+// mask, a blend mode other than normal, or isolation (whose group the
 // descendants' blends then land on).
 func effectsHeavy(v *style.Values) bool {
+	if v.Has(style.PropOpacity) && v.Opacity != 1 {
+		return true
+	}
 	if v.Has(style.PropFilter) && !v.Filter.Empty() {
 		if _, only := v.Filter.BrightnessOnly(); !only {
 			return true
@@ -49,7 +54,7 @@ func effectsHeavy(v *style.Values) bool {
 	if v.Has(style.PropClipPath) && !v.Clip.Empty() {
 		return true
 	}
-	if v.Has(style.PropMaskImage) && v.Mask.Kind != style.MaskNone {
+	if v.Has(style.PropMaskImage) && !v.Mask.Image.None() {
 		return true
 	}
 	if v.Has(style.PropMixBlendMode) && v.Blend != render.BlendNormal {
@@ -64,29 +69,45 @@ func effectsHeavy(v *style.Values) bool {
 // there); bounds and radii are the border box the effects apply to.
 // The returned canvas (fx.cv) is what the caller paints into.
 func pushEffects(cv *render.Canvas, n *node, v *style.Values, bounds render.Rect, radii render.Corners) effects {
+	if !backfaceHidden(v) {
+		paintBackdropOf(cv, n, v, bounds, radii)
+	}
+	return pushLayerEffects(cv, n, v, bounds, radii)
+}
+
+// backfaceHidden reports backface-visibility on the flat pipeline: a
+// transform whose composed map flips the plane hides the widget.
+func backfaceHidden(v *style.Values) bool {
+	return v.Has(style.PropBackfaceVisibility) && v.BackfaceHidden &&
+		v.Has(style.PropTransform) && v.Transform.Backface
+}
+
+// paintBackdropOf applies v's backdrop filter, when it has one, to
+// what has been painted behind the widget so far this frame — first,
+// whether or not the widget itself needs a layer.
+func paintBackdropOf(cv *render.Canvas, n *node, v *style.Values, bounds render.Rect, radii render.Corners) {
+	if v.Has(style.PropBackdropFilter) && !v.Backdrop.Empty() {
+		paintBackdrop(cv, n, v, bounds, radii)
+	}
+}
+
+// pushLayerEffects is pushEffects without the backdrop filter: the
+// effects on the widget's own painted result, for a caller that
+// sampled the backdrop itself (the transform layer, whose canvas holds
+// no backdrop). A hidden backface paints at zero opacity, so the
+// hidden case allocates nothing.
+func pushLayerEffects(cv *render.Canvas, n *node, v *style.Values, bounds render.Rect, radii render.Corners) effects {
 	e := effects{cv: cv, dst: cv, n: n, v: v, bounds: bounds, radii: radii}
-	if v.Has(style.PropOpacity) && v.Opacity != 1 {
-		e.op = true
-	}
-	if v.Has(style.PropFilter) && v.Brightness != 1 {
-		if _, only := v.Filter.BrightnessOnly(); only || v.Filter.Empty() {
-			e.br = true
-		}
-	}
-	// backface-visibility on the flat pipeline: a transform whose
-	// composed map flips the plane hides the widget entirely, painted
-	// at zero opacity so the hidden case allocates nothing.
-	if v.Has(style.PropBackfaceVisibility) && v.BackfaceHidden &&
-		v.Has(style.PropTransform) && v.Transform.Backface {
+	if backfaceHidden(v) {
 		e.pa = cv.PushAlpha(0)
 		e.op = true
 		return e
 	}
-	// The backdrop filters first — before any early return — because
-	// they sample what has been painted behind the widget so far this
-	// frame, whether or not the widget itself needs a layer.
-	if v.Has(style.PropBackdropFilter) && !v.Backdrop.Empty() {
-		paintBackdrop(cv, n, v, bounds, radii)
+	e.op = v.Has(style.PropOpacity) && v.Opacity != 1
+	if v.Has(style.PropFilter) && v.Brightness != 1 {
+		if _, only := v.Filter.BrightnessOnly(); only || v.Filter.Empty() {
+			e.br = true
+		}
 	}
 	if !effectsHeavy(v) {
 		e.pushFast(cv, v)
@@ -95,18 +116,18 @@ func pushEffects(cv *render.Canvas, n *node, v *style.Values, bounds render.Rect
 	e.region = cv.MapRect(v.Filter.Extent().Grow(bounds)).Intersect(cv.Rect())
 	e.layer = cv.Layer(n.fx, e.region)
 	n.fx = e.layer
-	e.cv = e.layer.Canvas()
-	e.pushFast(e.cv, v)
+	// The layer paints opaque; finishEffects composites it at the
+	// opacity.
+	e.op = false
+	e.pushFast(e.layer.Canvas(), v)
 	if v.Has(style.PropMixBlendMode) {
 		e.blend = v.Blend
 	}
 	return e
 }
 
-// pushFast pushes only the cheap effects — opacity, brightness, and
-// the hidden backface — onto cv; popFast restores them. The transform
-// pipeline paints through this onto its own layer, then composites
-// with finishEffects.
+// pushFast pushes only the cheap effects — opacity and brightness —
+// onto cv; popFast restores them.
 func (e *effects) pushFast(cv *render.Canvas, v *style.Values) {
 	e.cv = cv
 	if e.op {
@@ -114,11 +135,6 @@ func (e *effects) pushFast(cv *render.Canvas, v *style.Values) {
 	}
 	if e.br {
 		e.pb = cv.PushBrightness(v.Brightness)
-	}
-	if v.Has(style.PropBackfaceVisibility) && v.BackfaceHidden &&
-		v.Has(style.PropTransform) && v.Transform.Backface {
-		e.pa = cv.PushAlpha(0)
-		e.op = true
 	}
 }
 
@@ -138,20 +154,16 @@ func (e *effects) popFast() {
 func (e *effects) pop() {
 	e.popFast()
 	if e.layer != nil {
-		finishEffects(e.dst, e.n, e.v, e.bounds, e.radii, e.layer, e.region, e.blend, nil)
+		finishEffects(e.dst, e.n, e.v, e.bounds, e.radii, e.layer, e.region, e.blend)
 	}
 }
 
 // finishEffects composites a painted layer through the heavy effect
 // chain: the filters, the clip-path mask, the mask-image mask, then
-// the blend-mode draw — or the projective composite when p3 carries a
-// 3-D transform (the perspective divide replaces the one-to-one draw).
+// the blend-mode draw at the opacity.
 func finishEffects(cv *render.Canvas, n *node, v *style.Values, bounds render.Rect, radii render.Corners,
-	layer *render.Layer, region render.Rect, mode render.BlendMode, p3 *render.M3,
+	layer *render.Layer, region render.Rect, mode render.BlendMode,
 ) {
-	if v.BackfaceHidden && v.Has(style.PropTransform) && v.Transform.Backface {
-		return
-	}
 	if !v.Filter.Empty() {
 		render.ApplyFilters(layer, region, &v.Filter)
 	}
@@ -160,12 +172,12 @@ func finishEffects(cv *render.Canvas, n *node, v *style.Values, bounds render.Re
 			layer.ApplyPathMask(p, region)
 		}
 	}
-	if v.Has(style.PropMaskImage) && v.Mask.Kind != style.MaskNone {
+	if v.Has(style.PropMaskImage) && !v.Mask.Image.None() {
 		applyMaskLayer(cv, n, v, layer, region, bounds)
 	}
-	if p3 != nil {
-		cv.CompositeProjective(layer, region, *p3, 1)
-		return
+	if v.Has(style.PropOpacity) && v.Opacity != 1 {
+		prev := cv.PushAlpha(v.Opacity)
+		defer cv.PopAlpha(prev)
 	}
 	cv.DrawLayer(layer, region, mode)
 }
@@ -266,9 +278,10 @@ func mathSqrtDiag(w, h float64) float64 {
 	return math.Sqrt(w*w+h*h) / math.Sqrt2
 }
 
-// applyMaskLayer paints the mask-image into its own layer over the
-// effect region and multiplies the widget layer's pixels by it: the
-// alpha channel for mask-mode alpha, the WCAG luminance for
+// applyMaskLayer paints the mask layer into its own layer over the
+// effect region — sized, positioned and repeated in the border box
+// like a background layer — and multiplies the widget layer's pixels
+// by it: the alpha channel for mask-mode alpha, the WCAG luminance for
 // luminance.
 func applyMaskLayer(cv *render.Canvas, n *node, v *style.Values, layer *render.Layer, region, bounds render.Rect) {
 	m := &v.Mask
@@ -276,26 +289,8 @@ func applyMaskLayer(cv *render.Canvas, n *node, v *style.Values, layer *render.L
 	n.fxmask = mask
 	mc := mask.Canvas()
 	mc.ClearDevice(region, 0)
-	rect := maskRect(v, bounds)
-	switch m.Kind {
-	case style.MaskGradient:
-		g := &m.Image
-		var buf [style.MaxStops]render.GradientStop
-		stops := buf[:g.N]
-		for i := range g.N {
-			stops[i] = render.GradientStop{Pos: g.Stops[i].Pos, Color: g.Stops[i].Color}
-		}
-		rg := cssGradient(g, stops)
-		if m.Repeat {
-			rg.Extend = render.ExtendRepeat
-		}
-		prev := mc.PushClipDevice(region)
-		mc.PaintGradient(rect, render.Corners{}, rg)
-		mc.PopClip(prev)
-	case style.MaskURL:
-		if ic := bgImageFor(m.URL); ic != nil {
-			mc.DrawImageRect(iconAsImage(ic), rect)
-		}
+	if img, ok := resolveLayerImage(m.Image); ok {
+		paintLayerImage(mc, img, layerTile(img, m.Size, m.Pos, m.Repeat, bounds), bounds, render.Corners{})
 	}
 	layer.ApplyMaskLayer(mask, region, m.Luminance)
 }
@@ -326,52 +321,4 @@ func (m *iconImage) At(x, y int) color.Color {
 		return color.RGBA{}
 	}
 	return m.ic.At(x, y)
-}
-
-// maskRect resolves the mask's size and position against the border
-// box: auto keeps a gradient on the box (an image its natural size),
-// cover and contain scale the standard way, and explicit lengths or
-// percentages win. The position is the offset of the sized tile from
-// the box's origin, percentages of the leftover space.
-func maskRect(v *style.Values, bounds render.Rect) render.Rect {
-	m := &v.Mask
-	w, h := float64(bounds.W), float64(bounds.H)
-	switch m.Kind {
-	case style.MaskGradient:
-		if m.SizeKind == style.MaskSizeAuto && !m.Repeat {
-			return bounds
-		}
-	}
-	if m.Kind == style.MaskURL {
-		if ic := bgImageFor(m.URL); ic != nil {
-			iw, ih := ic.Size()
-			nw, nh := float64(iw), float64(ih)
-			switch m.SizeKind {
-			case style.MaskSizeAuto:
-				w, h = nw, nh
-			case style.MaskSizeLength:
-				w, h = m.SizeW.Resolve(w), m.SizeH.Resolve(h)
-			case style.MaskSizeCover:
-				s := math.Max(w/nw, h/nh)
-				w, h = nw*s, nh*s
-			case style.MaskSizeContain:
-				s := math.Min(w/nw, h/nh)
-				w, h = nw*s, nh*s
-			}
-		}
-	} else if m.SizeKind == style.MaskSizeLength {
-		w, h = m.SizeW.Resolve(w), m.SizeH.Resolve(h)
-	}
-	var x, y float64
-	if m.PosX.Pct {
-		x = float64(bounds.X) + (float64(bounds.W)-w)*m.PosX.V/100
-	} else {
-		x = float64(bounds.X) + m.PosX.V
-	}
-	if m.PosY.Pct {
-		y = float64(bounds.Y) + (float64(bounds.H)-h)*m.PosY.V/100
-	} else {
-		y = float64(bounds.Y) + m.PosY.V
-	}
-	return render.Rect{X: int(math.Round(x)), Y: int(math.Round(y)), W: max(1, int(math.Round(w))), H: max(1, int(math.Round(h)))}
 }

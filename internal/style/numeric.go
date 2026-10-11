@@ -2,6 +2,7 @@ package style
 
 import (
 	"math"
+	"strings"
 
 	"github.com/stubbedev/gelm/render"
 )
@@ -80,18 +81,12 @@ const (
 	fallbackLH  = 1.2
 )
 
-// attrNode is the optional Node interface attr() resolves against:
-// the node's own attribute store, one name at a time.
-type attrNode interface {
-	StyleAttr(name string) (string, bool)
-}
-
 // ctx is the unit-resolution context of one node's compute: the rem
 // base, the font size em resolves against, the inherited weight bolder
 // and lighter step from, the node's color for currentColor, the
 // viewport the vw/vh family reads, the node's font metrics and line
-// height, the scheme light-dark() picks by, and the node's attributes
-// for attr(). dep records whether a parse read any node-dependent
+// height, and the scheme light-dark() picks by; attr() reads the
+// node's attributes off self. dep records whether a parse read any node-dependent
 // input, so a value that read none can be cached on its declaration.
 type ctx struct {
 	rem    float64
@@ -119,11 +114,20 @@ type ctx struct {
 	font     FontMetrics
 	lh, rlh  float64
 	dark     bool
-	attrs    attrNode
-	// cq is the nearest query container the container units resolve
-	// against; cqHave reports whether one exists.
-	cq     Container
-	cqHave bool
+	// dpi is the device resolution image-set() picks a candidate for.
+	dpi float64
+	// conts are the node's query containers, nearest first, the
+	// container units resolve against.
+	conts []Container
+}
+
+// dppx is the device's pixels per CSS pixel, image-set()'s pick
+// criterion: 1 where the compute knows no resolution (parse time).
+func (cx *ctx) dppx() float64 {
+	if cx.dpi <= 0 {
+		return 1
+	}
+	return cx.dpi / 96
 }
 
 // emPx returns the em base, noting the node dependence.
@@ -163,7 +167,7 @@ func (cx *ctx) resolve(c colorVal) render.Color {
 
 // unitScale converts a dimension unit to its canonical kind and factor.
 func (cx *ctx) unitScale(unit string) (numKind, float64, bool) {
-	switch unit {
+	switch strings.ToLower(unit) {
 	case "px":
 		return numLength, 1, true
 	case "rem":
@@ -189,22 +193,22 @@ func (cx *ctx) unitScale(unit string) (numKind, float64, bool) {
 	case "rlh":
 		cx.dep = true
 		return numLength, cx.rlh, true
-	case "vw":
+	case "vw", "svw", "lvw", "dvw", "vi", "svi", "lvi", "dvi":
 		cx.dep = true
 		return numLength, cx.vpW / 100, true
-	case "vh":
+	case "vh", "svh", "lvh", "dvh", "vb", "svb", "lvb", "dvb":
 		cx.dep = true
 		return numLength, cx.vpH / 100, true
-	case "vmin":
+	case "vmin", "svmin", "lvmin", "dvmin":
 		cx.dep = true
 		return numLength, math.Min(cx.vpW, cx.vpH) / 100, true
-	case "vmax":
+	case "vmax", "svmax", "lvmax", "dvmax":
 		cx.dep = true
 		return numLength, math.Max(cx.vpW, cx.vpH) / 100, true
 	case "cqw", "cqh", "cqi", "cqb", "cqmin", "cqmax":
 		cx.dep = true
 		cx.cqRead = true
-		v, _ := cqUnit(unit, cx.cq, cx.cqHave)
+		v, _ := cqUnit(unit, cx.conts, cx.vpW, cx.vpH)
 		return numLength, v, true
 	case "pt":
 		return numLength, 96.0 / 72, true
@@ -216,6 +220,8 @@ func (cx *ctx) unitScale(unit string) (numKind, float64, bool) {
 		return numLength, 96 / 2.54, true
 	case "mm":
 		return numLength, 96 / 25.4, true
+	case "q":
+		return numLength, 96 / 101.6, true
 	case "deg":
 		return numAngle, 1, true
 	case "rad":
@@ -245,7 +251,27 @@ func evalNumeric(ts []token, cx *ctx) (numeric, bool) {
 	if !ok || e.pos != len(ts) {
 		return numeric{}, false
 	}
+	n.v, n.pct = calcFinite(n.v), calcFinite(n.pct)
 	return n, true
+}
+
+// calcLimit is the magnitude an infinite calculation clamps to: far
+// past any real length, angle or count, and safe to round to an int.
+const calcLimit = 1 << 30
+
+// calcFinite applies CSS Values 4's top-level rule to a calculation's
+// result: NaN becomes zero and an infinity the largest representable
+// value of its sign.
+func calcFinite(v float64) float64 {
+	switch {
+	case math.IsNaN(v):
+		return 0
+	case v > calcLimit:
+		return calcLimit
+	case v < -calcLimit:
+		return -calcLimit
+	}
+	return v
 }
 
 // calcParser evaluates calc() expressions over tokens: sums, products,
@@ -306,8 +332,30 @@ func (p *calcParser) term() (numeric, bool) {
 			p.pos++
 			return n, true
 		}
+		if v, ok := calcConstant(t.s); ok {
+			p.pos++
+			return numeric{v: v, kind: numNumber}, true
+		}
 	}
 	return numeric{}, false
+}
+
+// calcConstant is the value of a CSS Values 4 numeric constant: e,
+// pi, infinity, -infinity and NaN, matched ASCII case-insensitively.
+func calcConstant(name string) (float64, bool) {
+	switch strings.ToLower(name) {
+	case "e":
+		return math.E, true
+	case "pi":
+		return math.Pi, true
+	case "infinity":
+		return math.Inf(1), true
+	case "-infinity":
+		return math.Inf(-1), true
+	case "nan":
+		return math.NaN(), true
+	}
+	return 0, false
 }
 
 // mathNums evaluates a comma-separated argument list, each argument
@@ -408,25 +456,20 @@ func mathFunc(name string, args []token, cx *ctx, refs map[string]numeric) (nume
 		if len(ns) == 1 {
 			ns = append(ns, numeric{v: 1, kind: ns[0].kind})
 		}
-		if len(ns) != 2 || ns[1].v == 0 {
+		if len(ns) != 2 {
 			return numeric{}, false
 		}
-		q := ns[0].v / ns[1].v
-		switch strategy {
-		case "up":
-			q = math.Ceil(q)
-		case "down":
-			q = math.Floor(q)
-		case "to-zero":
-			q = math.Trunc(q)
-		default:
-			q = math.Round(q)
-		}
-		return numeric{v: q * ns[1].v, kind: ns[1].kind}, true
+		return numeric{v: roundTo(strategy, ns[0].v, ns[1].v), kind: ns[1].kind}, true
 	case "mod", "rem":
 		ns, ok := mathNums(args, cx, refs, numNumber, numLength, numAngle, numTime, numPercent)
-		if !ok || len(ns) != 2 || ns[1].v == 0 {
+		if !ok || len(ns) != 2 {
 			return numeric{}, false
+		}
+		if ns[1].v == 0 || math.IsInf(ns[0].v, 0) {
+			return numeric{v: math.NaN(), kind: ns[0].kind}, true
+		}
+		if math.IsInf(ns[1].v, 0) {
+			return numeric{v: modInfinite(name, ns[0].v, ns[1].v), kind: ns[0].kind}, true
 		}
 		q := ns[0].v / ns[1].v
 		if name == "mod" {
@@ -491,7 +534,7 @@ func mathFunc(name string, args []token, cx *ctx, refs map[string]numeric) (nume
 			}
 			a = math.Atan(ns[0].v)
 		default:
-			if len(ns) != 2 || ns[0].kind != numNumber || ns[1].kind != numNumber {
+			if len(ns) != 2 {
 				return numeric{}, false
 			}
 			a = math.Atan2(ns[0].v, ns[1].v)
@@ -522,7 +565,7 @@ func mathFunc(name string, args []token, cx *ctx, refs map[string]numeric) (nume
 		}
 		return numeric{v: math.Exp(n.v), kind: numNumber}, true
 	case "hypot":
-		ns, ok := mathNums(args, cx, refs, numNumber)
+		ns, ok := mathNums(args, cx, refs)
 		if !ok || len(ns) == 0 {
 			return numeric{}, false
 		}
@@ -530,13 +573,44 @@ func mathFunc(name string, args []token, cx *ctx, refs map[string]numeric) (nume
 		for _, n := range ns {
 			sq += n.v * n.v
 		}
-		return numeric{v: math.Sqrt(sq), kind: numNumber}, true
+		return numeric{v: math.Sqrt(sq), kind: ns[0].kind}, true
 	case "env":
-		return envFunc(args)
+		return envFunc(args, cx, refs)
 	case "attr":
-		return attrNumeric(args, cx)
+		return attrNumeric(args, cx, refs)
 	}
 	return numeric{}, false
+}
+
+// roundTo rounds a to a multiple of b under a round() strategy;
+// nearest takes the upper multiple on a tie, as CSS Values 4 says, and
+// a zero step is NaN.
+func roundTo(strategy string, a, b float64) float64 {
+	if b == 0 {
+		return math.NaN()
+	}
+	q := a / b
+	switch strategy {
+	case "up":
+		q = math.Ceil(q)
+	case "down":
+		q = math.Floor(q)
+	case "to-zero":
+		q = math.Trunc(q)
+	default:
+		q = math.Floor(q + 0.5)
+	}
+	return q * b
+}
+
+// modInfinite is mod() and rem() of a finite value by an infinite
+// one: rem() and a same-signed mod() keep the value, a mod() of
+// opposite signs is NaN.
+func modInfinite(name string, a, b float64) float64 {
+	if name == "mod" && a != 0 && math.Signbit(a) != math.Signbit(b) {
+		return math.NaN()
+	}
+	return a
 }
 
 func signOf(v float64) float64 {
@@ -575,34 +649,97 @@ var envNames = map[string]bool{
 	"keyboard-inset-height": true, "keyboard-inset-width": true,
 }
 
-// envFunc evaluates env(): every supported variable is a zero length
-// on the desktop; an unknown name is invalid.
-func envFunc(args []token) (numeric, bool) {
+// envFunc evaluates env(name, fallback?): every supported variable is
+// a zero length on the desktop; an unknown name takes the fallback,
+// and is invalid without one.
+func envFunc(args []token, cx *ctx, refs map[string]numeric) (numeric, bool) {
 	parts := splitTop(args, tkComma)
-	if len(parts) != 1 {
-		return numeric{}, false
-	}
 	name := trimWS(parts[0])
-	if len(name) != 1 || name[0].kind != tkIdent || !envNames[name[0].s] {
+	if len(parts) > 2 || len(name) != 1 || name[0].kind != tkIdent {
 		return numeric{}, false
 	}
-	return numeric{v: 0, kind: numLength}, true
+	if envNames[name[0].s] {
+		return numeric{v: 0, kind: numLength}, true
+	}
+	return fallbackNumeric(parts[1:], cx, refs)
 }
 
-// attrNumeric evaluates typed attr(name px), reading the node's
-// attribute and parsing it as the named unit's value.
-func attrNumeric(args []token, cx *ctx) (numeric, bool) {
-	comps := components(args)
-	if len(comps) < 1 || len(comps) > 2 {
+// fallbackNumeric evaluates an env() or attr() fallback, the one math
+// expression after the comma; none is invalid.
+func fallbackNumeric(rest [][]token, cx *ctx, refs map[string]numeric) (numeric, bool) {
+	if len(rest) != 1 {
 		return numeric{}, false
 	}
-	if len(comps[0]) != 1 || comps[0][0].kind != tkIdent {
+	ts := trimWS(rest[0])
+	sub := calcParser{ts: ts, cx: cx, refs: refs}
+	n, ok := sub.sum()
+	return n, ok && sub.pos == len(ts)
+}
+
+// attrCall is a parsed typed attr(): the attribute name, its type —
+// a unit, a type keyword (`number`, `length`, `color`, ...), or the
+// syntax name of type(<syntax>) — and the fallback after the comma.
+type attrCall struct {
+	name, typ string
+	fallback  [][]token
+}
+
+// parseAttrCall reads attr( <name> <type>? , <fallback>? ).
+func parseAttrCall(args []token) (attrCall, bool) {
+	parts := splitTop(args, tkComma)
+	comps := components(parts[0])
+	if len(parts) > 2 || len(comps) < 1 || len(comps) > 2 || len(comps[0]) != 1 || comps[0][0].kind != tkIdent {
+		return attrCall{}, false
+	}
+	c := attrCall{name: comps[0][0].s, fallback: parts[1:]}
+	if len(comps) == 1 {
+		return c, true
+	}
+	t := comps[1]
+	switch {
+	case len(t) == 1 && t[0].kind == tkIdent:
+		c.typ = strings.ToLower(t[0].s)
+	case len(t) == 1 && t[0].is('%'):
+		c.typ = "%"
+	case t[0].kind == tkFunc && t[0].s == "type":
+		syntax := strings.TrimSpace(tokensText(funcArgs(t)))
+		inner, ok := strings.CutPrefix(syntax, "<")
+		inner, ok2 := strings.CutSuffix(inner, ">")
+		if !ok || !ok2 {
+			return attrCall{}, false
+		}
+		c.typ = inner
+	default:
+		return attrCall{}, false
+	}
+	return c, true
+}
+
+// attrNumeric evaluates typed attr() where a number, length, angle or
+// time is taken; a missing or mistyped attribute takes the fallback.
+func attrNumeric(args []token, cx *ctx, refs map[string]numeric) (numeric, bool) {
+	c, ok := parseAttrCall(args)
+	if !ok {
 		return numeric{}, false
 	}
-	if len(comps) == 2 && (len(comps[1]) != 1 || comps[1][0].kind != tkIdent) {
-		return numeric{}, false
+	if n, ok := c.numeric(cx); ok {
+		return n, true
 	}
-	val, ok := cx.attrOf(comps[0][0].s)
+	return fallbackNumeric(c.fallback, cx, refs)
+}
+
+// attrKinds maps the type keywords and type(<syntax>) names onto the
+// numeric kind the attribute must parse to.
+var attrKinds = map[string]numKind{
+	"number": numNumber, "integer": numNumber, "length": numLength,
+	"percentage": numPercent, "angle": numAngle, "time": numTime,
+}
+
+// numeric parses the attribute under the call's type: untyped as the
+// CSS value it holds, a type keyword as a value of that type, and a
+// unit type (`px`, `%`, `deg`, ...) as a bare number in that unit.
+func (c attrCall) numeric(cx *ctx) (numeric, bool) {
+	val, ok := cx.attrOf(c.name)
 	if !ok {
 		return numeric{}, false
 	}
@@ -610,23 +747,32 @@ func attrNumeric(args []token, cx *ctx) (numeric, bool) {
 	if !ok {
 		return numeric{}, false
 	}
-	if len(comps) == 2 {
-		kind, f, ok := cx.unitScale(comps[1][0].s)
-		if !ok || n.kind != numNumber {
-			return numeric{}, false
-		}
-		n = numeric{v: n.v * f, kind: kind}
+	if c.typ == "" {
+		return n, true
 	}
-	return n, true
+	if want, ok := attrKinds[c.typ]; ok {
+		return n, n.kind == want || want == numLength && n.kind == numNumber && n.v == 0
+	}
+	if n.kind != numNumber {
+		return numeric{}, false
+	}
+	if c.typ == "%" {
+		return numeric{v: n.v, kind: numPercent}, true
+	}
+	kind, f, ok := cx.unitScale(c.typ)
+	return numeric{v: n.v * f, kind: kind}, ok
 }
 
-// attrOf reads one node attribute, marking the node dependence.
+// attrOf reads one attribute of the node being computed — the
+// built-ins and its data attributes, the store selectors and content
+// attr() read — marking the node dependence. Parse-time validation has
+// no node and reads nothing.
 func (cx *ctx) attrOf(name string) (string, bool) {
 	cx.dep = true
-	if cx.attrs == nil {
+	if cx.self == nil {
 		return "", false
 	}
-	return cx.attrs.StyleAttr(name)
+	return cx.self.attrValue(name)
 }
 
 // sum parses product (('+'|'-') product)*. CSS requires whitespace
@@ -715,7 +861,7 @@ func (p *calcParser) product() (numeric, bool) {
 			}
 			continue
 		}
-		if right.kind != numNumber || right.v == 0 {
+		if right.kind != numNumber {
 			return numeric{}, false
 		}
 		left.v /= right.v

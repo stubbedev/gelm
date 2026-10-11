@@ -54,7 +54,14 @@ func TestMediaSizeConditions(t *testing.T) {
 		{`@media not (min-width: 700px) { a { color: red; } }`, true},
 		{`@media not (min-width: 500px) { a { color: red; } }`, false},
 		{`@media (bogus-feature: 3) { a { color: red; } }`, false},
-		{`@media not (bogus-feature: 3) { a { color: red; } }`, true},
+		// An unknown feature is unknown, and not keeps it unknown,
+		// which a query reads as false (mediaqueries-4 §3).
+		{`@media not (bogus-feature: 3) { a { color: red; } }`, false},
+		{`@media not print { a { color: red; } }`, true},
+		{`@media ((min-width: 700px) or (max-width: 600px)) { a { color: red; } }`, true},
+		{`@media (min-width: 700px) or (max-width: 600px) { a { color: red; } }`, true},
+		{`@media not ((min-width: 700px) or (max-width: 599px)) { a { color: red; } }`, true},
+		{`@media (bogus-feature: 3) or (width: 600px) { a { color: red; } }`, true},
 	} {
 		if _, ok := mediaColor(t, tc.css, m); ok != tc.want {
 			t.Errorf("%s applied = %v, want %v", tc.css, ok, tc.want)

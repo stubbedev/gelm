@@ -377,9 +377,8 @@ func (n *Notebook) Paint(cv *render.Canvas) {
 	n.header.tabs.Arrange(header)
 	hradii := radiusOr(hv, 0)
 	hfx := pushEffects(cv, &n.header.node, hv, header, hradii)
-	cv = fx.cv
-	paintBoxBehind(cv, hv, header, hradii, borderOf(hv), pickc(0, hv, style.PropBackgroundColor, 0))
-	paintOutline(cv, hv, header, hradii)
+	paintBoxBehind(hfx.cv, hv, header, hradii, borderOf(hv), pickc(0, hv, style.PropBackgroundColor, 0))
+	paintOutline(hfx.cv, hv, header, hradii)
 	hfx.pop()
 
 	strip := cv.PushClip(n.tabViewport())
@@ -394,10 +393,9 @@ func (n *Notebook) Paint(cv *render.Canvas) {
 		}
 		tradii := radiusOr(tv, 0)
 		tfx := pushEffects(cv, &tp.node, tv, rect, tradii)
-		cv = fx.cv
-		paintBoxBehind(cv, tv, rect, tradii, borderOf(tv), pickc(0, tv, style.PropBackgroundColor, fill))
+		paintBoxBehind(tfx.cv, tv, rect, tradii, borderOf(tv), pickc(0, tv, style.PropBackgroundColor, fill))
 		if i == n.selected && !tv.Has(style.PropBoxShadow) {
-			cv.FillRect(render.Rect{X: rect.X, Y: rect.Y + tabBarHeight - 3, W: rect.W, H: 3}, underline)
+			tfx.cv.FillRect(render.Rect{X: rect.X, Y: rect.Y + tabBarHeight - 3, W: rect.W, H: 3}, underline)
 		}
 		tfx.pop()
 		if n.face != nil {

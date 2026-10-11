@@ -131,8 +131,8 @@ func (a *Application) buildIcon(img image.Image) *postedIcon {
 		cv.Clear(cv.Rect(), 0)
 		// A square, aspect-keeping crop: the ImageCover policy resampled
 		// to the full square, the same kernel widget.Image uses.
-		src, dstW, dstH := render.ScaleRect(img.Bounds().Dx(), img.Bounds().Dy(), size, size, render.ImageCover)
-		cv.DrawImageDevice(render.Resample(img, src, dstW, dstH), 0, 0)
+		src, dst := render.PlaceImage(img.Bounds().Dx(), img.Bounds().Dy(), size, size, render.ImageCover, render.ImageCentered)
+		cv.DrawImageDevice(render.Resample(img, src, dst.W, dst.H), dst.X, dst.Y)
 		if err := icon.AddBuffer(b.WL, 1); err != nil {
 			logutil.L().Warn("app: window icon: add buffer", "size", size, "err", err)
 			buffer.Cancel(b)

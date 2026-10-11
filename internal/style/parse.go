@@ -22,7 +22,6 @@ import (
 	"strings"
 
 	"github.com/stubbedev/gelm/internal/logutil"
-	"github.com/stubbedev/gelm/render"
 )
 
 // parseWarn is the parse-warning sink: warnings route to the injected
@@ -197,10 +196,9 @@ type Sensitivity struct {
 	// containers resize with the window.
 	Container bool
 	CqUnits   bool
-	// RevertLayer reports a revert-layer value: the cascade then
-	// tracks each layer's best declaration, the chain revert-layer
-	// walks down.
-	RevertLayer bool
+	// Revert reports a revert or revert-layer value: the cascade then
+	// records every declaration, the chain the two roll back along.
+	Revert bool
 }
 
 // Sensitivity returns the sheet's selector summary.
@@ -250,10 +248,9 @@ type rule struct {
 	// cq indexes the sheet's @container conditions, -1 when the rule
 	// is not container-conditional.
 	cq int32
-	// scopeDepth is the @scope nesting the rule sits in: proximity
-	// ranks above specificity, so an inner scope beats an outer one
-	// at equal specificity.
-	scopeDepth uint8
+	// scope is the @scope rule the rule sits in, nil outside one: the
+	// cascade ranks it by the proximity of its scoping root.
+	scope *scopeCtx
 	// pseudo names the ::before/::after/::first-letter pseudo-element
 	// this rule addresses; empty styles the element itself.
 	pseudo string
@@ -321,18 +318,18 @@ type parser struct {
 	cq        int32
 	layerPath string
 	dead      int
-	// scopeRoot is the active @scope root selector's tokens,
-	// scopeUpper its upper bound selectors, scopeDepth the @scope
-	// nesting; anonSeq names fresh anonymous layers.
-	scopeRoot  []token
-	scopeUpper []selector
-	scopeDepth int
-	anonSeq    int
+	// scope is the active @scope rule, nil outside one; anonSeq names
+	// fresh anonymous layers.
+	scope   *scopeCtx
+	anonSeq int
 	// resolve loads @import targets; base is the importing file's
 	// path, importStack the active import chain for cycle detection.
 	resolve     ImportResolver
 	base        string
 	importStack []string
+	// rulesSeen reports a rule in the stylesheet being parsed: an
+	// @import after one is invalid (css-cascade-5 §2).
+	rulesSeen bool
 }
 
 // warnf reports one stylesheet problem and lets the parser carry on
@@ -356,11 +353,36 @@ func (p *parser) stylesheet(ts []token) {
 		case tkRBrace:
 			i++ // a stray closer: drop it, keep parsing
 		case tkAt:
+			if !importPrelude(ts, i) {
+				p.rulesSeen = true
+			}
 			i = p.atRule(ts, i)
 		default:
+			p.rulesSeen = true
 			i = p.qualifiedRule(ts, i)
 		}
 	}
+}
+
+// importPrelude reports whether the at-rule at ts[i] may precede an
+// @import (css-cascade-5 §2): @import itself, @charset, and a @layer
+// statement — plus GTK's @define-color, which GTK accepts ahead of its
+// imports as well.
+func importPrelude(ts []token, i int) bool {
+	switch ts[i].s {
+	case "import", "charset", "define-color":
+		return true
+	case "layer":
+		for j := i + 1; j < len(ts); j++ {
+			switch ts[j].kind {
+			case tkSemi:
+				return true
+			case tkLBrace:
+				return false
+			}
+		}
+	}
+	return false
 }
 
 // atRule consumes one at-rule: through its block, or to its
@@ -563,75 +585,37 @@ func keyframeOffsets(ts []token) []float64 {
 	return out
 }
 
-// keyframe extracts the animatable channels of one stop's
-// declarations; the rest warn and drop. Each animatable name runs
-// through its real property parser, so a stop writes exactly what a
-// rule can: opacity, color, background-color, filter, transform, and
-// -gtk-icon-transform.
+// keyframe computes one stop's declarations (css-animations-1 §3):
+// each through its property's parser, against the parse-time root
+// context, so a stop animates every longhand a rule can set. Its
+// animation-timing-function eases the interval the stop starts; the
+// animation and transition longhands, !important declarations, custom
+// properties and var() values do not animate and drop with a warning.
 func (p *parser) keyframe(decls []decl) Keyframe {
-	var k Keyframe
-	var op float64
-	var color, bg render.Color
-	var bright float64
-	var xform, iconX Xform
+	k := Keyframe{V: new(Values)}
+	*k.V = initialValues()
 	cx := ctx{rem: parseRem, em: parseRem}
-	for _, d := range decls {
-		var slot string
-		var ok bool
-		switch d.name {
-		case "opacity":
-			var v Values
-			ok = parseOpacity(d.val, &cx, &v)
-			if ok {
-				op, slot = v.Opacity, "opacity"
+	for i := range decls {
+		d := &decls[i]
+		switch {
+		case d.name == "animation-timing-function":
+			tm, ok := timingOf(trimWS(d.val), &cx)
+			if !ok {
+				p.warnf("keyframe declaration skipped: animation-timing-function: %s", badText(rawText(p.src, d.val)))
+				continue
 			}
-		case "color":
-			cv, pok := parseColor(d.val, &cx)
-			if pok {
-				color, ok = cx.resolve(cv), true
-			}
-			slot = "color"
-		case "background-color":
-			cv, pok := parseColor(d.val, &cx)
-			if pok {
-				bg, ok = cx.resolve(cv), true
-			}
-			slot = "background-color"
-		case "filter":
-			var v Values
-			ok = parseFilter(d.val, &cx, &v)
-			if ok {
-				bright, slot = v.Brightness, "filter"
-			}
-		case "transform":
-			xform, ok = composeTransform(d.val, &cx)
-			slot = "transform"
-		case "-gtk-icon-transform":
-			iconX, ok = composeTransform(d.val, &cx)
-			slot = "-gtk-icon-transform"
+			k.Timing = &tm
+		case d.important || d.custom || d.meta || d.hasVar || d.wide != wideNone:
+			p.warnf("keyframe declaration skipped: %q does not animate here", d.name)
+		case !d.covers.And(transitionProps.Or(animationProps).With(PropAnimComposition)).Empty():
+			p.warnf("keyframe declaration skipped: %q is not animatable", d.name)
+		case !d.parse(d.val, &cx, k.V):
+			p.warnf("keyframe declaration skipped: %s: %s", d.name, badText(rawText(p.src, d.val)))
 		default:
-			p.warnf("keyframe declaration skipped: %q does not interpolate", d.name)
-			continue
-		}
-		if !ok {
-			p.warnf("keyframe declaration skipped: %s: %s", slot, badText(rawText(p.src, d.val)))
-			continue
-		}
-		switch slot {
-		case "opacity":
-			k.Opacity = &op
-		case "color":
-			k.Color = &color
-		case "background-color":
-			k.Background = &bg
-		case "filter":
-			k.Brightness = &bright
-		case "transform":
-			k.Transform = &xform
-		case "-gtk-icon-transform":
-			k.IconXform = &iconX
+			k.Props = k.Props.Or(d.covers)
 		}
 	}
+	k.V.Set = k.Props
 	return k
 }
 
@@ -777,10 +761,10 @@ func (p *parser) curLayer() uint8 {
 	return p.layerOf(p.layerPath)
 }
 
-// containerRule parses one @container: the optional name filter and
-// size query become the context of every rule in the block,
-// intersecting any enclosing @container's conditions and adding its
-// name to the names both must match.
+// containerRule parses one @container: its condition list becomes the
+// context of every rule in the block, joining any enclosing
+// @container's conditions (each level selects its own query
+// container).
 func (p *parser) containerRule(ts []token, i int) int {
 	prelude, body, end, ok := p.atBlock(ts, i, "@container")
 	if !ok {
@@ -792,20 +776,20 @@ func (p *parser) containerRule(ts []token, i int) int {
 		return end
 	}
 	saveCQ := p.cq
+	var full containerQuery
 	if p.cq >= 0 {
-		outer := p.sheet.containerQs[p.cq]
-		q.q = intersectMedia(outer.q, q.q)
-		q.name = strings.TrimSpace(outer.name + " " + q.name)
+		full = slices.Clone(p.sheet.containerQs[p.cq])
 	}
+	full = append(full, q)
 	p.cq = int32(len(p.sheet.containerQs))
 	for i, other := range p.sheet.containerQs {
-		if other.name == q.name && queryEqual(other.q, q.q) {
+		if slices.EqualFunc(other, full, condsEqual) {
 			p.cq = int32(i)
 			break
 		}
 	}
 	if int(p.cq) == len(p.sheet.containerQs) {
-		p.sheet.containerQs = append(p.sheet.containerQs, q)
+		p.sheet.containerQs = append(p.sheet.containerQs, full)
 	}
 	p.stylesheet(body)
 	p.cq = saveCQ
@@ -820,6 +804,18 @@ func (p *parser) containerRule(ts []token, i int) int {
 // parse time like @supports, and a false import drops with a
 // warning.
 func (p *parser) importRule(ts []token, i int) int {
+	if p.rulesSeen {
+		end := i + 1
+		for end < len(ts) && ts[end].kind != tkSemi {
+			if closer(ts[end].kind) != 0 {
+				end = blockEnd(ts, end)
+				continue
+			}
+			end++
+		}
+		p.warnf("@import ignored: it must precede every rule")
+		return end + 1
+	}
 	j := i + 1
 	for ; j < len(ts); j++ {
 		switch ts[j].kind {
@@ -913,7 +909,9 @@ found:
 		p.layerOf(p.layerPath)
 	}
 	p.importStack = append(p.importStack, path)
+	p.rulesSeen = false
 	p.stylesheet(tokenize(content))
+	p.rulesSeen = false
 	p.importStack = p.importStack[:len(p.importStack)-1]
 	p.mq, p.base, p.layerPath = saveMQ, saveBase, saveLayer
 	return j + 1
@@ -969,19 +967,16 @@ func (p *parser) qualifiedRule(ts []token, i int) int {
 		return len(ts)
 	}
 	body := ts[i+1 : end-1]
-	p.ruleBody(body, splitTop(prelude, tkComma))
+	p.ruleBody(body, prelude)
 	return end
 }
 
 // ruleBody parses a rule's body — its declarations plus any nested
-// rules and at-rules — under parents, the token lists of the selector
-// each declaration and nested rule belongs to. A nested selector
-// desugars its `&`s to the parent selector (an absent `&` is the
-// descendant form), and a comma group crosses with the parent list.
-func (p *parser) ruleBody(ts []token, parents [][]token) {
-	for k := range parents {
-		parents[k] = trimWS(parents[k])
-	}
+// rules and at-rules — under parent, the selector list the
+// declarations and nested rules belong to. A nested selector desugars
+// its `&`s to the parent list (an absent `&` is the descendant form).
+func (p *parser) ruleBody(ts []token, parent []token) {
+	parent = trimWS(parent)
 	var decls []decl
 	start, seg := 0, 0
 	i := 0
@@ -992,7 +987,7 @@ func (p *parser) ruleBody(ts []token, parents [][]token) {
 			prelude := trimWS(ts[seg:i])
 			end := blockEnd(ts, i)
 			inner := ts[min(i+1, len(ts)):max(end-1, 0)]
-			p.nestedRule(prelude, inner, parents)
+			p.nestedRule(prelude, inner, parent)
 			i, start, seg = end, end, end
 		case tkFunc, tkLParen, tkLBrack:
 			i = blockEnd(ts, i)
@@ -1002,7 +997,7 @@ func (p *parser) ruleBody(ts []token, parents [][]token) {
 		case tkAt:
 			if atSegmentStart(ts, seg, i) {
 				decls = append(decls, p.declarationsHead(ts[start:i])...)
-				i = p.nestedAt(ts, i, parents)
+				i = p.nestedAt(ts, i, parent)
 				start, seg = i, i
 			} else {
 				i++
@@ -1018,43 +1013,23 @@ func (p *parser) ruleBody(ts []token, parents [][]token) {
 	block := &Block{decls: decls}
 	starting := p.startBlock
 	p.startBlock = nil
-	for _, par := range parents {
-		if p.scopeRoot != nil {
-			par = scopeSplice(par, p.scopeRoot)
-		}
-		sels, ok := parseSelectorList(p.src, par)
-		if !ok {
-			p.warnf("rule skipped: bad selector %q", badText(rawText(p.src, par)))
-			continue
-		}
-		for _, sel := range sels {
-			p.add(sel, block, starting)
-		}
+	sels, ok := p.selectorList(parent)
+	if !ok {
+		p.warnf("rule skipped: bad selector %q", badText(rawText(p.src, parent)))
+		return
+	}
+	for _, sel := range sels {
+		p.add(sel, block, starting)
 	}
 }
 
-// scopeSplice scopes one selector's tokens to an @scope root: every
-// `:scope` pseudo-class becomes the root selector, and a selector
-// without one descends from it.
-func scopeSplice(n, root []token) []token {
-	out := make([]token, 0, len(n)+len(root)+1)
-	used := false
-	for i := 0; i < len(n); i++ {
-		if n[i].kind == tkColon && i+1 < len(n) && n[i+1].ident("scope") {
-			out = append(out, root...)
-			used = true
-			i++
-			continue
-		}
-		out = append(out, n[i])
+// selectorList parses a style rule's selector list, scoped to the
+// active @scope; one invalid member invalidates the list.
+func (p *parser) selectorList(ts []token) ([]selector, bool) {
+	if p.scope != nil {
+		return parseScopedList(p.src, ts, p.scope.root)
 	}
-	if used {
-		return out
-	}
-	spliced := make([]token, 0, len(n)+len(root)+1)
-	spliced = append(spliced, root...)
-	spliced = append(spliced, token{kind: tkWS})
-	return append(spliced, n...)
+	return parseSelectorList(p.src, ts)
 }
 
 // atSegmentStart reports whether the token at i begins a fresh
@@ -1069,45 +1044,53 @@ func atSegmentStart(ts []token, seg, i int) bool {
 	return true
 }
 
-// nestedRule parses one nested `& ... { }` block under parents.
-func (p *parser) nestedRule(prelude, inner []token, parents [][]token) {
+// nestedRule parses one nested `& ... { }` block under parent, the
+// enclosing rule's selector list: each member desugars against it, and
+// the joined list parses as one (an invalid member drops the nested
+// rule alone).
+func (p *parser) nestedRule(prelude, inner []token, parent []token) {
 	if len(prelude) == 0 {
 		p.warnf("rule skipped: want a selector before '{'")
 		return
 	}
-	var combined [][]token
-	for _, par := range parents {
-		for _, raw := range splitTop(prelude, tkComma) {
-			n := trimWS(raw)
-			if len(n) > 0 {
-				combined = append(combined, spliceParent(n, par))
-			}
+	var combined []token
+	for k, raw := range splitTop(prelude, tkComma) {
+		if k > 0 {
+			combined = append(combined, token{kind: tkComma})
 		}
+		combined = append(combined, spliceParent(trimWS(raw), parent)...)
 	}
-	if len(combined) > 0 {
-		p.ruleBody(inner, combined)
-	}
+	p.ruleBody(inner, combined)
 }
 
-// spliceParent desugars n's `&`s to par; without one, n is a
-// descendant of par.
+// spliceParent desugars n's `&`s to the parent selector list par
+// (css-nesting-1 §3): `&` means `:is(par)`, with :is()'s matching and
+// specificity, and a selector without one is relative to it, a
+// descendant. Where the text substitution means the same — a single
+// parent selector standing in for one `&` at n's start — it splices
+// par itself, which keeps the rule bucketed by its own subject.
 func spliceParent(n, par []token) []token {
-	amp := false
-	for _, t := range n {
-		if t.is('&') {
-			amp = true
-			break
-		}
+	if len(n) == 0 {
+		return nil
 	}
-	out := make([]token, 0, len(n)+len(par)+1)
-	if !amp {
-		out = append(out, par...)
-		out = append(out, token{kind: tkWS})
+	ref := par
+	if len(splitTop(par, tkComma)) > 1 || !ampLeads(n) {
+		at := token{pos: n[0].pos, end: n[0].pos}
+		ref = make([]token, 0, len(par)+3)
+		ref = append(ref, token{kind: tkColon, pos: at.pos, end: at.end}, token{kind: tkFunc, s: "is", pos: at.pos, end: at.end})
+		ref = append(ref, par...)
+		ref = append(ref, token{kind: tkRParen, pos: at.pos, end: at.end})
+	}
+	if !slices.ContainsFunc(n, func(t token) bool { return t.is('&') }) {
+		out := make([]token, 0, len(ref)+1+len(n))
+		out = append(out, ref...)
+		out = append(out, token{kind: tkWS, pos: n[0].pos, end: n[0].pos})
 		return append(out, n...)
 	}
+	out := make([]token, 0, len(n)+len(ref))
 	for _, t := range n {
 		if t.is('&') {
-			out = append(out, par...)
+			out = append(out, ref...)
 			continue
 		}
 		out = append(out, t)
@@ -1115,10 +1098,33 @@ func spliceParent(n, par []token) []token {
 	return out
 }
 
+// ampLeads reports whether n's nesting selector stands where the text
+// of a single parent selector means what `:is(parent)` does: n holds
+// no `&` (the implied descendant form), or exactly one, in its first
+// compound.
+func ampLeads(n []token) bool {
+	amps, first := 0, true
+	for i := 0; i < len(n); i++ {
+		t := n[i]
+		switch {
+		case t.is('&'):
+			amps++
+			if !first {
+				return false
+			}
+		case t.kind == tkWS, t.is('>'), t.is('+'), t.is('~'):
+			first = false
+		case closer(t.kind) != 0:
+			i = blockEnd(n, i) - 1
+		}
+	}
+	return amps <= 1
+}
+
 // nestedAt applies a declaration-scoped at-rule inside a rule body —
 // @media, @supports and @layer re-run the body's remaining content
 // under their condition — and drops the rest with a warning.
-func (p *parser) nestedAt(ts []token, i int, parents [][]token) int {
+func (p *parser) nestedAt(ts []token, i int, parent []token) int {
 	prelude, body, end, ok := p.atBlock(ts, i, "at-rule @"+ts[i].s)
 	if !ok {
 		return end
@@ -1132,14 +1138,14 @@ func (p *parser) nestedAt(ts []token, i int, parents [][]token) int {
 		}
 		save := p.mq
 		p.mq = intersectMedia(p.mq, q)
-		p.ruleBody(body, parents)
+		p.ruleBody(body, parent)
 		p.mq = save
 	case "supports":
 		save := p.dead
 		if !evalSupports(prelude) {
 			p.dead++
 		}
-		p.ruleBody(body, parents)
+		p.ruleBody(body, parent)
 		p.dead = save
 	case "layer":
 		names := splitTop(prelude, tkComma)
@@ -1158,7 +1164,7 @@ func (p *parser) nestedAt(ts []token, i int, parents [][]token) int {
 		}
 		save := p.layerPath
 		p.layerPath = joinLayer(p.layerPath, last)
-		p.ruleBody(body, parents)
+		p.ruleBody(body, parent)
 		p.layerPath = save
 	case "starting-style":
 		p.startBlock = &Block{decls: p.declarations(body)}
@@ -1347,20 +1353,22 @@ func containsVar(ts []token) bool {
 
 // add files one compiled rule into the index and folds its selector
 // into the sensitivity summary, carrying the parser's active @media
-// condition, cascade layer, @container condition, @scope depth,
-// and @starting-style block.
+// condition, cascade layer, @container condition, @scope rule, and
+// @starting-style block.
 func (p *parser) add(sel selector, block, start *Block) {
 	if p.dead > 0 {
 		return
 	}
 	s := &p.sheet
 	idx := int32(len(s.rules))
-	sel.upper = p.scopeUpper
+	if p.scope != nil {
+		sel.upper = p.scope.upper
+	}
 	r := rule{
 		sel: sel, spec: sel.spec(), block: block, mq: -1, cq: -1, layer: p.curLayer(),
-		scopeDepth: uint8(min(p.scopeDepth, 7)),
-		pseudo:     sel.parts[len(sel.parts)-1].pseudo,
-		start:      start,
+		scope:  p.scope,
+		pseudo: sel.parts[len(sel.parts)-1].pseudo,
+		start:  start,
 	}
 	if p.cq >= 0 {
 		r.cq = p.cq
@@ -1399,11 +1407,11 @@ func (p *parser) add(sel selector, block, start *Block) {
 			if d.name == "counter-reset" || d.name == "counter-increment" || counterContent(d.val) {
 				s.sens.Counters = true
 			}
-			if d.wide == wideRevertLayer {
-				s.sens.RevertLayer = true
+			if d.wide == wideRevertLayer || d.wide == wideRevert {
+				s.sens.Revert = true
 			}
-		} else if !d.custom && d.wide == wideRevertLayer {
-			s.sens.RevertLayer = true
+		} else if !d.custom && (d.wide == wideRevertLayer || d.wide == wideRevert) {
+			s.sens.Revert = true
 		}
 	}
 	right := &sel.parts[len(sel.parts)-1]
@@ -1436,6 +1444,7 @@ func (s *Sheet) noteCompound(c *compound, rightmost bool) {
 		s.sens.HasRelational = true
 	}
 	if rightmost {
+		s.noteNested(c)
 		return
 	}
 	s.noteAncestor(c)
@@ -1460,23 +1469,25 @@ func (s *Sheet) noteAncestor(c *compound) {
 		}
 		s.sens.AncestorClasses[cl] = true
 	}
-	for i := range c.not {
-		for j := range c.not[i].parts {
-			s.noteAncestor(&c.not[i].parts[j])
+	c.eachNested(func(sel *selector) {
+		for k := range sel.parts {
+			s.noteAncestor(&sel.parts[k])
 		}
-	}
-	for i := range c.isLists {
-		for j := range c.isLists[i].sels {
-			for k := range c.isLists[i].sels[j].parts {
-				s.noteAncestor(&c.isLists[i].sels[j].parts[k])
-			}
+	})
+}
+
+// noteNested records the ancestor facts inside a rightmost compound's
+// functional pseudo-classes: an argument's non-rightmost compounds
+// test the node's ancestors (`:is(.a > .b)` reads its parent's
+// class), and its rightmost compound the node itself, recursively.
+func (s *Sheet) noteNested(c *compound) {
+	c.eachNested(func(sel *selector) {
+		last := len(sel.parts) - 1
+		for k := range sel.parts[:last] {
+			s.noteAncestor(&sel.parts[k])
 		}
-	}
-	for i := range c.has {
-		for k := range c.has[i].sel.parts {
-			s.noteAncestor(&c.has[i].sel.parts[k])
-		}
-	}
+		s.noteNested(&sel.parts[last])
+	})
 }
 
 // badText truncates a source excerpt for a warning message.

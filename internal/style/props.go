@@ -21,19 +21,11 @@ type propDef struct {
 // drops without a warning: they parse in every GTK stylesheet but have
 // no painter here (animations, icon transforms, text decoration, ...).
 var ignoredProps = map[string]bool{
-	"animation-duration": true, "animation-timing-function": true,
-	"animation-iteration-count": true, "animation-direction": true,
-	"animation-delay": true, "animation-fill-mode": true,
 	"-gtk-icon-shadow": true, "-gtk-icon-style": true,
 	"-gtk-icon-filter": true, "-gtk-dpi": true, "-gtk-secondary-caret-color": true,
-	"text-shadow": true, "text-decoration-line": true,
-	"text-decoration-color": true, "text-decoration-style": true,
 	"font-stretch": true, "font-kerning": true,
-	"background-size": true, "background-position": true,
-	"background-repeat": true, "background-clip": true, "background-origin": true,
-	"background-blend-mode": true, "border-image": true, "border-image-source": true,
-	"border-image-slice": true, "border-image-width": true, "border-image-repeat": true,
-	"outline-radius": true, "-gtk-outline-radius": true,
+	"background-blend-mode": true,
+	"outline-radius":        true, "-gtk-outline-radius": true,
 }
 
 // propTable maps every supported property name to its definition.
@@ -41,27 +33,34 @@ var propTable map[string]propDef
 
 func init() {
 	propTable = map[string]propDef{
-		"color":               {setOf(PropColor), colorInto(func(v *Values) *render.Color { return &v.Color })},
-		"background-color":    {setOf(PropBackgroundColor), colorInto(func(v *Values) *render.Color { return &v.Background })},
-		"background-image":    {setOf(PropBackgroundImage), parseBackgroundImage},
-		"background":          {setOf(PropBackgroundColor, PropBackgroundImage), parseBackground},
-		"opacity":             {setOf(PropOpacity), parseOpacity},
-		"filter":              {setOf(PropFilter), parseFilter},
-		"backdrop-filter":     {setOf(PropBackdropFilter), parseBackdropFilter},
-		"mix-blend-mode":      {setOf(PropMixBlendMode), parseMixBlendMode},
-		"isolation":           {setOf(PropIsolation), parseIsolation},
-		"clip-path":           {setOf(PropClipPath), parseClipPath},
-		"mask":                {setOf(PropMaskImage, PropMaskPosition, PropMaskSize, PropMaskRepeat, PropMaskMode), parseMask},
-		"mask-image":          {setOf(PropMaskImage), parseMaskImage},
-		"mask-position":       {setOf(PropMaskPosition), parseMaskPosition},
-		"mask-size":           {setOf(PropMaskSize), parseMaskSize},
-		"mask-repeat":         {setOf(PropMaskRepeat), parseMaskRepeat},
-		"mask-mode":           {setOf(PropMaskMode), parseMaskMode},
-		"perspective":         {setOf(PropPerspective), parsePerspective},
-		"transform-style":     {setOf(PropTransformStyle), parseTransformStyle},
-		"backface-visibility": {setOf(PropBackfaceVisibility), parseBackfaceVisibility},
-		"container-type":      {setOf(PropContainerType), parseContainerType},
-		"container-name":      {setOf(PropContainerName), parseContainerName},
+		"color":                 {setOf(PropColor), colorInto(func(v *Values) *render.Color { return &v.Color })},
+		"background-color":      {setOf(PropBackgroundColor), colorInto(func(v *Values) *render.Color { return &v.Background })},
+		"background-image":      {setOf(PropBackgroundImage), parseBackgroundImage},
+		"background":            {backgroundProps, parseBackground},
+		"background-size":       {setOf(PropBackgroundSize), parseBackgroundSize},
+		"background-position":   {setOf(PropBackgroundPosition), parseBackgroundPosition},
+		"background-repeat":     {setOf(PropBackgroundRepeat), parseBackgroundRepeat},
+		"background-clip":       {setOf(PropBackgroundClip), parseBackgroundClip},
+		"background-origin":     {setOf(PropBackgroundOrigin), parseBackgroundOrigin},
+		"background-attachment": {setOf(PropBackgroundAttachment), parseBackgroundAttachment},
+		"opacity":               {setOf(PropOpacity), parseOpacity},
+		"filter":                {setOf(PropFilter), parseFilter},
+		"backdrop-filter":       {setOf(PropBackdropFilter), parseBackdropFilter},
+		"mix-blend-mode":        {setOf(PropMixBlendMode), parseMixBlendMode},
+		"isolation":             {setOf(PropIsolation), parseIsolation},
+		"clip-path":             {setOf(PropClipPath), parseClipPath},
+		"mask":                  {setOf(PropMaskImage, PropMaskPosition, PropMaskSize, PropMaskRepeat, PropMaskMode), parseMask},
+		"mask-image":            {setOf(PropMaskImage), parseMaskImage},
+		"mask-position":         {setOf(PropMaskPosition), parseMaskPosition},
+		"mask-size":             {setOf(PropMaskSize), parseMaskSize},
+		"mask-repeat":           {setOf(PropMaskRepeat), parseMaskRepeat},
+		"mask-mode":             {setOf(PropMaskMode), parseMaskMode},
+		"perspective":           {setOf(PropPerspective), parsePerspective},
+		"transform-style":       {setOf(PropTransformStyle), parseTransformStyle},
+		"backface-visibility":   {setOf(PropBackfaceVisibility), parseBackfaceVisibility},
+		"container-type":        {setOf(PropContainerType), parseContainerType},
+		"container-name":        {setOf(PropContainerName), parseContainerName},
+		"container":             {setOf(PropContainerName, PropContainerType), parseContainer},
 
 		"padding":        {setOf(PropPaddingTop, PropPaddingRight, PropPaddingBottom, PropPaddingLeft), sidesInto(func(v *Values) *Sides { return &v.Padding }, false)},
 		"padding-top":    {setOf(PropPaddingTop), sideInto(func(v *Values) *int { return &v.Padding.Top }, false)},
@@ -89,7 +88,7 @@ func init() {
 		"border-right-color":  {setOf(PropBorderRightColor), colorInto(func(v *Values) *render.Color { return &v.BorderColor[1] })},
 		"border-bottom-color": {setOf(PropBorderBottomColor), colorInto(func(v *Values) *render.Color { return &v.BorderColor[2] })},
 		"border-left-color":   {setOf(PropBorderLeftColor), colorInto(func(v *Values) *render.Color { return &v.BorderColor[3] })},
-		"border":              {borderWidths.Or(borderStyles).Or(borderColors), borderSideInto(0b1111)},
+		"border":              {borderWidths.Or(borderStyles).Or(borderColors).Or(borderImageProps), borderSideInto(0b1111)},
 		"border-top":          {setOf(PropBorderTopWidth, PropBorderTopStyle, PropBorderTopColor), borderSideInto(0b0001)},
 		"border-right":        {setOf(PropBorderRightWidth, PropBorderRightStyle, PropBorderRightColor), borderSideInto(0b0010)},
 		"border-bottom":       {setOf(PropBorderBottomWidth, PropBorderBottomStyle, PropBorderBottomColor), borderSideInto(0b0100)},
@@ -106,16 +105,22 @@ func init() {
 		"outline":        {setOf(PropOutlineWidth, PropOutlineStyle, PropOutlineColor), parseOutline},
 		"outline-width":  {setOf(PropOutlineWidth), lengthInto(func(v *Values) *int { return &v.OutlineWidth }, false)},
 		"outline-style":  {setOf(PropOutlineStyle), outlineStyleInto},
-		"outline-color":  {setOf(PropOutlineColor), colorInto(func(v *Values) *render.Color { return &v.OutlineColor })},
+		"outline-color":  {setOf(PropOutlineColor), parseOutlineColor},
 		"outline-offset": {setOf(PropOutlineOffset), lengthInto(func(v *Values) *int { return &v.OutlineOffset }, true)},
 
-		"border-spacing": {setOf(PropBorderSpacing), parseBorderSpacing},
+		"border-spacing":      {setOf(PropBorderSpacing), parseBorderSpacing},
+		"border-image":        {borderImageProps, parseBorderImage},
+		"border-image-source": {setOf(PropBorderImageSource), parseBorderImageSource},
+		"border-image-slice":  {setOf(PropBorderImageSlice), parseBorderImageSlice},
+		"border-image-width":  {setOf(PropBorderImageWidth), parseBorderImageWidth},
+		"border-image-outset": {setOf(PropBorderImageOutset), parseBorderImageOutset},
+		"border-image-repeat": {setOf(PropBorderImageRepeat), parseBorderImageRepeat},
 
 		"font-family":             {setOf(PropFontFamily), parseFontFamily},
 		"font-size":               {setOf(PropFontSize), parseFontSize},
 		"font-weight":             {setOf(PropFontWeight), parseFontWeight},
 		"font-style":              {setOf(PropFontStyle), parseFontStyle},
-		"font":                    {setOf(PropFontFamily, PropFontSize, PropFontWeight, PropFontStyle), parseFont},
+		"font":                    {setOf(PropFontFamily, PropFontSize, PropFontWeight, PropFontStyle, PropLineHeight), parseFont},
 		"letter-spacing":          {setOf(PropLetterSpacing), parseLetterSpacing},
 		"text-transform":          {setOf(PropTextTransform), parseTextTransform},
 		"line-height":             {setOf(PropLineHeight), parseLineHeight},
@@ -127,19 +132,21 @@ func init() {
 
 		"transition":                 {transitionProps, parseTransition},
 		"transition-property":        {setOf(PropTransitionProperty), parseTransitionProperty},
-		"transition-duration":        {setOf(PropTransitionDuration), timeInto(func(v *Values) *float64 { return &v.Transition.Duration })},
-		"transition-delay":           {setOf(PropTransitionDelay), timeInto(func(v *Values) *float64 { return &v.Transition.Delay })},
-		"transition-timing-function": {setOf(PropTransitionTiming), parseTransitionTiming},
+		"transition-duration":        {setOf(PropTransitionDuration), timeListInto(func(v *Values) *[]float64 { return &v.Transition.Durations }, false)},
+		"transition-delay":           {setOf(PropTransitionDelay), timeListInto(func(v *Values) *[]float64 { return &v.Transition.Delays }, true)},
+		"transition-timing-function": {setOf(PropTransitionTiming), timingListInto(func(v *Values) *[]Timing { return &v.Transition.Timings })},
 		"transition-behavior":        {setOf(PropTransitionBehavior), parseTransitionBehavior},
 
-		"animation":             {animationProps, parseAnimation},
-		"animation-name":        {setOf(PropAnimation), parseAnimationName},
-		"animation-duration":    {setOf(PropAnimDuration), animTimeInto(func(v *Values, secs float64) { v.AnimDuration = []float64{secs} })},
-		"animation-delay":       {setOf(PropAnimDelay), animTimeInto(func(v *Values, secs float64) { v.AnimDelay = []float64{secs} })},
-		"animation-direction":   {setOf(PropAnimDirection), parseAnimationDirection},
-		"animation-fill-mode":   {setOf(PropAnimFill), parseAnimationFillMode},
-		"animation-play-state":  {setOf(PropAnimationPlayState), parseAnimationPlayState},
-		"animation-composition": {setOf(PropAnimComposition), parseAnimationComposition},
+		"animation":                 {animationProps, parseAnimation},
+		"animation-name":            {setOf(PropAnimation), parseAnimationName},
+		"animation-duration":        {setOf(PropAnimDuration), timeListInto(func(v *Values) *[]float64 { return &v.Anim.Durations }, false)},
+		"animation-delay":           {setOf(PropAnimDelay), timeListInto(func(v *Values) *[]float64 { return &v.Anim.Delays }, true)},
+		"animation-timing-function": {setOf(PropAnimTiming), timingListInto(func(v *Values) *[]Timing { return &v.Anim.Timings })},
+		"animation-iteration-count": {setOf(PropAnimIteration), parseAnimationIterations},
+		"animation-direction":       {setOf(PropAnimDirection), keywordListInto(animDirections, func(v *Values) *[]uint8 { return &v.Anim.Directions })},
+		"animation-fill-mode":       {setOf(PropAnimFill), keywordListInto(animFills, func(v *Values) *[]uint8 { return &v.Anim.Fills })},
+		"animation-play-state":      {setOf(PropAnimationPlayState), parseAnimationPlayState},
+		"animation-composition":     {setOf(PropAnimComposition), keywordListInto(animCompositions, func(v *Values) *[]uint8 { return &v.Anim.Compositions })},
 
 		"scroll-behavior":       {setOf(PropScrollBehavior), parseScrollBehavior},
 		"scroll-margin":         {scrollMarginProps, parseScrollMargin},
@@ -165,7 +172,11 @@ func init() {
 		"-gtk-icon-source":      {setOf(PropIconSource), parseIconSource},
 		"-gtk-icon-palette":     {setOf(PropIconPalette), parseIconPalette},
 		"caret-color":           {setOf(PropCaretColor), parseCaretColor},
-		"text-decoration":       {setOf(PropTextDecoration), parseTextDecoration},
+		"text-decoration":       {textDecorationProps, parseTextDecoration},
+		"text-decoration-line":  {setOf(PropTextDecorationLine), parseTextDecorationLine},
+		"text-decoration-style": {setOf(PropTextDecorationStyle), parseTextDecorationStyle},
+		"text-decoration-color": {setOf(PropTextDecorationColor), colorInto(func(v *Values) *render.Color { return &v.Decoration.Color })},
+		"text-shadow":           {setOf(PropTextShadow), parseTextShadow},
 		"cursor":                {setOf(PropCursor), parseCursor},
 		"pointer-events":        {setOf(PropPointerEvents), parsePointerEvents},
 		"user-select":           {setOf(PropUserSelect), parseUserSelect},
@@ -194,6 +205,9 @@ func init() {
 		"font-variant":            {fontVariantProps, parseFontVariant},
 		"font-synthesis":          {setOf(PropFontSynthesis), parseFontSynthesis},
 		"font-optical-sizing":     {setOf(PropFontOpticalSizing), parseFontOpticalSizing},
+		"font-palette":            {setOf(PropFontPalette), parseFontPalette},
+		"overflow-wrap":           {setOf(PropOverflowWrap), parseOverflowWrap},
+		"word-wrap":               {setOf(PropOverflowWrap), parseOverflowWrap},
 		"direction":               {setOf(PropDirection), parseDirection},
 		"unicode-bidi":            {setOf(PropUnicodeBidi), parseUnicodeBidi},
 		"writing-mode":            {setOf(PropWritingMode), parseWritingMode},
@@ -213,22 +227,16 @@ var (
 		PropScrollPaddingLeft)
 	transitionProps = setOf(PropTransitionProperty, PropTransitionDuration, PropTransitionTiming, PropTransitionDelay,
 		PropTransitionBehavior)
-	animationProps   = setOf(PropAnimation, PropAnimationPlayState)
+	animationProps = setOf(PropAnimation, PropAnimationPlayState, PropAnimDuration, PropAnimDelay,
+		PropAnimDirection, PropAnimFill, PropAnimTiming, PropAnimIteration)
+	textDecorationProps = setOf(PropTextDecorationLine, PropTextDecorationStyle, PropTextDecorationColor)
+	borderImageProps    = setOf(PropBorderImageSource, PropBorderImageSlice, PropBorderImageWidth,
+		PropBorderImageOutset, PropBorderImageRepeat)
+	backgroundProps = setOf(PropBackgroundColor, PropBackgroundImage, PropBackgroundSize, PropBackgroundPosition,
+		PropBackgroundRepeat, PropBackgroundClip, PropBackgroundOrigin, PropBackgroundAttachment)
 	fontVariantProps = setOf(PropFontVariantCaps, PropFontVariantNumeric, PropFontVariantLigatures,
 		PropFontVariantEastAsian, PropFontVariantPosition, PropFontVariantAlternates)
 )
-
-// animTimeInto applies a time longhand across the computed animations.
-func animTimeInto(set func(v *Values, secs float64)) func([]token, *ctx, *Values) bool {
-	return func(ts []token, cx *ctx, v *Values) bool {
-		secs, ok := timeOf(components(splitTop(ts, tkComma)[0])[0], cx)
-		if !ok {
-			return false
-		}
-		set(v, secs)
-		return true
-	}
-}
 
 // colorInto parses a single color into the slot the getter returns.
 func colorInto(get func(v *Values) *render.Color) func([]token, *ctx, *Values) bool {
@@ -459,12 +467,12 @@ func parseBorderColors(ts []token, cx *ctx, v *Values) bool {
 // border and outline shorthands. Omitted parts take their initial
 // values: width 0 (GTK's initial border width), style none, color
 // currentColor.
-func lineParts(ts []token, cx *ctx) (width int, style BorderStyle, color render.Color, ok bool) {
+func lineParts(ts []token, cx *ctx, styleOf func([]token) (BorderStyle, bool)) (width int, style BorderStyle, color render.Color, haveC, ok bool) {
 	color = cx.cur()
-	var haveW, haveS, haveC bool
+	var haveW, haveS bool
 	for _, c := range components(ts) {
 		if !haveS {
-			if st, ok := borderStyleOf(c); ok {
+			if st, ok := styleOf(c); ok {
 				style, haveS = st, true
 				continue
 			}
@@ -494,16 +502,16 @@ func lineParts(ts []token, cx *ctx) (width int, style BorderStyle, color render.
 				continue
 			}
 		}
-		return 0, 0, 0, false
+		return 0, 0, 0, false, false
 	}
-	return width, style, color, haveW || haveS || haveC
+	return width, style, color, haveC, haveW || haveS || haveC
 }
 
 // borderSideInto parses the border / border-<side> shorthands; mask
 // selects the sides (bit 0 top, clockwise).
 func borderSideInto(mask int) func([]token, *ctx, *Values) bool {
 	return func(ts []token, cx *ctx, v *Values) bool {
-		w, st, col, ok := lineParts(ts, cx)
+		w, st, col, _, ok := lineParts(ts, cx, borderStyleOf)
 		if !ok {
 			return false
 		}
@@ -520,13 +528,39 @@ func borderSideInto(mask int) func([]token, *ctx, *Values) bool {
 	}
 }
 
+// parseOutline parses the outline shorthand: a width, a style (auto
+// too) and a color in any order, the color resetting to auto when
+// omitted.
 func parseOutline(ts []token, cx *ctx, v *Values) bool {
-	w, st, col, ok := lineParts(ts, cx)
+	w, st, col, haveC, ok := lineParts(ts, cx, outlineStyleOf)
 	if !ok {
 		return false
 	}
-	v.OutlineWidth, v.OutlineStyle, v.OutlineColor = w, st, col
+	v.OutlineWidth, v.OutlineStyle, v.OutlineColor, v.OutlineAuto = w, st, col, !haveC
 	return true
+}
+
+// outlineStyleOf reads an outline style: the border styles but hidden,
+// and auto (css-ui-4 §3.3).
+func outlineStyleOf(ts []token) (BorderStyle, bool) {
+	if len(ts) == 1 && ts[0].ident("auto") {
+		return BorderAuto, true
+	}
+	st, ok := borderStyleOf(ts)
+	return st, ok && st != BorderHidden
+}
+
+// parseOutlineColor parses outline-color: auto or a color.
+func parseOutlineColor(ts []token, cx *ctx, v *Values) bool {
+	if comps := components(ts); len(comps) == 1 && comps[0][0].ident("auto") {
+		v.OutlineColor, v.OutlineAuto = cx.cur(), true
+		return true
+	}
+	cv, ok := parseColor(ts, cx)
+	if ok {
+		v.OutlineColor, v.OutlineAuto = cx.resolve(cv), false
+	}
+	return ok
 }
 
 func outlineStyleInto(ts []token, _ *ctx, v *Values) bool {
@@ -534,7 +568,7 @@ func outlineStyleInto(ts []token, _ *ctx, v *Values) bool {
 	if len(comps) != 1 {
 		return false
 	}
-	st, ok := borderStyleOf(comps[0])
+	st, ok := outlineStyleOf(comps[0])
 	if !ok {
 		return false
 	}
@@ -580,64 +614,6 @@ func parseOpacity(ts []token, cx *ctx, v *Values) bool {
 		return false
 	}
 	v.Opacity = math.Min(1, math.Max(0, n.v))
-	return true
-}
-
-// parseBackground parses the background shorthand: at most one color
-// and at most one image (none or a linear gradient). Position, size,
-// and repeat keywords are out of the subset and reject the declaration.
-func parseBackground(ts []token, cx *ctx, v *Values) bool {
-	v.Background = 0
-	v.Image = Gradient{}
-	v.BgImageURL = ""
-	var haveC, haveI bool
-	for _, c := range components(ts) {
-		if !haveI {
-			if c[0].ident("none") {
-				haveI = true
-				continue
-			}
-			if u, ok := backgroundImageURL(c); ok {
-				v.BgImageURL, haveI = u, true
-				continue
-			}
-			if g, ok := gradientOf(c, cx); ok {
-				v.Image, haveI = g, true
-				continue
-			}
-		}
-		if !haveC {
-			if cv, ok := parseColor(c, cx); ok {
-				v.Background, haveC = cx.resolve(cv), true
-				continue
-			}
-		}
-		return false
-	}
-	return haveC || haveI
-}
-
-func parseBackgroundImage(ts []token, cx *ctx, v *Values) bool {
-	comps := components(ts)
-	if len(comps) != 1 {
-		return false
-	}
-	if comps[0][0].ident("none") {
-		v.Image = Gradient{}
-		v.BgImageURL = ""
-		return true
-	}
-	if u, ok := backgroundImageURL(comps[0]); ok {
-		v.Image = Gradient{}
-		v.BgImageURL = u
-		return true
-	}
-	g, ok := gradientOf(comps[0], cx)
-	if !ok {
-		return false
-	}
-	v.Image = g
-	v.BgImageURL = ""
 	return true
 }
 
@@ -881,62 +857,88 @@ func (g *Gradient) position(cs [][]token, cx *ctx) bool {
 	return true
 }
 
-// stops parses the color-stop list: a color and an optional position
-// (a percentage, or an angle in a conic gradient), auto positions
-// spread evenly, positions never moving backwards.
+// stops parses the color-stop list (CSS Images 4): each a color with
+// up to two positions, a double position standing for two stops of
+// the color, and color hints — a lone position — between two stops.
+// Positions are <length-percentage>s (angles and percentages in a
+// conic gradient); the fixup that settles auto and backwards positions
+// runs against the gradient line at paint (Gradient.Resolve).
 func (g *Gradient) stops(args [][]token, cx *ctx) bool {
-	if len(args) < 2 || len(args) > MaxStops {
-		return false
+	n, colors := 0, 0
+	add := func(s GradientStop) bool {
+		if n == MaxStops {
+			return false
+		}
+		g.Stops[n] = s
+		n++
+		return true
 	}
-	pos := make([]float64, len(args))
 	for i, a := range args {
 		comps := components(a)
-		if len(comps) < 1 || len(comps) > 2 {
+		if len(comps) == 1 {
+			if hint, ok := g.stopPos(comps[0], cx); ok {
+				if i == 0 || i == len(args)-1 || g.Stops[n-1].Hint {
+					return false
+				}
+				hint.Hint = true
+				if !add(hint) {
+					return false
+				}
+				continue
+			}
+		}
+		if len(comps) < 1 || len(comps) > 3 {
 			return false
 		}
 		cv, ok := parseColor(comps[0], cx)
 		if !ok {
 			return false
 		}
-		g.Stops[i].Color = cx.resolve(cv)
-		pos[i] = math.NaN()
-		if len(comps) == 2 {
-			n, ok := evalNumeric(comps[1], cx)
-			switch {
-			case ok && n.kind == numPercent:
-				pos[i] = n.v / 100
-			case ok && n.kind == numAngle && g.Kind == render.GradientConic:
-				pos[i] = n.v / 360
-			default:
+		col := cx.resolve(cv)
+		colors++
+		if len(comps) == 1 {
+			if !add(GradientStop{Color: col}) {
+				return false
+			}
+			continue
+		}
+		for _, c := range comps[1:] {
+			s, ok := g.stopPos(c, cx)
+			s.Color = col
+			if !ok || !add(s) {
 				return false
 			}
 		}
 	}
-	if math.IsNaN(pos[0]) {
-		pos[0] = 0
+	if colors < 2 || g.Stops[n-1].Hint {
+		return false
 	}
-	if last := len(pos) - 1; math.IsNaN(pos[last]) {
-		pos[last] = 1
-	}
-	for i := 1; i < len(pos); i++ {
-		if !math.IsNaN(pos[i]) {
-			pos[i] = math.Max(pos[i], pos[i-1])
-			continue
-		}
-		j := i
-		for math.IsNaN(pos[j]) {
-			j++
-		}
-		step := (pos[j] - pos[i-1]) / float64(j-i+1)
-		for k := i; k < j; k++ {
-			pos[k] = pos[k-1] + step
-		}
-	}
-	for i := range pos {
-		g.Stops[i].Pos = pos[i]
-	}
-	g.N = len(args)
+	g.N = n
 	return true
+}
+
+// stopPos parses one stop or hint position: a percentage or length (a
+// unitless zero too, and calc() mixing them) along a linear or radial
+// gradient's line, a percentage or angle around a conic one.
+func (g *Gradient) stopPos(ts []token, cx *ctx) (GradientStop, bool) {
+	n, ok := evalNumeric(ts, cx)
+	if !ok {
+		return GradientStop{}, false
+	}
+	conic := g.Kind == render.GradientConic
+	switch {
+	case n.kind == numPercent:
+		return GradientStop{Pos: n.v / 100, At: true}, true
+	case n.kind == numNumber && n.v == 0:
+		return GradientStop{At: true}, true
+	case conic && n.kind == numAngle:
+		return GradientStop{Pos: n.v / 360, At: true}, true
+	case !conic && n.kind == numLength:
+		return GradientStop{Px: n.v, At: true}, true
+	case !conic && n.kind == numLengthPct:
+		return GradientStop{Pos: n.pct / 100, Px: n.v, At: true}, true
+	}
+	return GradientStop{}, false
 }
 
 // parseBoxShadow parses `none` or a comma list of shadows: `inset? <x>
@@ -944,7 +946,21 @@ func (g *Gradient) stops(args [][]token, cx *ctx) bool {
 // and the color relative to the lengths. An omitted color is
 // currentColor.
 func parseBoxShadow(ts []token, cx *ctx, v *Values) bool {
-	v.Shadow = Shadows{}
+	return parseShadows(ts, cx, &v.Shadow, true)
+}
+
+// parseTextShadow parses the text-shadow list: box-shadow's layers
+// without inset or spread, each two offsets, an optional blur and an
+// optional color (currentColor by default).
+func parseTextShadow(ts []token, cx *ctx, v *Values) bool {
+	return parseShadows(ts, cx, &v.TextShadow, false)
+}
+
+// parseShadows parses a comma list of shadow layers, or none, into
+// out. box admits box-shadow's inset keyword, spread length and gelm's
+// legacy one-length `COLOR BLUR` glow; text-shadow takes neither.
+func parseShadows(ts []token, cx *ctx, out *Shadows, box bool) bool {
+	*out = Shadows{}
 	layers := splitTop(ts, tkComma)
 	if len(layers) == 1 {
 		if comps := components(layers[0]); len(comps) == 1 && comps[0][0].ident("none") {
@@ -957,7 +973,7 @@ func parseBoxShadow(ts []token, cx *ctx, v *Values) bool {
 		var lens []int
 		haveC := false
 		for _, c := range components(layer) {
-			if c[0].ident("inset") && !sh.Inset {
+			if box && c[0].ident("inset") && !sh.Inset {
 				sh.Inset = true
 				continue
 			}
@@ -973,12 +989,15 @@ func parseBoxShadow(ts []token, cx *ctx, v *Values) bool {
 			}
 			return false
 		}
+		if !box && len(lens) > 3 {
+			return false
+		}
 		switch len(lens) {
 		case 1:
 			// gelm's pre-CSS-3 one-shadow form, `COLOR BLUR`: a centered
 			// glow. Kept for existing stylesheets; standard CSS always
 			// carries two offsets.
-			if !haveC || lens[0] < 0 || len(layers) != 1 {
+			if !box || !haveC || lens[0] < 0 || len(layers) != 1 {
 				return false
 			}
 			sh.Blur = lens[0]
@@ -996,12 +1015,12 @@ func parseBoxShadow(ts []token, cx *ctx, v *Values) bool {
 		default:
 			return false
 		}
-		if v.Shadow.N == MaxShadows {
-			warnf("box-shadow: layers past %d dropped", MaxShadows)
+		if out.N == MaxShadows {
+			warnf("shadow layers past %d dropped", MaxShadows)
 			break
 		}
-		v.Shadow.Layers[v.Shadow.N] = sh
-		v.Shadow.N++
+		out.Layers[out.N] = sh
+		out.N++
 	}
 	return true
 }
@@ -1053,7 +1072,7 @@ func parseFontSize(ts []token, cx *ctx, v *Values) bool {
 	if comps[0][0].kind == tkIdent {
 		scale, ok := map[string]float64{
 			"xx-small": 3.0 / 5, "x-small": 3.0 / 4, "small": 8.0 / 9, "medium": 1,
-			"large": 6.0 / 5, "x-large": 3.0 / 2, "xx-large": 2, "smaller": 1 / 1.2, "larger": 1.2,
+			"large": 6.0 / 5, "x-large": 3.0 / 2, "xx-large": 2, "xxx-large": 3, "smaller": 1 / 1.2, "larger": 1.2,
 		}[strings.ToLower(comps[0][0].s)]
 		if !ok {
 			return false
@@ -1422,6 +1441,9 @@ func parseTransformOrigin(ts []token, cx *ctx, v *Values) bool {
 		if !ok {
 			return false
 		}
+		if n.kind == numNumber && n.v == 0 {
+			n.kind = numLength
+		}
 		switch n.kind {
 		case numLength:
 			if !seenX {
@@ -1542,9 +1564,9 @@ func parseFontWeight(ts []token, cx *ctx, v *Values) bool {
 		case "bold":
 			v.FontWeight = 700
 		case "bolder":
-			v.FontWeight = min(900, cx.wt()+300)
+			v.FontWeight = bolderWeight(cx.wt())
 		case "lighter":
-			v.FontWeight = max(100, cx.wt()-300)
+			v.FontWeight = lighterWeight(cx.wt())
 		default:
 			return false
 		}
@@ -1574,10 +1596,36 @@ func parseFontStyle(ts []token, _ *ctx, v *Values) bool {
 	return true
 }
 
-// parseFont parses the font shorthand: [style] [weight] size family.
+// bolderWeight and lighterWeight are the relative weights CSS Fonts 4
+// §2.2 tabulates against the inherited weight.
+func bolderWeight(w int) int {
+	switch {
+	case w < 350:
+		return 400
+	case w < 550:
+		return 700
+	}
+	return 900
+}
+
+func lighterWeight(w int) int {
+	switch {
+	case w < 100:
+		return w
+	case w < 550:
+		return 100
+	case w < 750:
+		return 400
+	}
+	return 700
+}
+
+// parseFont parses the font shorthand: [style] [weight] size
+// [/ line-height] family. The omitted longhands reset to their
+// initial values, line-height to normal.
 func parseFont(ts []token, cx *ctx, v *Values) bool {
 	comps := components(ts)
-	v.Italic, v.FontWeight = false, 400
+	v.Italic, v.FontWeight, v.LineHeight = false, 400, 0
 	i := 0
 	for ; i < len(comps); i++ {
 		if parseFontStyle(comps[i], cx, v) && !comps[i][0].ident("normal") {
@@ -1591,7 +1639,13 @@ func parseFont(ts []token, cx *ctx, v *Values) bool {
 	if i >= len(comps) || !parseFontSize(comps[i], cx, v) {
 		return false
 	}
-	// The family is everything after the size component.
+	if i+1 < len(comps) && len(comps[i+1]) == 1 && comps[i+1][0].is('/') {
+		if i+2 >= len(comps) || !parseLineHeight(comps[i+2], cx, v) {
+			return false
+		}
+		i += 2
+	}
+	// The family is everything after the size (and line-height).
 	var fam []token
 	for j, t := range ts {
 		if t.pos >= comps[i][len(comps[i])-1].end {
@@ -1646,6 +1700,45 @@ func identOf(comps [][]token) (string, bool) {
 		return "", false
 	}
 	return strings.ToLower(comps[0][0].s), true
+}
+
+// parseFontPalette parses font-palette: normal, light or dark.
+func parseFontPalette(ts []token, _ *ctx, v *Values) bool {
+	s, ok := identOf(components(ts))
+	if !ok {
+		return false
+	}
+	switch s {
+	case "normal":
+		v.Palette = PaletteNormal
+	case "light":
+		v.Palette = PaletteLight
+	case "dark":
+		v.Palette = PaletteDark
+	default:
+		return false
+	}
+	return true
+}
+
+// parseOverflowWrap parses overflow-wrap (and word-wrap): normal,
+// break-word or anywhere.
+func parseOverflowWrap(ts []token, _ *ctx, v *Values) bool {
+	s, ok := identOf(components(ts))
+	if !ok {
+		return false
+	}
+	switch s {
+	case "normal":
+		v.OverflowWrap = OverflowWrapNormal
+	case "break-word":
+		v.OverflowWrap = OverflowWrapBreakWord
+	case "anywhere":
+		v.OverflowWrap = OverflowWrapAnywhere
+	default:
+		return false
+	}
+	return true
 }
 
 // parseTextAlign parses text-align: start, end, left, right, center,
@@ -1910,125 +2003,101 @@ func parseFontVariantCaps(ts []token, _ *ctx, v *Values) bool {
 	return true
 }
 
-// parseFontVariantNumeric parses font-variant-numeric's keyword list.
-func parseFontVariantNumeric(ts []token, _ *ctx, v *Values) bool {
-	comps := components(ts)
+// keywordFlags parses a space-separated keyword list into a flag set:
+// every keyword at most once, and at most one keyword from each
+// exclusive group (a mask of the flags that exclude each other).
+func keywordFlags[F ~uint8 | ~uint16](comps [][]token, words map[string]F, groups ...F) (F, bool) {
+	var flags F
 	if len(comps) == 0 {
-		return false
+		return 0, false
 	}
-	var flags FontVariantNumeric
 	for _, c := range comps {
 		s, ok := identOf([][]token{c})
 		if !ok {
-			return false
+			return 0, false
 		}
-		switch s {
-		case "normal":
-			flags = 0
-		case "lining-nums":
-			flags |= NumLining
-		case "oldstyle-nums":
-			flags |= NumOldStyle
-		case "proportional-nums":
-			flags |= NumProportional
-		case "tabular-nums":
-			flags |= NumTabular
-		case "diagonal-fractions":
-			flags |= NumDiagonalFractions
-		case "stacked-fractions":
-			flags |= NumStackedFractions
-		case "ordinal":
-			flags |= NumOrdinal
-		case "slashed-zero":
-			flags |= NumSlashedZero
-		default:
-			return false
+		f, ok := words[s]
+		if !ok || flags&f != 0 {
+			return 0, false
 		}
+		for _, g := range groups {
+			if g&f != 0 && flags&g != 0 {
+				return 0, false
+			}
+		}
+		flags |= f
 	}
-	v.VariantNumeric = flags
-	return true
+	return flags, true
 }
 
-// parseFontVariantLigatures parses font-variant-ligatures' keyword
-// list; a no-* flag clears its counterpart.
+// keywordFlagsOrNormal is keywordFlags with the lone `normal` keyword
+// meaning the empty set.
+func keywordFlagsOrNormal[F ~uint8 | ~uint16](comps [][]token, words map[string]F, groups ...F) (F, bool) {
+	if s, ok := identOf(comps); ok && s == "normal" {
+		return 0, true
+	}
+	return keywordFlags(comps, words, groups...)
+}
+
+// The font-variant list longhands' keywords.
+var (
+	numericWords = map[string]FontVariantNumeric{
+		"lining-nums": NumLining, "oldstyle-nums": NumOldStyle,
+		"proportional-nums": NumProportional, "tabular-nums": NumTabular,
+		"diagonal-fractions": NumDiagonalFractions, "stacked-fractions": NumStackedFractions,
+		"ordinal": NumOrdinal, "slashed-zero": NumSlashedZero,
+	}
+	ligatureWords = map[string]FontVariantLigatures{
+		"common-ligatures": LigCommon, "no-common-ligatures": LigNoCommon,
+		"discretionary-ligatures": LigDiscretionary, "no-discretionary-ligatures": LigNoDiscretionary,
+		"historical-ligatures": LigHistorical, "no-historical-ligatures": LigNoHistorical,
+		"contextual": LigContextual, "no-contextual": LigNoContextual,
+	}
+	eastAsianWords = map[string]FontVariantEastAsian{
+		"jis78": EAJis78, "jis83": EAJis83, "jis90": EAJis90, "jis04": EAJis04,
+		"simplified": EASimplified, "traditional": EATraditional,
+		"full-width": EAFullWidth, "proportional-width": EAProportional, "ruby": EARuby,
+	}
+)
+
+// parseFontVariantNumeric parses font-variant-numeric: normal, or at
+// most one of each figure, spacing and fraction pair plus ordinal and
+// slashed-zero.
+func parseFontVariantNumeric(ts []token, _ *ctx, v *Values) bool {
+	f, ok := keywordFlagsOrNormal(components(ts), numericWords,
+		NumLining|NumOldStyle, NumProportional|NumTabular, NumDiagonalFractions|NumStackedFractions)
+	if ok {
+		v.VariantNumeric = f
+	}
+	return ok
+}
+
+// parseFontVariantLigatures parses font-variant-ligatures: normal,
+// none (every ligature group off), or at most one of each group's on
+// and off keywords.
 func parseFontVariantLigatures(ts []token, _ *ctx, v *Values) bool {
 	comps := components(ts)
-	if len(comps) == 0 {
-		return false
+	if s, ok := identOf(comps); ok && s == "none" {
+		v.VariantLig = LigNoCommon | LigNoDiscretionary | LigNoHistorical | LigNoContextual
+		return true
 	}
-	var flags FontVariantLigatures
-	for _, c := range comps {
-		s, ok := identOf([][]token{c})
-		if !ok {
-			return false
-		}
-		switch s {
-		case "normal":
-			flags = 0
-		case "common-ligatures":
-			flags |= LigCommon
-		case "no-common-ligatures":
-			flags &^= LigCommon
-		case "discretionary-ligatures":
-			flags |= LigDiscretionary
-		case "no-discretionary-ligatures":
-			flags &^= LigDiscretionary
-		case "historical-ligatures":
-			flags |= LigHistorical
-		case "no-historical-ligatures":
-			flags &^= LigHistorical
-		case "contextual":
-			flags |= LigContextual
-		case "no-contextual":
-			flags &^= LigContextual
-		default:
-			return false
-		}
+	f, ok := keywordFlagsOrNormal(comps, ligatureWords, LigCommon|LigNoCommon,
+		LigDiscretionary|LigNoDiscretionary, LigHistorical|LigNoHistorical, LigContextual|LigNoContextual)
+	if ok {
+		v.VariantLig = f
 	}
-	v.VariantLig = flags
-	return true
+	return ok
 }
 
-// parseFontVariantEastAsian parses font-variant-east-asian's keyword
-// list.
+// parseFontVariantEastAsian parses font-variant-east-asian: normal,
+// or at most one variant form, at most one width, and ruby.
 func parseFontVariantEastAsian(ts []token, _ *ctx, v *Values) bool {
-	comps := components(ts)
-	if len(comps) == 0 {
-		return false
+	f, ok := keywordFlagsOrNormal(components(ts), eastAsianWords,
+		EAJis78|EAJis83|EAJis90|EAJis04|EASimplified|EATraditional, EAFullWidth|EAProportional)
+	if ok {
+		v.VariantEA = f
 	}
-	var flags FontVariantEastAsian
-	for _, c := range comps {
-		s, ok := identOf([][]token{c})
-		if !ok {
-			return false
-		}
-		switch s {
-		case "normal":
-			flags = 0
-		case "jis78":
-			flags |= EAJis78
-		case "jis83":
-			flags |= EAJis83
-		case "jis90":
-			flags |= EAJis90
-		case "jis2004":
-			flags |= EAJis2004
-		case "simplified":
-			flags |= EASimplified
-		case "traditional":
-			flags |= EATraditional
-		case "full-width":
-			flags |= EAFullWidth
-		case "proportional-width":
-			flags |= EAProportional
-		case "ruby":
-			flags |= EARuby
-		default:
-			return false
-		}
-	}
-	v.VariantEA = flags
-	return true
+	return ok
 }
 
 // parseFontVariantPosition parses font-variant-position.
@@ -2069,42 +2138,56 @@ func parseFontVariantAlternates(ts []token, _ *ctx, v *Values) bool {
 	return true
 }
 
-// parseFontVariant parses the font-variant shorthand: any mix of the
-// sub-property keywords, each landing on its own longhand.
+// fontVariantParsers are the font-variant shorthand's longhand parsers,
+// in the order the shorthand offers a keyword to them.
+var fontVariantParsers = [...]func([]token, *ctx, *Values) bool{
+	parseFontVariantCaps, parseFontVariantNumeric, parseFontVariantLigatures,
+	parseFontVariantEastAsian, parseFontVariantPosition, parseFontVariantAlternates,
+}
+
+// parseFontVariant parses the font-variant shorthand: normal, none
+// (ligatures off, the rest normal), or a mix of the longhands'
+// keywords — each keyword lands on the longhand that takes it, the
+// list longhands gathering theirs, and every longhand left out
+// resets to normal.
 func parseFontVariant(ts []token, cx *ctx, v *Values) bool {
 	comps := components(ts)
 	if len(comps) == 0 {
 		return false
 	}
-	scratch := &Values{}
-	seen := false
+	var out Values
+	if s, ok := identOf(comps); ok && (s == "normal" || s == "none") {
+		if s == "none" {
+			out.VariantLig = LigNoCommon | LigNoDiscretionary | LigNoHistorical | LigNoContextual
+		}
+		v.VariantCaps, v.VariantNumeric, v.VariantLig = out.VariantCaps, out.VariantNumeric, out.VariantLig
+		v.VariantEA, v.VariantPos, v.VariantAlt = out.VariantEA, out.VariantPos, out.VariantAlt
+		return true
+	}
+	groups := make([][]token, len(fontVariantParsers))
 	for _, c := range comps {
-		switch {
-		case parseFontVariantCaps(c, cx, scratch):
-			seen = true
-		case parseFontVariantNumeric(c, cx, scratch):
-			seen = true
-		case parseFontVariantLigatures(c, cx, scratch):
-			seen = true
-		case parseFontVariantEastAsian(c, cx, scratch):
-			seen = true
-		case parseFontVariantPosition(c, cx, scratch):
-			seen = true
-		case parseFontVariantAlternates(c, cx, scratch):
-			seen = true
-		default:
+		if s, ok := identOf([][]token{c}); !ok || s == "normal" || s == "none" {
+			return false
+		}
+		owned := false
+		for i, parse := range fontVariantParsers {
+			var probe Values
+			if parse(c, cx, &probe) {
+				groups[i], owned = append(groups[i], c...), true
+				break
+			}
+		}
+		if !owned {
 			return false
 		}
 	}
-	if !seen {
-		return false
+	for i, parse := range fontVariantParsers {
+		if len(groups[i]) > 0 && !parse(groups[i], cx, &out) {
+			return false
+		}
 	}
-	v.VariantCaps = scratch.VariantCaps
-	v.VariantNumeric = scratch.VariantNumeric
-	v.VariantLig = scratch.VariantLig
-	v.VariantEA = scratch.VariantEA
-	v.VariantPos = scratch.VariantPos
-	v.VariantAlt = scratch.VariantAlt
+	v.VariantCaps, v.VariantNumeric, v.VariantLig = out.VariantCaps, out.VariantNumeric, out.VariantLig
+	v.VariantEA, v.VariantPos, v.VariantAlt = out.VariantEA, out.VariantPos, out.VariantAlt
 	return true
 }
 
@@ -2224,204 +2307,4 @@ func timeOf(ts []token, cx *ctx) (float64, bool) {
 		return 0, false
 	}
 	return n.v, true
-}
-
-func timeInto(get func(v *Values) *float64) func([]token, *ctx, *Values) bool {
-	return func(ts []token, cx *ctx, v *Values) bool {
-		// Only the first entry of a list is kept: one transition per node.
-		first := components(splitTop(ts, tkComma)[0])
-		if len(first) != 1 {
-			return false
-		}
-		t, ok := timeOf(first[0], cx)
-		if !ok || t < 0 {
-			return false
-		}
-		*get(v) = t
-		return true
-	}
-}
-
-// timingOf parses a timing function keyword or cubic-bezier()/steps().
-func timingOf(ts []token, cx *ctx) (Timing, bool) {
-	if ts[0].kind == tkIdent {
-		switch strings.ToLower(ts[0].s) {
-		case "linear":
-			return Timing{X1: 0, Y1: 0, X2: 1, Y2: 1}, true
-		case "ease":
-			return Timing{X1: 0.25, Y1: 0.1, X2: 0.25, Y2: 1}, true
-		case "ease-in":
-			return Timing{X1: 0.42, Y1: 0, X2: 1, Y2: 1}, true
-		case "ease-out":
-			return Timing{X1: 0, Y1: 0, X2: 0.58, Y2: 1}, true
-		case "ease-in-out":
-			return Timing{X1: 0.42, Y1: 0, X2: 0.58, Y2: 1}, true
-		}
-		return Timing{}, false
-	}
-	if ts[0].kind != tkFunc {
-		return Timing{}, false
-	}
-	args := splitTop(funcArgs(ts), tkComma)
-	switch ts[0].s {
-	case "cubic-bezier":
-		if len(args) != 4 {
-			return Timing{}, false
-		}
-		var f [4]float64
-		for i, a := range args {
-			n, ok := evalNumeric(a, cx)
-			if !ok || n.kind != numNumber {
-				return Timing{}, false
-			}
-			f[i] = n.v
-		}
-		return Timing{X1: f[0], Y1: f[1], X2: f[2], Y2: f[3]}, true
-	case "steps":
-		n, ok := evalNumeric(args[0], cx)
-		if !ok || n.kind != numNumber || n.v < 1 {
-			return Timing{}, false
-		}
-		t := Timing{Steps: int(n.v)}
-		if len(args) == 2 {
-			comps := components(args[1])
-			if len(comps) != 1 || comps[0][0].kind != tkIdent {
-				return Timing{}, false
-			}
-			jump, ok := timingJump(strings.ToLower(comps[0][0].s))
-			if !ok {
-				return Timing{}, false
-			}
-			t.StepPos = uint8(jump)
-		} else if len(args) > 2 {
-			return Timing{}, false
-		}
-		return t, true
-	case "linear":
-		return parseLinearPoints(args, cx)
-	}
-	return Timing{}, false
-}
-
-func parseTransitionTiming(ts []token, cx *ctx, v *Values) bool {
-	first := components(splitTop(ts, tkComma)[0])
-	if len(first) != 1 {
-		return false
-	}
-	t, ok := timingOf(first[0], cx)
-	if !ok {
-		return false
-	}
-	v.Transition.Timing = t
-	return true
-}
-
-// transitionTarget maps a transition-property name to the longhands it
-// animates; all and none are handled by the callers.
-func transitionTarget(name string) (PropSet, bool) {
-	name = strings.ToLower(name)
-	if def, ok := propTable[name]; ok {
-		return def.covers, true
-	}
-	if ignoredProps[name] {
-		return PropSet{}, true
-	}
-	return PropSet{}, false
-}
-
-func parseTransitionProperty(ts []token, _ *ctx, v *Values) bool {
-	v.Transition.All, v.Transition.Props = false, PropSet{}
-	for _, item := range splitTop(ts, tkComma) {
-		comps := components(item)
-		if len(comps) != 1 || comps[0][0].kind != tkIdent {
-			return false
-		}
-		name := comps[0][0].s
-		switch strings.ToLower(name) {
-		case "all":
-			v.Transition.All = true
-			continue
-		case "none":
-			continue
-		}
-		ps, ok := transitionTarget(name)
-		if !ok {
-			return false
-		}
-		v.Transition.Props = v.Transition.Props.Or(ps)
-	}
-	return true
-}
-
-// parseTransition parses the shorthand's comma list; each item is
-// `[property] [duration] [timing] [delay]` in any order, the first time
-// the duration and the second the delay.
-func parseTransition(ts []token, cx *ctx, v *Values) bool {
-	v.Transition = Transition{Timing: Timing{X1: 0.25, Y1: 0.1, X2: 0.25, Y2: 1}}
-	for _, item := range splitTop(ts, tkComma) {
-		var props PropSet
-		all := false
-		haveP, haveD, haveDelay, haveT := false, false, false, false
-		var dur, delay float64
-		discrete := false
-		timing := Timing{X1: 0.25, Y1: 0.1, X2: 0.25, Y2: 1}
-		for _, c := range components(item) {
-			if t, ok := timeOf(c, cx); ok {
-				switch {
-				case !haveD:
-					dur, haveD = t, true
-				case !haveDelay:
-					delay, haveDelay = t, true
-				default:
-					return false
-				}
-				continue
-			}
-			if !haveT {
-				if tm, ok := timingOf(c, cx); ok {
-					timing, haveT = tm, true
-					continue
-				}
-			}
-			if len(c) == 1 && c[0].kind == tkIdent {
-				switch strings.ToLower(c[0].s) {
-				case "allow-discrete":
-					discrete = true
-					continue
-				case "normal":
-					discrete = false
-					continue
-				}
-			}
-			if !haveP && c[0].kind == tkIdent {
-				switch strings.ToLower(c[0].s) {
-				case "all":
-					all, haveP = true, true
-					continue
-				case "none":
-					haveP = true
-					continue
-				}
-				if ps, ok := transitionTarget(c[0].s); ok {
-					props, haveP = ps, true
-					continue
-				}
-			}
-			return false
-		}
-		if !haveP {
-			all = true // the property defaults to all
-		}
-		v.Transition.All = v.Transition.All || all
-		v.Transition.Props = v.Transition.Props.Or(props)
-		v.Transition.Discrete = v.Transition.Discrete || discrete
-		// One duration per node: the longest wins, which is what a
-		// multi-property transition looks like on screen.
-		if dur > v.Transition.Duration {
-			v.Transition.Duration = dur
-			v.Transition.Delay = delay
-			v.Transition.Timing = timing
-		}
-	}
-	return true
 }

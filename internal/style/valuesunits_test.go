@@ -13,17 +13,6 @@ func computeEnv(s *Sheet, n Node, env Env) Values {
 	return v
 }
 
-// testAttrNode carries attributes attr() resolves.
-type testAttrNode struct {
-	node
-	attrs map[string]string
-}
-
-func (n *testAttrNode) StyleAttr(name string) (string, bool) {
-	v, ok := n.attrs[name]
-	return v, ok
-}
-
 func TestViewportUnits(t *testing.T) {
 	s := parseOne(t, `
 		a { padding: 10vw; margin: 10vh; min-width: 50vmin; min-height: 50vmax; }
@@ -171,12 +160,8 @@ func TestAttrFunction(t *testing.T) {
 	s := parseOne(t, `
 		a { min-width: attr(data-w px); color: attr(data-c color); padding: attr(data-g); }
 	`)
-	n := &testAttrNode{attrs: map[string]string{
-		"data-w": "7",
-		"data-c": "#ff0000",
-		"data-g": "3px",
-	}}
-	n.target = Target{Element: "a"}
+	n := el("a")
+	n.target.Attrs = []Attr{{"data-w", "7"}, {"data-c", "#ff0000"}, {"data-g", "3px"}}
 	v := computeEnv(s, n, Env{Rem: 16})
 	if v.Layout.MinWidth.Px() != 7 || v.Color != 0xffff0000 || v.Padding.Top != 3 {
 		t.Errorf("typed attr(): %d %08x %+v", v.Layout.MinWidth.Px(), uint32(v.Color), v.Padding)

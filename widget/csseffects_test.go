@@ -50,6 +50,10 @@ func TestTransformTransitionRevertsToIdentity(t *testing.T) {
 	b := NewBox(Column, 0, 0)
 	frame(t, b, 40, 40)
 	loadCSS(t, `box { transition: transform 50ms linear; }`)
+	// The restyle starts the transition at its start value.
+	if m := b.style(b).Transform.M; !affineEq(m, render.Scale(2, 2)) {
+		t.Fatalf("the transition starts at %v, want the scale(2) it leaves", m)
+	}
 	for c.step() {
 	}
 	m := b.style(b).Transform.M

@@ -36,7 +36,7 @@ const goldenPad = 12
 // focused widget, mirroring app's focusRingPad — the ring is drawn by
 // the window around the focused widget, and the harness reproduces it
 // so snapshots cover it.
-const goldenRingPad = 2
+const goldenRingPad = FocusRingWidth
 
 // goldenShot carries the per-snapshot options.
 type goldenShot struct {

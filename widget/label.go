@@ -2,6 +2,7 @@ package widget
 
 import (
 	"math"
+	"slices"
 	"strings"
 	"unicode"
 
@@ -61,7 +62,10 @@ type Label struct {
 	// (GTK lines); 0 is uncapped.
 	maxLines int
 	shaped   *render.ShapedText
-	natural  Size
+	// shadow is the offscreen layer a blurred text-shadow paints
+	// through, reused across frames.
+	shadow  *render.Layer
+	natural Size
 	// measured is the last Measure result, what ShrinkableWidth gives
 	// from.
 	measured Size
@@ -278,12 +282,13 @@ func (l *Label) effStyleIn(v *style.Values) (render.Font, float64) {
 func (l *Label) effStyle() (render.Font, float64) { return l.effStyleIn(l.style(l)) }
 
 // styleRestyled implements styleRestyler: a changed effective face,
-// size, or text transform reshapes the cached run and drops the
-// measure cache.
+// size, text transform or white-space collapsing reshapes the cached
+// run and drops the measure cache.
 func (l *Label) styleRestyled(old, new style.Values) {
 	of, opx := l.effStyleIn(&old)
 	nf, npx := l.effStyleIn(&new)
 	if of != nf || opx != npx || old.TextTransform != new.TextTransform ||
+		old.Has(style.PropWhiteSpace) != new.Has(style.PropWhiteSpace) || old.WhiteSpace != new.WhiteSpace ||
 		l.effDirection(&old) != l.effDirection(&new) {
 		l.retext()
 		l.InvalidateLayout()
@@ -297,10 +302,29 @@ func (l *Label) textColor(v *style.Values) render.Color {
 	return pickc(l.color, v, style.PropColor, l.color)
 }
 
-// shown is the text as painted: the stylesheet's text-transform applied
-// (uppercase, lowercase, capitalize).
+// shown is the text as painted: the stylesheet's text-transform
+// applied (uppercase, lowercase, capitalize), then a declared
+// white-space's collapsing.
 func (l *Label) shown() string {
-	return transformText(l.text, l.style(l).TextTransform)
+	v := l.style(l)
+	return collapseSpaces(transformText(l.text, v.TextTransform), v)
+}
+
+// collapseSpaces applies a declared white-space's collapsing (CSS
+// Text 3 §4.1): normal and nowrap collapse spaces and newlines,
+// pre-line spaces only; the preserving values, and an undeclared
+// white-space (the toolkit's text as written), keep s.
+func collapseSpaces(s string, v *style.Values) string {
+	if !v.Has(style.PropWhiteSpace) {
+		return s
+	}
+	switch v.WhiteSpace {
+	case style.WhiteSpaceNormal, style.WhiteSpaceNowrap:
+		return render.CollapseWhiteSpace(s, true)
+	case style.WhiteSpacePreLine:
+		return render.CollapseWhiteSpace(s, false)
+	}
+	return s
 }
 
 // effDirection is the base paragraph direction the label resolves
@@ -374,6 +398,18 @@ func (l *Label) wrapOf(v *style.Values) bool {
 	return true
 }
 
+// multiline reports whether the label lays out rows rather than one
+// line: it wraps, or a white-space that preserves newlines keeps one.
+func (l *Label) multiline(v *style.Values) bool {
+	if l.wrapOf(v) {
+		return true
+	}
+	if !v.Has(style.PropWhiteSpace) || v.WhiteSpace == style.WhiteSpaceNormal || v.WhiteSpace == style.WhiteSpaceNowrap {
+		return false
+	}
+	return strings.Contains(l.shown(), "\n")
+}
+
 // ellOf is the truncation mode: line-clamp implies an end ellipsis,
 // text-overflow ellipsis takes end when nothing stronger is set, and
 // clip clears a stylesheet ellipsis.
@@ -402,9 +438,10 @@ func (l *Label) maxLinesOf(v *style.Values) int {
 }
 
 // wrapOpts is the CSS wrap configuration the breaker takes: word-break,
-// hyphens, line-break anywhere, and the white-space family's space
-// preservation.
-func wrapOpts(v *style.Values) render.WrapOptions {
+// hyphens (manual, the initial value, when undeclared), line-break
+// anywhere, overflow-wrap, the white-space family's space
+// preservation, and the first row's text-indent.
+func (l *Label) wrapOpts(v *style.Values) render.WrapOptions {
 	var o render.WrapOptions
 	switch v.WordBreak {
 	case style.WordBreakBreakAll:
@@ -412,17 +449,31 @@ func wrapOpts(v *style.Values) render.WrapOptions {
 	case style.WordBreakKeepAll:
 		o.Break = render.WrapWordKeepAll
 	}
-	switch v.Hyphens {
-	case style.HyphensManual:
+	switch {
+	case !v.Has(style.PropHyphens), v.Hyphens == style.HyphensManual:
 		o.Hyphens = render.HyphensManual
-	case style.HyphensAuto:
+	case v.Hyphens == style.HyphensAuto:
 		o.Hyphens = render.HyphensAuto
 	}
 	o.Anywhere = v.LineBreak == style.LineBreakAnywhere
+	o.BreakWords = v.OverflowWrap != style.OverflowWrapNormal
 	switch v.WhiteSpace {
-	case style.WhiteSpacePre, style.WhiteSpacePreWrap, style.WhiteSpaceBreakSpaces:
+	case style.WhiteSpacePre, style.WhiteSpacePreWrap:
 		o.PreserveSpaces = true
+	case style.WhiteSpaceBreakSpaces:
+		o.PreserveSpaces, o.BreakSpaces = true, true
 	}
+	o.Indent = l.indentOf(v)
+	return o
+}
+
+// minContentOpts is the breaking that sets the min-content width: every
+// soft wrap opportunity, with overflow-wrap's emergency breaks counting
+// only under anywhere (CSS Text 3 §5.5) and no indent.
+func (l *Label) minContentOpts(v *style.Values) render.WrapOptions {
+	o := l.wrapOpts(v)
+	o.BreakWords = v.OverflowWrap == style.OverflowWrapAnywhere
+	o.Indent = 0
 	return o
 }
 
@@ -517,44 +568,58 @@ func (l *Label) textNatural(con Constraints) Size {
 	v := l.style(l)
 	face, px := l.effStyle()
 	lineH := l.lineBox(v)
-	wrap, ell := l.wrapOf(v), l.ellOf(v)
-	indent := int(math.Ceil(l.indentOf(v)))
-	if !wrap {
-		if l.shaped.Advance() <= float64(con.Max.W) || ell == EllipsizeNone {
+	ell := l.ellOf(v)
+	indent := l.indentOf(v)
+	if !l.multiline(v) {
+		if l.shaped.Advance()+indent <= float64(con.Max.W) || ell == EllipsizeNone {
 			// The whole text fits the offered width, or it overflows and
 			// clips: no mode applies. The height comes from the live line
 			// box — natural was cached before any stylesheet resolved.
 			sz := l.natural
+			sz.W = int(math.Ceil(l.shaped.Advance() + indent))
 			sz.H = lineH
 			return clampSize(sz, con)
 		}
-		truncated := render.EllipsizeText(face, l.shown(), ell, float64(con.Max.W), px)
+		truncated := render.EllipsizeText(face, l.shown(), ell, float64(con.Max.W)-indent, px)
 		return clampSize(Size{
-			W: int(math.Ceil(face.Shape(truncated, px).Advance())),
+			W: int(math.Ceil(face.Shape(truncated, px).Advance() + indent)),
 			H: lineH,
 		}, con)
 	}
 	rows := l.wrapped(float64(con.Max.W))
-	w := float64(indent)
-	for _, ln := range rows {
-		w = math.Max(w, face.Shape(ln, px).Advance())
+	w := 0.0
+	for i, ln := range rows {
+		adv := face.Shape(ln, px).Advance()
+		if i == 0 {
+			adv += indent
+		}
+		w = math.Max(w, adv)
 	}
 	return clampSize(Size{W: int(math.Ceil(w)), H: len(rows) * lineH}, con)
 }
 
-// wrapped breaks the text at width, ellipsizing the final row when a
-// mode is set - the shared body of Measure and Paint, so the label
-// reports and draws the same rows.
+// wrapped lays the text out in rows at width - soft-wrapped when the
+// label wraps, split only at preserved newlines when it does not -
+// ellipsizing the final row when a mode is set: the shared body of
+// Measure and Paint, so the label reports and draws the same rows.
 func (l *Label) wrapped(width float64) []string {
 	face, px := l.effStyle()
 	v := l.style(l)
 	ell, maxLines := l.ellOf(v), l.maxLinesOf(v)
-	lines := render.WrapTextOpts(face, l.shown(), width, px, wrapOpts(v))
+	breakAt := width
+	if !l.wrapOf(v) {
+		breakAt = math.Inf(1)
+	}
+	lines := render.WrapTextOpts(face, l.shown(), breakAt, px, l.wrapOpts(v))
 	if maxLines > 0 && ell != EllipsizeNone && len(lines) > maxLines {
 		lines = append(lines[:maxLines-1], strings.Join(lines[maxLines-1:], " "))
 	}
 	if last := len(lines) - 1; ell != EllipsizeNone && lines[last] != "" {
-		lines[last] = render.EllipsizeText(face, lines[last], ell, width, px)
+		w := width
+		if last == 0 {
+			w -= l.indentOf(v)
+		}
+		lines[last] = render.EllipsizeText(face, lines[last], ell, w, px)
 	}
 	return lines
 }
@@ -572,7 +637,7 @@ func (l *Label) MinSize() Size {
 	floor := Size{H: l.lineBox(v)}
 	if l.wrapOf(v) && l.text != "" {
 		w := 0.0
-		for _, tok := range render.WrapText(face, l.shown(), 1, px) {
+		for _, tok := range render.WrapTextOpts(face, l.shown(), 1, px, l.minContentOpts(v)) {
 			w = math.Max(w, face.Shape(tok, px).Advance())
 		}
 		floor.W = int(math.Ceil(w))
@@ -589,8 +654,8 @@ func (l *Label) Arrange(r render.Rect) {
 }
 
 // Paint draws the label's CSS layers (when the stylesheet gives it
-// any), then the text inside the content box: the wrapped rows when
-// wrapping is on, the single line ellipsized as configured otherwise.
+// any), then the text inside the content box: the rows when the label
+// is multiline, the single line ellipsized as configured otherwise.
 func (l *Label) Paint(cv *render.Canvas) {
 	v := l.style(l)
 	b := boxOf(v, render.Insets{})
@@ -602,48 +667,97 @@ func (l *Label) Paint(cv *render.Canvas) {
 	}
 	paintPseudos(cv, l, nodeOf(l), v)
 	content := b.padding.Shrink(b.border.Shrink(l.bounds))
-	face, px := l.effStyleIn(v)
-	col := l.textColor(v)
-	if l.wrapOf(v) {
-		l.paintWrapped(cv, face, px, col, content, v)
+	if clip, ok := overflowClipOf(v, l.bounds); ok {
+		prev := cv.PushClip(clip)
+		l.paintText(cv, v, content)
+		cv.PopClip(prev)
 	} else {
-		text := l.shown()
-		if ell := l.ellOf(v); ell != EllipsizeNone && l.shaped.Advance() > float64(content.W) {
-			text = render.EllipsizeText(face, text, ell, float64(content.W), px)
-		}
-		// A CSS line-height taller than the glyphs centers them in the
-		// taller box (half-leading); a smaller one lets them overflow
-		// the box, centered, rather than skipping the draw. Unstyled
-		// labels keep the plain centering draw.
-		line := content
-		if v.Has(style.PropLineHeight) {
-			if h := l.lineBox(v); h > line.H {
-				line.H = h
-			} else if h < line.H {
-				line.Y += (line.H - l.shaped.LineHeight()) / 2
-				line.H = l.shaped.LineHeight()
-			}
-		}
-		if fl := PseudoStyle(l, "first-letter"); fl != nil && text != "" &&
-			fl.HasAny(style.PropColor, style.PropFontSize, style.PropFontWeight, style.PropFontFamily) {
-			l.drawFirstLetter(cv, fl, face, px, text, line, col, cssDecoration(v), l.alignOf(v), l.effDirection(v))
-		} else {
-			l.drawLine(cv, face, px, text, line, col, cssDecoration(v), l.alignOf(v), l.effDirection(v), 0)
-		}
+		l.paintText(cv, v, content)
 	}
 	paintOutline(cv, v, l.bounds, radii)
 	fx.pop()
+}
+
+// paintText draws the text inside the content box: the rows when the
+// label is multiline, the single line ellipsized as configured
+// otherwise.
+func (l *Label) paintText(cv *render.Canvas, v *style.Values, content render.Rect) {
+	face, px := l.effStyleIn(v)
+	tp := l.textPaint(v, face, px)
+	if l.multiline(v) {
+		l.paintWrapped(cv, tp, content, v)
+		return
+	}
+	text := l.shown()
+	line := l.indented(content, l.indentOf(v))
+	if ell := l.ellOf(v); ell != EllipsizeNone && l.shaped.Advance() > float64(line.W) {
+		text = render.EllipsizeText(face, text, ell, float64(line.W), px)
+	}
+	// A CSS line-height taller than the glyphs centers them in the
+	// taller box (half-leading); a smaller one lets them overflow the
+	// box, centered, rather than skipping the draw. Unstyled labels
+	// keep the plain centering draw.
+	if v.Has(style.PropLineHeight) {
+		if h := l.lineBox(v); h > line.H {
+			line.H = h
+		} else if h < line.H {
+			line.Y += (line.H - l.shaped.LineHeight()) / 2
+			line.H = l.shaped.LineHeight()
+		}
+	}
+	if fl := PseudoStyle(l, "first-letter"); fl != nil && text != "" &&
+		fl.HasAny(style.PropColor, style.PropFontSize, style.PropFontWeight, style.PropFontFamily) {
+		l.drawFirstLetter(cv, fl, tp, text, line)
+		return
+	}
+	l.drawLine(cv, tp, text, line, 0)
+}
+
+// textPaint is what one label draw needs beyond the text and its box:
+// the face and size, the ink, the decoration and shadows, the
+// alignment and direction, and the CSS line box a row needs to draw.
+type textPaint struct {
+	face    render.Font
+	px      float64
+	col     render.Color
+	deco    render.Decoration
+	shadows *style.Shadows
+	align   render.Alignment
+	dir     Direction
+	lineH   int
+}
+
+// textPaint gathers the label's draw parameters under v.
+func (l *Label) textPaint(v *style.Values, face render.Font, px float64) textPaint {
+	return textPaint{
+		face: face, px: px, col: l.textColor(v), deco: cssDecoration(v), shadows: &v.TextShadow,
+		align: l.alignOf(v), dir: l.effDirection(v), lineH: l.lineBox(v),
+	}
+}
+
+// indented narrows a row by the text indent at its start edge: the
+// left in a left-to-right label, the right in a right-to-left one.
+func (l *Label) indented(row render.Rect, indent float64) render.Rect {
+	if indent == 0 {
+		return row
+	}
+	in := int(math.Round(indent))
+	if l.shaped == nil || !l.shaped.RTL() {
+		row.X += in
+	}
+	row.W -= in
+	return row
 }
 
 // drawFirstLetter paints the plain single-line draw with the
 // ::first-letter cascade applied: the first grapheme cluster in the
 // pseudo-element's own face, size, and color at the line start, the
 // remainder in the label's style in the box the cluster vacates.
-func (l *Label) drawFirstLetter(cv *render.Canvas, fl *style.Values, face render.Font, px float64, line string, box render.Rect, col render.Color, deco render.Decoration, align render.Alignment, dir Direction) {
+func (l *Label) drawFirstLetter(cv *render.Canvas, fl *style.Values, tp textPaint, line string, box render.Rect) {
 	rs := []rune(line)
 	_, end := text.ClusterRun(rs, 0)
 	first, rest := string(rs[:end]), string(rs[end:])
-	fFace, fPx := face, px
+	fFace, fPx := tp.face, tp.px
 	if fl.Has(style.PropFontSize) {
 		fPx = fl.FontSize
 	}
@@ -660,7 +774,7 @@ func (l *Label) drawFirstLetter(cv *render.Canvas, fl *style.Values, face render
 			fFace = f
 		}
 	}
-	fCol := col
+	fCol := tp.col
 	if fl.Has(style.PropColor) {
 		fCol = fl.Color
 	}
@@ -670,66 +784,95 @@ func (l *Label) drawFirstLetter(cv *render.Canvas, fl *style.Values, face render
 		return
 	}
 	restBox := box
-	if dir == DirectionRTL {
+	if tp.dir == DirectionRTL {
 		restBox.W = max(restBox.W-int(shF.Advance()), 0)
 	} else {
 		restBox.X += int(shF.Advance())
 		restBox.W = max(restBox.W-int(shF.Advance()), 0)
 	}
-	l.drawLine(cv, face, px, rest, restBox, col, deco, align, dir, 0)
+	l.drawLine(cv, tp, rest, restBox, 0)
 	shF.Draw(cv, restBox.X-int(shF.Advance()), box.Y+(box.H-shF.LineHeight())/2+int(shF.Ascent()), fCol)
 }
 
-// drawLine draws one aligned line of text and its decoration.
-func (l *Label) drawLine(cv *render.Canvas, face render.Font, px float64, text string, box render.Rect, col render.Color, deco render.Decoration, align render.Alignment, dir Direction, justify float64) {
-	sh := face.ShapeDir(text, px, dir)
-	if float64(box.H) < float64(sh.LineHeight()) {
+// drawLine draws one aligned line of text, its shadows under it and
+// its decoration over it. A box shorter than the CSS line box (a label
+// squeezed below its line) draws nothing; one shorter only than the
+// glyphs (a line-height below them) draws them overflowing, centered.
+func (l *Label) drawLine(cv *render.Canvas, tp textPaint, text string, box render.Rect, justify float64) {
+	if box.H < tp.lineH {
 		return
 	}
-	x, baseline := render.AlignedPen(sh, box, align, dir)
-	if justify > 0 && sh.SeparatorCount() > 0 {
-		sh.DrawJustified(cv, x, baseline, col, justify)
-	} else {
-		sh.Draw(cv, x, baseline, col)
-	}
-	if deco.Lines != 0 {
-		sh.DrawDecoration(cv, x, baseline, deco, col)
+	sh := tp.face.ShapeDir(text, tp.px, tp.dir)
+	x, baseline := render.AlignedPen(sh, box, tp.align, tp.dir)
+	l.drawShadows(cv, sh, x, baseline, tp, justify)
+	drawShaped(cv, sh, x, baseline, tp.col, justify)
+	if tp.deco.Lines != 0 {
+		sh.DrawDecoration(cv, x, baseline, tp.deco, tp.col)
 	}
 }
 
-// paintWrapped draws the wrapped rows, the stack vertically centered in
-// a taller rect, each row aligned per the cascade - justify spreads
+// drawShaped draws a shaped line, justified by gap px per word
+// separator when gap is positive.
+func drawShaped(cv *render.Canvas, sh *render.ShapedText, x, baseline int, col render.Color, gap float64) {
+	if gap > 0 && sh.SeparatorCount() > 0 {
+		sh.DrawJustified(cv, x, baseline, col, gap)
+		return
+	}
+	sh.Draw(cv, x, baseline, col)
+}
+
+// drawShadows paints the text-shadow layers under a line, the first
+// listed on top (CSS Text Decoration 3 §4): a sharp layer is the line
+// in the shadow's color at its offset, a blurred one paints through
+// the label's offscreen layer and a Gaussian of half the blur radius.
+func (l *Label) drawShadows(cv *render.Canvas, sh *render.ShapedText, x, baseline int, tp textPaint, justify float64) {
+	layers := tp.shadows.List()
+	for _, s := range slices.Backward(layers) {
+		if s.Blur <= 0 {
+			drawShaped(cv, sh, x+s.X, baseline+s.Y, s.Color, justify)
+			continue
+		}
+		var blur render.Filters
+		blur.Append(render.FilterOp{Kind: render.FilterBlur, Amount: float64(s.Blur) / 2})
+		ink := render.Rect{
+			X: x + s.X, Y: baseline + s.Y - int(math.Ceil(sh.Ascent())),
+			W: int(math.Ceil(sh.Advance()+justify*float64(sh.SeparatorCount()))) + 1, H: sh.LineHeight(),
+		}
+		region := cv.MapRect(blur.Extent().Grow(ink)).Intersect(cv.Rect())
+		if region.Empty() {
+			continue
+		}
+		l.shadow = cv.Layer(l.shadow, region)
+		drawShaped(l.shadow.Canvas(), sh, x+s.X, baseline+s.Y, s.Color, justify)
+		render.ApplyFilters(l.shadow, region, &blur)
+		cv.DrawLayer(l.shadow, region, render.BlendNormal)
+	}
+}
+
+// paintWrapped draws the rows, the stack vertically centered in a
+// taller rect, each row aligned per the cascade - justify spreads
 // everything but the final row across the width, and the first row
 // carries the text indent at its start edge.
-func (l *Label) paintWrapped(cv *render.Canvas, face render.Font, px float64, col render.Color, box render.Rect, v *style.Values) {
+func (l *Label) paintWrapped(cv *render.Canvas, tp textPaint, box render.Rect, v *style.Values) {
 	lines := l.wrapped(float64(box.W))
-	lineH := l.lineBox(v)
-	align, dir := l.alignOf(v), l.effDirection(v)
 	y := box.Y
-	if extra := box.H - len(lines)*lineH; extra > 0 {
+	if extra := box.H - len(lines)*tp.lineH; extra > 0 {
 		y += extra / 2
 	}
-	deco := cssDecoration(v)
-	rtl := l.shaped != nil && l.shaped.RTL()
 	for i, ln := range lines {
-		row, just := box, 0.0
-		if indent := l.indentOf(v); i == 0 && indent != 0 {
-			if rtl {
-				row.W -= int(math.Round(indent))
-			} else {
-				row.X += int(math.Round(indent))
-				row.W -= int(math.Round(indent))
-			}
+		row, just := render.Rect{X: box.X, Y: y, W: box.W, H: tp.lineH}, 0.0
+		if i == 0 {
+			row = l.indented(row, l.indentOf(v))
 		}
 		if l.justifies(v) && i < len(lines)-1 {
-			if sh := face.ShapeDir(ln, px, dir); sh.SeparatorCount() > 0 {
-				if gap := (float64(box.W) - sh.Advance()) / float64(sh.SeparatorCount()); gap > 0 {
+			if sh := tp.face.ShapeDir(ln, tp.px, tp.dir); sh.SeparatorCount() > 0 {
+				if gap := (float64(row.W) - sh.Advance()) / float64(sh.SeparatorCount()); gap > 0 {
 					just = gap
 				}
 			}
 		}
-		l.drawLine(cv, face, px, ln, render.Rect{X: row.X, Y: y, W: box.W, H: lineH}, col, deco, align, dir, just)
-		y += lineH
+		l.drawLine(cv, tp, ln, row, just)
+		y += tp.lineH
 	}
 }
 

@@ -3,8 +3,6 @@ package widget
 import (
 	"testing"
 
-	"github.com/stubbedev/gelm/anim"
-	"github.com/stubbedev/gelm/internal/style"
 	"github.com/stubbedev/gelm/render"
 )
 
@@ -245,21 +243,6 @@ func TestScrollbarColorWidthSpec(t *testing.T) {
 	}
 }
 
-// cssTiming carries the steps jump position and the linear() points
-// through to the anim package's curves.
-func TestCSSTimingStepsAndLinear(t *testing.T) {
-	tm := cssTiming(style.Timing{Steps: 2, StepPos: uint8(anim.JumpStart)})
-	if tm(0.25) != 0.5 || tm(0.5) != 0.5 {
-		t.Fatalf("steps(2, jump-start) via cssTiming: %v %v", tm(0.25), tm(0.5))
-	}
-	lin := cssTiming(style.Timing{LinN: 3, Lin: [style.MaxLinearPts]anim.LinearPt{
-		{Value: 0}, {Value: 0.5, Pos: 0.5, HasPos: true}, {Value: 1},
-	}})
-	if lin(0.25) != 0.25 || lin(0.75) != 0.75 {
-		t.Fatalf("linear() via cssTiming: %v %v", lin(0.25), lin(0.75))
-	}
-}
-
 // transition-behavior: allow-discrete flips a discrete property at the
 // tween's halfway point: the from value holds through the first half,
 // the to value from halfway on.
@@ -289,7 +272,7 @@ func TestTransitionAllowDiscreteFlip(t *testing.T) {
 func TestAnimationCompositionAdd(t *testing.T) {
 	c := pinAnimClock(t)
 	loadCSS(t, `@keyframes half { from { opacity: 0.5; } to { opacity: 0.5; } }
-		button { opacity: 0.5; animation: half 200ms add; }`)
+		button { opacity: 0.5; animation: half 200ms; animation-composition: add; }`)
 	b := NewButton(NewSpacer(0, 0), 0, 0)
 	arrangeTree(t, b, 40, 40)
 	c.step()

@@ -1,14 +1,14 @@
 package widget
 
-// Transitions: a rule's `transition` turns a changed computed value
-// into a tween over the style cache, every other property still
-// applying at once. The engine is channel-based: each animatable
-// longhand - the colors, opacity, the filter's brightness, the letter
-// spacing, the box geometry, and the transforms - has a channel the
-// restyle fills when its computed value moved; one tween advances
-// every filled channel per frame. This carries the fades a stylesheet
-// writes the way a GTK theme animates them: the knob's hover fade, a
-// row's wash, a zoom.
+// Transitions (css-transitions-1): a rule's transition-* lists turn a
+// changed computed value into a tween over the style cache, every
+// other property still applying at once. Each changed longhand the
+// property list names transitions with its own entry's duration, delay
+// and timing function — the longhands sharing an entry share one
+// tween — and interpolates through the one routine the animations use
+// (style.Interpolate): smoothly where the value interpolates, and for
+// a discrete longhand only under transition-behavior: allow-discrete,
+// flipping halfway.
 
 import (
 	"math"
@@ -16,245 +16,99 @@ import (
 
 	"github.com/stubbedev/gelm/anim"
 	"github.com/stubbedev/gelm/internal/style"
-	"github.com/stubbedev/gelm/render"
 )
 
-// tweenChan is one animatable channel captured for a transition: the
-// property whose `transition` declaration guards it, and the apply
-// that eases the cache toward its target (e 0..1). Layout channels
-// drop the measure caches per frame instead of just repainting.
-type tweenChan struct {
-	prop   style.Prop
+// trGroup is the longhands one transition entry carries.
+type trGroup struct {
+	timing style.TransitionTiming
+	props  style.PropSet
 	layout bool
-	apply  func(cs *style.Values, e float64)
 }
 
-// colorChan captures a color channel; a side the cascade never
-// declared reads as transparent and still tweens, like CSS's
-// from-transparent interpolation.
-func colorChan(p style.Prop, from, to render.Color, set func(*style.Values, render.Color)) *tweenChan {
-	if from == to {
-		return nil
-	}
-	return &tweenChan{prop: p, apply: func(cs *style.Values, e float64) {
-		set(cs, mixColor(from, to, e))
-	}}
-}
-
-// floatChan captures a float channel; a channel whose presence bit
-// changed (first declaration, last rule removed) snaps.
-func floatChan(p style.Prop, from, to float64, bothPresent bool, set func(*style.Values, float64)) *tweenChan {
-	if !bothPresent || from == to {
-		return nil
-	}
-	return &tweenChan{prop: p, apply: func(cs *style.Values, e float64) {
-		set(cs, from+(to-from)*e)
-	}}
-}
-
-// intChan captures an integer channel.
-func intChan(p style.Prop, from, to int, bothPresent bool, set func(*style.Values, int), layout bool) *tweenChan {
-	if !bothPresent || from == to {
-		return nil
-	}
-	return &tweenChan{prop: p, layout: layout, apply: func(cs *style.Values, e float64) {
-		set(cs, int(math.Round(float64(from)+(float64(to)-float64(from))*e)))
-	}}
-}
-
-// sizingChan captures a sizing channel (width, height, min-*, max-*):
-// two lengths interpolate pixels and percentages apart, CSS's calc()
-// interpolation; a keyword at either end has no midpoint and snaps.
-func sizingChan(p style.Prop, from, to style.Sizing, bothPresent bool, get func(*style.Layout) *style.Sizing) *tweenChan {
-	if !bothPresent || from == to || from.Kind != style.SizingLength || to.Kind != style.SizingLength {
-		return nil
-	}
-	return &tweenChan{prop: p, layout: true, apply: func(cs *style.Values, e float64) {
-		*get(&cs.Layout) = style.Sizing{Kind: style.SizingLength, Len: style.Length{
-			Px:  int(math.Round(float64(from.Len.Px) + float64(to.Len.Px-from.Len.Px)*e)),
-			Pct: from.Len.Pct + (to.Len.Pct-from.Len.Pct)*e,
-		}}
-	}}
-}
-
-// xformChan captures a transform channel. An undeclared side reads as
-// the identity - Compute leaves unset longhands zero, and the paint
-// paths Has-guard them - and a declaration dropping eases back to that
-// identity (a hover zoom reversing), the CSS implicit to-value. The
-// parts walk their decompositions, so a rotation turns instead of
-// collapsing.
-func xformChan(p style.Prop, from, to style.Xform, fromPresent, toPresent bool, set func(*style.Values, style.Xform)) *tweenChan {
-	if !fromPresent {
-		from = style.XformIdentity
-	}
-	if !toPresent {
-		to = style.XformIdentity
-	}
-	if from.M == to.M {
-		return nil
-	}
-	return &tweenChan{prop: p, apply: func(cs *style.Values, e float64) {
-		set(cs, style.LerpXform(from, to, e))
-	}}
-}
-
-// discChan captures one discrete channel under transition-behavior:
-// allow-discrete - the value stays on the from side through the
-// tween's first half and flips to to at the halfway point, the CSS
-// discrete interpolation.
-func discChan[T comparable](p style.Prop, from, to T, set func(*style.Values, T)) *tweenChan {
-	if from == to {
-		return nil
-	}
-	return &tweenChan{prop: p, apply: func(cs *style.Values, e float64) {
-		if e < 0.5 {
-			set(cs, from)
-			return
-		}
-		set(cs, to)
-	}}
-}
-
-// transitionValues starts (or retargets) the transition tween a
-// restyle asks for. The tween's start is whatever the cache holds -
-// the settled values, or an earlier tween's interpolated ones - so a
-// change mid-flight turns smoothly. A first style applies at once:
-// nothing settled to move from, and an unarranged widget paints
-// nothing yet.
-func (n *node) transitionValues(old, v style.Values, firstStyle bool) {
+// transitionValues starts the transitions a restyle asks for. A
+// transition starts from whatever the cache holds — the settled
+// values, or an earlier transition's interpolated ones — so a change
+// mid-flight turns smoothly. A first style applies at once (nothing
+// settled to move from, and an unarranged widget paints nothing yet)
+// unless an @starting-style block names the values it starts from.
+func (n *node) transitionValues(old, v *style.Values, firstStyle bool) {
 	if n.trCancel != nil {
 		n.trCancel()
 		n.trCancel = nil
 	}
-	// A first style has nothing settled to move from - unless the
-	// cascade carries an @starting-style block, whose values start the
-	// entry transition.
+	from := old
 	fresh := firstStyle
 	if fresh && v.Starting != nil {
-		old, fresh = *v.Starting, false
+		from, fresh = v.Starting, false
 	}
-	if v.Transition.Duration <= 0 || anim.Instant() || fresh || (n.bounds.Empty() && v.Starting == nil) {
+	if !v.Transition.Active() || anim.Instant() || fresh || (n.bounds.Empty() && v.Starting == nil) {
 		return
 	}
-	both := func(p style.Prop) bool { return old.Has(p) && v.Has(p) }
-	var chans []*tweenChan
-	add := func(c *tweenChan) {
-		if c != nil && v.Transition.Covers(c.prop) {
-			chans = append(chans, c)
-		}
-	}
-	add(colorChan(style.PropColor, old.Color, v.Color, func(cs *style.Values, c render.Color) { cs.Color = c }))
-	add(colorChan(style.PropBackgroundColor, old.Background, v.Background, func(cs *style.Values, c render.Color) { cs.Background = c }))
-	for i, p := range [4]style.Prop{style.PropBorderTopColor, style.PropBorderRightColor, style.PropBorderBottomColor, style.PropBorderLeftColor} {
-		add(colorChan(p, old.BorderColor[i], v.BorderColor[i], func(cs *style.Values, c render.Color) { cs.BorderColor[i] = c }))
-	}
-	add(colorChan(style.PropOutlineColor, old.OutlineColor, v.OutlineColor, func(cs *style.Values, c render.Color) { cs.OutlineColor = c }))
-	add(colorChan(style.PropCaretColor, old.CaretColor, v.CaretColor, func(cs *style.Values, c render.Color) { cs.CaretColor = c }))
-	add(floatChan(style.PropOpacity, old.Opacity, v.Opacity, both(style.PropOpacity), func(cs *style.Values, x float64) { cs.Opacity = x }))
-	add(floatChan(style.PropFilter, old.Brightness, v.Brightness, both(style.PropFilter), func(cs *style.Values, x float64) { cs.Brightness = x }))
-	add(floatChan(style.PropLetterSpacing, old.LetterSpacing, v.LetterSpacing, both(style.PropLetterSpacing), func(cs *style.Values, x float64) { cs.LetterSpacing = x }))
-	for i, p := range [4]style.Prop{style.PropPaddingTop, style.PropPaddingRight, style.PropPaddingBottom, style.PropPaddingLeft} {
-		add(intChan(p, old.Padding.At(i), v.Padding.At(i), both(p), func(cs *style.Values, x int) { cs.Padding.SetAt(i, x) }, true))
-	}
-	for i, p := range [4]style.Prop{style.PropMarginTop, style.PropMarginRight, style.PropMarginBottom, style.PropMarginLeft} {
-		add(intChan(p, old.Margin.At(i), v.Margin.At(i), both(p), func(cs *style.Values, x int) { cs.Margin.SetAt(i, x) }, true))
-	}
-	for i, p := range [4]style.Prop{style.PropBorderTopWidth, style.PropBorderRightWidth, style.PropBorderBottomWidth, style.PropBorderLeftWidth} {
-		add(intChan(p, old.BorderWidth.At(i), v.BorderWidth.At(i), both(p), func(cs *style.Values, x int) { cs.BorderWidth.SetAt(i, x) }, true))
-	}
-	sizes := [...]struct {
-		p   style.Prop
-		get func(l *style.Layout) *style.Sizing
-	}{
-		{style.PropWidth, func(l *style.Layout) *style.Sizing { return &l.Width }},
-		{style.PropHeight, func(l *style.Layout) *style.Sizing { return &l.Height }},
-		{style.PropMinWidth, func(l *style.Layout) *style.Sizing { return &l.MinWidth }},
-		{style.PropMinHeight, func(l *style.Layout) *style.Sizing { return &l.MinHeight }},
-		{style.PropMaxWidth, func(l *style.Layout) *style.Sizing { return &l.MaxWidth }},
-		{style.PropMaxHeight, func(l *style.Layout) *style.Sizing { return &l.MaxHeight }},
-	}
-	from, to := old.Layout, v.Layout
-	for _, sz := range sizes {
-		add(sizingChan(sz.p, *sz.get(&from), *sz.get(&to), both(sz.p), sz.get))
-	}
-	add(intChan(style.PropOutlineWidth, old.OutlineWidth, v.OutlineWidth, both(style.PropOutlineWidth), func(cs *style.Values, x int) { cs.OutlineWidth = x }, false))
-	add(intChan(style.PropOutlineOffset, old.OutlineOffset, v.OutlineOffset, both(style.PropOutlineOffset), func(cs *style.Values, x int) { cs.OutlineOffset = x }, false))
-	for i, p := range [4]style.Prop{style.PropBorderTopLeftRadius, style.PropBorderTopRightRadius, style.PropBorderBottomRightRadius, style.PropBorderBottomLeftRadius} {
-		add(intChan(p, old.Radius.At(i), v.Radius.At(i), both(p), func(cs *style.Values, x int) { cs.Radius.SetAt(i, x) }, false))
-	}
-	add(xformChan(style.PropTransform, old.Transform, v.Transform, old.Has(style.PropTransform), v.Has(style.PropTransform), func(cs *style.Values, m style.Xform) { cs.Transform = m }))
-	add(xformChan(style.PropIconTransform, old.IconXform, v.IconXform, old.Has(style.PropIconTransform), v.Has(style.PropIconTransform), func(cs *style.Values, m style.Xform) { cs.IconXform = m }))
-	// The discrete channels ride only under allow-discrete, and flip
-	// at the halfway point instead of interpolating.
-	disc := func(c *tweenChan) {
-		if c != nil && v.Transition.Discrete {
-			chans = append(chans, c)
-		}
-	}
-	disc(discChan(style.PropIsolation, old.Isolate, v.Isolate, func(cs *style.Values, x bool) { cs.Isolate = x }))
-	disc(discChan(style.PropBackfaceVisibility, old.BackfaceHidden, v.BackfaceHidden, func(cs *style.Values, x bool) { cs.BackfaceHidden = x }))
-	disc(discChan(style.PropMixBlendMode, old.Blend, v.Blend, func(cs *style.Values, x render.BlendMode) { cs.Blend = x }))
-	disc(discChan(style.PropAppearance, old.Appearance, v.Appearance, func(cs *style.Values, x style.Appearance) { cs.Appearance = x }))
-	disc(discChan(style.PropCaretShape, old.CaretShape, v.CaretShape, func(cs *style.Values, x style.CaretShape) { cs.CaretShape = x }))
-	if len(chans) == 0 {
-		return
-	}
+	n.startTransitions(*from, *v)
+}
 
-	dur := time.Duration(v.Transition.Duration * float64(time.Second))
-	delay := time.Duration(v.Transition.Delay * float64(time.Second))
-	ease := cssTiming(v.Transition.Timing)
-	layout := false
-	for _, c := range chans {
-		if c.layout {
-			layout = true
+// startTransitions launches the tweens carrying every changed longhand
+// v's transition lists name, from start to end; it takes copies, which
+// the tweens keep.
+func (n *node) startTransitions(start, end style.Values) {
+	var groups []trGroup
+	start.Set.Or(end.Set).Each(func(p style.Prop) {
+		changed, known := style.Changed(&start, &end, p)
+		if !known || !changed {
+			return
 		}
+		tt, ok := end.Transition.For(p)
+		if !ok || !style.Smooth(&start, &end, p) && !tt.Discrete {
+			return
+		}
+		layout := layoutKeyProps.Has(p) || paddingMarginBorder.Has(p)
+		for i := range groups {
+			if groups[i].timing == tt {
+				groups[i].props = groups[i].props.With(p)
+				groups[i].layout = groups[i].layout || layout
+				return
+			}
+		}
+		groups = append(groups, trGroup{timing: tt, props: style.SetOf(p), layout: layout})
+	})
+	if len(groups) == 0 {
+		return
 	}
+	steps := make([]anim.Step, len(groups))
+	for i, g := range groups {
+		apply := func(e float64) {
+			g.props.Each(func(p style.Prop) { style.Interpolate(&n.cs, &start, &end, p, e) })
+			if g.layout {
+				n.InvalidateLayout()
+			} else {
+				n.Invalidate()
+			}
+		}
+		apply(0)
+		steps[i] = transitionStep(g.timing, apply)
+	}
+	n.trCancel = anim.Play(anim.Parallel(steps...))
+}
+
+// paddingMarginBorder are the box longhands whose change remeasures.
+var paddingMarginBorder = style.SetOf(
+	style.PropPaddingTop, style.PropPaddingRight, style.PropPaddingBottom, style.PropPaddingLeft,
+	style.PropMarginTop, style.PropMarginRight, style.PropMarginBottom, style.PropMarginLeft,
+	style.PropBorderTopWidth, style.PropBorderRightWidth, style.PropBorderBottomWidth, style.PropBorderLeftWidth)
+
+// transitionStep is one entry's tween over its delay and duration:
+// the timing function maps raw progress over the whole span, held at
+// the start through the delay, the CSS fill-before.
+func transitionStep(tt style.TransitionTiming, apply func(e float64)) anim.Step {
+	dur := time.Duration(tt.Duration * float64(time.Second))
+	delay := time.Duration(max(0, tt.Delay) * float64(time.Second))
 	total := dur + delay
-	// One easing, applied once: the tween's curve maps raw progress
-	// over the whole timeline (delay included) through the active
-	// phase's CSS curve, so the callback's t is the eased phase - held
-	// at 0 through the delay, the CSS fill-before behavior.
-	n.trCancel = anim.Play(anim.Animate(total, func(t float64) {
-		for _, c := range chans {
-			c.apply(&n.cs, t)
-		}
-		if t >= 1 {
-			n.trCancel = nil
-		}
-		if layout {
-			n.InvalidateLayout()
-		} else {
-			n.Invalidate()
-		}
-	}).Easing(func(raw float64) float64 {
+	skip := time.Duration(max(0, -tt.Delay) * float64(time.Second))
+	return anim.Animate(total-min(skip, total), apply).Easing(func(raw float64) float64 {
 		if dur <= 0 {
 			return 1
 		}
-		p := (raw*float64(total) - float64(delay)) / float64(dur)
-		return ease(math.Min(math.Max(p, 0), 1))
-	}))
-}
-
-// mixColor interpolates premultiplied colors.
-func mixColor(a, b render.Color, t float64) render.Color {
-	mix := func(x, y uint8) uint8 {
-		return uint8(float64(x) + (float64(y)-float64(x))*t + 0.5)
-	}
-	return render.Color(uint32(mix(a.A(), b.A()))<<24 |
-		uint32(mix(a.R(), b.R()))<<16 |
-		uint32(mix(a.G(), b.G()))<<8 |
-		uint32(mix(a.B(), b.B())))
-}
-
-// cssTiming maps the computed transition or animation timing onto
-// an easing: the linear() piecewise list, the steps curve with its
-// jump position, or the cubic bezier solved per sample.
-func cssTiming(tm style.Timing) anim.Easing {
-	if tm.LinN > 0 {
-		return anim.Piecewise(tm.Lin[:tm.LinN])
-	}
-	if tm.Steps > 0 {
-		return anim.Steps(tm.Steps, anim.StepPos(tm.StepPos))
-	}
-	return anim.CubicBezier(tm.X1, tm.Y1, tm.X2, tm.Y2)
+		at := raw*float64(total-min(skip, total)) - float64(delay) + float64(skip)
+		return tt.Timing.At(math.Min(math.Max(at/float64(dur), 0), 1), false)
+	})
 }

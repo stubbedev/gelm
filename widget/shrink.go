@@ -1,5 +1,7 @@
 package widget
 
+import "github.com/stubbedev/gelm/internal/style"
+
 // Shrinker is a widget that can be arranged shorter than its natural
 // height and still do its job: a Scroll scrolls what no longer fits.
 // A Box short of room takes the shortfall from every child that can
@@ -71,10 +73,19 @@ func shrinkableWidthOf(w Widget) int {
 
 // ShrinkableWidth implements WidthShrinker: a row gives what its
 // children can; a column is as narrow as its least shrinkable child
-// lets it be; a grid down to its min-content width.
+// lets it be; a grid down to its min-content width; and the CSS
+// layouts that break lines between items down to their widest item.
 func (b *Box) ShrinkableWidth() int {
-	if layoutModeOf(b.style(b)) == modeGrid {
+	v := b.style(b)
+	switch mode := layoutModeOf(v); mode {
+	case modeGrid:
 		return b.gridShrinkable(Row)
+	case modeFlow:
+		return b.lineShrinkable(v, mode)
+	case modeFlex:
+		if main, _ := b.flexDirection(v); main == Column || v.Layout.FlexWrap != style.FlexNowrap {
+			return b.lineShrinkable(v, mode)
+		}
 	}
 	if b.flowAxis() == Row {
 		total := 0
@@ -94,6 +105,26 @@ func (b *Box) ShrinkableWidth() int {
 		floor = max(floor, c.nat.W-shrinkableWidthOf(c.w))
 	}
 	return widest - floor
+}
+
+// lineShrinkable is ShrinkableWidth for a CSS layout whose min-content
+// width is its widest item's min-content contribution: normal flow,
+// whose lines break between inline items, a multi-line flex row and a
+// column flex container (css-sizing-3 §5.1, css-flexbox-1 §9.9.1). It
+// is what the last measure's content width gives up to reach it.
+func (b *Box) lineShrinkable(v *style.Values, mode layoutMode) int {
+	o := b.box(v).outer()
+	last := b.measureOut.W - o.Left - o.Right
+	p := b.beginPass(v, mode, true)
+	defer p.end()
+	widest := 0
+	for i := range p.items {
+		if it := &p.items[i]; it.kind == itemFlow {
+			nat := measureOuter(it.w, Constraints{Max: Size{W: indefinite, H: indefinite}})
+			widest = max(widest, minContentOf(it.w, Row, nat))
+		}
+	}
+	return max(0, last-widest)
 }
 
 // shrinkBufs holds shrinkTakes' caps and takes per layout depth. The

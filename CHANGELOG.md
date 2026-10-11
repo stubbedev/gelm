@@ -2,6 +2,61 @@
 
 ## Unreleased
 
+### CSS conformance and completion (#159)
+
+- A conformance suite (`widget/cssconformance_*_test.go`) runs the
+  engine against WPT `css/` cases adapted to widget trees and
+  spec-derived cases, one table per feature group, with a table of the
+  documented deviations each group keeps; docs/css.md maps every #159
+  bullet to its section and cases.
+- Backgrounds are CSS's layer stack: `background-size`, `-position`,
+  `-repeat` (`round` and `space` too), `-clip`, `-origin`,
+  `-attachment` and the full `background` shorthand, with several
+  layers. A `url()` background now tiles at its natural size, the CSS
+  default, instead of cover-fitting; write `background-size: cover`
+  for the old look. Masks share the layer geometry.
+- `border-image` and its longhands; `outline-style: auto` and
+  `outline-color: auto` (the focus ring); `image-set()`; gradient
+  stops with lengths, two positions and color hints.
+- Animations run the Web Animations timing model: the per-keyframe
+  timing function, missing 0%/100% keyframes taking the underlying
+  value, fills, iterations and directions sampled from the timeline,
+  every animatable longhand interpolating (the rest flipping at the
+  midpoint), and the `animation-*` longhands as comma lists zipped to
+  the names (`animation-timing-function` and
+  `animation-iteration-count` used to be ignored). The default timing
+  function is `ease`. `animation-composition` is no longer accepted in
+  the `animation` shorthand, which CSS leaves it out of.
+- Transitions take each property's own entry of the `transition-*`
+  lists, negative delays, and the shared interpolation.
+- Timing functions per CSS Easing 2: `steps()` jump positions and the
+  before flag, `step-start`/`step-end`, `linear()` with two-percentage
+  points and extrapolation, and the validity rules.
+- Cascade and selector fixes: important declarations reverse the layer
+  order, @scope proximity ranks below specificity, every functional
+  pseudo-class adds its specificity, repeated `:has()` lists all
+  apply, `:is()`/`:where()` forgive invalid members, `:empty` sees
+  text, `:target` (`StateTarget`), nesting's `&` as `:is()`, `revert`
+  to the lower-priority sheets, CSS Lists counter inheritance, the
+  Level 4 media condition grammar with three-valued logic, per-condition
+  container selection and the `container` shorthand.
+- Values and rendering fixes: CSS Color 4 gamut mapping, the xyz and
+  a98-rgb conversions, `color-mix()` in every space, the calc()
+  constants and infinities, the small/large/dynamic viewport units,
+  typed `attr()` over the widget's attributes, `env()` fallbacks; the
+  color-dodge and color-burn formulas, `drop-shadow()` under the
+  element, group opacity, effects inside a transformed box, and
+  `clip-path` hit testing.
+- Text and interaction fixes: `overflow-wrap`, `text-shadow`, the
+  `text-decoration` longhands, CSS white-space collapsing,
+  `text-indent` narrowing the first row's wrap, the `font-variant-
+  ligatures` `no-*` forms; `pointer-events` inherits, `user-select`
+  `auto`/`contain`, `cursor: url()` fallbacks, and snap areas with
+  `scroll-margin`.
+- A restyle that leaves a widget's values unchanged now stops after one
+  comparison; the full restyle and the class toggle are faster than
+  before #159 (bench/baseline.md).
+
 ### CSS layout (#159)
 
 - `display` (`block`, `inline`, `inline-block`, `flow-root`, `flex`,

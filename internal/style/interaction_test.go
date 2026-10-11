@@ -89,23 +89,26 @@ func TestPointerEvents(t *testing.T) {
 	}
 }
 
-// TestUserSelect pins user-select: none, text, all, and auto as text.
+// TestUserSelect pins user-select's computed values: none, text, all,
+// contain, and auto, which stays auto until the widget layer resolves
+// its used value.
 func TestUserSelect(t *testing.T) {
 	s := parseOne(t, `
 		a { user-select: none; }
 		b { user-select: text; }
 		c { user-select: all; }
 		d { user-select: auto; }
+		e { user-select: contain; }
 	`)
-	want := map[string]UserSelect{"a": SelectNone, "b": SelectText, "c": SelectAll, "d": SelectText}
+	want := map[string]UserSelect{"a": SelectNone, "b": SelectText, "c": SelectAll, "d": SelectAuto, "e": SelectContain}
 	for n, w := range want {
 		if us := computeTree(s, el(n)).UserSelect; us != w {
 			t.Errorf("%s = %d, want %d", n, us, w)
 		}
 	}
 	var v Values
-	if parseUserSelect(tokenize("contain"), &ctx{}, &v) {
-		t.Error("contain parsed")
+	if parseUserSelect(tokenize("element"), &ctx{}, &v) {
+		t.Error("element parsed")
 	}
 }
 

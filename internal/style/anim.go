@@ -1,77 +1,55 @@
 package style
 
-// CSS animations: @keyframes rules, the animation shorthand and its
-// longhands, and animation-play-state. A keyframes rule declares named
-// stops over the animation's progress; the shorthand points a node at
-// one and gives the duration, delay, curve, iteration count, direction,
-// and fill mode, and a comma list runs several at once. The animated
-// channels are the interpolatable computed values - opacity, the text
-// and background colors, the filter's brightness, the transform, and
-// the icon transform - and the widget layer runs the tweens against its
-// style cache, the same channels the transitions use.
+// CSS animations (css-animations-1, web-animations-1): @keyframes
+// rules, the animation-* longhands and their shorthand. A keyframes
+// rule declares stops over an iteration's progress, each a set of
+// computed declarations; a node's animation-name list points it at
+// rules, the other longhands' lists give each one its duration, delay,
+// timing, iteration count, direction, fill, play state and
+// composition. Every longhand a stop declares animates: smoothly where
+// it interpolates, discretely otherwise (interp.go). The widget layer
+// owns the timeline and samples the pure functions here.
 
 import (
+	"math"
+	"math/bits"
 	"slices"
 	"sort"
-	"strings"
-
-	"github.com/stubbedev/gelm/render"
 )
 
-// Chan is one animatable channel, the bit a Keyframe declares and a
-// running animation overrides in the style cache.
-type Chan uint8
-
-// The channels, one bit each.
-const (
-	// ChOpacity is the opacity channel.
-	ChOpacity Chan = 1 << iota
-	ChColor
-	ChBackground
-	ChBrightness
-	ChTransform
-	ChIconXform
-)
-
-// Keyframes is one @keyframes rule: named stops over the animation's
-// progress. Mask records the union of channels the stops declare, so
-// the runner knows which cache fields a phase read owns.
+// Keyframes is one @keyframes rule: its stops in offset order, and the
+// longhands any of them declares.
 type Keyframes struct {
 	Name   string
 	Frames []Keyframe
-	Mask   uint32
+	Props  PropSet
 }
 
-// Keyframe is one stop of a keyframes rule: its offset along the
-// animation's progress and the channels it animates. A nil channel is
-// not animated at that stop - the property runs between the stops that
-// declare it and holds the nearest declared value outside them,
-// exactly like CSS's missing-keyframe rule.
+// Keyframe is one stop of a keyframes rule: its offset in the
+// iteration, the longhands it declares with their computed values,
+// and its own animation-timing-function, which eases the interval
+// from it to the next stop (nil: the animation's).
 type Keyframe struct {
-	Offset     float64 // 0..1; `from` is 0, `to` is 1
-	Opacity    *float64
-	Color      *render.Color
-	Background *render.Color
-	Brightness *float64
-	Transform  *Xform
-	IconXform  *Xform
+	Offset float64
+	Props  PropSet
+	V      *Values
+	Timing *Timing
 }
 
 // Animation is one computed animation: which @keyframes rule runs, for
 // how long after what delay, along which curve, how many times, in
-// which direction, what holds when it is not running, and how its
-// effect composes onto the underlying style. A nil Keyframes (an
-// unknown name, or `animation: none`) runs nothing.
+// which direction, what holds outside the active interval, whether it
+// plays, and how its effect composes onto the underlying style.
 type Animation struct {
-	Name      string
-	Duration  float64 // seconds
-	Delay     float64 // seconds; negative starts mid-flight
-	Timing    Timing
-	Infinite  bool
-	Iteration float64
-	Direction uint8 // DirNormal..DirAlternateReverse
-	Fill      uint8 // FillNone..FillBoth
-	Running   bool
+	Name     string
+	Duration float64 // seconds
+	Delay    float64 // seconds; negative starts mid-flight
+	Timing   Timing
+	// Iterations is the iteration count, +Inf for infinite.
+	Iterations float64
+	Direction  uint8 // DirNormal..DirAlternateReverse
+	Fill       uint8 // FillNone..FillBoth
+	Running    bool
 	// Composition is animation-composition: how a frame joins the
 	// underlying value (CompReplace, CompAdd, CompAccumulate).
 	Composition uint8
@@ -94,524 +72,379 @@ const (
 	FillBoth
 )
 
-// Active reports whether an animation should be running: named, timed,
-// resolved, and not paused.
-func (a Animation) Active() bool {
-	return a.Keyframes != nil && a.Name != "" && a.Duration > 0 && a.Running
-}
+// The animation-composition values.
+const (
+	CompReplace uint8 = iota
+	CompAdd
+	CompAccumulate
+)
 
-// AnimValues is one interpolated animation frame: the animated
-// channels' values at a phase of the animation. Channels the rule
-// never declares read zero and are masked off by Keyframes.Mask.
-type AnimValues struct {
-	Opacity    float64
-	Color      render.Color
-	Background render.Color
-	Brightness float64
-	Transform  Xform
-	IconXform  Xform
-}
-
-// mask computes the union of the stops' channels.
-func (kf *Keyframes) mask() uint32 {
-	var m uint32
-	for i := range kf.Frames {
-		f := &kf.Frames[i]
-		if f.Opacity != nil {
-			m |= uint32(ChOpacity)
-		}
-		if f.Color != nil {
-			m |= uint32(ChColor)
-		}
-		if f.Background != nil {
-			m |= uint32(ChBackground)
-		}
-		if f.Brightness != nil {
-			m |= uint32(ChBrightness)
-		}
-		if f.Transform != nil {
-			m |= uint32(ChTransform)
-		}
-		if f.IconXform != nil {
-			m |= uint32(ChIconXform)
-		}
-	}
-	return m
-}
-
-// At interpolates the keyframes at phase (0..1) over the channels the
-// rule declares.
-func (kf *Keyframes) At(phase float64) AnimValues {
-	frames := kf.Frames
-	if len(frames) == 0 {
-		return AnimValues{}
-	}
-	if phase <= frames[0].Offset {
-		return frameValues(frames[0])
-	}
-	last := frames[len(frames)-1]
-	if phase >= last.Offset {
-		return frameValues(last)
-	}
-	for i := 0; i+1 < len(frames); i++ {
-		a, b := frames[i], frames[i+1]
-		if phase < a.Offset || phase > b.Offset {
-			continue
-		}
-		t := (phase - a.Offset) / (b.Offset - a.Offset)
-		return mixFrames(a, b, t)
-	}
-	return frameValues(last)
-}
-
-// frameValues copies the channels one stop declares.
-func frameValues(k Keyframe) AnimValues {
-	out := AnimValues{}
-	if k.Opacity != nil {
-		out.Opacity = *k.Opacity
-	}
-	if k.Color != nil {
-		out.Color = *k.Color
-	}
-	if k.Background != nil {
-		out.Background = *k.Background
-	}
-	if k.Brightness != nil {
-		out.Brightness = *k.Brightness
-	}
-	if k.Transform != nil {
-		out.Transform = *k.Transform
-	}
-	if k.IconXform != nil {
-		out.IconXform = *k.IconXform
-	}
-	return out
-}
-
-// mixFrames interpolates every channel between two stops by the
-// missing-keyframe rule: a channel one side omits holds the declared
-// side's value; the transforms walk their decompositions.
-func mixFrames(a, b Keyframe, t float64) AnimValues {
-	out := AnimValues{}
-	out.Opacity = lerpPtr(a.Opacity, b.Opacity, t)
-	out.Color = mixPtrColor(a.Color, b.Color, t)
-	out.Background = mixPtrColor(a.Background, b.Background, t)
-	out.Brightness = lerpPtr(a.Brightness, b.Brightness, t)
-	out.Transform = lerpPtrXform(a.Transform, b.Transform, t)
-	out.IconXform = lerpPtrXform(a.IconXform, b.IconXform, t)
-	return out
-}
-
-func lerpPtr(a, b *float64, t float64) float64 {
-	switch {
-	case a != nil && b != nil:
-		return *a + (*b-*a)*t
-	case a != nil:
-		return *a
-	case b != nil:
-		return *b
-	}
-	return 0
-}
-
-func mixPtrColor(a, b *render.Color, t float64) render.Color {
-	switch {
-	case a != nil && b != nil:
-		return mixAnimColor(*a, *b, t)
-	case a != nil:
-		return *a
-	case b != nil:
-		return *b
-	}
-	return 0
-}
-
-func lerpPtrXform(a, b *Xform, t float64) Xform {
-	switch {
-	case a != nil && b != nil:
-		return LerpXform(*a, *b, t)
-	case a != nil:
-		return *a
-	case b != nil:
-		return *b
-	}
-	return XformIdentity
-}
-
-// mixAnimColor interpolates two premultiplied colors per channel.
-func mixAnimColor(a, b render.Color, t float64) render.Color {
-	mix := func(x, y uint8) uint8 {
-		return uint8(float64(x) + (float64(y)-float64(x))*t + 0.5)
-	}
-	return render.Color(uint32(mix(a.A(), b.A()))<<24 |
-		uint32(mix(a.R(), b.R()))<<16 |
-		uint32(mix(a.G(), b.G()))<<8 |
-		uint32(mix(a.B(), b.B())))
-}
-
-// parseAnimation parses the animation shorthand, one entry per comma
-// group: a flexible-order run of the name (the first ident that is no
-// keyword, or `none`), a duration, a delay (the second time; negative
-// starts mid-flight), a timing function, an iteration count (a number
-// or `infinite`), and the direction and fill keywords. The shorthand
-// resets play-state and iteration; animation-play-state merges after
-// it. The stylesheet writes
-// `name var(--dur, 1s) linear infinite [alternate]`.
-func parseAnimation(ts []token, cx *ctx, v *Values) bool {
-	v.Animation = nil
-	for _, grp := range splitTop(ts, tkComma) {
-		a, none, ok := parseOneAnimation(grp, cx)
-		if !ok {
-			return false
-		}
-		if none {
-			continue
-		}
-		v.Animation = append(v.Animation, a)
-	}
-	return true
-}
-
-// parseOneAnimation parses one comma group of the shorthand; none
-// reports a `none` group (kept out of the list).
-func parseOneAnimation(ts []token, cx *ctx) (a Animation, none, ok bool) {
-	a = Animation{Running: true}
-	duration, delay := -1.0, 0.0
-	named := false
-	for _, part := range components(ts) {
-		switch {
-		case part[0].kind == tkFunc && part[0].s == "var":
-			return Animation{}, false, false // a var() value computes first; never direct
-		case part[0].kind == tkFunc:
-			tm, pok := timingOf(part, cx)
-			if !pok {
-				return Animation{}, false, false
-			}
-			a.Timing = tm
-		default:
-			if secs, pok := timeOf(part, cx); pok {
-				if duration < 0 {
-					duration = secs
-				} else {
-					delay = secs
-				}
-				continue
-			}
-			if n, pok := evalNumeric(part, cx); pok && n.kind == numNumber && n.v >= 0 {
-				a.Iteration = n.v
-				continue
-			}
-			if part[0].kind != tkIdent {
-				return Animation{}, false, false
-			}
-			switch strings.ToLower(part[0].s) {
-			case "none":
-				return Animation{}, true, true
-			case "infinite":
-				a.Infinite = true
-			case "alternate":
-				a.Direction = DirAlternate
-			case "alternate-reverse":
-				a.Direction = DirAlternateReverse
-			case "reverse":
-				a.Direction = DirReverse
-			case "forwards":
-				a.Fill = FillForwards
-			case "backwards":
-				a.Fill = FillBackwards
-			case "both":
-				a.Fill = FillBoth
-			case "replace":
-				a.Composition = CompReplace
-			case "add":
-				a.Composition = CompAdd
-			case "accumulate":
-				a.Composition = CompAccumulate
-			case "linear", "ease", "ease-in", "ease-out", "ease-in-out":
-				a.Timing, _ = timingOf(part, cx)
-			default:
-				if named {
-					return Animation{}, false, false
-				}
-				named = true
-				a.Name = strings.ToLower(part[0].s)
-			}
-		}
-	}
-	if duration >= 0 {
-		a.Duration = duration
-	}
-	a.Delay = delay
-	return a, false, true
-}
-
-// animZip applies one longhand's comma list across the computed
-// animations, extending the list when the longhand is longer: CSS
-// zips each animation-* list against the name list.
-func animZip(v *Values, apply func(a *Animation)) {
-	if len(v.Animation) == 0 {
-		v.Animation = append(v.Animation, Animation{})
-	}
-	for i := range v.Animation {
-		apply(&v.Animation[i])
-	}
-}
-
-// mergeAnimSlots zips the longhand slots onto the shorthand's group;
-// the slots carry their first value, so a single longhand retimes
-// every entry, the zip CSS gives a one-entry list.
-func mergeAnimSlots(v *Values) {
-	zipF := func(slot []float64, set func(a *Animation, x float64)) {
-		if len(slot) == 0 {
-			return
-		}
-		for i := range v.Animation {
-			set(&v.Animation[i], slot[0])
-		}
-	}
-	zipU := func(slot []uint8, set func(a *Animation, x uint8)) {
-		if len(slot) == 0 {
-			return
-		}
-		for i := range v.Animation {
-			set(&v.Animation[i], slot[0])
-		}
-	}
-	zipF(v.AnimDuration, func(a *Animation, x float64) { a.Duration = x })
-	zipF(v.AnimDelay, func(a *Animation, x float64) { a.Delay = x })
-	zipU(v.AnimDirection, func(a *Animation, x uint8) { a.Direction = x })
-	zipU(v.AnimFill, func(a *Animation, x uint8) { a.Fill = x })
-	zipU(v.AnimComposition, func(a *Animation, x uint8) { a.Composition = x })
-}
-
-// parseAnimationPlayState parses `running` or `paused` without
-// disturbing the rest of the animation group.
-func parseAnimationPlayState(ts []token, cx *ctx, v *Values) bool {
-	first := splitTop(ts, tkComma)[0]
-	if len(first) != 1 || first[0].kind != tkIdent {
-		return false
-	}
-	switch strings.ToLower(first[0].s) {
-	case "running":
-		animZip(v, func(a *Animation) { a.Running = true })
-	case "paused":
-		animZip(v, func(a *Animation) { a.Running = false })
-	default:
-		return false
-	}
-	return true
-}
-
-// parseAnimationName parses the animation-name longhand: one name per
-// comma group, or `none`.
-func parseAnimationName(ts []token, cx *ctx, v *Values) bool {
-	v.Animation = nil
-	for _, grp := range splitTop(ts, tkComma) {
-		comps := components(grp)
-		if len(comps) != 1 || comps[0][0].kind != tkIdent {
-			return false
-		}
-		if strings.EqualFold(comps[0][0].s, "none") {
-			continue
-		}
-		v.Animation = append(v.Animation, Animation{
-			Name:    strings.ToLower(comps[0][0].s),
-			Running: true,
-		})
-	}
-	return true
-}
-
-// parseAnimationDirection parses animation-direction.
-func parseAnimationDirection(ts []token, cx *ctx, v *Values) bool {
-	first := splitTop(ts, tkComma)[0]
-	if len(first) != 1 || first[0].kind != tkIdent {
-		return false
-	}
-	var dir uint8
-	switch strings.ToLower(first[0].s) {
-	case "normal":
-		dir = DirNormal
-	case "reverse":
-		dir = DirReverse
-	case "alternate":
-		dir = DirAlternate
-	case "alternate-reverse":
-		dir = DirAlternateReverse
-	default:
-		return false
-	}
-	v.AnimDirection = []uint8{dir}
-	return true
-}
-
-// parseAnimationFillMode parses animation-fill-mode.
-func parseAnimationFillMode(ts []token, cx *ctx, v *Values) bool {
-	first := splitTop(ts, tkComma)[0]
-	if len(first) != 1 || first[0].kind != tkIdent {
-		return false
-	}
-	var fill uint8
-	switch strings.ToLower(first[0].s) {
-	case "none":
-		fill = FillNone
-	case "forwards":
-		fill = FillForwards
-	case "backwards":
-		fill = FillBackwards
-	case "both":
-		fill = FillBoth
-	default:
-		return false
-	}
-	v.AnimFill = []uint8{fill}
-	return true
-}
-
-// parseIconTransform parses -gtk-icon-transform over the same full
-// 2-D set as transform, composed into the affine icons draw through.
-func parseIconTransform(ts []token, cx *ctx, v *Values) bool {
-	m, ok := composeTransform(ts, cx)
-	if !ok {
-		return false
-	}
-	v.IconXform = m
-	return true
-}
-
-// parseIconSource parses -gtk-icon-source: -gtk-icontheme("name") or
-// none.
-func parseIconSource(ts []token, cx *ctx, v *Values) bool {
-	first := splitTop(ts, tkComma)[0]
-	if len(first) == 1 && first[0].ident("none") {
-		v.IconSource = ""
-		return true
-	}
-	if len(first) == 0 || first[0].kind != tkFunc || first[0].s != "-gtk-icontheme" {
-		return false
-	}
-	args := splitTop(funcArgs(first), tkComma)
-	if len(args) != 1 || len(args[0]) != 1 || args[0][0].kind != tkString {
-		return false
-	}
-	v.IconSource = args[0][0].s
-	return true
-}
-
-// parseIconPalette parses -gtk-icon-palette's `success <color>` entry
-// into the palette tint; other channels' entries keep their defaults.
-func parseIconPalette(ts []token, cx *ctx, v *Values) bool {
-	sawChannel := false
-	for _, part := range splitTop(ts, tkComma) {
-		words := components(part)
-		if len(words) != 2 || words[0][0].kind != tkIdent {
-			return false
-		}
-		cv, ok := parseColor(words[1], cx)
-		if !ok {
-			return false
-		}
-		if strings.EqualFold(words[0][0].s, "success") {
-			v.PaletteTint = cx.resolve(cv)
-		}
-		sawChannel = true
-	}
-	return sawChannel
-}
-
-// parseCaretColor parses caret-color: a color or auto (the text
-// color).
-func parseCaretColor(ts []token, cx *ctx, v *Values) bool {
-	first := splitTop(ts, tkComma)[0]
-	if len(first) == 1 && first[0].ident("auto") {
-		v.CaretColor = 0
-		return true
-	}
-	cv, ok := parseColor(first, cx)
-	if !ok {
-		return false
-	}
-	v.CaretColor = cx.resolve(cv)
-	return true
-}
-
-// parseTextDecoration parses the text-decoration shorthand: none, or
-// any of the lines (underline, overline, line-through), a style
-// (solid, double, dotted, dashed, wavy), and a color, in any order.
-func parseTextDecoration(ts []token, cx *ctx, v *Values) bool {
-	var d render.Decoration
-	none, lines, style, color := false, false, false, false
-	for _, part := range components(ts) {
-		if len(part) == 1 && part[0].kind == tkIdent {
-			name := strings.ToLower(part[0].s)
-			if line, ok := decorationLines[name]; ok {
-				d.Lines |= line
-				lines = true
-				continue
-			}
-			if st, ok := decorationStyles[name]; ok && !style {
-				d.Style, style = st, true
-				continue
-			}
-			if name == "none" && !none {
-				none = true
-				continue
-			}
-		}
-		cv, ok := parseColor(part, cx)
-		if !ok || color {
-			return false
-		}
-		d.Color, color = cx.resolve(cv), true
-	}
-	if none && lines {
-		return false
-	}
-	if !none && !lines && !style && !color {
-		return false
-	}
-	v.Decoration = d
-	return true
-}
-
-// decorationLines and decorationStyles are text-decoration's keywords.
+// The keyword lists of the one-keyword animation longhands.
 var (
-	decorationLines = map[string]render.DecorationLine{
-		"underline": render.Underline, "overline": render.Overline, "line-through": render.LineThrough,
+	animDirections = map[string]uint8{
+		"normal": DirNormal, "reverse": DirReverse,
+		"alternate": DirAlternate, "alternate-reverse": DirAlternateReverse,
 	}
-	decorationStyles = map[string]render.DecorationStyle{
-		"solid": render.DecorationSolid, "double": render.DecorationDouble, "dotted": render.DecorationDotted,
-		"dashed": render.DecorationDashed, "wavy": render.DecorationWavy,
+	animFills = map[string]uint8{
+		"none": FillNone, "forwards": FillForwards, "backwards": FillBackwards, "both": FillBoth,
+	}
+	animCompositions = map[string]uint8{
+		"replace": CompReplace, "add": CompAdd, "accumulate": CompAccumulate,
 	}
 )
 
-// resolveKeyframes points the computed animations at the named
-// @keyframes rules, the highest-priority layer that declares each
-// winning, and stamps each rule's channel mask. An unknown name runs
-// nothing.
-func resolveKeyframes(v *Values, layers []Layer) {
-	for i := range v.Animation {
-		a := &v.Animation[i]
-		if a.Name == "" {
-			*a = Animation{}
+// AnimLists are the animation-* longhands as declared, one list each;
+// Compute zips them against the names into Values.Animation. A nil
+// list is the longhand's initial value. An empty name is `none`.
+type AnimLists struct {
+	Names        []string
+	Durations    []float64
+	Timings      []Timing
+	Iterations   []float64
+	Directions   []uint8
+	Running      []bool
+	Delays       []float64
+	Fills        []uint8
+	Compositions []uint8
+}
+
+// Equal reports whether two longhand groups hold the same lists.
+func (l *AnimLists) Equal(o *AnimLists) bool {
+	return slices.Equal(l.Names, o.Names) && slices.Equal(l.Durations, o.Durations) &&
+		slices.Equal(l.Timings, o.Timings) && slices.Equal(l.Iterations, o.Iterations) &&
+		slices.Equal(l.Directions, o.Directions) && slices.Equal(l.Running, o.Running) &&
+		slices.Equal(l.Delays, o.Delays) && slices.Equal(l.Fills, o.Fills) &&
+		slices.Equal(l.Compositions, o.Compositions)
+}
+
+// animations zips the lists into the computed animations
+// (css-animations-1 §3): one per name, each other list matched by
+// index and repeating, a name no layer's @keyframes rule defines
+// running nothing.
+func (l *AnimLists) animations(layers []Layer) []Animation {
+	var out []Animation
+	for i, name := range l.Names {
+		if name == "" {
 			continue
 		}
-		for _, layer := range slices.Backward(layers) {
-			if kf := layer.Sheet.Keyframes(a.Name); kf != nil {
-				a.Keyframes = kf
-				break
-			}
+		kf := keyframesFor(name, layers)
+		if kf == nil {
+			continue
 		}
-		if a.Keyframes != nil && a.Keyframes.Mask == 0 {
-			a.Keyframes.Mask = a.Keyframes.mask()
+		out = append(out, Animation{
+			Name: name, Keyframes: kf,
+			Duration:    listAt(l.Durations, i, 0),
+			Timing:      listAt(l.Timings, i, TimingEase),
+			Iterations:  listAt(l.Iterations, i, 1),
+			Direction:   listAt(l.Directions, i, DirNormal),
+			Running:     listAt(l.Running, i, true),
+			Delay:       listAt(l.Delays, i, 0),
+			Fill:        listAt(l.Fills, i, FillNone),
+			Composition: listAt(l.Compositions, i, CompReplace),
+		})
+	}
+	return out
+}
+
+// keyframesFor is the @keyframes rule called name in the
+// highest-priority layer that declares one.
+func keyframesFor(name string, layers []Layer) *Keyframes {
+	for _, layer := range slices.Backward(layers) {
+		if layer.Sheet == nil {
+			continue
+		}
+		if kf := layer.Sheet.Keyframes(name); kf != nil {
+			return kf
+		}
+	}
+	return nil
+}
+
+// Sample is the animation's state at local time t, the seconds since
+// it was applied (web-animations-1 §4.6-§4.9): its directed progress
+// within the current iteration and whether it was sampled from the
+// before phase, the before flag the step functions read. ok is false
+// where the animation has no effect — before or after its active
+// interval without a fill covering that side. The timing function is
+// not applied here: CSS animations ease each keyframe interval.
+func (a *Animation) Sample(t float64) (progress float64, before, ok bool) {
+	active := 0.0
+	if a.Duration > 0 && a.Iterations > 0 {
+		active = a.Duration * a.Iterations
+	}
+	var at float64
+	switch {
+	case t < a.Delay:
+		if a.Fill != FillBackwards && a.Fill != FillBoth {
+			return 0, false, false
+		}
+		before = true
+	case t < a.Delay+active:
+		at = t - a.Delay
+	default:
+		if a.Fill != FillForwards && a.Fill != FillBoth {
+			return 0, false, false
+		}
+		at = active
+	}
+	overall := 0.0
+	switch {
+	case a.Duration > 0:
+		overall = at / a.Duration
+	case !before:
+		overall = a.Iterations
+	}
+	simple := overall - math.Floor(overall)
+	if math.IsInf(overall, 1) {
+		simple = 0
+	}
+	iter := math.Floor(overall)
+	if simple == 0 && overall != 0 && at == active && !before {
+		simple, iter = 1, iter-1
+	}
+	reverse := false
+	switch a.Direction {
+	case DirReverse:
+		reverse = true
+	case DirAlternate:
+		reverse = math.Mod(iter, 2) == 1
+	case DirAlternateReverse:
+		reverse = math.Mod(iter, 2) == 0
+	}
+	if reverse {
+		simple = 1 - simple
+	}
+	return simple, before, true
+}
+
+// End is the local time the animation's active interval ends at,
+// +Inf for an infinite one.
+func (a *Animation) End() float64 {
+	if a.Duration <= 0 || a.Iterations <= 0 {
+		return a.Delay
+	}
+	return a.Delay + a.Duration*a.Iterations
+}
+
+// Apply writes the rule's effect at iteration progress into dst for
+// every longhand the rule animates, eased per keyframe interval
+// (css-animations-1 §3.2) and composed onto under — the value beneath
+// the animation — by comp. A longhand missing from the 0% or 100% stop
+// takes under's value there.
+func (kf *Keyframes) Apply(dst, under *Values, progress float64, timing *Timing, before bool, comp uint8) {
+	for i, word := range kf.Props.words() {
+		for ; word != 0; word &= word - 1 {
+			p := Prop(i*propWordBits + bits.TrailingZeros64(word))
+			kf.applyProp(dst, under, p, progress, timing, before)
+			if comp != CompReplace {
+				Compose(dst, under, p)
+			}
 		}
 	}
 }
 
+// kfStop is one stop of a longhand's property-specific keyframes; a
+// nil v is a stop synthesized from the underlying value.
+type kfStop struct {
+	off float64
+	v   *Values
+	tm  *Timing
+}
+
+// applyProp interpolates one longhand over its property-specific
+// keyframes (web-animations-1 §5.3.3): the stops declaring it, with
+// under synthesized at 0 and 1 where none does; the interval is the
+// last stop at or before progress and the one after it.
+func (kf *Keyframes) applyProp(dst, under *Values, p Prop, progress float64, timing *Timing, before bool) {
+	var buf [16]kfStop
+	stops := buf[:0]
+	for i := range kf.Frames {
+		f := &kf.Frames[i]
+		if !f.Props.Has(p) {
+			continue
+		}
+		tm := timing
+		if f.Timing != nil {
+			tm = f.Timing
+		}
+		stops = append(stops, kfStop{off: f.Offset, v: f.V, tm: tm})
+	}
+	if len(stops) == 0 || stops[0].off != 0 {
+		stops = slices.Insert(stops, 0, kfStop{off: 0, tm: timing})
+	}
+	if stops[len(stops)-1].off != 1 {
+		stops = append(stops, kfStop{off: 1, tm: timing})
+	}
+	i := 0
+	for k := range len(stops) - 1 {
+		if stops[k].off <= progress {
+			i = k
+		}
+	}
+	a, b := stops[i], stops[i+1]
+	local := 1.0
+	if b.off > a.off {
+		local = (progress - a.off) / (b.off - a.off)
+	}
+	av, bv := a.v, b.v
+	if av == nil {
+		av = under
+	}
+	if bv == nil {
+		bv = under
+	}
+	Interpolate(dst, av, bv, p, a.tm.At(local, before))
+}
+
+// parseAnimation parses the animation shorthand (css-animations-1
+// §3.11), one entry per comma group, each a flexible-order run of a
+// duration, a delay (the second time), a timing function, an iteration
+// count, a direction, a fill mode, a play state and the name (an ident
+// none of the keywords claims). Every longhand list takes one entry per
+// group; animation-composition is not part of the shorthand.
+func parseAnimation(ts []token, cx *ctx, v *Values) bool {
+	var l AnimLists
+	for _, grp := range splitTop(ts, tkComma) {
+		if !l.addShorthand(grp, cx) {
+			return false
+		}
+	}
+	l.Compositions = v.Anim.Compositions
+	v.Anim = l
+	return true
+}
+
+// addShorthand parses one comma group of the shorthand onto every
+// list.
+func (l *AnimLists) addShorthand(ts []token, cx *ctx) bool {
+	var times []float64
+	name, named := "", false
+	timing, haveT := TimingEase, false
+	iters, haveI := 1.0, false
+	dir, haveDir := DirNormal, false
+	fill, haveFill := FillNone, false
+	running, haveRun := true, false
+	for _, part := range components(ts) {
+		if secs, ok := timeOf(part, cx); ok && len(times) < 2 {
+			times = append(times, secs)
+			continue
+		}
+		if tm, ok := timingOf(part, cx); ok && !haveT {
+			timing, haveT = tm, true
+			continue
+		}
+		if n, ok := iterationOf(part, cx); ok && !haveI {
+			iters, haveI = n, true
+			continue
+		}
+		s, ok := identOf([][]token{part})
+		if !ok {
+			return false
+		}
+		if d, ok := animDirections[s]; ok && !haveDir && s != "normal" {
+			dir, haveDir = d, true
+			continue
+		}
+		if f, ok := animFills[s]; ok && !haveFill && s != "none" {
+			fill, haveFill = f, true
+			continue
+		}
+		if s == "running" || s == "paused" {
+			if haveRun {
+				return false
+			}
+			running, haveRun = s == "running", true
+			continue
+		}
+		if named {
+			return false
+		}
+		named = true
+		if s != "none" {
+			name = s
+		}
+	}
+	if len(times) > 0 && times[0] < 0 {
+		return false
+	}
+	delay := 0.0
+	if len(times) == 2 {
+		delay = times[1]
+	}
+	l.Names = append(l.Names, name)
+	l.Durations = append(l.Durations, listAt(times, 0, 0))
+	l.Delays = append(l.Delays, delay)
+	l.Timings = append(l.Timings, timing)
+	l.Iterations = append(l.Iterations, iters)
+	l.Directions = append(l.Directions, dir)
+	l.Fills = append(l.Fills, fill)
+	l.Running = append(l.Running, running)
+	return true
+}
+
+// iterationOf reads one animation-iteration-count value: infinite or
+// a non-negative number.
+func iterationOf(ts []token, cx *ctx) (float64, bool) {
+	if s, ok := identOf([][]token{ts}); ok {
+		return math.Inf(1), s == "infinite"
+	}
+	n, ok := evalNumeric(ts, cx)
+	return n.v, ok && n.kind == numNumber && n.v >= 0
+}
+
+// parseAnimationIterations parses animation-iteration-count's list.
+func parseAnimationIterations(ts []token, cx *ctx, v *Values) bool {
+	var out []float64
+	for _, item := range splitTop(ts, tkComma) {
+		n, ok := iterationOf(trimWS(item), cx)
+		if !ok {
+			return false
+		}
+		out = append(out, n)
+	}
+	v.Anim.Iterations = out
+	return true
+}
+
+// parseAnimationPlayState parses animation-play-state's list of
+// running and paused.
+func parseAnimationPlayState(ts []token, _ *ctx, v *Values) bool {
+	var out []bool
+	for _, item := range splitTop(ts, tkComma) {
+		s, ok := identOf(components(item))
+		if !ok || s != "running" && s != "paused" {
+			return false
+		}
+		out = append(out, s == "running")
+	}
+	v.Anim.Running = out
+	return true
+}
+
+// parseAnimationName parses animation-name's list of names and none.
+func parseAnimationName(ts []token, _ *ctx, v *Values) bool {
+	var out []string
+	for _, item := range splitTop(ts, tkComma) {
+		s, ok := identOf(components(item))
+		if !ok {
+			return false
+		}
+		if s == "none" {
+			s = ""
+		}
+		out = append(out, s)
+	}
+	v.Anim.Names = out
+	return true
+}
+
 // sortFrames orders a keyframes rule's stops by offset, stable so
-// equal offsets keep source order (CSS: the last wins), and stamps the
-// channel mask the stops declare.
+// equal offsets keep source order (the later wins), and records the
+// longhands the stops declare.
 func sortFrames(kf *Keyframes) {
 	sort.SliceStable(kf.Frames, func(i, j int) bool { return kf.Frames[i].Offset < kf.Frames[j].Offset })
-	kf.Mask = kf.mask()
+	kf.Props = PropSet{}
+	for i := range kf.Frames {
+		kf.Props = kf.Props.Or(kf.Frames[i].Props)
+	}
 }

@@ -26,6 +26,9 @@ type Target struct {
 	// Attrs are the app-set data attributes (SetAttr), [name] and
 	// [name=value] selectors' subject.
 	Attrs []Attr
+	// HasText reports text content: a widget showing text has a text
+	// child in the DOM's terms, so :empty does not match it.
+	HasText bool
 	// Inline is the node's own declaration block (a widget-scoped style,
 	// GTK's per-widget provider), applied at InlinePriority. It is read
 	// only for the node being styled.
@@ -110,24 +113,61 @@ const (
 	PriorityUser        = 800
 )
 
-// rank packs (important, priority, scope proximity, ids, classes,
-// elements, cascade layer, sheet, order) into one comparable value,
-// most significant first: a `!important` declaration outranks every
-// normal one, then the provider priority decides, then @scope
-// proximity (an inner scope beats an outer one), then specificity,
-// then the @layer order (255: unlayered, which outranks every
-// layer), then the sheet's install position, then source order.
+// rank packs one declaration's cascade standing into a comparable
+// value, most significant first (css-cascade-6 §6.1, with GTK's
+// provider priority standing in for the origins): importance, the
+// provider priority, the cascade layer (unlayered outranks every
+// layer for normal declarations; important ones reverse the layer
+// order, so an earlier layer's important declaration wins and a
+// layered one beats an unlayered one), specificity, @scope proximity
+// (prox counts the generations up to the scoping root, nearer
+// winning; unscoped rules have none, the weakest), then the sheet's
+// install position and source order.
 func rank(prio int, sp spec, layer, sheet, order int, imp bool, prox int) uint64 {
 	clampTo := func(v, bits int) uint64 {
 		limit := 1<<bits - 1
 		return uint64(min(max(v, 0), limit))
 	}
-	r := clampTo(prio, 10)<<53 | clampTo(prox, 3)<<50 | clampTo(sp.ids, 6)<<44 |
-		clampTo(sp.cls, 9)<<35 | clampTo(sp.els, 6)<<29 | clampTo(layer, 8)<<21 | clampTo(sheet, 6)<<15 | clampTo(order, 15)
+	switch {
+	case layer == inlineLayer:
+		layer = unlayered
+	case imp && layer == unlayered:
+		layer = 0
+	case imp:
+		layer = unlayered - 1 - min(layer, unlayered-2)
+	}
+	r := clampTo(prio, 10)<<53 | clampTo(layer, 8)<<45 | clampTo(sp.ids, 6)<<39 |
+		clampTo(sp.cls, 8)<<31 | clampTo(sp.els, 6)<<25 | proxKey(prox)<<21 |
+		clampTo(sheet, 6)<<15 | clampTo(order, 15)
 	if imp {
 		r |= 1 << 63
 	}
 	return r
+}
+
+// The layer keys rank reads: unlayered is the key of a rule outside
+// every @layer, inlineLayer marks a widget's inline declarations,
+// which are element-attached and outrank every layer whatever their
+// importance.
+const (
+	unlayered   = 255
+	inlineLayer = 256
+)
+
+// rankPriority reads the provider priority back out of a rank.
+func rankPriority(rk uint64) int { return int(rk >> 53 & (1<<10 - 1)) }
+
+// noProximity is the proximity of an unscoped rule.
+const noProximity = -1
+
+// proxKey ranks a scoping proximity: nearer roots rank higher, every
+// scoped rule above an unscoped one, and proximities past the field's
+// range tie.
+func proxKey(prox int) uint64 {
+	if prox < 0 {
+		return 0
+	}
+	return uint64(15 - min(prox, 14))
 }
 
 // maxHasBudget bounds the :has() work of one compute: node visits a
@@ -157,17 +197,17 @@ type Scratch struct {
 	// that pseudo-element (::before, ::after) instead of the element's
 	// own rules.
 	pseudo string
-	// prevCounters is the previous sibling's counter scope the widget
-	// layer supplies when counters are in play (Compute resets it).
-	prevCounters *CounterScope
+	// prevCounters and srcCounters are the previous sibling's counter
+	// set and the set of the element immediately preceding the node in
+	// tree order, which the widget layer supplies when counters are in
+	// play (Compute resets them).
+	prevCounters, srcCounters *CounterScope
 	// media is the environment the sheets' @media conditions evaluate
 	// against, copied from the compute's Env.
 	media Media
-	// container is the nearest query container the node's @container
-	// conditions and container units resolve against; have reports
-	// whether one exists.
-	container     Container
-	haveContainer bool
+	// conts are the node's query containers, nearest first, that its
+	// @container conditions and container units resolve against.
+	conts []Container
 	// revertChain records every declaration per layer when a loaded
 	// sheet carries a revert-layer value: the chain computeProp walks
 	// down, layer below layer.
@@ -201,10 +241,15 @@ type Scratch struct {
 	layers []Layer
 }
 
-// SetPrevCounters supplies the previous sibling's counter scope, the
-// widget layer's half of CSS's document-order counting; Compute
-// consumes and clears it.
-func (sc *Scratch) SetPrevCounters(cs *CounterScope) { sc.prevCounters = cs }
+// SetPrevCounters supplies the widget layer's half of CSS's counter
+// inheritance (css-lists-3 §4.4.1): prev is the previous sibling's
+// counter set (nil without one), and src the set of the element
+// immediately preceding the node in tree order — the previous
+// sibling's last descendant — whose values the inherited counters
+// take (nil reads the parent's). Compute consumes and clears both.
+func (sc *Scratch) SetPrevCounters(prev, src *CounterScope) {
+	sc.prevCounters, sc.srcCounters = prev, src
+}
 
 // customWin is the winning declaration of one custom property.
 type customWin struct {
@@ -233,17 +278,16 @@ type parsedDecl struct {
 // n offers its declarations; the per-longhand and per-custom-property
 // winners land in sc.
 func (sc *Scratch) collect(layers []Layer, n Node) {
-	clear(sc.best[:])
-	clear(sc.win[:])
-	clear(sc.bestLayer[:])
-	clear(sc.bestStart[:])
-	clear(sc.winStart[:])
+	// Only the longhands the last compute offered hold winners: the
+	// rest of the tables stay zero between computes.
+	sc.offered.Each(func(p Prop) { sc.best[p], sc.win[p], sc.bestLayer[p] = 0, nil, 0 })
+	sc.offeredStart.Each(func(p Prop) { sc.bestStart[p], sc.winStart[p] = 0, nil })
 	sc.offered, sc.offeredStart = PropSet{}, PropSet{}
 	sc.customs = sc.customs[:0]
 	sc.metas = sc.metas[:0]
 	sc.chain = sc.chain[:0]
 	sc.revertChain = false
-	sc.haveContainer = false
+	sc.conts = sc.conts[:0]
 	var anyContainer bool
 	for _, l := range layers {
 		if l.Sheet == nil {
@@ -252,11 +296,11 @@ func (sc *Scratch) collect(layers []Layer, n Node) {
 		if len(l.Sheet.containerQs) > 0 || l.Sheet.sens.CqUnits {
 			anyContainer = true
 		}
-		sc.revertChain = sc.revertChain || l.Sheet.sens.RevertLayer
+		sc.revertChain = sc.revertChain || l.Sheet.sens.Revert
 	}
 	if anyContainer {
 		if cn, ok := n.(containerNode); ok {
-			sc.container, sc.haveContainer = cn.StyleContainer()
+			sc.conts = cn.StyleContainers(sc.conts)
 		}
 	}
 	sc.hasBudget = maxHasBudget
@@ -295,7 +339,7 @@ func (sc *Scratch) collect(layers []Layer, n Node) {
 			// like a `*` rule in a widget-scoped provider; they rank as the
 			// last layer at their priority.
 			for i := range b.decls {
-				sc.offer(&b.decls[i], rank(sc.self.InlinePriority, spec{}, 255, 63, b.decls[i].order, b.decls[i].important, 0), 255)
+				sc.offer(&b.decls[i], rank(sc.self.InlinePriority, spec{}, inlineLayer, 63, b.decls[i].order, b.decls[i].important, noProximity), unlayered)
 			}
 		}
 	}
@@ -314,21 +358,27 @@ func (sc *Scratch) bucket(rules []int32, s *Sheet, prio, layer int, n Node) {
 		if r.pseudo != sc.pseudo {
 			continue
 		}
-		if r.cq >= 0 && !s.containerQs[r.cq].matches(sc.container, sc.haveContainer) {
+		if r.cq >= 0 && !s.containerQs[r.cq].matches(sc.conts) {
 			continue
 		}
 		if !sc.selectorMatches(&r.sel, n) {
 			continue
 		}
+		prox := noProximity
+		if r.scope != nil {
+			if prox = sc.scopeProximity(r.scope, n); prox < 0 {
+				continue
+			}
+		}
 		for i := range r.block.decls {
 			d := &r.block.decls[i]
-			rk := rank(prio, r.spec, int(r.layer), layer, d.order, d.important, int(r.scopeDepth))
+			rk := rank(prio, r.spec, int(r.layer), layer, d.order, d.important, prox)
 			sc.offer(d, rk, r.layer)
 		}
 		if r.start != nil {
 			for i := range r.start.decls {
 				d := &r.start.decls[i]
-				rk := rank(prio, r.spec, int(r.layer), layer, d.order, d.important, int(r.scopeDepth))
+				rk := rank(prio, r.spec, int(r.layer), layer, d.order, d.important, prox)
 				sc.offerStart(d, rk)
 			}
 		}
@@ -446,6 +496,27 @@ func (sc *Scratch) matchFrom(sel *selector, i, d int, n Node) (Node, bool) {
 	}
 }
 
+// scopeProximity is the scoping proximity of n under scope
+// (css-cascade-6 §6.1): the generations from n up to the nearest
+// element matching a scoping root, 0 when n is the root itself, or -1
+// when n sits under a scoping limit before any root — out of scope.
+func (sc *Scratch) scopeProximity(scope *scopeCtx, n Node) int {
+	for hops, m := 0, n; m != nil; hops, m = hops+1, m.StyleParent() {
+		m.StyleTarget(&sc.bufs[0])
+		for i := range scope.root {
+			if sc.matchesSub(&scope.root[i], &sc.bufs[0], 0, m) {
+				return hops
+			}
+		}
+		for i := range scope.upper {
+			if sc.matchesSub(&scope.upper[i], &sc.bufs[0], 0, m) {
+				return -1
+			}
+		}
+	}
+	return -1
+}
+
 // scopeBlocks reports whether n crosses a @scope upper boundary: the
 // scope root cannot be n nor beyond it.
 func (sc *Scratch) scopeBlocks(sel *selector, d int, n Node) bool {
@@ -502,8 +573,10 @@ func (sc *Scratch) compoundMatches(c *compound, t *Target, d int, n Node) bool {
 		}
 	}
 	for i := range c.not {
-		if sc.matchesSub(&c.not[i], t, d, n) {
-			return false
+		for j := range c.not[i].sels {
+			if sc.matchesSub(&c.not[i].sels[j], t, d, n) {
+				return false
+			}
 		}
 	}
 	for i := range c.isLists {
@@ -519,11 +592,21 @@ func (sc *Scratch) compoundMatches(c *compound, t *Target, d int, n Node) bool {
 		}
 	}
 	for i := range c.has {
-		if sc.hasMatches(&c.has[i], d, n) {
+		if !sc.anyHasMatches(c.has[i], d, n) {
+			return false
+		}
+	}
+	return true
+}
+
+// anyHasMatches reports whether one argument of a :has() list matches.
+func (sc *Scratch) anyHasMatches(args []hasArg, d int, n Node) bool {
+	for i := range args {
+		if sc.hasMatches(&args[i], d, n) {
 			return true
 		}
 	}
-	return len(c.has) == 0
+	return false
 }
 
 // attrsMatch tests the compound's attribute selectors.
@@ -584,7 +667,7 @@ func (sc *Scratch) structsMatch(c *compound, t *Target, d int, n Node) bool {
 		return false
 	}
 	if st&structEmpty != 0 {
-		if kids := n.StyleChildren(); len(kids) != 0 {
+		if t.HasText || len(n.StyleChildren()) != 0 {
 			return false
 		}
 	}

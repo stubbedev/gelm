@@ -292,3 +292,89 @@ allocation-shaped, and the syscall profile's only gelm-side lever
 (requests per frame) was already near minimal. Idle remains 0
 syscalls/sec; the wheel tick's syscall burst shrinks with the tween
 work it no longer restarts.
+
+## The #159 CSS engine against the restyle budgets
+
+Measured 2026-10-11 on the #159 worktree (the CSS engine completion:
+the conformance suite and its fixes, background layers, border-image,
+the animation timing model), same machine, Go 1.27, with the machine
+under other load (load average 7–11): every number is the minimum of
+six interleaved runs per tree — `b9dc18d` (main before #159), `599f68d`
+(main with every #159 tranche but this one) and this change — so the
+three columns share the load. Absolute times sit above the table at
+the top of this file, which was measured on an idle machine; the
+comparison is between the columns.
+
+    go test -run '^$' -bench . -benchmem -count 1 ./widget   # x6, interleaved per tree
+    go test -run '^$' -bench . -benchmem -count 1 ./render   # x6, interleaved (599f68d, this change)
+    go test -run TestAllocBudget -v ./app ./widget ./render
+
+| benchmark | before #159 (`b9dc18d`) | #159 tranches (`599f68d`) | this change |
+|---|---|---|---|
+| StyleGalleryFullRestyle | 62.7µs, 0 allocs | 130.6µs, 0 allocs | **55.8µs, 0 allocs** |
+| StyleGalleryClassToggle | 990ns, 0 allocs | 1860ns, 0 allocs | **859ns, 0 allocs** |
+| StyleGalleryPaint | 1.97ms, 4 allocs | 2.01ms, 4 allocs | 1.95ms, 4 allocs |
+| ShowcasePaint | 2.11ms, 4 allocs | 2.01ms, 4 allocs | 2.01ms, 4 allocs |
+| ShowcaseArrange | 13.7µs, 0 allocs | 12.5µs, 0 allocs | 12.1µs, 0 allocs |
+| ShowcaseMeasure | 4ns, 0 allocs | 5ns, 0 allocs | 4ns, 0 allocs |
+| StaticTreeMeasure | 3ns, 0 allocs | 3ns, 0 allocs | 4ns, 0 allocs |
+| ProgressOnlyFrame | 171µs, 1 alloc | 168µs, 1 alloc | 177µs, 1 alloc |
+| EntryPaint | 399µs, 0 allocs | 372µs, 0 allocs | 387µs, 0 allocs |
+| PointerMove | 1022ns, 0 allocs | 251ns, 0 allocs | 263ns, 0 allocs |
+| DragHover | 944ns, 0 allocs | 239ns, 0 allocs | 236ns, 0 allocs |
+| WheelOverScroll | 245ns, 0 allocs | 254ns, 0 allocs | 253ns, 0 allocs |
+| render CanvasPaint | - | 321µs, 0 allocs | 324µs, 0 allocs |
+| render DrawAligned | - | 21.7µs, 0 allocs | 22.5µs, 0 allocs |
+| render DrawText | - | 25.6µs, 0 allocs | 24.6µs, 0 allocs |
+| render Shape200 | - | 71ns, 0 allocs | 71ns, 0 allocs |
+
+The pointer rows rerun with eight interleaved rounds, as do the three
+render rows whose first six-round minimums moved by more than the
+noise (a second run put them within 4%).
+
+Every allocation budget holds: `widget.TestAllocBudgetGalleryFrame`,
+`TestAllocBudgetStyleFullRestyle` (0), `TestAllocBudgetSiblingRestyle`
+(0), `TestAllocBudgetComposingDisplay` (0), the render budgets (0) and
+the app budgets (`TestAllocBudgetIdleLoopTick` 0 and the window,
+toast, tooltip and key-delivery walks) pass, as do the 0-alloc
+matcher (`TestValuesNoAllocationPerMatch`), the effect fast path
+(`TestEffectsFastPathAllocationFree`) and the steady CSS layout frames
+(`TestCSSLayoutSteadyFrameAllocatesNothing`,
+`TestCSSGridSteadyFrameAllocatesNothing`).
+
+### What moved
+
+The #159 tranches had doubled the restyle: the computed `Values`
+grew to 4.6 KB with the new property groups, and every restyle copied
+it four times (the old values, a zeroed result, the cache store, and
+two by-value hand-offs to the transition and animation runners),
+diffed it field by field, then built both the layout and the
+inheritance keys even when nothing changed; each compute also derived
+the theme's polarity through three `math.Pow` calls and cleared the
+matcher's per-longhand tables in full. The fixes:
+
+1. **Restyle into a shared buffer, compare, and stop.** A recompute
+   lands in one event-loop buffer and is compared with the cached
+   values through `style.Values.Equal` — the comparable values sit in
+   an embedded `Scalars` struct compared with one `==`, the list- and
+   pointer-valued groups (backgrounds, transforms, transitions,
+   animations, the clip, mask and border image, the counters) through
+   their own `Equal`. An unchanged result returns without a copy or
+   the key projections; the diff is complete by construction, where
+   the hand-written one had missed fields (a background url, the
+   variation axes, the 3-D part of a transform, the accent color and
+   caret shape never repainted when they alone changed).
+2. **Pointers to the runners**: the transition and animation runners
+   take the values by pointer; the transitions copy only on the path
+   that starts one.
+3. **The theme's polarity is memoized** by its background color.
+4. **The matcher clears only what the last compute offered**: the
+   per-longhand winner tables stay zero outside the previous compute's
+   offered set.
+
+The full restyle is 2.3x faster than before this change and 11% faster
+than before #159; the class toggle 2.2x and 13%. Paint, layout and
+the event paths are unchanged within the noise; `PointerMove` is 5%
+slower than `599f68d` because a hit now walks the ancestors'
+`clip-path`s (CSS Masking's clipped-out region takes no pointer
+events), still allocation-free.

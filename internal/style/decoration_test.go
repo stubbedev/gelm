@@ -25,7 +25,7 @@ func TestTextDecoration(t *testing.T) {
 	if d := dec("c"); d.Lines != render.Overline || d.Style != render.DecorationDotted {
 		t.Errorf("overline dotted: %+v", d)
 	}
-	if vd := computeTree(s, el("d")); vd.Decoration.Lines != 0 || !vd.Has(PropTextDecoration) {
+	if vd := computeTree(s, el("d")); vd.Decoration.Lines != 0 || !vd.Has(PropTextDecorationLine) {
 		t.Errorf("none: %+v", vd.Decoration)
 	}
 	if d := dec("d"); d.Lines != 0 {

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"image"
 	"io"
+	"math"
 	"net/http"
 	"os"
 	"strconv"
@@ -13,6 +14,7 @@ import (
 	"time"
 
 	"github.com/stubbedev/gelm/internal/imgcache"
+	"github.com/stubbedev/gelm/internal/style"
 	"github.com/stubbedev/gelm/render"
 	"github.com/stubbedev/gelm/transfer"
 )
@@ -305,12 +307,12 @@ func (im *Image) Paint(cv *render.Canvas) {
 	box := cv.MapRect(im.bounds)
 	pic, frame := im.currentFrame()
 	b := pic.Bounds()
-	srcRect, dw, dh := render.ScaleRect(b.Dx(), b.Dy(), box.W, box.H, im.scale)
-	if dw <= 0 || dh <= 0 {
+	fit, pos := im.placement(cv, box)
+	srcRect, dst := render.PlaceImage(b.Dx(), b.Dy(), box.W, box.H, fit, pos)
+	if dst.Empty() {
 		return
 	}
-	dx := box.X + (box.W-dw)/2
-	dy := box.Y + (box.H-dh)/2
+	dw, dh, dx, dy := dst.W, dst.H, box.X+dst.X, box.Y+dst.Y
 	if srcRect.Dx() == dw && srcRect.Dy() == dh {
 		// Natural pixels land one-to-one (ImageNone, a fitting
 		// ImageScaleDown, any 1:1 fit); no resample, no cache entry.
@@ -335,6 +337,24 @@ func (im *Image) Paint(cv *render.Canvas) {
 		return render.Resample(pic, srcRect, dw, dh)
 	})
 	cv.DrawImageDevice(raster, dx, dy)
+}
+
+// placement is the scale policy and position the image draws by in
+// the device rect box: object-fit and object-position where the
+// stylesheet declares them (CSS wins), else SetScale's policy
+// centered. A position's pixel offsets map to device pixels.
+func (im *Image) placement(cv *render.Canvas, box render.Rect) (render.ImageScale, render.ImagePos) {
+	v := im.style(im)
+	fit, pos := im.scale, render.ImageCentered
+	if v.Has(style.PropObjectFit) {
+		fit = v.Layout.ObjectFit
+	}
+	if v.Has(style.PropObjectPosition) {
+		x, y := v.Layout.ObjectPosition[0], v.Layout.ObjectPosition[1]
+		off := cv.MapRect(render.Rect{X: im.bounds.X + int(math.Round(x.Px)), Y: im.bounds.Y + int(math.Round(y.Px))})
+		pos = render.ImagePos{X: x.Frac, Y: y.Frac, OffX: off.X - box.X, OffY: off.Y - box.Y}
+	}
+	return fit, pos
 }
 
 // HitTest returns the image when p is inside its bounds.
