@@ -323,8 +323,8 @@ func (s *showcase) sixth(cx *component.Context[showMsg, struct{}], caption func(
 			Put(ui.Button(ui.Label("move").Font(nil, 11), 4, 8).Ref(&s.fixedBtn).
 				OnClick(func() {
 					s.fixedX -= 20
-				s.fixed.Move(s.fixedLabel, s.fixedX, 6)
-				note("fixed moved to (%d,6)", s.fixedX)()
+					s.fixed.Move(s.fixedLabel, s.fixedX, 6)
+					note("fixed moved to (%d,6)", s.fixedX)()
 				}).Tooltip("moves the fixed label 20px left").DebugName("demo:fixedbtn"), 4, 2).
 			Put(ui.Label("positioned").Font(nil, 11).Ink(muted).Ref(&s.fixedLabel), 96, 6),
 		caption("listbox"),
