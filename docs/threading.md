@@ -94,7 +94,7 @@ component's input and output queues coalesce their wakes exactly like
 
 ## The relm4 mapping
 
-| relm4 | gelm today |
+| relm4 | gelm |
 | --- | --- |
 | `Component`, `SimpleComponent` | `component.Component[In, Out]`, launched with `component.Launch`/`Window`/`Layer` or `Context.Launch` |
 | `ComponentSender::input`/`output` | `Context.Input`/`Output`, `Sender[M]` |
@@ -106,10 +106,9 @@ component's input and output queues coalesce their wakes exactly like
 | `Command`, `oneshot_command`, `spawn_command` | `Context.Oneshot`, `Context.Spawn`, cancelled at shutdown |
 | `AsyncComponent` | a component implementing `component.Loader` |
 | `FactoryVecDeque` | `component.Factory` of item components, edited in place |
-| `TypedListView` (virtualized) | `widget.List` + `ListModel`, `ColumnView` |
+| `TypedListView` (virtualized) | `widget.TypedList[T]`, `widget.List` + `ListModel`, `ColumnView[T]` |
 | `RelmAction`, `RelmActionGroup` | `widget.Action`, `StateAction[S]`, `AddAccel`/`AddScopedAccel` |
 | `glib::timeout_add` | `Application.Every` |
-
 
 ## Tests
 

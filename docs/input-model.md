@@ -9,9 +9,9 @@ Change the code and this document together.
     compositor
       |  wl_pointer / wl_keyboard / wl_data_device events
       v
-    wlsession.Session            ONE dispatch path: Session.Roundtrip /
-      |  routed per surface      Session.Run are the only readers of the
-      v                          connection; nothing else may call them.
+    wlsession.Session            ONE dispatch path: Session.Step and
+      |  routed per surface      Session.Roundtrip are the only readers
+      v                          of the connection; nothing else reads it.
     wlsession.SurfacePointerHandler   (one per surface)
     wlsession.SurfaceDropHandler      (one per surface, via internal/dragdrop)
       v
@@ -50,9 +50,9 @@ frame callback stays unanswered past a frame period and a half (the
 animation clock's timer keeps the tween moving), and configure
 size changes mark the frame dirty themselves.
 
-If the connection ever needs a timeout-based wake without a timer
-(single-shot waits), prefer `WakeAfter`; raw `Roundtrip` remains for
-handshakes that must complete before proceeding (popup configure).
+A timeout-based wake without a timer (a single-shot wait) goes
+through `WakeAfter`; a raw `Roundtrip` is for handshakes that must
+complete before proceeding (popup configure).
 
 ## Pointer focus and routing
 
@@ -187,7 +187,7 @@ mutates the tree mid-traversal.
   cut, undo/redo, and Tab indentation no-op, while selection, copy,
   caret motion, and pan keep working. The undo history built before
   the flip is untouched, not cleared — read-only back off and the same
-  edits are undoable again. `SetText` remains programmatic and
+  edits are undoable again. `SetText` stays programmatic and
   applies. Visually: a disabled text widget fades its text; a
   read-only one keeps the text and fades only the caret.
 
@@ -232,8 +232,8 @@ width degenerates to one rune per row.
 
 When the compositor advertises `zwp_text_input_manager_v3` the session
 binds one text input per seat; the global is optional, so compositors
-without it keep the pre-IME keyboard path untouched — every text-input
-call is a no-op.
+without it keep the plain keyboard path — every text-input call is a
+no-op.
 
 `app.Application` drives the input method from the focused widget once
 per loop iteration: focusing an editable widget (Entry, TextArea) sends

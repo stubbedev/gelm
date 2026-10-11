@@ -582,7 +582,7 @@ var confExceptionsCascade = []confException{
 		},
 		want:   []confCheck{wantComputed("t", cpOpacity, 1.0)},
 		reason: "the transition engine keys on the longhand table, which custom properties sit outside",
-		doc:    "registered property is deferred",
+		doc:    "Animating a registered property is not supported",
 	},
 	{
 		name: "an import may follow define-color",

@@ -1,9 +1,8 @@
 # gelm architecture
 
 How gelm is put together, and the rules that keep it correct: the
-layering first, then the invariants each layer must hold. Most of them
-were paid for by a real bug, and each cites the code and the tests
-that pin it.
+layering first, then the invariants each layer must hold. Each rule
+cites the code and the tests that pin it.
 
 ## Layers
 
@@ -62,8 +61,8 @@ docs/threading.md; one armed wake covers an entire invoke storm).
 deadline; with no dirty state and nothing scheduled the loop schedules
 no kick and holds no CPU — idle is 0%, verified against headless sway.
 `loopKicker.schedule` coalesces timer kicks: one outstanding kick
-covers its span (re-arming covered deadlines once queued a sync per
-pass and turned an animation into a pass storm).
+covers every deadline in its span, so an animation queues one sync per
+frame, not one per pass.
 
 ### 3. Redraw only damage, paced by frame callbacks
 
@@ -88,9 +87,9 @@ screen, so one buffer's init paint cannot poison the pool.
 ### 4. Resize before Acquire; a resize commit bypasses pacing
 
 The draw path checks size and scale before acquiring a buffer:
-`Pool.Resize` destroys buffers, and doing that after Acquire destroyed
-the buffer that was about to be attached — the compositor killed the
-connection. Configure relayout runs `syncSize` between events
+`Pool.Resize` destroys buffers, and resizing after Acquire would
+destroy the buffer about to be attached, a protocol error that ends
+the connection. Configure relayout runs `syncSize` between events
 (app/window.go) and marks the frame dirty.
 
 The resize commit bypasses frame pacing (`shouldDraw`, app/app.go):
@@ -152,12 +151,12 @@ independent reference compositor.
 ### 8. A widget's Measure and Paint must agree
 
 Layout and painting derive from the same sources, or the widget
-measures boxes its own painter refuses to fill into. The canonical bug:
-Label.Measure rounded a line height to 15 while DrawAligned's guard
-demanded the exact 15.13 float — the panel's server list measured fine
-and painted nothing. Both now share `ShapedText.LineHeight`
-(render/text.go), pinned by TestLabelNaturalHeightPaints. When adding a
-widget, compute shared geometry once and measure the thing you paint.
+measures boxes its own painter refuses to fill into: a measure that
+rounds a line height while the painter's fit check compares the exact
+float lays out a label that paints nothing. `Label.Measure` and
+`DrawAligned` share `ShapedText.LineHeight` (render/text.go), pinned by
+TestLabelNaturalHeightPaints. When adding a widget, compute shared
+geometry once and measure the thing you paint.
 
 ### 9. Buffers outlive the frames that read them; objects die with their done events
 
@@ -338,8 +337,9 @@ applies; a theme is never rejected for its colors.
   themselves by the subsurface's own frame callbacks and leave the
   window's damage and pacing alone. No other widget gets a subsurface.
 - **No commit timing** (wp_commit_timing_v1, wp_fifo_v1). Frame
-  callbacks already pace every commit (rule 3). Revisit for a video or
-  game presentation path.
+  callbacks pace every commit (rule 3), and video presents on the
+  frame clock like any other repaint; commit timing matters only to a
+  presentation path that targets exact display times.
 - **No security context and no toplevel drag.** Security context is
   for sandbox launchers, which gelm does not ship. Toplevel drag only
   matters for detachable tabs.
@@ -348,6 +348,4 @@ applies; a theme is never rejected for its colors.
   colors map correctly onto wide-gamut and HDR outputs. Showing content
   beyond sRGB would need per-surface image descriptions, a color-state
   canvas, 10-bit or half-float formats and blending in the right
-  transfer function. Revisit when an app must show wide-gamut or HDR
-  images: start with an explicit sRGB tag plus the output's preferred
-  description.
+  transfer function.
