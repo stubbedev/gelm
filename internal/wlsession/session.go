@@ -1381,14 +1381,6 @@ func (s *Session) WakeAfter(d time.Duration) {
 	})
 }
 
-// Run dispatches events forever; it returns when the connection dies —
-// classified as a DisconnectError, like Step.
-func (s *Session) Run() error {
-	return s.asDisconnect(runThroughProxyNil(func() error {
-		return s.Display.Context().Run()
-	}))
-}
-
 // Closed reports whether Close ran.
 func (s *Session) Closed() bool { return s.closed.Load() }
 
