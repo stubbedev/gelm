@@ -40,6 +40,7 @@ const (
 	KeyRight  = 106
 	KeyEnd    = 107
 	KeyDown   = 108
+	KeyUp     = 103
 )
 
 // settleTimes mirror wlpointer's pacing: after each action a roundtrip

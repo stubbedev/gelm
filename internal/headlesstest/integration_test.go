@@ -320,10 +320,22 @@ func TestHeadlessClicksOnShowcaseControls(t *testing.T) {
 
 	// A wheel tick over the list must scroll it: assert the offset the
 	// showcase reports, not just the routed hover (which names the leaf
-	// label inside the viewport and would pass on an ignored wheel).
-	in.ScrollAt(click("scroll")[0], click("scroll")[1], 60)
-	if _, err := w.Wait("demo", "list scrolled to 0,", traceTimeout); err != nil {
-		t.Errorf("wheel event never scrolled the list: %v", err)
+	// label inside the viewport and would pass on an ignored wheel). A
+	// fresh compositor re-evaluates pointer focus around the text area's
+	// click, and axis events sent while it has none are dropped, so the
+	// move-and-wheel pair is retried like every other click-and-wait.
+	for attempt := range 3 {
+		if err := in.MoveOnto(click("scroll")[0], click("scroll")[1]); err != nil {
+			t.Fatalf("move onto the list: %v", err)
+		}
+		if err := in.ScrollAt(click("scroll")[0], click("scroll")[1], 60); err != nil {
+			t.Fatalf("wheel the list: %v", err)
+		}
+		if _, err := w.Wait("demo", "list scrolled to 0,", attemptTimeout); err == nil {
+			return
+		} else if attempt == 2 {
+			t.Errorf("wheel event never scrolled the list: %v", err)
+		}
 	}
 }
 
@@ -1176,6 +1188,8 @@ func revealShowcase(t *testing.T, w *LogWatcher, in *VirtualInput, centers map[s
 	return 0
 }
 
+const showcaseLastListRow = "charlie"
+
 // TestHeadlessSixthPassListBoxAndFixed drives the sixth-pass widgets
 // through the compositor: the ListBox selects and activates a row on a
 // plain click, its filter and sort toggles re-filter and re-sort the
@@ -1191,10 +1205,10 @@ func TestHeadlessSixthPassListBoxAndFixed(t *testing.T) {
 
 	// The 640-wide window satisfied the min-width branch, and both
 	// pseudo-elements of the sixth-pass heading resolved their content.
-	if _, err := w.Wait("demo", "media viewport "+fmt.Sprintf("%dx%d", showcaseW, showcaseH), traceTimeout); err != nil {
+	if err := w.WaitEver("demo", "media viewport "+fmt.Sprintf("%dx%d", showcaseW, showcaseH), traceTimeout); err != nil {
 		t.Errorf("the window size never reached the stylesheet engine: %v", err)
 	}
-	if _, err := w.Wait("demo", `css before "sixth " after " pass"`, traceTimeout); err != nil {
+	if err := w.WaitEver("demo", `css before "sixth " after " pass"`, traceTimeout); err != nil {
 		t.Errorf("the @media ::before or the plain ::after never resolved content: %v", err)
 	}
 
@@ -1218,11 +1232,20 @@ func TestHeadlessSixthPassListBoxAndFixed(t *testing.T) {
 		t.Errorf("the clicked listbox row never activated: %v", err)
 	}
 
-	// The click left the row holding focus: Down moves the selection
-	// to the next row through the compositor's keyboard path. This must
-	// run before the toggles below, whose clicks take the focus back.
-	if err := in.Tap(KeyDown); err != nil {
-		t.Fatalf("down: %v", err)
+	// The click left the row holding focus: an arrow moves the selection
+	// through the compositor's keyboard path - away from whichever end
+	// the traced center happened to land on. This must run before the
+	// toggles below, whose clicks take the focus back.
+	tr, err := w.Wait("demo", "listbox select ", traceTimeout)
+	if err != nil {
+		t.Fatalf("the selected row never traced: %v", err)
+	}
+	arrow := uint32(KeyDown)
+	if strings.HasSuffix(tr.Message, showcaseLastListRow) {
+		arrow = KeyUp
+	}
+	if err := in.Tap(arrow); err != nil {
+		t.Fatalf("arrow: %v", err)
 	}
 	if err := w.WaitAll("demo", traceTimeout, "listbox select "); err != nil {
 		t.Errorf("the arrow key never moved the listbox selection: %v", err)

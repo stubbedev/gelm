@@ -25,6 +25,7 @@ type ListBox struct {
 	order       []int
 	hidden      []bool
 	ph          Widget
+	minHeight   int
 	singleClick bool
 
 	OnSelectionChanged func(rows []int)
@@ -169,6 +170,17 @@ func (l *ListBox) Rows() []Widget {
 		out[i] = r
 	}
 	return out
+}
+
+// SetMinHeight floors the height the list measures to, in logical
+// pixels: a filter that hides rows keeps the box's extent, so the
+// layout around it never moves.
+func (l *ListBox) SetMinHeight(h int) {
+	if h == l.minHeight {
+		return
+	}
+	l.minHeight = h
+	l.InvalidateLayout()
 }
 
 // SetPlaceholder sets a widget shown when no row is visible, replacing
@@ -368,6 +380,7 @@ func (l *ListBox) Measure(con Constraints) Size {
 		if l.placeholderShown() {
 			out = measureChild(l, l.ph, Constraints{Max: inner.Max})
 		}
+		out.H = max(out.H, l.minHeight)
 		return clampSize(out, inner)
 	}))
 }

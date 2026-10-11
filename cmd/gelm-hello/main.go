@@ -183,6 +183,7 @@ type showcase struct {
 	scrolled *widget.Scroll
 
 	rootScroll   *widget.Scroll
+	header       widget.Widget
 	sixthHead    *widget.Label
 	listbox      *widget.ListBox
 	listNames    []string
@@ -217,9 +218,9 @@ func (s *showcase) Init(cx *component.Context[showMsg, struct{}]) widget.Widget 
 
 	header := ui.Column(
 		ui.Label("gelm showcase").Font(nil, 18).Ink(widget.Current().Accent),
-		caption("every widget in one window; drag the chrome to move, esc closes"),
+		caption("every widget in one window; drag the header to move, esc closes"),
 		ui.Label("fallback check: 你好 world 😀 Привет").Font(nil, 13),
-	).Spacing(2)
+	).Spacing(2).Watch(func(w *widget.Box) { s.header = w })
 
 	controls := ui.Column(
 		ui.Button(ui.Row(ui.Label("click me").Font(nil, 15)).Spacing(8), 10, 8).Ref(&s.button).
@@ -273,6 +274,8 @@ func (s *showcase) Init(cx *component.Context[showMsg, struct{}]) widget.Widget 
 	for _, name := range s.listNames {
 		s.listbox.Append(widget.NewLabel(s.env.Face, 12, name, widget.Current().Text))
 	}
+	s.listbox.SetMinHeight(150)
+	s.fixedX = 96
 	return s.root
 }
 
@@ -315,6 +318,15 @@ func (s *showcase) sixth(cx *component.Context[showMsg, struct{}], caption func(
 	}
 	left := ui.Column(
 		ui.Label("").Font(nil, 12).Ink(muted).Ref(&s.sixthHead).Classes("sixth-heading"),
+		caption("fixed"),
+		ui.Fixed().Ref(&s.fixed).
+			Put(ui.Button(ui.Label("move").Font(nil, 11), 4, 8).Ref(&s.fixedBtn).
+				OnClick(func() {
+					s.fixedX -= 20
+				s.fixed.Move(s.fixedLabel, s.fixedX, 6)
+				note("fixed moved to (%d,6)", s.fixedX)()
+				}).Tooltip("moves the fixed label 20px left").DebugName("demo:fixedbtn"), 4, 2).
+			Put(ui.Label("positioned").Font(nil, 11).Ink(muted).Ref(&s.fixedLabel), 96, 6),
 		caption("listbox"),
 		ui.ListBox().Ref(&s.listbox).
 			OnSelectionChanged(func(rows []int) { note("listbox select %s", name(rows))() }).
@@ -358,15 +370,6 @@ func (s *showcase) sixth(cx *component.Context[showMsg, struct{}], caption func(
 					note("typed sort %v", s.typedOn)()
 				}).Tooltip("sorts the typed list").DebugName("demo:typedsort"),
 		).Spacing(6),
-		caption("fixed"),
-		ui.Fixed().Ref(&s.fixed).
-			Put(ui.Button(ui.Label("move").Font(nil, 11), 4, 8).Ref(&s.fixedBtn).
-				OnClick(func() {
-					s.fixedX -= 20
-					s.fixed.Move(s.fixedLabel, s.fixedX, 6)
-					note("fixed moved to (%d,6)", s.fixedX)()
-				}).Tooltip("moves the fixed label 20px left").DebugName("demo:fixedbtn"), 4, 2).
-			Put(ui.Label("positioned").Font(nil, 11).Ink(muted).Ref(&s.fixedLabel), 96, 6),
 	).Spacing(6)
 	right := ui.Column(
 		caption("draw surface"),
@@ -482,31 +485,24 @@ func (s *showcase) mapped(w, h int) {
 }
 
 // chromeDrag reports whether a left press that landed on over should
-// start a window move: interactive controls keep their press, and so
-// do the sixth-pass widgets whose children the move grab would starve
-// of the release - a ListBox row clicks on release, and a DrawSurface
-// press belongs to the canvas, not the frame. The root scroll the
-// whole showcase sits in counts as chrome, not as a control, so a
-// press on a label still moves the window the way it did before the
-// showcase grew scrollable content.
+// start a window move: only the header is chrome. The showcase's
+// content scrolls, and a move grab starves the pressed widget of its
+// release - a ListBox row clicks on release, and a DrawSurface press
+// belongs to the canvas - so no content press ever drags the frame,
+// not even one on a plain label.
 func (s *showcase) chromeDrag(over widget.Widget) bool {
 	for w := over; w != nil; {
-		switch v := w.(type) {
-		case *widget.Button, *widget.Slider, *widget.Switch, *widget.CheckButton,
-			*widget.Entry, *widget.TextArea, *widget.Dropdown, *widget.List:
-			return false
-		case *widget.Scroll:
-			if v != widget.Widget(s.rootScroll) {
-				return false
-			}
-		case *widget.ListBox, *widget.ListBoxRow, *widget.Fixed, *widget.DrawSurface:
+		if w == s.header {
+			return true
+		}
+		if _, isScroll := w.(*widget.Scroll); isScroll {
 			return false
 		}
 		p, ok := w.(interface{ Parent() widget.Widget })
 		if !ok {
-			return true
+			return false
 		}
 		w = p.Parent()
 	}
-	return true
+	return false
 }
