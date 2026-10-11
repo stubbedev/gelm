@@ -206,6 +206,10 @@ func placeOutOfFlow(w Widget, v *style.Values, static Point, cb render.Rect) {
 		W: width,
 		H: height,
 	}
+	// A widget always measures before it arranges: a definite size on
+	// both axes skipped the shrink-to-fit measures, and a container's
+	// arrange places its children from what its measure recorded.
+	measureOuter(w, Constraints{Min: Size{W: width, H: height}, Max: Size{W: width, H: height}})
 	w.Arrange(layoutMarginOf(w).Shrink(r))
 }
 

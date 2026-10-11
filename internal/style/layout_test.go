@@ -4,6 +4,8 @@ import (
 	"math"
 	"reflect"
 	"testing"
+
+	"github.com/stubbedev/gelm/render"
 )
 
 // px and pct build the sizing values the table expects.
@@ -125,6 +127,19 @@ func TestLayoutPropsCompute(t *testing.T) {
 		{"float: inline-end", lay(func(l Layout) any { return l.Float }), FloatInlineEnd},
 		{"clear: both", lay(func(l Layout) any { return l.Clear }), ClearBoth},
 
+		{"object-fit: cover", lay(func(l Layout) any { return l.ObjectFit }), render.ImageCover},
+		{"object-fit: fill", lay(func(l Layout) any { return l.ObjectFit }), render.ImageStretch},
+		{"object-fit: scale-down", lay(func(l Layout) any { return l.ObjectFit }), render.ImageScaleDown},
+		{"object-position: left", lay(func(l Layout) any { return l.ObjectPosition }), [2]AxisPos{{}, {Frac: 0.5}}},
+		{"object-position: bottom", lay(func(l Layout) any { return l.ObjectPosition }), [2]AxisPos{{Frac: 0.5}, {Frac: 1}}},
+		{"object-position: 25% 10px", lay(func(l Layout) any { return l.ObjectPosition }), [2]AxisPos{{Frac: 0.25}, {Px: 10}}},
+		{"object-position: top right", lay(func(l Layout) any { return l.ObjectPosition }), [2]AxisPos{{Frac: 1}, {}}},
+		{"object-position: center left", lay(func(l Layout) any { return l.ObjectPosition }), [2]AxisPos{{}, {Frac: 0.5}}},
+		{"object-position: left 10px", lay(func(l Layout) any { return l.ObjectPosition }), [2]AxisPos{{}, {Px: 10}}},
+		{"object-position: right 10px bottom 20%", lay(func(l Layout) any { return l.ObjectPosition }), [2]AxisPos{{Frac: 1, Px: -10}, {Frac: 0.8}}},
+		{"object-position: bottom 5px center", lay(func(l Layout) any { return l.ObjectPosition }), [2]AxisPos{{Frac: 0.5}, {Frac: 1, Px: -5}}},
+		{"object-position: center top 4px", lay(func(l Layout) any { return l.ObjectPosition }), [2]AxisPos{{Frac: 0.5}, {Px: 4}}},
+
 		{"margin: auto", func(v *Values) any { return v.MarginAuto }, [4]bool{true, true, true, true}},
 		{"margin: 4px auto", func(v *Values) any { return [2]any{v.MarginAuto, v.Margin} }, [2]any{[4]bool{false, true, false, true}, Sides{4, 0, 4, 0}}},
 		{"margin-left: auto", func(v *Values) any { return v.MarginAuto }, [4]bool{false, false, false, true}},
@@ -154,6 +169,9 @@ func TestLayoutPropsInvalid(t *testing.T) {
 		"gap: -1px", "gap: 1px 2px 3px", "aspect-ratio: 0", "aspect-ratio: 16 9", "aspect-ratio: 1 / 0",
 		"overflow: hidden hidden hidden", "visibility: gone", "float: center", "clear: top",
 		"inset: 1px 2px 3px 4px 5px", "margin: auto auto auto auto auto",
+		"object-fit: stretch", "object-position: top 10px", "object-position: left right",
+		"object-position: center 10px top", "object-position: left 1px top 2px 3px",
+		"object-position: 1px 2px 3px",
 	} {
 		warns := capture(t)
 		s := Parse("e { " + decl + "; }")

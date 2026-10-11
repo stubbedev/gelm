@@ -202,6 +202,7 @@ func (s *Scroll) snapPoints(axis Axis) []snapPoint {
 		if b.Empty() {
 			return
 		}
+		b = expandScrollMargin(k, b)
 		align := v.SnapAlign.Block
 		if axis == Row {
 			align = v.SnapAlign.Inline
@@ -216,33 +217,35 @@ func (s *Scroll) snapPoints(axis Axis) []snapPoint {
 	return pts
 }
 
-// snapPosFor maps one child's alignment to the offset that aligns it:
-// the aligning edge or center meets the scroll-padding-inset viewport
-// edge or center.
+// snapPosFor maps one child's snap area (its border box grown by its
+// scroll-margin) to the offset that aligns it: the aligning edge or
+// center meets the scroll-padding-inset viewport edge or center. The
+// area's content position is its bounds against the offset the child
+// was last arranged at.
 func snapPosFor(axis Axis, s *Scroll, b render.Rect, align style.SnapAlignK, pad style.Sides) (int, bool) {
 	if align == style.SnapNone {
 		return 0, false
 	}
 	if axis == Row {
-		at := b.X - s.view.X
+		at := s.arrOffX + b.X - s.view.X
 		switch align {
 		case style.SnapStart:
-			return s.offX + at - pad.Left, true
+			return at - pad.Left, true
 		case style.SnapEnd:
-			return s.offX + at + b.W - (s.viewW - pad.Right), true
+			return at + b.W - (s.viewW - pad.Right), true
 		case style.SnapCenter:
-			return s.offX + at + b.W/2 - (pad.Left + (s.viewW-pad.Horizontal())/2), true
+			return at + b.W/2 - (pad.Left + (s.viewW-pad.Horizontal())/2), true
 		}
 		return 0, false
 	}
-	at := b.Y - s.view.Y
+	at := s.arrOffY + b.Y - s.view.Y
 	switch align {
 	case style.SnapStart:
-		return s.offY + at - pad.Top, true
+		return at - pad.Top, true
 	case style.SnapEnd:
-		return s.offY + at + b.H - (s.viewH - pad.Bottom), true
+		return at + b.H - (s.viewH - pad.Bottom), true
 	case style.SnapCenter:
-		return s.offY + at + b.H/2 - (pad.Top + (s.viewH-pad.Vertical())/2), true
+		return at + b.H/2 - (pad.Top + (s.viewH-pad.Vertical())/2), true
 	}
 	return 0, false
 }

@@ -100,46 +100,110 @@ func (c mediaCond) match(m *Media) bool {
 	return false
 }
 
-type mediaPart struct {
-	neg   bool
-	conds []mediaCond
-}
+// tri is a media query's three-valued (Kleene) truth value: a
+// feature the engine does not know, or a <general-enclosed> form,
+// evaluates unknown, which `not` keeps unknown and a whole query
+// reads as false (mediaqueries-4 §3).
+type tri int8
 
-func (p mediaPart) match(m *Media) bool {
-	for _, c := range p.conds {
-		if !c.match(m) {
-			return p.neg
-		}
+const (
+	triFalse tri = iota
+	triUnknown
+	triTrue
+)
+
+func triOf(b bool) tri {
+	if b {
+		return triTrue
 	}
-	return !p.neg
+	return triFalse
 }
 
-// mediaQuery is one @media condition: an OR of branches, each an AND
-// of parts. nil matches everything.
-type mediaQuery [][]mediaPart
+func (t tri) not() tri { return triTrue - t }
+
+// mqOp is one node kind of a media condition tree.
+type mqOp uint8
+
+const (
+	// mqConst is a fixed value: a media type, or an unknown form.
+	mqConst mqOp = iota
+	// mqFeature is one feature comparison.
+	mqFeature
+	mqAnd
+	mqOr
+	mqNot
+)
+
+// mqExpr is one node of a media (or container) condition tree.
+type mqExpr struct {
+	op   mqOp
+	val  tri
+	cond mediaCond
+	kids []mqExpr
+}
+
+// mediaQuery is one @media prelude: its comma-separated queries, any
+// of which matching makes the condition true. nil matches everything.
+type mediaQuery []mqExpr
+
+// eval evaluates the tree against the media m, or — when cont is not
+// nil — against a query container, whose block-axis features read
+// unknown unless it is a size container.
+func (e *mqExpr) eval(m *Media, cont *Container) tri {
+	switch e.op {
+	case mqConst:
+		return e.val
+	case mqFeature:
+		if cont == nil {
+			return triOf(e.cond.match(m))
+		}
+		if blockFeats[e.cond.feat] && !cont.Size {
+			return triUnknown
+		}
+		return triOf(e.cond.matchContainer(*cont))
+	case mqNot:
+		return e.kids[0].eval(m, cont).not()
+	case mqAnd:
+		out := triTrue
+		for i := range e.kids {
+			out = min(out, e.kids[i].eval(m, cont))
+		}
+		return out
+	case mqOr:
+		out := triFalse
+		for i := range e.kids {
+			out = max(out, e.kids[i].eval(m, cont))
+		}
+		return out
+	}
+	return triFalse
+}
+
+// usesBlock reports whether the tree queries a block-axis feature,
+// which only a size container can answer.
+func (e *mqExpr) usesBlock() bool {
+	if e.op == mqFeature {
+		return blockFeats[e.cond.feat]
+	}
+	return slices.ContainsFunc(e.kids, func(k mqExpr) bool { return k.usesBlock() })
+}
 
 func mediaMatches(q mediaQuery, m *Media) bool {
-	for _, branch := range q {
-		ok := true
-		for _, part := range branch {
-			if !part.match(m) {
-				ok = false
-				break
-			}
-		}
-		if ok {
+	for i := range q {
+		if q[i].eval(m, nil) == triTrue {
 			return true
 		}
 	}
 	return len(q) == 0
 }
 
-func condsEqual(a, b []mediaCond) bool {
-	if len(a) != len(b) {
+// exprEqual compares two condition trees.
+func exprEqual(a, b *mqExpr) bool {
+	if a.op != b.op || a.val != b.val || a.cond != b.cond || len(a.kids) != len(b.kids) {
 		return false
 	}
-	for i := range a {
-		if a[i] != b[i] {
+	for i := range a.kids {
+		if !exprEqual(&a.kids[i], &b.kids[i]) {
 			return false
 		}
 	}
@@ -147,25 +211,11 @@ func condsEqual(a, b []mediaCond) bool {
 }
 
 func queryEqual(a, b mediaQuery) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		x, y := a[i], b[i]
-		if len(x) != len(y) {
-			return false
-		}
-		for j := range x {
-			if x[j].neg != y[j].neg || !condsEqual(x[j].conds, y[j].conds) {
-				return false
-			}
-		}
-	}
-	return true
+	return slices.EqualFunc(a, b, func(x, y mqExpr) bool { return exprEqual(&x, &y) })
 }
 
-// intersectMedia ands two queries by crossing their OR branches; nil
-// is the always-true identity.
+// intersectMedia ands two queries by crossing their queries; nil is
+// the always-true identity.
 func intersectMedia(a, b mediaQuery) mediaQuery {
 	if a == nil {
 		return b
@@ -176,140 +226,178 @@ func intersectMedia(a, b mediaQuery) mediaQuery {
 	out := make(mediaQuery, 0, len(a)*len(b))
 	for _, x := range a {
 		for _, y := range b {
-			out = append(out, append(slices.Clone(x), y...))
+			out = append(out, mqExpr{op: mqAnd, kids: []mqExpr{x, y}})
 		}
 	}
 	return out
 }
 
-// parseMediaQuery parses an @media prelude: a comma list (OR) of
-// `not`-prefixed conditions joined by `and`, each condition a
-// parenthesized feature (classic `name: value` or Level 4 range
-// syntax) or a media type. A nil query is always true; ok is false
-// when the prelude is malformed.
+// parseMediaQuery parses an @media prelude (mediaqueries-4 §3): a
+// comma list of queries, each a <media-condition> or a media type
+// with an optional `not`/`only` prefix and an `and`-joined condition.
+// A nil query is always true; ok is false when the prelude is
+// malformed.
 func parseMediaQuery(ts []token) (mediaQuery, bool) {
 	if len(ts) == 0 {
 		return nil, true
 	}
 	var out mediaQuery
 	for _, raw := range splitTop(ts, tkComma) {
-		branch, ok := parseMediaBranch(trimWS(raw))
+		e, ok := parseOneQuery(trimWS(raw))
 		if !ok {
 			return nil, false
 		}
-		if branch == nil {
-			return nil, true
-		}
-		out = append(out, branch)
+		out = append(out, e)
 	}
 	return out, true
 }
 
-// parseMediaBranch parses one comma member; a nil branch is always
-// true (a bare `screen`).
-func parseMediaBranch(ts []token) ([]mediaPart, bool) {
-	var parts []mediaPart
+// parseOneQuery parses one comma member.
+func parseOneQuery(ts []token) (mqExpr, bool) {
+	if len(ts) == 0 {
+		return mqExpr{}, false
+	}
+	if ts[0].kind != tkIdent || ts[0].ident("not") && !typeFollows(ts) {
+		return parseCondition(ts, true)
+	}
+	neg := false
 	i := 0
-	first := true
-	for i < len(ts) {
-		t := ts[i]
-		switch {
-		case t.kind == tkWS:
-			i++
-		case t.kind == tkLParen:
-			end := blockEnd(ts, i)
-			conds, ok, known := parseMediaGroup(trimWS(ts[i+1 : end-1]))
-			if !ok {
-				return nil, false
-			}
-			if !known {
-				parts = append(parts, mediaPart{neg: true})
-			} else {
-				parts = append(parts, mediaPart{conds: conds})
-			}
-			i = end
-			first = false
-		case t.kind == tkIdent && (strings.EqualFold(t.s, "and") || strings.EqualFold(t.s, "or")) && !first:
-			if strings.EqualFold(t.s, "or") {
-				return nil, false
-			}
-			i++
-		case t.kind == tkIdent && strings.EqualFold(t.s, "not"):
-			i++
-			j := i
-			for j < len(ts) && ts[j].kind == tkWS {
-				j++
-			}
-			if j >= len(ts) || ts[j].kind != tkLParen {
-				var ok bool
-				parts, ok = parseMediaType(parts, ts, j)
-				if !ok {
-					return nil, false
-				}
-				i = len(ts)
-				first = false
-				break
-			}
-			end := blockEnd(ts, j)
-			if end > len(ts) {
-				return nil, false
-			}
-			conds, ok, known := parseMediaGroup(trimWS(ts[j+1 : end-1]))
-			if !ok {
-				return nil, false
-			}
-			switch {
-			case !known:
-				parts = append(parts, mediaPart{})
-			default:
-				parts = append(parts, mediaPart{neg: true, conds: conds})
-			}
-			i = end
-			first = false
-		case t.kind == tkIdent:
-			var ok bool
-			parts, ok = parseMediaType(parts, ts, i)
-			if !ok {
-				return nil, false
-			}
-			i = len(ts)
-			first = false
-		default:
-			return nil, false
-		}
+	switch {
+	case ts[0].ident("not"):
+		neg, i = true, 1
+	case ts[0].ident("only"):
+		i = 1
 	}
-	if first {
-		return nil, false
-	}
-	return parts, true
-}
-
-// parseMediaType folds a media type (with the `only` prefix) into
-// parts: screen and all are true, anything else false.
-func parseMediaType(parts []mediaPart, ts []token, i int) ([]mediaPart, bool) {
 	for i < len(ts) && ts[i].kind == tkWS {
 		i++
 	}
 	if i >= len(ts) || ts[i].kind != tkIdent {
-		return nil, false
+		return mqExpr{}, false
 	}
-	name := strings.ToLower(ts[i].s)
-	if name == "only" {
-		i++
-		for i < len(ts) && ts[i].kind == tkWS {
-			i++
+	e := mqExpr{op: mqConst, val: mediaType(ts[i].s)}
+	rest := trimWS(ts[i+1:])
+	if len(rest) > 0 {
+		if !rest[0].ident("and") {
+			return mqExpr{}, false
 		}
-		if i >= len(ts) || ts[i].kind != tkIdent {
-			return nil, false
+		cond, ok := parseCondition(trimWS(rest[1:]), false)
+		if !ok {
+			return mqExpr{}, false
 		}
-		name = strings.ToLower(ts[i].s)
+		e = mqExpr{op: mqAnd, kids: []mqExpr{e, cond}}
 	}
-	switch name {
+	if neg {
+		e = mqExpr{op: mqNot, kids: []mqExpr{e}}
+	}
+	return e, true
+}
+
+// typeFollows reports whether a leading `not` negates a media type
+// (`not print`) rather than a condition (`not (width > 1px)`).
+func typeFollows(ts []token) bool {
+	for _, t := range ts[1:] {
+		if t.kind != tkWS {
+			return t.kind == tkIdent
+		}
+	}
+	return false
+}
+
+// mediaType is a media type's value: screen and all match, the other
+// types (print, speech, ...) and unknown ones do not.
+func mediaType(name string) tri {
+	switch strings.ToLower(name) {
 	case "screen", "all":
-		return parts, true
-	default:
-		return append(parts, mediaPart{neg: true}), true
+		return triTrue
 	}
+	return triFalse
+}
+
+// parseCondition parses a <media-condition>: `not` and one
+// parenthesized term, or terms joined all by `and` or (when allowOr)
+// all by `or`.
+func parseCondition(ts []token, allowOr bool) (mqExpr, bool) {
+	ts = trimWS(ts)
+	if len(ts) == 0 {
+		return mqExpr{}, false
+	}
+	if ts[0].ident("not") {
+		term, rest, ok := parseInParens(trimWS(ts[1:]))
+		if !ok || len(trimWS(rest)) > 0 {
+			return mqExpr{}, false
+		}
+		return mqExpr{op: mqNot, kids: []mqExpr{term}}, true
+	}
+	var kids []mqExpr
+	op := mqConst
+	for {
+		term, rest, ok := parseInParens(ts)
+		if !ok {
+			return mqExpr{}, false
+		}
+		kids = append(kids, term)
+		rest = trimWS(rest)
+		if len(rest) == 0 {
+			break
+		}
+		next := mqAnd
+		switch {
+		case rest[0].ident("and"):
+		case rest[0].ident("or") && allowOr:
+			next = mqOr
+		default:
+			return mqExpr{}, false
+		}
+		if op != mqConst && op != next {
+			return mqExpr{}, false
+		}
+		op = next
+		ts = trimWS(rest[1:])
+	}
+	if len(kids) == 1 {
+		return kids[0], true
+	}
+	return mqExpr{op: op, kids: kids}, true
+}
+
+// parseInParens parses one <media-in-parens> at the start of ts and
+// returns the tokens after it: a nested condition, a feature, or a
+// <general-enclosed> form (unknown).
+func parseInParens(ts []token) (mqExpr, []token, bool) {
+	if len(ts) == 0 {
+		return mqExpr{}, nil, false
+	}
+	if ts[0].kind == tkFunc {
+		end := blockEnd(ts, 0)
+		return mqExpr{op: mqConst, val: triUnknown}, ts[end:], true
+	}
+	if ts[0].kind != tkLParen {
+		return mqExpr{}, nil, false
+	}
+	end := blockEnd(ts, 0)
+	if end > len(ts) {
+		return mqExpr{}, nil, false
+	}
+	inner := trimWS(ts[1 : end-1])
+	if len(inner) > 0 && (inner[0].kind == tkLParen || inner[0].ident("not")) {
+		e, ok := parseCondition(inner, true)
+		return e, ts[end:], ok
+	}
+	conds, ok, known := parseMediaGroup(inner)
+	if !ok {
+		return mqExpr{}, nil, false
+	}
+	if !known {
+		return mqExpr{op: mqConst, val: triUnknown}, ts[end:], true
+	}
+	if len(conds) == 1 {
+		return mqExpr{op: mqFeature, cond: conds[0]}, ts[end:], true
+	}
+	kids := make([]mqExpr, len(conds))
+	for i, c := range conds {
+		kids[i] = mqExpr{op: mqFeature, cond: c}
+	}
+	return mqExpr{op: mqAnd, kids: kids}, ts[end:], true
 }
 
 // parseMediaGroup parses one parenthesized condition. ok is false
@@ -614,7 +702,7 @@ func mediaResolution(ts []token) (float64, bool) {
 		switch t.s {
 		case "dpi":
 			return t.num, true
-		case "x":
+		case "x", "dppx":
 			return t.num * 96, true
 		case "dpcm":
 			return t.num * 2.54, true

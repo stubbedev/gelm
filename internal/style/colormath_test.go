@@ -98,8 +98,11 @@ func TestColorConstructors(t *testing.T) {
 	if !colorNear(v.Color, red, 1) || v.Background.A() != 128 {
 		t.Errorf("color(srgb): %08x %08x", uint32(v.Color), uint32(v.Background))
 	}
-	if v := computeTree(s, el("h")); !colorNear(v.Color, render.RGB(0xff, 0, 0), 0) {
-		t.Errorf("color(display-p3) out-of-gamut red clamps to sRGB red: %08x", uint32(v.Color))
+	// CSS Color 4 §13.2: the out-of-gamut P3 red keeps its OKLCH
+	// lightness and hue and loses chroma until clipping is invisible,
+	// rgb(255 11 12) — not the clipped sRGB red.
+	if v := computeTree(s, el("h")); !colorNear(v.Color, render.RGB(0xff, 0x0b, 0x0c), 0) {
+		t.Errorf("color(display-p3) out-of-gamut red gamut-maps to rgb(255 11 12): %08x", uint32(v.Color))
 	}
 	v = computeTree(s, el("i"))
 	if v.Color != red || v.Background != render.RGB(0, 0xff, 0) || v.OutlineColor != 0 {

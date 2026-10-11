@@ -138,11 +138,11 @@ func (p *videoView) Paint(cv *render.Canvas) {
 	}
 	box := cv.MapRect(p.bounds)
 	b := frame.Rect
-	srcRect, dw, dh := render.ScaleRect(b.Dx(), b.Dy(), box.W, box.H, p.scale)
-	if dw <= 0 || dh <= 0 {
+	srcRect, dst := render.PlaceImage(b.Dx(), b.Dy(), box.W, box.H, p.scale, render.ImageCentered)
+	if dst.Empty() {
 		return
 	}
-	dx, dy := box.X+(box.W-dw)/2, box.Y+(box.H-dh)/2
+	dw, dh, dx, dy := dst.W, dst.H, box.X+dst.X, box.Y+dst.Y
 	p.painted = seq
 	if srcRect.Dx() == dw && srcRect.Dy() == dh {
 		cv.DrawImageDevice(frame.SubImage(srcRect), dx, dy)

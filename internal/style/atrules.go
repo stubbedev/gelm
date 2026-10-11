@@ -401,21 +401,34 @@ func initialComponentMatches(name string, c []token, cx *ctx) bool {
 	return false
 }
 
+// scopeCtx is one @scope rule: its scoping root selector list (a
+// nested @scope's roots are themselves scoped to the outer one) and
+// its scoping limits.
+type scopeCtx struct {
+	root, upper []selector
+}
+
 // scopeRule parses one @scope: a root selector list in parens, an
-// optional `to (upper)` boundary, and a block of rules whose
-// selectors are scoped — each subject must descend from a root
-// element without crossing the upper boundary, and `:scope` in a
-// selector names that root. Scoping proximity ranks above
-// specificity: a rule in an inner scope beats an equal-specificity
-// rule in an outer one.
+// optional `to (upper)` limit, and a block of rules whose selectors
+// are scoped (css-cascade-6 §2.5) — each subject must be the root or
+// descend from it without crossing a limit, `:scope` in a selector
+// names that root, and the root adds no specificity. The cascade
+// ranks a scoped rule by its scoping proximity below specificity: of
+// two equally specific rules, the one whose root is fewer generations
+// up wins.
 func (p *parser) scopeRule(ts []token, i int) int {
 	prelude, body, end, ok := p.atBlock(ts, i, "@scope")
 	if !ok {
 		return end
 	}
-	root, rest, okr := scopePrelude(prelude)
+	rootTs, rest, okr := scopePrelude(prelude)
 	if !okr {
 		p.warnf("@scope skipped: want a (root) selector")
+		return end
+	}
+	root, okr := p.selectorList(rootTs)
+	if !okr {
+		p.warnf("@scope skipped: bad root selector")
 		return end
 	}
 	var upper []selector
@@ -435,10 +448,10 @@ func (p *parser) scopeRule(ts []token, i int) int {
 			return end
 		}
 	}
-	saveRoot, saveUpper, saveDepth := p.scopeRoot, p.scopeUpper, p.scopeDepth
-	p.scopeRoot, p.scopeUpper, p.scopeDepth = root, upper, saveDepth+1
+	save := p.scope
+	p.scope = &scopeCtx{root: root, upper: upper}
 	p.stylesheet(body)
-	p.scopeRoot, p.scopeUpper, p.scopeDepth = saveRoot, saveUpper, saveDepth
+	p.scope = save
 	return end
 }
 

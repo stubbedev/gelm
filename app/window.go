@@ -197,8 +197,8 @@ func opaqueFor(background render.Color, opaque bool) bool {
 }
 
 // focusRingPad is how far the keyboard focus ring extends beyond the
-// focused widget's bounds.
-const focusRingPad = 2
+// focused widget's bounds: the ring's width.
+const focusRingPad = widget.FocusRingWidth
 
 func newHostWindow(sess *wlsession.Session, host Host, initialScale int, root widget.Widget, hooks windowHooks, dnd *dragdrop.Controller, primary *primarySelection, animKind surfx.Kind, destroy func()) *hostWindow {
 	if initialScale < 1 {

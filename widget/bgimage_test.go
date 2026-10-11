@@ -62,9 +62,10 @@ func isRed(c render.Color) bool {
 	return c.A() > 128 && c.R() > 128 && c.G() < 64 && c.B() < 64
 }
 
-// A stylesheet url() paints the file's pixels inside the box: the
-// center of the box shows the image's color, and a failed path paints
-// the background color alone.
+// A stylesheet url() paints the file's pixels inside the box — tiled
+// at its natural size, CSS's initial background-size and -repeat — so
+// the center of the box shows the image's color, and a failed path
+// paints the background color alone.
 func TestBackgroundImageURLPaints(t *testing.T) {
 	path := writeTemp(t, "avatar.png", testPNG(t, color.NRGBA{R: 255, A: 255}))
 	loadCSS(t, `box.photo { background-color: #0000ff; background-image: url("`+path+`"); }`)
@@ -95,21 +96,21 @@ func TestBackgroundImageURLForms(t *testing.T) {
 		loadCSS(t, `box.photo { `+decl+`; }`)
 		b := NewBox(Column, 0, 0)
 		b.AddClass("photo")
-		if got := b.style(b).BgImageURL; got != path {
+		if got := b.style(b).Bg.Layer(0).Image.URL; got != path {
 			t.Errorf("%s parsed to %q", decl, got)
 		}
 	}
 	loadCSS(t, `box.photo { background-image: linear-gradient(to bottom, #010203, #040506); }`)
 	b := NewBox(Column, 0, 0)
 	b.AddClass("photo")
-	if got := b.style(b).BgImageURL; got != "" || b.style(b).Image.N == 0 {
-		t.Errorf("a gradient left url %q", got)
+	if img := b.style(b).Bg.Layer(0).Image; img.URL != "" || img.Gradient == nil {
+		t.Errorf("a gradient left url %q", img.URL)
 	}
 	loadCSS(t, `box.photo { background-image: none; }`)
 	b2 := NewBox(Column, 0, 0)
 	b2.AddClass("photo")
 	v := b2.style(b2)
-	if v.BgImageURL != "" || v.Image.N != 0 {
+	if v.Bg.Painted() {
 		t.Error("none cleared nothing")
 	}
 }

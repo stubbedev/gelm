@@ -136,13 +136,17 @@ func TestStepsTiming(t *testing.T) {
 	if got := []float64{end(0), end(0.25), end(0.5), end(0.99), end(1)}; got[0] != 0 || got[1] != 0 || got[2] != 0.5 || got[3] != 0.5 || got[4] != 1 {
 		t.Errorf("steps(2, jump-end) = %v, want 0,0,0,0.5,1", got)
 	}
+	// jump-start jumps at the start of each interval, so progress 0
+	// already reads the first step (CSS Easing 2 §2.3).
 	start := Steps(2, JumpStart)
-	if got := []float64{start(0), start(0.25), start(0.5), start(0.75), start(1)}; got[0] != 0 || got[1] != 0.5 || got[2] != 0.5 || got[3] != 1 || got[4] != 1 {
-		t.Errorf("steps(2, jump-start) = %v, want 0,0.5,0.5,1,1", got)
+	if got := []float64{start(0), start(0.25), start(0.5), start(0.75), start(1)}; got[0] != 0.5 || got[1] != 0.5 || got[2] != 1 || got[3] != 1 || got[4] != 1 {
+		t.Errorf("steps(2, jump-start) = %v, want 0.5,0.5,1,1,1", got)
 	}
+	// jump-none over 2 steps makes one jump, from 0 to 1 at the
+	// midpoint.
 	none := Steps(2, JumpNone)
-	if got := []float64{none(0), none(0.24), none(0.25), none(0.5), none(0.74), none(0.75)}; got[0] != 0 || got[1] != 0 || got[2] != 0.5 || got[3] != 0.5 || got[4] != 0.5 || got[5] != 1 {
-		t.Errorf("steps(2, jump-none) = %v, want 0,0,0.5,0.5,0.5,1", got)
+	if got := []float64{none(0), none(0.24), none(0.25), none(0.5), none(0.74), none(1)}; got[0] != 0 || got[1] != 0 || got[2] != 0 || got[3] != 1 || got[4] != 1 || got[5] != 1 {
+		t.Errorf("steps(2, jump-none) = %v, want 0,0,0,1,1,1", got)
 	}
 	both := Steps(2, JumpBoth)
 	if got := []float64{both(0), both(0.25), both(0.5), both(0.75), both(1)}; got[0] != 1.0/3 || got[1] != 1.0/3 || got[2] != 2.0/3 || got[3] != 2.0/3 || got[4] != 1 {
@@ -159,7 +163,7 @@ func TestStepsTiming(t *testing.T) {
 }
 
 // linear() interpolates between its points, spreading the ones
-// without positions and holding outside the bracket.
+// without positions and extrapolating outside the bracket.
 func TestPiecewiseEasing(t *testing.T) {
 	ramp := Piecewise([]LinearPt{{Value: 0}, {Value: 0.5, Pos: 0.5, HasPos: true}, {Value: 1}})
 	if got := ramp(0.25); got != 0.25 {
@@ -168,11 +172,13 @@ func TestPiecewiseEasing(t *testing.T) {
 	if got := ramp(0.75); got != 0.75 {
 		t.Errorf("ramp(0.75) = %v, want 0.75", got)
 	}
-	if got := ramp(-1); got != 0 {
-		t.Errorf("ramp(-1) = %v, want held 0", got)
+	// Outside the points the outer segments extrapolate (CSS Easing 2
+	// §2.1.2).
+	if got := ramp(-1); got != -1 {
+		t.Errorf("ramp(-1) = %v, want the extrapolated -1", got)
 	}
-	if got := ramp(2); got != 1 {
-		t.Errorf("ramp(2) = %v, want held 1", got)
+	if got := ramp(2); got != 2 {
+		t.Errorf("ramp(2) = %v, want the extrapolated 2", got)
 	}
 
 	// Points without positions spread evenly: 0, 1, 0 land at 0, 0.5, 1.

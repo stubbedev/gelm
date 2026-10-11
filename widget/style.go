@@ -345,7 +345,7 @@ func SetMediaViewportFor(root Widget, w, h int) {
 func MediaViewportOf(w Widget) (int, int) {
 	vp := mediaViewport
 	if n := nodeOf(w); n != nil {
-		vp = viewportOf(n)
+		vp = rootViewport(styleRootOf(n))
 	}
 	return vp.w, vp.h
 }
@@ -392,6 +392,23 @@ var defaultFontMetrics = sync.OnceValue(func() style.FontMetrics {
 	return style.FontMetrics{Ch: m.Ch, Ex: m.Ex, Cap: m.Cap, Ic: m.Ic, LineHeight: m.LineHeight}
 })
 
+// themeDark memoizes the active theme's polarity by its background:
+// every compute reads it, and the WCAG luminance behind it linearizes
+// three channels.
+var themeDark struct {
+	bg   render.Color
+	dark bool
+	ok   bool
+}
+
+// currentDark reports whether the active theme is dark.
+func currentDark() bool {
+	if !themeDark.ok || themeDark.bg != current.Bg {
+		themeDark.bg, themeDark.dark, themeDark.ok = current.Bg, current.IsDark(), true
+	}
+	return themeDark.dark
+}
+
 // envNow is the compute environment: the unit state plus the @media
 // environment, its appearance half derived from the active Theme
 // (prefers-color-scheme from the palette's polarity, reduced motion
@@ -401,28 +418,41 @@ func envNow() style.Env {
 	m := defaultFontMetrics()
 	env := style.Env{Rem: styleEnv.Rem, FontPx: styleEnv.FontPx, Font: m, Media: style.Media{
 		Width: float64(mediaViewport.w), Height: float64(mediaViewport.h),
-		DPI: mediaDPI, Dark: current.IsDark(), HighContrast: mediaContrast,
+		DPI: mediaDPI, Dark: currentDark(), HighContrast: mediaContrast,
 		ReducedMotion: !current.Animations,
 	}}
-	if env.RootLineHeight == 0 {
-		env.RootLineHeight = env.Rem * ratioOr(m.LineHeight, 1.2)
+	env.RootLineHeight = env.Rem * ratioOr(m.LineHeight, 1.2)
+	return env
+}
+
+// envFor is envNow for n's tree: the viewport its style root reported
+// (the global value otherwise), and the root-relative units read off
+// the style root's computed style — rem is its font-size and rlh its
+// line-height, when it declares them (SetRootFontSize is the initial
+// value). The root itself resolves them against the initial values,
+// and its style is fresh here: a node's ancestry computes first.
+func envFor(n *node) style.Env {
+	env := envNow()
+	r := styleRootOf(n)
+	vp := rootViewport(r)
+	env.Media.Width, env.Media.Height = float64(vp.w), float64(vp.h)
+	if r == n || r.csGen != styleGen {
+		return env
+	}
+	if r.cs.Has(style.PropFontSize) && r.cs.FontSize > 0 {
+		env.Rem = r.cs.FontSize
+		env.RootLineHeight = env.Rem * ratioOr(env.Font.LineHeight, 1.2)
+	}
+	if r.cs.Has(style.PropLineHeight) && r.cs.LineHeight > 0 {
+		env.RootLineHeight = r.cs.LineHeight
 	}
 	return env
 }
 
-// envFor is envNow with the viewport of n's window: each tree reads
-// the size its own style root reported, the global value otherwise.
-func envFor(n *node) style.Env {
-	env := envNow()
-	vp := viewportOf(n)
-	env.Media.Width, env.Media.Height = float64(vp.w), float64(vp.h)
-	return env
-}
-
-// viewportOf is the @media viewport n's tree computes against: its
-// style root's own size, else the global one.
-func viewportOf(n *node) struct{ w, h int } {
-	if r := styleRootOf(n); r.viewport.w > 0 && r.viewport.h > 0 {
+// rootViewport is the @media viewport the tree under style root r
+// computes against: r's own size, else the global one.
+func rootViewport(r *node) struct{ w, h int } {
+	if r.viewport.w > 0 && r.viewport.h > 0 {
 		return r.viewport
 	}
 	return mediaViewport
@@ -741,6 +771,9 @@ const (
 	StateIndeterminate
 	// StateBackdrop matches :backdrop — the widget's window is inactive.
 	StateBackdrop
+	// StateTarget matches :target — the widget an in-app navigation
+	// points at, the role a URL fragment's element plays on the web.
+	StateTarget
 )
 
 // styleBits maps flags onto the matcher's state bits.
@@ -757,6 +790,9 @@ func (f StateFlags) styleBits() style.State {
 	}
 	if f&StateBackdrop != 0 {
 		s |= style.Backdrop
+	}
+	if f&StateTarget != 0 {
+		s |= style.Targeted
 	}
 	return s
 }
@@ -1022,11 +1058,21 @@ func (n *node) SetElement(name string) {
 // Element returns the element name the widget matches: the override
 // set with SetElement, else the lowercased Go type name.
 func (n *node) Element() string {
+	if n.element != "" || n.self == nil {
+		return n.element
+	}
+	return n.elementOf(n.self)
+}
+
+// elementOf is Element for the widget w embedding n: it resolves the
+// type name from w itself, so a sibling read before any container
+// arranged it (and recorded its self) still reports its name.
+func (n *node) elementOf(w Widget) string {
 	if n.element != "" {
 		return n.element
 	}
-	if n.elemName == "" && n.self != nil {
-		n.elemName = typeElementName(n.self)
+	if n.elemName == "" {
+		n.elemName = typeElementName(w)
 	}
 	return n.elemName
 }
@@ -1107,7 +1153,7 @@ func (s *styleTargeter) StyleTypedPosition(element string) (int, int) {
 	}
 	count, mine := 0, 0
 	for i, k := range sib {
-		if kn := nodeOf(k); kn != nil && kn.Element() == element {
+		if kn := nodeOf(k); kn != nil && kn.elementOf(k) == element {
 			count++
 			if i == idx {
 				mine = count
@@ -1155,29 +1201,34 @@ func (s *styleTargeter) StyleChildren() []style.Node {
 	return s.n.kids
 }
 
-// StyleContainer resolves the nearest query container: the closest
-// style ancestor whose computed cascade sets container-type, with
-// its arranged bounds (the container's own style is cached — a
-// descendant computes after its ancestors — so this walk never
-// reenters the matcher). Containers stop at a style root.
-func (s *styleTargeter) StyleContainer() (style.Container, bool) {
-	pw := s.n.parent
-	for pw != nil && !s.n.styleRoot {
+// StyleContainers appends the node's query containers onto buf,
+// nearest first: every style ancestor whose computed cascade sets
+// container-type, with its arranged bounds (an ancestor's style is
+// cached — a descendant computes after its ancestors — so this walk
+// never reenters the matcher). Containers stop at a style root.
+func (s *styleTargeter) StyleContainers(buf []style.Container) []style.Container {
+	if s.n.styleRoot {
+		return buf
+	}
+	for pw := s.n.parent; pw != nil; {
 		pn := nodeOf(pw)
 		if pn == nil {
-			return style.Container{}, false
+			return buf
 		}
 		v := pn.style(pw)
 		if v.Has(style.PropContainerType) && v.ContainerType != style.ContainerNormal {
-			return style.Container{
+			buf = append(buf, style.Container{
 				W: float64(pn.bounds.W), H: float64(pn.bounds.H),
 				Size:  v.ContainerType == style.ContainerSize,
 				Names: v.ContainerNames,
-			}, true
+			})
+		}
+		if pn.styleRoot {
+			return buf
 		}
 		pw = pn.parent
 	}
-	return style.Container{}, false
+	return buf
 }
 
 // visibleSiblings returns the visible children of n's parent and n's
@@ -1233,17 +1284,31 @@ func visibleSiblings(n *node, w Widget) ([]Widget, int) {
 
 // fillTarget fills the selector-relevant facts of one widget.
 func (n *node) fillTarget(t *style.Target, w Widget) {
-	t.Element = n.Element()
-	if t.Element == "" {
-		t.Element = typeElementName(w)
-	}
+	t.Element = n.elementOf(w)
 	t.ID = n.id
 	t.Classes = n.classes
 	t.State = n.styleState(w)
 	t.Role = roleAttr(w)
 	t.Attrs = n.attrs
+	t.HasText = hasTextContent(w)
 	t.Inline = n.inline
 	t.InlinePriority = n.inlinePrio
+}
+
+// hasTextContent reports whether w shows text of its own — the text
+// child that keeps a DOM element from matching :empty.
+func hasTextContent(w Widget) bool {
+	switch t := w.(type) {
+	case *Label:
+		return t.text != ""
+	case *RichLabel:
+		return t.text != ""
+	case *Entry:
+		return len(t.runes) > 0
+	case *TextArea:
+		return len(t.lines) > 1 || len(t.lines) == 1 && len(t.lines[0]) > 0
+	}
+	return false
 }
 
 // roleAttr is the widget's semantic role as an attribute value: the
@@ -1405,12 +1470,18 @@ func hoverActiveOf(w Widget) style.State {
 	return s
 }
 
-// styleScratch is the matcher's shared workspace, and styleSelf its
-// shared adapter: style work runs on the event-loop goroutine
-// (docs/threading.md), so one buffer serves the process.
-var styleScratch style.Scratch
-
-var styleSelf styleTargeter
+// styleScratch is the matcher's shared workspace, styleSelf its
+// shared adapter, and styleNext the values a restyle computes into:
+// style work runs on the event-loop goroutine (docs/threading.md), so
+// one buffer serves the process. styleBusy guards styleNext: a node's
+// ancestry restyles before its compute starts, so nothing may restyle
+// while one is in flight.
+var (
+	styleScratch style.Scratch
+	styleSelf    styleTargeter
+	styleNext    style.Values
+	styleBusy    bool
+)
 
 // style returns the widget's computed style — the paint path's entry
 // point, called exactly where Theme fields are read. Steady state is
@@ -1425,12 +1496,11 @@ func (n *node) style(w Widget) *style.Values {
 
 // restyle recomputes the cascade and invalidates the smallest correct
 // region: the widget when its own values changed, the subtree when an
-// inherited one did, a relayout when a layout-affecting one did. The
-// zero-style case changes nothing and costs one compare.
+// inherited one did, a relayout when a layout-affecting one did. A
+// recompute that leaves the values Equal — the common restyle — costs
+// the compute and one comparison, and touches nothing.
 func (n *node) restyle(w Widget) *style.Values {
-	old := n.cs
 	firstStyle := n.styleSeen == 0
-	var v style.Values
 	var parent *style.Values
 	if pw := n.parent; pw != nil && !n.styleRoot {
 		if pn := nodeOf(pw); pn != nil {
@@ -1441,68 +1511,126 @@ func (n *node) restyle(w Widget) *style.Values {
 		}
 	}
 	inherits := parent != nil && (!parent.Set.Empty() || parent.Vars != nil)
-	if layers := layersFor(n); len(layers) > 0 || n.inline != nil || inherits {
-		if n.element == "" && n.elemName == "" {
-			n.elemName = typeElementName(w)
-		}
-		styleSelf.n, styleSelf.w = n, w
-		if sensNow.counters {
-			styleScratch.SetPrevCounters(prevCountersOf(n, w))
-		}
-		style.Compute(layers, &styleSelf, parent, &old, envFor(n), &styleScratch, &v)
-		if sensNow.pseudo {
-			n.computePseudos(layers, &v)
-		}
-	} else if n.pseudoGen != styleGen {
-		n.pseudo = [3]style.Values{}
-		n.pseudoGen = styleGen
+	// The counter inputs read other widgets' styles, so they resolve
+	// before the layers and the shared adapter are taken.
+	var prevCounters, srcCounters *style.CounterScope
+	if sensNow.counters {
+		prevCounters, srcCounters = prevCountersOf(n, w)
 	}
-	n.cs = v
+	if styleBusy {
+		panic("widget: a restyle started inside another's compute")
+	}
+	styleBusy = true
+	v := &styleNext
+	if layers := layersFor(n); len(layers) > 0 || n.inline != nil || inherits {
+		styleSelf.n, styleSelf.w = n, w
+		styleScratch.SetPrevCounters(prevCounters, srcCounters)
+		style.Compute(layers, &styleSelf, parent, &n.cs, envFor(n), &styleScratch, v)
+		if sensNow.pseudo {
+			n.computePseudos(layers, v)
+		}
+	} else {
+		*v = style.Values{}
+		if n.pseudoGen != styleGen {
+			n.pseudo = [3]style.Values{}
+			n.pseudoGen = styleGen
+		}
+	}
 	n.csGen = styleGen
 	n.styleSeen = styleGen
 	n.styleDirty = false
-	n.ink = inkOf(&v)
-	n.transitionValues(old, v, firstStyle)
-	n.syncAnimation(v)
-	// Values carries the animation group, a slice, and so is not
-	// comparable; the field-wise diff decides whether the widget's
-	// paint is stale and gives the hooks their old/new pair.
-	if styleChanged(&old, &v) {
+	if !firstStyle && n.trCancel == nil && n.anims == nil && n.cs.Equal(v) {
+		styleBusy = false
+		return &n.cs
+	}
+	old := n.cs
+	n.cs = *v
+	styleBusy = false
+	n.ink = inkOf(&n.cs)
+	n.transitionValues(&old, &n.cs, firstStyle)
+	n.syncAnimation(&n.cs)
+	if !old.Equal(&n.cs) {
 		if inv, ok := w.(interface{ Invalidate() }); ok {
 			inv.Invalidate()
 		}
 		if h, ok := w.(styleRestyler); ok {
-			h.styleRestyled(old, v)
+			h.styleRestyled(old, n.cs)
 		}
 	}
-	if layoutKey(&v) != layoutKey(&old) {
+	if layoutKey(&n.cs) != layoutKey(&old) {
 		if inv, ok := w.(interface{ InvalidateLayout() }); ok {
 			inv.InvalidateLayout()
 		}
 	}
-	if inheritedKey(&v) != inheritedKey(&old) {
+	if inheritedKey(&n.cs) != inheritedKey(&old) {
 		restyleSubtree(w)
 	}
+	if sensNow.counters && !n.cs.Counters.Equal(old.Counters) {
+		restyleCountersAfter(w)
+	}
 	return &n.cs
+}
+
+// restyleCountersAfter marks what reads w's counter set: its subtree,
+// which inherits it, and everything after w in tree order — the
+// following siblings of w and of each ancestor, and their subtrees —
+// which inherits its values (css-lists-3 §4.4.1). The walk only moves
+// forward, so a chain of changed sets settles.
+func restyleCountersAfter(w Widget) {
+	restyleSubtree(w)
+	for cur := w; cur != nil; cur = parentOf(cur) {
+		cn := nodeOf(cur)
+		if cn == nil || cn.styleRoot {
+			return
+		}
+		sib, idx := visibleSiblings(cn, cur)
+		if idx < 0 {
+			continue
+		}
+		for _, k := range sib[idx+1:] {
+			if kn := nodeOf(k); kn != nil {
+				kn.styleDirty = true
+			}
+			restyleSubtree(k)
+		}
+	}
 }
 
 // pseudoNames are the painted pseudo-elements, in cache order.
 var pseudoNames = [3]string{"before", "after", "first-letter"}
 
-// prevCountersOf is the previous visible sibling's counter scope, the
-// document-order link CSS counting walks. Computed lazily like any
-// style read; only reached when counters are in play.
-func prevCountersOf(n *node, w Widget) *style.CounterScope {
+// prevCountersOf reads the two counter sets CSS counter inheritance
+// takes beside the parent's: the previous visible sibling's, and the
+// one of the element immediately preceding w in tree order — that
+// sibling's last visible descendant — whose values carry forward.
+// Both nil without a previous sibling. Computed lazily like any style
+// read; only reached when counters are in play.
+func prevCountersOf(n *node, w Widget) (prev, src *style.CounterScope) {
 	sib, idx := visibleSiblings(n, w)
 	if idx <= 0 {
-		return nil
+		return nil, nil
 	}
 	pw := sib[idx-1]
 	pn := nodeOf(pw)
 	if pn == nil {
-		return nil
+		return nil, nil
 	}
-	return pn.style(pw).Counters
+	prev = pn.style(pw).Counters
+	src = prev
+	for last := lastStyleKid(pw); last != nil; last = lastStyleKid(last) {
+		src = nodeOf(last).style(last).Counters
+	}
+	return prev, src
+}
+
+// lastStyleKid is w's last visible styled child, nil for none.
+func lastStyleKid(w Widget) Widget {
+	for _, k := range slices.Backward(appendStyleKids(w, nil)) {
+		if kn := nodeOf(k); kn != nil && !kn.hidden {
+			return k
+		}
+	}
+	return nil
 }
 
 // computePseudos cascades the ::before/::after rules of this widget,
@@ -1516,17 +1644,11 @@ func (n *node) computePseudos(layers []style.Layer, self *style.Values) {
 	}
 	n.pseudoGen = styleGen
 	for i := range pseudoNames {
-		if pseudoChanged(&oldPseudo[i], &n.pseudo[i]) {
+		if !oldPseudo[i].Equal(&n.pseudo[i]) {
 			n.Invalidate()
 			break
 		}
 	}
-}
-
-// pseudoChanged is styleChanged plus the pseudo-element-only values.
-func pseudoChanged(a, b *style.Values) bool {
-	return a.HasContent != b.HasContent || a.Content != b.Content || a.ContentURL != b.ContentURL ||
-		a.QuoteDepth != b.QuoteDepth || a.Counters != b.Counters || styleChanged(a, b)
 }
 
 // PseudoStyle returns w's computed ::before/::after style — the
@@ -1641,84 +1763,8 @@ type styleRestyler interface {
 	styleRestyled(old, new style.Values)
 }
 
-// styleChanged reports whether a recomputed cascade differs from the
-// cached one in anything a widget paints or lays out. Values carries
-// slices (the animation group and its longhand slots), so the diff is
-// field-wise; the animation entries themselves stay comparable.
-func styleChanged(a, b *style.Values) bool {
-	return a.Set != b.Set || a.Own != b.Own || a.Vars != b.Vars ||
-		a.Color != b.Color || a.Background != b.Background || a.Image != b.Image ||
-		a.Opacity != b.Opacity || a.Brightness != b.Brightness ||
-		a.Padding != b.Padding || a.Margin != b.Margin ||
-		a.BorderWidth != b.BorderWidth || a.BorderStyle != b.BorderStyle ||
-		a.BorderColor != b.BorderColor || a.Radius != b.Radius || a.Shadow != b.Shadow ||
-		a.OutlineWidth != b.OutlineWidth || a.OutlineStyle != b.OutlineStyle ||
-		a.OutlineColor != b.OutlineColor || a.OutlineOffset != b.OutlineOffset ||
-		a.MarginAuto != b.MarginAuto || a.Layout != b.Layout ||
-		a.BorderSpacingH != b.BorderSpacingH || a.BorderSpacingV != b.BorderSpacingV ||
-		a.FontFamily != b.FontFamily || a.FontSize != b.FontSize ||
-		a.FontWeight != b.FontWeight || a.Italic != b.Italic ||
-		a.LetterSpacing != b.LetterSpacing || a.TextTransform != b.TextTransform ||
-		a.LineHeight != b.LineHeight || a.Features != b.Features ||
-		a.Transform.M != b.Transform.M || a.OriginFrac != b.OriginFrac ||
-		a.OriginPx != b.OriginPx || a.IconSize != b.IconSize ||
-		a.IconSource != b.IconSource || a.IconXform.M != b.IconXform.M ||
-		a.PaletteTint != b.PaletteTint || a.CaretColor != b.CaretColor ||
-		a.Decoration != b.Decoration || a.Transition != b.Transition ||
-		a.Appearance != b.Appearance || a.TouchAction != b.TouchAction ||
-		a.TextAlign != b.TextAlign || a.TextIndent != b.TextIndent ||
-		a.WhiteSpace != b.WhiteSpace || a.WordBreak != b.WordBreak ||
-		a.LineBreak != b.LineBreak || a.Hyphens != b.Hyphens ||
-		a.WordSpacing != b.WordSpacing || a.VerticalAlign != b.VerticalAlign ||
-		a.VerticalAlignPx != b.VerticalAlignPx || a.VerticalAlignPct != b.VerticalAlignPct || a.LineClamp != b.LineClamp ||
-		a.Overflow != b.Overflow || a.VariantCaps != b.VariantCaps ||
-		a.VariantNumeric != b.VariantNumeric || a.VariantLig != b.VariantLig ||
-		a.VariantEA != b.VariantEA || a.VariantPos != b.VariantPos ||
-		a.VariantAlt != b.VariantAlt || a.OpticalSizing != b.OpticalSizing ||
-		a.Direction != b.Direction || a.UnicodeBidi != b.UnicodeBidi ||
-		a.WritingMode != b.WritingMode ||
-		a.Filter != b.Filter || a.Backdrop != b.Backdrop || a.Blend != b.Blend ||
-		a.Isolate != b.Isolate || a.Perspective != b.Perspective ||
-		a.Preserve3D != b.Preserve3D || a.BackfaceHidden != b.BackfaceHidden ||
-		!clipShapeEqual(&a.Clip, &b.Clip) || !maskEqual(&a.Mask, &b.Mask) ||
-		a.ScrollSmooth != b.ScrollSmooth || a.ScrollPad != b.ScrollPad ||
-		a.Snap != b.Snap || a.Overscroll != b.Overscroll ||
-		a.BarThumb != b.BarThumb || a.BarTrack != b.BarTrack ||
-		a.BarColorAuto != b.BarColorAuto || a.BarWidth != b.BarWidth ||
-		a.BarGutter != b.BarGutter || a.ScrollMargin != b.ScrollMargin ||
-		a.SnapAlign != b.SnapAlign || a.SnapStopAlways != b.SnapStopAlways ||
-		!animsEqual(a.Animation, b.Animation)
-}
-
-// clipShapeEqual compares two clip shapes field-wise; the polygon is
-// a slice, so Values cannot compare it with ==.
-func clipShapeEqual(a, b *style.ClipShape) bool {
-	if a.Kind != b.Kind || a.Inset != b.Inset || a.InsetRad != b.InsetRad ||
-		a.Rad != b.Rad || a.RadX != b.RadX || a.RadY != b.RadY ||
-		a.CenterX != b.CenterX || a.CenterY != b.CenterY || a.Path != b.Path {
-		return false
-	}
-	return slices.Equal(a.Poly, b.Poly)
-}
-
-// maskEqual compares two mask groups field-wise; the gradient's
-// fixed array and the rest are straight ==.
-func maskEqual(a, b *style.Mask) bool {
-	return *a == *b
-}
-
-// animsEqual compares the computed animation groups entrywise.
-func animsEqual(a, b []style.Animation) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if a[i] != b[i] {
-			return false
-		}
-	}
-	return true
-}
+// The widgets that react to a changed cascade.
+var _, _ styleRestyler = (*Label)(nil), (*RichLabel)(nil)
 
 // layoutKey projects the values that change what a widget wants to
 // measure or where its children go; a change requests a relayout
@@ -1856,10 +1902,17 @@ func inkOf(v *style.Values) render.Insets {
 		ink.Top, ink.Right = max(ink.Top, e.Top), max(ink.Right, e.Right)
 		ink.Bottom, ink.Left = max(ink.Bottom, e.Bottom), max(ink.Left, e.Left)
 	}
-	if o := v.EffOutline(); o > 0 {
+	if o := outlineWidth(v); o > 0 {
 		reach := max(0, o+v.OutlineOffset)
 		ink.Top, ink.Right = max(ink.Top, reach), max(ink.Right, reach)
 		ink.Bottom, ink.Left = max(ink.Bottom, reach), max(ink.Left, reach)
+	}
+	// A border image draws over its outset.
+	if v.Has(style.PropBorderImageSource) && !v.BorderImage.Source.None() {
+		bi := v.UsedBorderImage()
+		o := borderImageOutset(&bi, borderOf(v))
+		ink.Top, ink.Right = max(ink.Top, o.Top), max(ink.Right, o.Right)
+		ink.Bottom, ink.Left = max(ink.Bottom, o.Bottom), max(ink.Left, o.Left)
 	}
 	// The filter list paints outside the box too: blur's skirt and
 	// every drop-shadow's reach.
@@ -2168,7 +2221,7 @@ func (c *faceCache) get(base render.Font, v *style.Values, weight, px int) rende
 
 // cssDecoration is the cascade's text decoration, zero when none.
 func cssDecoration(v *style.Values) render.Decoration {
-	if v.Has(style.PropTextDecoration) {
+	if v.Has(style.PropTextDecorationLine) {
 		return v.Decoration
 	}
 	return render.Decoration{}
@@ -2268,17 +2321,17 @@ func faceFeatureSpec(v *style.Values) string {
 		}
 	}
 	if v.Has(style.PropFontVariantLigatures) {
-		if v.VariantLig&style.LigCommon != 0 {
-			add("liga")
-		}
-		if v.VariantLig&style.LigDiscretionary != 0 {
-			add("dlig")
-		}
-		if v.VariantLig&style.LigHistorical != 0 {
-			add("hlig")
-		}
-		if v.VariantLig&style.LigContextual != 0 {
-			add("calt")
+		for _, g := range ligatureFeatures {
+			switch {
+			case v.VariantLig&g.on != 0:
+				for _, tag := range g.tags {
+					tags[tag] = "1"
+				}
+			case v.VariantLig&g.off != 0:
+				for _, tag := range g.tags {
+					tags[tag] = "0"
+				}
+			}
 		}
 	}
 	if v.Has(style.PropFontVariantEastAsian) {
@@ -2292,7 +2345,7 @@ func faceFeatureSpec(v *style.Values) string {
 		if ea&style.EAJis90 != 0 {
 			add("jp90")
 		}
-		if ea&style.EAJis2004 != 0 {
+		if ea&style.EAJis04 != 0 {
 			add("jp04")
 		}
 		if ea&style.EASimplified != 0 {
@@ -2338,6 +2391,18 @@ func faceFeatureSpec(v *style.Values) string {
 	}
 	slices.Sort(spec)
 	return strings.Join(spec, ";")
+}
+
+// ligatureFeatures maps each font-variant-ligatures group's on and off
+// keywords onto its OpenType tags (CSS Fonts 4 §6.4).
+var ligatureFeatures = [...]struct {
+	on, off style.FontVariantLigatures
+	tags    []string
+}{
+	{style.LigCommon, style.LigNoCommon, []string{"clig", "liga"}},
+	{style.LigDiscretionary, style.LigNoDiscretionary, []string{"dlig"}},
+	{style.LigHistorical, style.LigNoHistorical, []string{"hlig"}},
+	{style.LigContextual, style.LigNoContextual, []string{"calt"}},
 }
 
 // radiusOr returns the stylesheet's corner radii when any corner is

@@ -50,12 +50,18 @@ box.AttachStylesheet(widget.NewStylesheet(css, widget.StylePriorityApplication))
 - `@keyframes` (and `@-gtk-keyframes`) compile into the sheet.
 - `@media` evaluates against the tree's media state (below) — size
   features (`width`, `height`, `aspect-ratio`, `orientation`,
-  `resolution`, with `min-`/`max-` and Level 4 range syntax like
-  `(400px <= width <= 800px)`), `prefers-color-scheme`,
-  `prefers-contrast`, `prefers-reduced-motion`, the `and`/`not`
-  combinators, a comma list (OR), media types (`screen`/`all` true),
-  and nesting (the inner conditions intersect). A `@media` block
-  inside a rule scopes that rule's remaining declarations.
+  `resolution` in `dpi`, `dpcm`, `dppx` or `x`, with `min-`/`max-`
+  and Level 4 range syntax like `(400px <= width <= 800px)`),
+  `prefers-color-scheme`, `prefers-contrast`,
+  `prefers-reduced-motion`, the Level 4 condition grammar (`not`,
+  `and`, `or`, nested parentheses), a comma list (any query
+  matching), media types with `not`/`only` (`screen`/`all` true, the
+  others false; `not print` is true), and nesting (the inner
+  conditions intersect). Evaluation is three-valued as Level 4
+  defines it: an unknown feature or a `<general-enclosed>` form is
+  unknown, `not` keeps it unknown, and an unknown query is false. A
+  `@media` block inside a rule scopes that rule's remaining
+  declarations.
 - `@supports` evaluates at parse time against the engine's actual
   property and selector support: `(prop: value)`, `selector(...)`,
   `not`, `and`, `or`, and parens. A false block's rules never
@@ -69,14 +75,17 @@ box.AttachStylesheet(widget.NewStylesheet(css, widget.StylePriorityApplication))
   directory. Cycles are detected per import chain and reported
   precisely (`@import cycle: a.css -> b.css -> a.css`); a missing
   file, a false `supports()`, or a malformed import warns and drops
-  that import only.
+  that import only. An `@import` must precede every rule but
+  `@charset` and `@layer` statements; a later one warns and is
+  ignored. GTK's `@define-color` may precede an `@import` too, as GTK
+  accepts it there.
 - `@layer` orders cascade layers (below). Dotted names nest:
   `@layer a.b` is a layer below `a` (the parent outranks its nested
   layers), `@layer a { @layer b { ... } }` means `a.b`, and a name
   statement registers the dotted prefixes it names.
-- `@container` evaluates per compute against the nearest query
-  container — a widget with `container-type` set in the node's
-  ancestry (below).
+- `@container` evaluates per compute against the node's query
+  containers — the widgets with `container-type` set in its ancestry
+  (below).
 - `@font-face` declares app fonts: `font-family`, `src: url(...)`
   with `format()` hints (truetype/opentype load; an unsupported
   format warns and falls through to the next src), the `font-weight`
@@ -92,23 +101,34 @@ box.AttachStylesheet(widget.NewStylesheet(css, widget.StylePriorityApplication))
   A registered name's initial value answers var() wherever nothing
   declares it; `inherits: false` resolves the name to its initial
   value on nodes that do not declare it, however their ancestors
-  set it. Animating a registered property is deferred: the
-  transition engine keys on the longhand table, which custom
-  properties sit outside.
-- `@scope (root) to (upper)? { ... }` scopes the block's rules:
-  each subject must descend from an element matching the root
-  without crossing the upper boundary, and `:scope` in a selector
-  names that root. Scoping proximity ranks above specificity — an
-  inner scope beats an outer one at equal specificity — and below
-  provider priority.
-- Native nesting: a nested block desugars `&` to the parent selector
-  (`&:hover`, `& > .child`); a nested selector without `&` is the
-  parent's descendant, comma lists cross with the parent list, and
-  nesting nests.
+  set it. A declared value that does not match the syntax is invalid
+  at computed-value time and acts as `unset`: the inherited value, or
+  the initial value when the registration does not inherit.
+  Animating a registered property is deferred: the animations and
+  transitions interpolate the longhand table, which custom properties
+  sit outside, so a custom property in a keyframe drops with a warning.
+- `@scope (root) to (limit)? { ... }` scopes the block's rules
+  (CSS Cascade 6): each subject must be a root element or descend
+  from one without crossing a limit element, the root may be a
+  selector list, and a nested `@scope`'s roots are scoped to the outer
+  one. `:scope` names the root (and is `:root` outside `@scope`), `&`
+  is the root with its selector's specificity, and a selector naming
+  neither is relative to the root, as `:where(:scope) sel` — the root
+  adds no specificity. The cascade ranks scoped rules by scoping
+  proximity, below specificity: of two equally specific rules, the one
+  whose root is fewer generations up wins, and a scoped rule beats an
+  unscoped one.
+- Native nesting: `&` in a nested block is the parent selector list
+  with `:is()`'s matching and specificity (`&:hover`, `& > .child`,
+  `.x &`, `& + &`); a nested selector without `&` is relative to the
+  parent, a descendant (or the combinator it leads with); nesting
+  nests, and a nested list with an invalid member drops that nested
+  rule alone.
 - `!important` wins the cascade over every normal declaration
   (below).
 - A malformed declaration skips that declaration, and a malformed
-  selector skips its rule. Everything around it still applies.
+  selector skips its rule — one invalid member invalidates the whole
+  selector list, as CSS says. Everything around it still applies.
 
 ## Selectors
 
@@ -118,40 +138,55 @@ box.AttachStylesheet(widget.NewStylesheet(css, widget.StylePriorityApplication))
   attributes are `id`, `class` (the class list, so `[class~=x]` and
   `[class|=x]` work) and `role` (the a11y role's name, `button`,
   `entry`, `label`, ...); any other name reads an app-set data
-  attribute (`SetAttr`).
+  attribute (`SetAttr`). A widget's state is not an attribute: the
+  state pseudo-classes below test it, as HTML's do for an element's
+  state. An empty value never matches `^=`, `$=` or `*=`.
 - **Combinators.** ` `, `>`, `+` and `~`.
 - **State pseudo-classes.**
   - `:hover` matches the hovered widget and its ancestors (GTK's rule).
   - `:active`, `:focus`, `:focus-visible` and `:focus-within`.
-  - `:disabled`, `:checked`, `:selected`, `:indeterminate` and
-    `:backdrop`. These are app-driven through `SetState`.
+  - `:disabled`, `:checked`, `:selected`, `:indeterminate`,
+    `:backdrop` and `:target`. These are app-driven through
+    `SetState`; `StateTarget` is the `:target` hook — the widget tree
+    has no URL fragment, so the app marks the widget an in-app
+    navigation points at.
   - `:enabled` (the negation of `:disabled`), `:read-only` and
     `:read-write` (an entry's `SetReadOnly`), and
     `:placeholder-shown` (an empty entry with a placeholder).
-- **Functional pseudo-classes.** `:is()` and `:where()` with full
-  selector lists — `:is()` counts its most specific argument's
-  specificity, `:where()` counts nothing — and `:not()` with complex
-  selector lists (Level 4). `:has()` takes relative selectors
-  (`:has(.a)`, `:has(> .a)`, `:has(+ .a)`, `:has(~ .a)`, with complex
-  arguments too) and counts its most specific argument; one compute
+- **Functional pseudo-classes.** `:is()` and `:where()` with
+  forgiving selector lists (an invalid member drops alone) — `:is()`
+  counts its most specific argument's specificity, `:where()` counts
+  nothing — and `:not()` with complex selector lists (Level 4). Each
+  functional pseudo-class adds its own argument's specificity, so
+  `:not(.a):not(.b)` counts two classes. `:has()` takes relative
+  selectors (`:has(.a)`, `:has(> .a)`, `:has(+ .a)`, `:has(~ .a)`,
+  with complex arguments too), counts its most specific argument, and
+  a repeated `:has()` requires every list; one compute
   spends at most 4096 node visits on `:has()` walks, after which a
   `:has()` conservatively stops matching — the budget keeps relational
   matching linear instead of quadratic in tree size, and a sheet that
   loads `:has()` selectors also makes descendant class/state changes
-  restyle the ancestors that read them.
+  (and a child's first link into the tree) restyle the ancestors and
+  siblings that read them.
 - **Structural pseudo-classes.** `:first-child`, `:last-child`,
   `:only-child`, `:nth-child()`, `:nth-last-child()` (over visible
   siblings), `:nth-of-type()`, `:nth-last-of-type()`,
   `:first-of-type`, `:last-of-type`, `:only-of-type` (over visible
-  siblings of the same element name), `:root`, `:empty`, and `:not()`
-  with compound lists and Level 4 specificity. `:nth-child(an+b of
-  S)` counts only the siblings matching the selector list S.
+  siblings of the same element name), `:root`, `:empty` (no children
+  and no text: a label or entry showing text is not empty), and
+  `:not()` with compound lists and Level 4 specificity.
+  `:nth-child(an+b of S)` counts only the siblings matching the
+  selector list S and adds S's most specific member's specificity.
 - **Pseudo-elements.** `::before` and `::after` cascade their own
   style (inherited from the element's) with `content:` of strings,
   `attr(name)` (the built-ins and data attributes), `counter(name)`
   and `counters(name, sep)`; `counter-reset` and
-  `counter-increment` count in document order (through previous
-  siblings); `content: url(...)` paints an image as the generated
+  `counter-increment` follow CSS Lists 3's counter inheritance — a
+  node inherits its parent's counters and its previous sibling's, with
+  the values of the element before it in tree order, a reset
+  instantiates a counter (nested under an inherited one), an increment
+  bumps the innermost — and a change re-counts everything after it;
+  `content: url(...)` paints an image as the generated
   content, beside the text, and the quote keywords
   `open-quote`/`close-quote`/`no-open-quote`/`no-close-quote` emit
   the typographic quote pairs over the inherited quote nesting
@@ -192,29 +227,43 @@ box.AttachStylesheet(widget.NewStylesheet(css, widget.StylePriorityApplication))
   (`border: var(--w) solid var(--c)`).
 - **Math.** `calc()`, `min()`, `max()` and `clamp()`, plus the CSS
   Values 4 set: `round()` (with the `nearest`/`up`/`down`/`to-zero`
-  strategies), `mod()`, `rem()`, `abs()`, `sign()`, `sin()`, `cos()`,
-  `tan()`, `asin()`, `acos()`, `atan()`, `atan2()` (number arguments
-  are radians, the inverse functions return angles), `pow()`,
-  `sqrt()`, `hypot()`, `log()` (with an optional base) and `exp()`,
-  all nestable inside `calc()`.
+  strategies; nearest takes the upper multiple on a tie), `mod()`,
+  `rem()`, `abs()`, `sign()`, `sin()`, `cos()`, `tan()`, `asin()`,
+  `acos()`, `atan()`, `atan2()` (number arguments are radians, the
+  inverse functions return angles; atan2 takes any two values of one
+  type), `pow()`, `sqrt()`, `hypot()` (of any one type), `log()` (with
+  an optional base) and `exp()`, all nestable inside `calc()`, with the
+  constants `e`, `pi`, `infinity`, `-infinity` and `NaN`. A division
+  by zero is an infinity, not an error, `mod()`/`rem()` of a zero
+  divisor are NaN, and a calculation's top level clamps an infinity to
+  the largest representable value and NaN to zero, as Values 4 says.
 - **Units.** px, rem, em, ch, ex, cap, ic, lh and rlh (the
   font-relative family: ch/ex/cap/ic resolve against the default
   face's metrics scaled by the node's font size — `render.Font.Metrics`
-  — with the CSS fallback ratios when the face reports none; lh is
-  the node's computed line-height, rlh the root's), vw, vh, vmin and
-  vmax (the media viewport the `@media` size features read), cqw,
-  cqh, cqi, cqb, cqmin and cqmax (the container-query units, against
-  the nearest query container; without one they resolve to zero,
-  the same unset-viewport reading the vw family takes at 0×0), pt,
-  pc, in, cm, mm, %, deg, grad, rad, turn, s and ms.
+  — with the CSS fallback ratios when the face reports none; lh is the
+  node's computed line-height; rem and rlh read the tree root's
+  computed font-size and line-height, `SetRootFontSize` the initial
+  value), the viewport family — vw, vh, vi, vb, vmin and vmax and
+  their small (`sv*`), large (`lv*`) and dynamic (`dv*`) forms, which
+  read the same media viewport: a desktop window has no retracting
+  toolbars — cqw, cqh, cqi, cqb, cqmin and cqmax (the container-query
+  units, against the nearest eligible query container per axis, else
+  the viewport — see [Container queries](#container-queries)), pt, pc,
+  in, cm, mm, Q, %, deg, grad, rad, turn, s, ms, and the resolution
+  units dpi, dpcm, dppx and x. Units match ASCII case-insensitively.
 - **env()** answers the safe-area and keyboard inset family
   (`env(safe-area-inset-top)`, `env(keyboard-inset-height)`, ...) as
-  zero lengths, the desktop value; unknown names are invalid.
-- **attr()** reads the node's attributes (the optional `StyleAttr`
-  hook a widget implements) as typed values — `attr(name px)`, a
-  unitless number, or `attr(name color)` — wherever a length or color
-  is taken. A missing attribute behaves as `unset`. This is the
-  engine's one attr() implementation.
+  zero lengths, the desktop value; an unknown name takes the fallback
+  after the comma, and is invalid without one.
+- **attr()** reads the node's attributes — the built-in `id`, `class`
+  and `role` and the app-set data attributes, the same store the
+  attribute selectors read — as typed values wherever a number,
+  length, angle, time or color is taken: untyped (the attribute parses
+  as the CSS value it holds), a type keyword (`attr(n number)`,
+  `length`, `percentage`, `angle`, `time`, `color`), `type(<length>)`,
+  or a unit (`attr(w px)`, `attr(p %)`) applied to a bare number. A
+  missing or mistyped attribute takes the fallback after the comma, and
+  behaves as `unset` without one.
 - **Colors.**
   - Hex (3/4/6/8 digits), named colors, `transparent` and
     `currentColor` (valid wherever a color is, including inside every
@@ -222,16 +271,22 @@ box.AttachStylesheet(widget.NewStylesheet(css, widget.StylePriorityApplication))
   - `rgb[a]()`, `hsl[a]()`, `hwb()`, `lab()`, `lch()`, `oklab()`,
     `oklch()` and `color()` — the predefined spaces `srgb`,
     `srgb-linear`, `display-p3`, `a98-rgb`, `prophoto-rgb`, `rec2020`,
-    `xyz`, `xyz-d65` and `xyz-d50`, mapped to sRGB (out-of-gamut
-    colors clamp).
+    `xyz`, `xyz-d65` and `xyz-d50`, with the transfer functions
+    extended past [0, 1] as CSS Color 4 extends them. Colors outside
+    sRGB gamut-map as CSS Color 4 §13.2 says: the OKLCH chroma reduces,
+    lightness and hue kept, until clipping is under a just-noticeable
+    difference.
   - Relative color syntax: `rgb(from <color> r g b / a)`, and the
     same `from` form for hsl, hwb, lab, lch, oklab and oklch, each
-    channel an expression over the origin's channel keywords (`l`,
-    `c`, `h`, `r`, `alpha`, ...) in `calc()`.
-  - `color-mix(in <space>, A, B)` in every interpolation space
-    (`srgb`, `srgb-linear`, `lab`, `lch`, `oklab`, `oklch`, `hsl`,
-    `hwb`) with the hue methods `shorter` (default), `longer`,
-    `increasing` and `decreasing`.
+    channel keyword the origin's channel as the number its plain form
+    takes (degrees for a hue, 0..255 for rgb, 0..100 for hsl's s and l),
+    in `calc()`.
+  - `color-mix(in <space>, A, B)` in every interpolation space —
+    `srgb`, `srgb-linear`, `lab`, `lch`, `oklab`, `oklch`, `hsl`,
+    `hwb`, the predefined RGB spaces and `xyz`/`xyz-d65`/`xyz-d50` —
+    with the hue methods `shorter` (default), `longer`, `increasing`
+    and `decreasing`; an achromatic color's powerless hue takes the
+    other color's.
   - `light-dark(a, b)` follows the active theme's color scheme.
   - System colors — `Canvas`, `CanvasText`, `LinkText`, `VisitedText`,
     `GrayText`, `Highlight`, `HighlightText`, `Mark`, `MarkText`,
@@ -243,8 +298,19 @@ box.AttachStylesheet(widget.NewStylesheet(css, widget.StylePriorityApplication))
     to `var(--name)`, so a subtree's `--name` overrides them. The
     theme layer defines all of libadwaita's named colors from the
     palette.
+- **Images.** Wherever an image is taken (`background-image`,
+  `mask-image`, `border-image-source`): `none`, `url("file")` (a local
+  path or `file://` URL; gelm loads no network images), the linear,
+  radial and conic gradients and their `repeating-` forms — color
+  stops with up to two positions each, as lengths or percentages along
+  the gradient line (angles around a conic one), color hints between
+  stops, and the fixup that orders auto and backwards positions — and
+  `image-set()`, whose candidate (a url, a bare string, or a gradient,
+  with an `x`/`dppx`/`dpi` resolution and an optional `type()`) is the
+  lowest resolution at or above the device's (`SetMediaResolution`),
+  else the highest.
 - **Keywords.** `inherit`, `initial`, `unset`, `all`, `revert` and
-  `revert-layer`.
+  `revert-layer` (see [Cascade](#cascade)).
 
 ## Properties
 
@@ -252,18 +318,30 @@ Each longhand is listed with its shorthand.
 
 - **Text.**
   - `color`
-  - `font`, `font-family`, `font-size`, `font-weight`, `font-style`
+  - `font`, `font-family`, `font-size` (lengths, percentages, the
+    absolute and relative keywords), `font-weight` (numbers, `bolder`
+    and `lighter` by the relative-weight table), `font-style`; the
+    `font` shorthand resets `line-height` unless it names one
   - `font-feature-settings`, `font-variation-settings`
-  - `letter-spacing`, `word-spacing`, `line-height`, `text-transform`
+  - `letter-spacing`, `word-spacing` (both at the advance level, em
+    resolving at the font size), `line-height` (normal, a number, a
+    length or a percentage), `text-transform`
   - `text-align` (start, end, left, right, center, justify — justify
     spreads a wrapped row's leftover width across its spaces;
-    everything but the final row), `text-indent` (the first row's
-    start edge), `white-space` (normal, nowrap, pre, pre-wrap,
-    pre-line, break-spaces), `word-break` (normal, break-all,
-    keep-all — break-all and keep-all step by grapheme cluster and
-    the UAX #14 class rules), `line-break` (auto, loose, normal,
-    strict, anywhere — anywhere breaks at every cluster; the CJK
-    strictness profiles below), `hyphens` (none hides U+00AD, manual
+    everything but the final row; start and end follow `direction`),
+    `text-indent` (a length: the first row's start edge, its wrap width
+    narrowed by it), `white-space` (normal, nowrap, pre, pre-wrap,
+    pre-line, break-spaces — CSS Text 3's collapsing: tabs read as
+    spaces, runs collapse, a newline is a space under normal and nowrap
+    and kept under pre-line, pre-wrap's trailing spaces hang,
+    break-spaces' take their advance and break after any one),
+    `word-break` (normal, break-all, keep-all — break-all and keep-all
+    step by grapheme cluster and the UAX #14 class rules), `line-break`
+    (auto, loose, normal, strict, anywhere — anywhere breaks at every
+    cluster; the CJK strictness profiles below), `overflow-wrap` (and
+    its `word-wrap` alias: normal, break-word, anywhere — a word that
+    overflows a row alone breaks between clusters, and anywhere also
+    lowers the min-content width), `hyphens` (none hides U+00AD, manual
     breaks at it and renders the hyphen where the break landed, auto
     reads as manual), `text-overflow` (clip, ellipsis), `line-clamp`
     (and `-webkit-line-clamp`), `vertical-align` (baseline, sub,
@@ -275,60 +353,87 @@ Each longhand is listed with its shorthand.
     `proportional-nums`, `tabular-nums`, `diagonal-fractions`,
     `stacked-fractions`, `ordinal`, `slashed-zero`), ligatures
     (`common-ligatures`, `discretionary-ligatures`,
-    `historical-ligatures`, `contextual` — enabling only, the `no-*`
-    forms are the fonts' default-off state), east-asian (`jis78` …
-    `jis2004`, `simplified`, `traditional`, `full-width`,
-    `proportional-width`, `ruby`), position (`sub`, `super`) and
-    alternates (`historical-forms`) — all mapping onto the OpenType
-    feature tags, with `font-feature-settings` winning per tag
+    `historical-ligatures`, `contextual` and their `no-*` forms, which
+    turn the tags off), east-asian (`jis78` … `jis2004`, `simplified`,
+    `traditional`, `full-width`, `proportional-width`, `ruby`),
+    position (`sub`, `super`) and alternates (`historical-forms`) — all
+    mapping onto the OpenType feature tags, with
+    `font-feature-settings` winning per tag
   - `font-synthesis` (none/weight/style/small-caps — the engine
     never synthesizes a face quality, so this parses as the guard it
     is; there is nothing to gate), `font-optical-sizing` (auto feeds
-    the pixel size to the `opsz` axis in points, none keeps it)
+    the pixel size to the `opsz` axis in points, none keeps it),
+    `font-palette` (normal, light, dark — see the deferrals)
   - `direction` (ltr/rtl — it forces a label's or entry's base
-    direction), `unicode-bidi` (the overrides force the base the same
-    way), `writing-mode` (parsed; see below)
-  - `text-decoration` (underline, overline and line-through in solid,
-    double, dotted, dashed or wavy, with a color), `caret-color`,
-    `caret-shape` (auto, bar, block, underscore — the entry and text
-    area caret's painted form)
-  - `user-select` (none, text, all) on the surfaces that select:
-    Entry, TextArea, RichLabel. `none` keeps a press a caret move and
-    a drag from extending a selection; `all` selects everything on a
-    press. Plain Label carries no selection machinery, so the value
-    changes nothing there.
-- **Text-surface scope and deferrals.** The CSS Text properties
-  apply to the styled text surfaces: `Label` (and the buttons, rows,
-  and menus that hold one), `Entry` (direction), and the pseudo
-  content. Deferred, honestly: `text-align`/`justify` on `Entry` and
-  `TextArea` (editing widgets own their layout for caret and
-  selection correctness — they clip and scroll rather than justify);
-  `RichLabel` composes runs itself and takes the font group only;
-  CJK justify (rows without spaces stay start-aligned — inter-cluster
-  distribution is unbuilt); `hyphens: auto` (no hyphenation
-  dictionary ships; without one, auto would guess); the `line-break`
-  strictness profiles for CJK punctuation (the typesetting segmenter
-  computes one UAX #14 profile — auto/normal/strict read the same,
-  loose and anywhere differ as noted); `unicode-bidi`'s embed and
-  isolate embeddings (internal/text resolves one paragraph per
-  widget — there is no embedding level to open); `vertical-align`'s
-  top/middle/bottom/text-top/text-bottom (they need the inline
-  formatting context's box, which a lone widget baseline has not);
-  `writing-mode`'s vertical forms (vertical-rl/vertical-lr parse and
-  compute but paint horizontally — the whole paint stack, caret
-  math, wrapping, and ellipsizing is horizontal); `word-spacing` and
-  `text-indent` percentages (they need the containing block the
-  per-declaration parse cache cannot see; lengths and — for
-  vertical-align — line-box fractions resolve at paint).
+    direction and flips start and end), `unicode-bidi` (the overrides
+    force the base the same way), `writing-mode` (parsed; see below)
+  - `text-decoration` and its longhands `text-decoration-line`
+    (underline, overline, line-through, blink drawing nothing),
+    `-style` (solid, double, dotted, dashed, wavy) and `-color`;
+    `text-shadow` (a list of offset, blur and color, painted under the
+    text, inherited); `caret-color`, `caret-shape` (auto, bar, block,
+    underscore — the entry and text area caret's painted form)
+  - `user-select` (auto, none, text, all, contain) on the surfaces
+    that select: Entry, TextArea, RichLabel. `none` keeps a press a
+    caret move and a drag from extending a selection; `all` selects
+    everything on a press; `auto` resolves as CSS UI 4 says — contain
+    on an editable field, else the parent's none or all, else text —
+    and the property does not inherit. Plain Label carries no
+    selection machinery, so the value changes nothing there.
+- **Text-surface scope and deferrals.** The CSS Text properties apply
+  to the styled text surfaces: `Label` (and the buttons, rows, and
+  menus that hold one), `Entry` (direction), and the pseudo content.
+  Deferred, each with its reason:
+  - `text-align`/`justify` on `Entry` and `TextArea`: editing widgets
+    own their layout for caret and selection correctness — they clip
+    and scroll rather than justify.
+  - `RichLabel` composes runs itself and takes the font group only.
+  - CJK justify: rows without spaces stay start-aligned —
+    inter-cluster distribution is unbuilt.
+  - `hyphens: auto` (no hyphenation dictionary ships; without one, auto would guess): it reads as manual.
+  - The `line-break` strictness profiles for CJK punctuation: the
+    typesetting segmenter computes one UAX #14 profile — auto, normal
+    and strict read the same; loose and anywhere differ as noted.
+  - `unicode-bidi`'s embed and isolate embeddings: internal/text
+    resolves one paragraph per widget, so there is no embedding level
+    to open.
+  - `vertical-align`'s top, middle, bottom, text-top and text-bottom:
+    they need the inline formatting context's box, which a lone
+    widget baseline has not.
+  - `writing-mode`'s vertical forms (vertical-rl/vertical-lr parse and compute but paint horizontally): the whole paint stack, caret
+    math, wrapping, and ellipsizing is horizontal.
+  - `word-spacing` and `text-indent` percentages are invalid: they need
+    the containing block, which the per-declaration parse cache cannot
+    see; lengths resolve at paint.
+  - `text-overflow` ellipsizes a label whatever its `overflow`: a
+    toolkit label never paints past its box, so `overflow` is no clip
+    switch there and `text-overflow` decides alone.
+  - `font-palette` computes and inherits; color glyphs always paint with the font's first palette: the font loader exposes CPAL's palettes
+    without their light and dark type flags, and `@font-palette-values`
+    is not parsed.
 - **Box.**
-  - `background`, `background-color`, `background-image` (the linear,
-    radial and conic gradients and their `repeating-` forms)
+  - `background` and its longhands — `background-color`,
+    `background-image`, `background-size` (`auto`, `cover`,
+    `contain`, one or two lengths or percentages), `background-position`
+    (every `<position>` form), `background-repeat` (`repeat-x`,
+    `repeat-y`, and one or two of `repeat`, `space`, `round` and
+    `no-repeat`), `background-clip` and `background-origin`
+    (`border-box`, `padding-box`, `content-box`) and
+    `background-attachment` (`scroll`, `local`, `fixed`) — painted as
+    [Backgrounds](#backgrounds) describes
   - `padding-*`, `margin-*` (`auto` too: the CSS layouts below hand
     it the free space; programmatic containers read it as 0)
   - `border[-side][-width|-style|-color]` (a width draws only with a
     visible style), `border-*-radius`
+  - `border-image` and its longhands `-source`, `-slice` (with
+    `fill`), `-width` (numbers multiplying the border width, lengths,
+    percentages, `auto`), `-outset` and `-repeat` (`stretch`, `repeat`,
+    `round`, `space`); the `border` shorthand resets them
   - `box-shadow` (lists, inset, spread and blur)
-  - `outline[-width|-style|-color|-offset]`
+  - `outline[-width|-style|-color|-offset]`, with `outline-style: auto`
+    (the focus ring: the declared width, else `widget.FocusRingWidth`)
+    and `outline-color: auto` (the initial value: the accent color under
+    an auto style, `currentColor` under another)
   - `border-spacing` (the Box gap)
 - **Layout.** `display`, `width`, `height`, `min-width`, `min-height`,
   `max-width`, `max-height`, `box-sizing`, `aspect-ratio`, `position`,
@@ -343,31 +448,65 @@ Each longhand is listed with its shorthand.
   `grid-row-end`, `grid-column-start`, `grid-column-end`, `grid-row`,
   `grid-column`, `grid-area`, `justify-items`, `justify-self`,
   `place-items`, `place-self`), `overflow`/`overflow-x`/
-  `overflow-y`, `visibility`, `float` and `clear` — see
-  [Layout](#layout).
+  `overflow-y`, `visibility`, `float`, `clear`, `object-fit` and
+  `object-position` — see [Layout](#layout).
 - **Effects.** `opacity`, `filter`, `backdrop-filter`,
   `mix-blend-mode`, `isolation`, `clip-path`, `mask` (and the
   `mask-image`/`-position`/`-size`/`-repeat`/`-mode` longhands),
   `transform`, `transform-origin`, `perspective`, `transform-style`
-  and `backface-visibility`.
+  and `backface-visibility` — see [Rendering effects](#rendering-effects).
 - **Motion.**
-  - `transition`, `transition-property`, `-duration`, `-delay`,
-    `-timing-function` and `-behavior`, tweened on the animation
-    clock. `transition-behavior: allow-discrete` flips a discrete
-    property (`isolation`, `mix-blend-mode`, `backface-visibility`,
-    `appearance`, `caret-shape`) through the tween — the from value
-    holds to halfway, the to value from halfway on.
-  - `animation` and its longhands, including `animation-play-state`
-    and `animation-composition` (`replace`, `add`, `accumulate`),
-    driving `@keyframes`. The composition joins each frame onto the
-    underlying cascade value: add sums the scalars and colors
-    (clamped) and post-composes the transforms; accumulate reads the
-    same here — the animation channels carry scalars and composed
-    maps, where the two modes agree.
-  - Every timing function slot takes `steps(n)` with its jump
-    position (`jump-start`, `jump-end`, `jump-none`, `jump-both`,
-    `start`, `end`) and `linear(...)`, the piecewise list of values
-    with optional percent stops.
+  - `transition` and its longhands `transition-property`,
+    `-duration`, `-delay`, `-timing-function` and `-behavior`, each a
+    comma list matched by index against the property list, a shorter
+    one repeating (css-transitions-1 §2): a changed longhand
+    transitions with the last entry naming it (or `all`), when its
+    combined duration is positive; the longhands sharing an entry share
+    one tween. A negative delay starts the transition part-way, and the
+    start value holds through a positive one. Every interpolating
+    longhand transitions (below); `transition-behavior: allow-discrete`
+    also flips the discrete `isolation`, `mix-blend-mode`,
+    `backface-visibility`, `appearance`, `caret-shape` and `visibility`
+    halfway.
+  - `animation` and its longhands `animation-name`, `-duration`,
+    `-timing-function`, `-iteration-count`, `-direction`,
+    `-play-state`, `-delay`, `-fill-mode` and `-composition`, each a
+    comma list zipped against the names, a shorter one repeating; the
+    shorthand resets all of them but `animation-composition`
+    (css-animations-2 leaves it out). An animation runs the Web
+    Animations timing model on the animation clock: its local time
+    counts from the instant it applies (a negative delay starts it
+    part-way, `paused` holds the time), the active interval spans the
+    iterations, the fill modes hold the first or last frame outside
+    it, and the direction picks each iteration's way. The timing
+    function eases each keyframe interval (a `@keyframes` stop's own
+    `animation-timing-function` overrides it for the interval it
+    starts), and a longhand no 0% or 100% stop declares takes the
+    underlying value there. Later animations in the list sit on top;
+    `add` and `accumulate` compose a frame onto the value beneath it —
+    numbers and lengths sum, colors add per channel, transforms append
+    the effect's functions.
+  - Every longhand a `@keyframes` stop declares animates: the colors,
+    opacity, the brightness-only filter, the lengths and sizes
+    (padding, margin, border widths and radii, outline, width, height
+    and their bounds, the insets, gaps, flex-basis), the numbers
+    (font-size and weight, letter- and word-spacing, line-height,
+    text-indent, perspective, flex-grow/-shrink, z-index, order),
+    `box-shadow` lists, `transform`, `-gtk-icon-transform` and
+    `transform-origin` interpolate (colors in premultiplied sRGB, the
+    space CSS Color 4 interpolates legacy colors in); every other
+    longhand animates discretely, flipping at the interval's midpoint.
+    The transition and animation longhands, custom properties,
+    `!important` and `var()` values in a stop drop with a warning, and
+    a stop's values compute against the root context (rem, the initial
+    font size).
+  - Every timing function slot takes the keywords (`linear`, `ease`,
+    `ease-in`, `ease-out`, `ease-in-out`, `step-start`, `step-end`),
+    `cubic-bezier()` (x controls within [0, 1]), `steps(n, <position>)`
+    with every jump position (`jump-start`, `jump-end`, `jump-none` —
+    n of at least 2 — `jump-both`, `start`, `end`) and the before flag,
+    and `linear()` with up to two percentages per point, its positions
+    made canonical and its ends extrapolated (CSS Easing 2).
   - `@starting-style` inside a rule names the values a newly styled
     widget's transitions start from — the entry transition.
 - **Icons.** `-gtk-icon-size`, `-gtk-icon-source`, `-gtk-icon-palette`
@@ -380,34 +519,33 @@ Each longhand is listed with its shorthand.
     not-allowed, col-resize, row-resize, all-scroll) maps onto the
     cursor-shape-v1 vocabulary, with the xcursor theme as the
     fallback for compositors without the protocol (the theme path
-    carries the classic core names). `cursor: url("file.cur") x y`
-    loads the named xcursor file and pins the CSS hotspot over the
-    file's own; the first frame shows. The property inherits — one
+    carries the classic core names). `cursor: url("file.cur") x y,
+    <keyword>` loads the named xcursor file and pins the CSS hotspot
+    over the file's own; the first frame shows, and a file that does
+    not load shows the fallback keyword. The property inherits — one
     declaration covers a subtree — and outranks a widget's built-in
     shape (text fields' caret, buttons' hand); `auto` defers to it.
-  - `pointer-events`: `none` takes the widget out of hit testing; set
-    on a container it covers the children too, and the press falls
-    through to whatever is behind (a Stack's lower child, the parent).
-    Widgets with hand-written HitTests outside the shared HitLeaf do
-    not honor it. `auto` is the default.
-  - `accent-color`: a color or `auto` (the theme accent). The checked
-    and accent surfaces follow it: the switch's on track, the
-    checkbutton and radio fill, the progressbar and levelbar fill,
-    the slider's highlight. An explicit background on the part still
-    wins.
+  - `pointer-events`: `none` takes the widget out of hit testing and
+    the press falls through to whatever is behind (a Stack's lower
+    child, the parent); it inherits, so a container's `none` covers
+    its subtree unless a descendant sets `auto` again. Widgets with
+    hand-written HitTests outside the shared HitLeaf do not honor it.
+    A `clip-path`'s clipped-out region takes no hits either.
+  - `accent-color`: a color or `auto` (the theme accent), inherited.
+    The checked and accent surfaces follow it: the switch's on track,
+    the checkbutton and radio fill, the progressbar and levelbar fill,
+    the slider's highlight, and the auto outline. An explicit
+    background on the part still wins.
   - `touch-action`: `pan-x`, `pan-y`, `none` (and the direction forms
     `pan-left/right/up/down`, which gate their axis) gate the touch
-    scroll path — the two-finger pan and the kinetic glide after it.
-    The wheel path is never gated (touch-action speaks to touch
-    manipulation only) and the touchpad's pixel scroll shares the
-    gated path. `manipulation` parses as both pan axes; the pinch
-    half of its meaning is deferred below.
-  - `appearance`: `none` and `auto` parse and compute. `none`'s chrome
-    stripping is deferred: the widgets' default look is programmatic
-    painting against the theme, not CSS pseudo-element chrome, so
-    stripping it means redesigning each widget's unstyled paint; a
-    stylesheet already restyles every chrome surface through the box
-    model (`background`, `border`, the part selectors).
+    scroll path — the two-finger pan and the kinetic glide after it —
+    intersected with the ancestors' values. The wheel path is never
+    gated (touch-action speaks to touch manipulation only) and the
+    touchpad's pixel scroll shares the gated path. `manipulation`
+    parses as both pan axes; the pinch half of its meaning is deferred
+    below.
+  - `appearance`: `none` and `auto` parse and compute; `none`'s
+    chrome stripping is deferred below.
 - **Scrolling.** The properties style the `Scroll` viewport
   (`scrolledwindow`) and what it scrolls.
   - `scroll-behavior`: `smooth` animates programmatic scrolls —
@@ -415,8 +553,8 @@ Each longhand is listed with its shorthand.
     wheel, always) lands at once, as the spec scopes smooth scrolling
     to programmatic scrolls.
   - `scroll-margin` (all four sides, negatives allowed) grows a
-    widget's revealed rect; `scroll-padding` insets the viewport the
-    reveal and snap math use.
+    widget's revealed rect and its snap area; `scroll-padding` insets
+    the viewport the reveal and snap math use.
   - `scroll-snap-type` (`none`, or `x`/`y`/`block`/`inline`/`both`
     with `proximity` or `mandatory`) turns snapping on for the
     container; `scroll-snap-align` (`start`/`end`/`center`, block and
@@ -431,12 +569,11 @@ Each longhand is listed with its shorthand.
     keeps the glow here without chaining, `none` shows nothing.
   - `scrollbar-color` (`auto` or thumb then track) and
     `scrollbar-width` (`auto`, `thin`, `none`) reach the bars —
-    Scroll's own and the standalone Scrollbar — and inherit, so one
-    declaration covers a subtree. `scrollbar-gutter` (`auto`,
-    `stable`, `stable both-edges`) reserves the bar's column in
-    measure even without overflow (a matching one on the near edge
-    under `both-edges`), so content does not reflow when a bar
-    appears.
+    Scroll's own and the standalone Scrollbar; the color inherits, the
+    width does not. `scrollbar-gutter` (`auto`, `stable`, `stable
+    both-edges`) reserves the bar's column in measure even without
+    overflow (a matching one on the near edge under `both-edges`), so
+    content does not reflow when a bar appears.
 
 The box model applies to the containers, controls and text widgets,
 painted in GTK's order: outer shadows, background, image, inset
@@ -447,11 +584,13 @@ subtree, and ink outside the border box joins the damage rect.
 
 - `appearance: none` paints nothing (parses and computes): widget
   chrome here is programmatic theme painting, not CSS pseudo-element
-  chrome, so `none` needs a per-widget unstyled redesign.
+  chrome, so `none` needs a per-widget unstyled redesign; a stylesheet
+  already restyles every chrome surface through the box model
+  (`background`, `border`, the part selectors).
 - `touch-action`'s pinch semantics (`manipulation`'s zoom half,
   `pinch-zoom`) are deferred: the gesture layer exposes pinch only as
   a claimed GesturePinch a widget opts into, not an axis the scroll
-gates can mask; `manipulation` computes to both pan axes meanwhile.
+  gates can mask; `manipulation` computes to both pan axes meanwhile.
 
 ## Layout
 
@@ -608,11 +747,16 @@ container offers (a column box no longer stretches a 100px-wide child,
 which sits at the start, or by SetHAlign), and a min size widens it.
 Percentages resolve against the containing block — the content box a
 CSS layout hands its items, and in a programmatic container the space
-it offers in the measure constraint. min-content is the widget's
-floor (what it can give up as a Shrinker or WidthShrinker, lowered to
-a MinSizer's floor — a wrapping label's widest word); max-content is
-its unbounded natural size; in the block axis the content keywords are
-auto, as CSS reads them. A plain-pixel `min-width`/`min-height` stays
+it offers in the measure constraint; a percentage height resolves only
+against a definite height (a fixed or pinned one), and reads as auto
+under a content-sized parent, as CSS 2 §10.5 says. min-content is the
+widget's floor (what it can give up as a Shrinker or WidthShrinker,
+lowered to a MinSizer's floor — a wrapping label's widest word); a box
+whose lines break between its items — normal flow, a multi-line flex
+row, a column flex container — has its widest item's min-content
+contribution as its own, and a single-line flex row the sum of its
+items'; max-content is its unbounded natural size; in the block axis
+the content keywords are auto, as CSS reads them. A plain-pixel `min-width`/`min-height` stays
 each widget's own floor, GTK's reading (a switch's knob, a slider's
 handle).
 
@@ -642,7 +786,21 @@ alike. `visibility: hidden` keeps the widget's space but paints
 nothing, takes no hits and no focus, and leaves the accessibility
 snapshot; a `visibility: visible` child of a hidden Box still shows.
 
+**object-fit and object-position.** On an `Image`, `object-fit`
+(`fill`, `contain`, `cover`, `none`, `scale-down`) picks how the
+picture fills the widget's box, and `object-position` (a `<position>`:
+one or two keywords, lengths or percentages, or the three- and
+four-value edge-offset forms like `right 10px bottom 20px`) places the
+concrete object in it, the overflow clipped to the box. Undeclared,
+the widget's `SetScale` policy stands, centered.
+
 ### Layout deferrals
+
+- Inside a programmatic container a widget never outgrows the slot it
+  is offered: a definite size larger than the slot clamps to it,
+  because a widget's measure lies within its constraints. A CSS layout
+  (a Box with `display`) lets a definite size overflow its content box,
+  as CSS does.
 
 - `subgrid`: `grid-template-columns`/`grid-template-rows: subgrid`
   with its line-name lists parse, compute and report supported, and
@@ -714,14 +872,47 @@ snapshot; a `visibility: visible` child of a hidden Box still shows.
 - Layout is horizontal-tb: vertical writing modes compute but lay out
   horizontally, as their paint does.
 
+## Backgrounds
+
+A box's background (css-backgrounds-3 §3) is a stack of image layers
+over a color. `background-image`'s list counts the layers, the first
+on top; every other background longhand is a list matched to it by
+index, a shorter one repeating. Each layer's image sizes against its
+positioning area — the `background-origin` box, or the window for
+`background-attachment: fixed` — at its natural size where
+`background-size` is `auto` (a gradient, which has none, fills the
+area; one auto dimension follows the natural ratio), scaled to `cover`
+or `contain`, or to explicit lengths and percentages; it sits at its
+`background-position` (percentages of the area minus the image); and
+it repeats per axis: `repeat` tiles both ways, `no-repeat` paints the
+one tile, `round` rescales the tile to a whole count across the area
+(the other axis keeping the ratio when its size is auto), and `space`
+spreads whole tiles with even gaps when two or more fit. The layer
+paints clipped to its `background-clip` box with that box's rounded
+corners; the color paints under every layer, clipped to the bottom
+layer's clip box. The padding and content boxes derive from the
+borders and the CSS padding the stylesheet declares (a widget's
+built-in padding is not CSS's). `local` reads as `scroll`: no box here
+scrolls its own background. The `background` shorthand takes a layer
+per comma group — any order of an image, a position with an optional
+`/ size`, a repeat style, an attachment and one or two boxes (the
+first the origin, the second the clip) — and the color in the final
+layer only.
+
+Deferred: `background-blend-mode` parses and is ignored — the layers
+paint straight onto the canvas, and blending one layer over the next
+needs a layer group per box.
+
 ## Rendering effects
 
 The effect properties apply to a widget's painted result, per frame.
 A stylesheet that declares none of them keeps the exact old paint
-path — opacity through the canvas's alpha stack, brightness through
-its brightness stack — with no offscreen buffer and no allocation
-(the budget tests pin both).
+path — the brightness stack inline, no offscreen buffer, no
+allocation (the budget tests pin it).
 
+- **`opacity`** below one paints the subtree into an offscreen group
+  and composites it at the opacity (css-color-4 §15.1), so a child
+  overlapping its parent does not show through it.
 - **`filter`**: `blur()`, `brightness()`, `contrast()`, `grayscale()`,
   `hue-rotate()`, `invert()`, `opacity()`, `saturate()`, `sepia()` and
   `drop-shadow()`, in list order. The color functions apply the
@@ -736,8 +927,9 @@ its brightness stack — with no offscreen buffer and no allocation
 - **`backdrop-filter`**: the same function list, applied to what has
   been painted behind the widget this frame — the canvas region under
   the border box is snapshotted, filtered, clipped to the rounded
-  border box, and composited back over the original backdrop. Deferred:
-  `url()` filters, for the same reason as `filter`.
+  border box, and composited back over the original backdrop, before
+  the widget's own transform. Deferred: `url()` filters, for the same
+  reason as `filter`.
 - **`mix-blend-mode`**: all sixteen modes — the separable set
   (`multiply`, `screen`, `overlay`, `darken`, `lighten`, `color-dodge`,
   `color-burn`, `hard-light`, `soft-light`, `difference`, `exclusion`)
@@ -754,15 +946,19 @@ its brightness stack — with no offscreen buffer and no allocation
   box), `polygon()` (the fill-rule keyword is accepted; every path
   fills nonzero) and `path()` — the SVG `d` grammar with arcs
   subdivided into cubics. The shape's coverage multiplies the
-  element's painted result.
-- **`mask`**: `mask-image` as a gradient or a `url()` image file, with
-  `mask-position`, `mask-size` (`auto`, `cover`, `contain`, or
-  lengths/percentages), `mask-repeat` (`repeat`/`no-repeat`; `round`
-  and `space` read as `repeat`) and `mask-mode` (`alpha`, `luminance`,
-  `match-source`). Alpha masks read the mask's alpha, luminance masks
-  its WCAG luminance. Deferred: multiple mask layers (a comma list
-  rejects the declaration — the engine composites one mask layer), and
-  mask-border.
+  element's painted result, and the clipped-out region takes no hits.
+- **`mask`**: one image layer — `mask-image` (any image, as above),
+  `mask-size`, `mask-position` and `mask-repeat` with background
+  layers' grammar and geometry, sized, positioned and clipped in the
+  border box — and `mask-mode` (`alpha`, `luminance`, `match-source`).
+  Alpha masks read the mask's alpha, luminance masks its WCAG
+  luminance; the `mask` shorthand takes one layer of the background
+  shorthand's grammar with the mode in place of the color. Deferred:
+  multiple mask layers (a comma list rejects the declaration — the
+  engine composites one mask layer); `mask-origin`, `mask-clip`,
+  `mask-composite` and `mask-border` are unknown properties.
+- Effects on a transformed box apply inside its transform layer, in
+  the box's local space, before the transform maps the result.
 - **3-D transforms**: `perspective()` (as a transform function),
   `rotateX()`, `rotateY()` and `translateZ()` compose as true 4x4
   matrices restricted to the element's plane — a homography — so a
@@ -784,34 +980,58 @@ its brightness stack — with no offscreen buffer and no allocation
   `scale3d()` and `translate3d()` are rejected for the same reason
   (only the plane-restricted functions above are honest on this
   pipeline).
+- **`border-image`** (css-backgrounds-3 §6): the source is cut into
+  nine regions by the slices (numbers are image pixels, percentages
+  of the image's size, clamped to it) and drawn over the border image
+  area — the border box grown by `border-image-outset`. The drawn
+  widths are `border-image-width`'s (a number multiplies the side's
+  border width, `auto` takes the slice's size), scaled down together
+  when opposite ones overlap; the corners scale into the corners, each
+  edge scales across its side and `stretch`es, `repeat`s (whole tiles
+  centered), `round`s (rescaled to a whole count) or `space`s (whole
+  tiles, gaps around them) along it, and the middle paints only under
+  `fill`. A box whose border image loads draws it instead of its
+  border styles; one whose source fails to load keeps them. A gradient
+  source renders at the border image area's size, cached across
+  frames.
 
 ## Cascade
 
 The origins, from highest to lowest precedence:
 
 1. programmatic per-widget colors (`Button.Bg`, `Entry.SetColor`, ...)
-2. stylesheet declarations, ordered by `!important` first (an
-   important declaration at any priority beats every normal one;
-   among importants the normal order applies), then priority, then
-   @scope proximity (an inner scope beats an outer one at equal
-   specificity), then cascade layer (unlayered rules outrank every
-   `@layer`; among layers, the later-declared wins — `@layer a, b;`
-   fixes the order, `@layer name { ... }` styles in it, and a dotted
-   name's parent outranks it), then specificity `(ids,
-   classes+states, elements)`, then source order
+2. stylesheet declarations, ordered as CSS Cascade 6 orders them,
+   with GTK's provider priority standing in for the origins:
+   `!important` first (an important declaration at any priority
+   beats every normal one), then priority, then cascade layer
+   (unlayered rules outrank every `@layer`; among layers, the
+   later-declared wins — `@layer a, b;` fixes the order, `@layer name
+   { ... }` styles in it, and a layer's own rules outrank its nested
+   layers, so a dotted name's parent outranks it; for important
+   declarations the layer order reverses — an earlier layer's
+   important beats a later one's, and a layered important beats an
+   unlayered one), then specificity `(ids, classes+states, elements)`,
+   then @scope proximity (fewer generations up to the scoping root
+   wins; scoped beats unscoped), then source order. Inline styles are
+   element-attached: they outrank every layer at their priority.
 3. the `Theme` and its derived state colors
 
-`revert` rolls back to the theme origin — it behaves as `unset`, the
-next origin down. `revert-layer` rolls to the next cascade layer
-down within the same origin, and walks the chain: a revert-layer
-beneath a revert-layer rolls another layer down, until a concrete
-declaration or the bottom (then `unset`).
+`revert` rolls back to the next origin down: the best declaration at
+a lower provider priority (an application sheet's revert yields the
+theme sheets' value), walking on through a revert there, and to the
+`Theme` itself — `unset` — at the bottom. `revert-layer` rolls to the
+next cascade layer down within the same origin, and walks the chain:
+a revert-layer beneath a revert-layer rolls another layer down, until
+a concrete declaration or the bottom (then `unset`).
 
 Constructor metrics (a button's padding, a label's size) are
 defaults that a stylesheet overrides. `color`, the `font-*` group,
-`cursor`, the CSS Text properties and `visibility` inherit. Box and
-layout properties, and `vertical-align`, `line-clamp`,
-`text-overflow`, `unicode-bidi` and `font-synthesis`, do not.
+`cursor`, `pointer-events`, `accent-color`, `caret-color`,
+`caret-shape`, `scrollbar-color`, `text-shadow`, the CSS Text
+properties and `visibility` inherit. Box and layout properties, the
+backgrounds, effects and motion, `user-select`, `scrollbar-width`, and
+`vertical-align`, `line-clamp`, `text-overflow`, `unicode-bidi` and
+`font-synthesis`, do not.
 
 ## Media state
 
@@ -840,17 +1060,67 @@ A viewport or preference change restyles the whole tree — but only
 ## Container queries
 
 `container-type: inline-size | size | normal` and `container-name:`
-make a widget a query container; `@container <name>? (query)` rules
-evaluate per compute against the nearest container in the node's
-ancestry (its arranged bounds), and the container units resolve
-against the same container. A `size` container queries both axes;
-an `inline-size` container's block axis — and the two-axis features,
-`aspect-ratio` and `orientation` — read as unknown (false, negated
-under `not`). A name filter matches the container's `container-name`
-list, and nested `@container` blocks intersect. A container's
+(or the `container: <name> / <type>` shorthand) make a widget a
+query container. A `@container` prelude is a comma list of
+conditions, each an optional name and a query in the media condition
+grammar (three-valued, as above) over `width`, `height`,
+`inline-size`, `block-size`, `aspect-ratio` and `orientation`; one
+true condition applies the block. Each condition evaluates against
+its own query container (CSS Containment 3 §6.1): the nearest
+ancestor whose `container-name` list holds the name and whose type
+can answer every queried feature — a block-axis or two-axis feature
+needs a `size` container, an `inline-size` one answers the inline
+axis only — and without one the condition is unknown, so false
+(negated or not). Nested `@container` blocks must all hold, each
+selecting its own container. The container units resolve as the
+spec says: `cqw`/`cqi` against the nearest query container, `cqh`/
+`cqb` against the nearest `size` container, `cqmin`/`cqmax` over the
+two, and an axis without one against the viewport. A container's
 resize restyles its subtree like a viewport change does, so queries
 re-evaluate on window resize (and on any relayout that moves a
 container's bounds when a sheet reads them).
+
+## Conformance
+
+`widget/cssconformance_*_test.go` is the engine's conformance suite
+(#159): one table of cases and one of documented exceptions per
+feature group, each case a stylesheet, a small widget tree and the outcomes
+the spec fixes for them — computed values, arranged bounds, hit tests
+and paint probes. Many adapt a named Web Platform Tests `css/` test
+(its path in the case's `wpt` field), and every case cites the
+spec section its expectations follow; each expectation is derived from
+the spec, none from the engine's output. A failure names the case, its
+source and the expected and actual values. The exception tables assert
+the documented current behavior of each deliberate deviation, and the
+runner checks this file states each one in the wording the case
+quotes. `go test ./widget -run TestCSSConformance` runs it.
+
+| #159 group | Bullets | docs/css.md | Cases (`TestCSSConformance…`) |
+| --- | --- | --- | --- |
+| Layout | `display`; flexbox; grid (incl. `subgrid`); sizing, `box-sizing`, `aspect-ratio`, the content keywords; `position`, insets, `z-index`; `overflow`, `float`/`clear`, `visibility`, `object-fit`/`object-position` | [Layout](#layout), [Layout deferrals](#layout-deferrals) | `Layout` (flexbox, grid, display, normal flow, sizing, positioning, overflow and visibility, object-fit), `LayoutExceptions` |
+| Layout (text) | `overflow-wrap` | [Properties](#properties) — Text | `Text`: overflow-wrap cases |
+| Selectors | attribute selectors and flags; `:is()`/`:where()`/`:has()`/`:not()`; the of-type family, `:empty`, `:enabled`, `:read-only`/`:read-write`, `:placeholder-shown`, `:focus-visible`, `:target`; `::before`/`::after` with `content`, `attr()`, counters; `::placeholder`/`::selection`/`::marker` | [Selectors](#selectors) | `Selectors`, `SelectorsExceptions` |
+| At-rules and cascade | `@media` (every feature, range syntax, three-valued logic); `@container` and its units; `@supports`, `@import`, `@layer`, `@font-face`, `@property`, `@scope`; nesting; `!important`; `revert`, `revert-layer` | [Syntax](#syntax), [Cascade](#cascade), [Media state](#media-state), [Container queries](#container-queries) | `Cascade`, `CascadeExceptions` |
+| Values and functions | every unit family; the math functions and constants; the color spaces, gamut mapping, relative colors, `light-dark()`, `color-mix()`, system colors, `currentColor`; `env()`, typed `attr()`, `var()` everywhere | [Values](#values) | `Values` |
+| Rendering | `filter`, `backdrop-filter`; `mix-blend-mode`, `isolation`; `clip-path`; `mask`; 3-D transforms; multiple backgrounds, `url()` images, `image-set()`; `border-image`; `outline: auto` | [Backgrounds](#backgrounds), [Rendering effects](#rendering-effects), [Properties](#properties) — Box | `Rendering`, `BorderImage`, `RenderingExceptions` |
+| Text | `text-align`, `text-indent`, `white-space`, `word-break`, `line-break`, `hyphens`, `word-spacing`, `vertical-align`, `line-clamp`, `text-overflow`; `font-variant-*`, `font-synthesis`, `font-optical-sizing`, `font-palette`; `direction`, `unicode-bidi`, `writing-mode`; fonts, `text-decoration`, `text-shadow` | [Properties](#properties) — Text and its deferrals | `Text`, `TextExceptions` |
+| Interaction and UI | `cursor`, `pointer-events`, `user-select`, `touch-action`, `caret-*`, `accent-color`, `appearance`; the scrolling group; transitions and animations, timing functions, `animation-composition`, `allow-discrete`, `@starting-style` | [Properties](#properties) — Interaction, Scrolling, Motion; [Deferred](#deferred) | `Interaction`, `InteractionExceptions` |
+
+The deliberate exceptions, each with its reason in the section the
+table names: `subgrid` lays out as `none`; widgets are atomic inline
+boxes; every CSS box roots its own formatting context (no margin
+collapsing through a parent); stacking contexts are per container; an
+absolute flex child's static position is the content start; `min()`,
+`max()` and `clamp()` cannot mix percentages with lengths; the window
+root takes the window size; a programmatic container clamps an
+oversized child; `::first-line` never matches; registered custom
+properties do not animate; GTK's `@define-color` may precede an
+`@import`; `url()` filters, `preserve-3d`, the general 3-D matrix
+functions, mask layer lists and `background-blend-mode`; `hyphens:
+auto` without a dictionary, horizontal-only writing modes, `text-indent`
+and `word-spacing` percentages, `text-overflow` regardless of
+`overflow`, the first CPAL palette only; `appearance: none` and
+`touch-action`'s pinch half.
 
 ## Performance
 
@@ -862,10 +1132,17 @@ Style is cached per widget and invalidated, never re-matched per paint:
   target, nested `:is()`/`:not()` reuse a fixed buffer pool per
   nesting level, `:nth-child(of S)` fills a per-depth sibling buffer,
   and `:has()` is the only downward walk — budgeted (above). The
-  revert-layer chain records declarations only when a loaded sheet
-  carries a `revert-layer` value.
+  revert chain records declarations only when a loaded sheet
+  carries a `revert` or `revert-layer` value, and the @scope
+  proximity walk runs only for scoped rules that matched.
 - A stylesheet load bumps a generation, and widgets recompute lazily by
-  stamp compare, so nothing walks the tree.
+  stamp compare, so nothing walks the tree. A recompute lands in one
+  shared buffer and is compared with the cached values
+  (`style.Values.Equal`: the comparable values in one `==`, the list
+  groups beside them); an unchanged result touches nothing — no copy,
+  no relayout or subtree checks — and a changed one invalidates what
+  moved. The matcher clears only the longhands the previous compute
+  offered.
 - A class, id or state flip restyles the subtree only when a loaded
   selector tests that fact on an ancestor, and siblings only when
   sibling selectors are loaded.
@@ -882,10 +1159,8 @@ Style is cached per widget and invalidated, never re-matched per paint:
   (`TestCSSLayoutSteadyFrameAllocatesNothing`); a layout property's
   change relayouts only the branch it sits in.
 
-`BenchmarkStyleGallery` (73 widgets, 25 rules, i5-10400F):
-
-| Operation | Time | Allocations |
-| --- | --- | --- |
-| full-tree restyle | 11.4 µs | 9 (all in the benchmark's walk) |
-| single-widget class toggle | about 170 ns | 0 |
-| full paint, stylesheet loaded | unchanged against the unstyled paint | — |
+`BenchmarkStyleGallery` (73 widgets, 25 rules): the full-tree restyle
+and the single-widget class toggle allocate nothing, and take what
+they took before the #159 engine grew (bench/baseline.md has the
+interleaved measurements); a styled frame paints in the unstyled
+frame's time.

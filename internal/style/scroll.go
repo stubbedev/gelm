@@ -10,8 +10,6 @@ package style
 
 import (
 	"strings"
-
-	"github.com/stubbedev/gelm/anim"
 )
 
 // SnapAxis is scroll-snap-type's axis half: which axes the container
@@ -87,13 +85,6 @@ const (
 const (
 	GutterStable uint8 = 1 << iota
 	GutterBothEdges
-)
-
-// The animation-composition values.
-const (
-	CompReplace uint8 = iota
-	CompAdd
-	CompAccumulate
 )
 
 // parseScrollBehavior parses scroll-behavior: auto or smooth.
@@ -326,91 +317,4 @@ func parseScrollbarGutter(ts []token, cx *ctx, v *Values) bool {
 	}
 	v.BarGutter = g
 	return true
-}
-
-// parseTransitionBehavior parses transition-behavior: normal or
-// allow-discrete.
-func parseTransitionBehavior(ts []token, cx *ctx, v *Values) bool {
-	comps := components(ts)
-	if len(comps) != 1 || comps[0][0].kind != tkIdent {
-		return false
-	}
-	switch strings.ToLower(comps[0][0].s) {
-	case "normal":
-		v.Transition.Discrete = false
-	case "allow-discrete":
-		v.Transition.Discrete = true
-	default:
-		return false
-	}
-	return true
-}
-
-// parseAnimationComposition parses animation-composition: replace,
-// add or accumulate.
-func parseAnimationComposition(ts []token, cx *ctx, v *Values) bool {
-	first := splitTop(ts, tkComma)[0]
-	if len(first) != 1 || first[0].kind != tkIdent {
-		return false
-	}
-	switch strings.ToLower(first[0].s) {
-	case "replace":
-		v.AnimComposition = []uint8{CompReplace}
-	case "add":
-		v.AnimComposition = []uint8{CompAdd}
-	case "accumulate":
-		v.AnimComposition = []uint8{CompAccumulate}
-	default:
-		return false
-	}
-	return true
-}
-
-// timingOfSteps reads the steps() jump-position keyword.
-func timingJump(s string) (anim.StepPos, bool) {
-	switch s {
-	case "jump-start", "start":
-		return anim.JumpStart, true
-	case "jump-end", "end":
-		return anim.JumpEnd, true
-	case "jump-none":
-		return anim.JumpNone, true
-	case "jump-both":
-		return anim.JumpBoth, true
-	}
-	return 0, false
-}
-
-// parseLinearPoints parses a linear() argument list: numbers with an
-// optional trailing percentage each, capped at MaxLinearPts.
-func parseLinearPoints(args [][]token, cx *ctx) (Timing, bool) {
-	var t Timing
-	for _, a := range args {
-		comps := components(a)
-		if len(comps) < 1 || len(comps) > 2 {
-			return Timing{}, false
-		}
-		n, ok := evalNumeric(comps[0], cx)
-		if !ok || n.kind != numNumber {
-			return Timing{}, false
-		}
-		pt := anim.LinearPt{Value: n.v}
-		if len(comps) == 2 {
-			p, ok := evalNumeric(comps[1], cx)
-			if !ok || p.kind != numPercent {
-				return Timing{}, false
-			}
-			pt.Pos, pt.HasPos = p.v/100, true
-		}
-		if t.LinN >= MaxLinearPts {
-			warnf("linear() point skipped: past the %d-point budget", MaxLinearPts)
-			continue
-		}
-		t.Lin[t.LinN] = pt
-		t.LinN++
-	}
-	if t.LinN == 0 {
-		return Timing{}, false
-	}
-	return t, true
 }

@@ -88,14 +88,11 @@ func (sc *Scratch) computeAll(layers []Layer, n Node, parent, old *Values, env E
 	sc.cx = ctx{
 		rem: env.Rem, em: env.FontPx, weight: 400, self: &sc.self,
 		vpW: env.Media.Width, vpH: env.Media.Height,
-		font: env.Font, rlh: env.RootLineHeight, dark: env.Media.Dark,
-		cq: sc.container, cqHave: sc.haveContainer,
+		font: env.Font, rlh: env.RootLineHeight, dark: env.Media.Dark, dpi: env.Media.DPI,
+		conts: sc.conts,
 	}
 	if sc.cx.rlh == 0 {
 		sc.cx.rlh = fontRatio(env.Font.LineHeight, fallbackLH) * env.Rem
-	}
-	if an, ok := n.(attrNode); ok {
-		sc.cx.attrs = an
 	}
 	cx := &sc.cx
 	if pv.Has(PropFontSize) {
@@ -145,10 +142,9 @@ func (sc *Scratch) computeAll(layers []Layer, n Node, parent, old *Values, env E
 	inherit.Each(func(p Prop) { copyProp(v, pv, p) })
 	v.Set = v.Set.Or(inherit)
 	v.QuoteDepth = pv.QuoteDepth
-	sc.applyMeta(v, pv, cx)
-	sc.prevCounters = nil
-	resolveKeyframes(v, layers)
-	mergeAnimSlots(v)
+	sc.applyMeta(v, pv, cx, n)
+	sc.prevCounters, sc.srcCounters = nil, nil
+	v.Animation = v.Anim.animations(layers)
 	sc.computeStarting(v, cx)
 }
 
@@ -190,6 +186,13 @@ func (sc *Scratch) computeProp(p Prop, v, parent *Values, cx *ctx) PropSet {
 		wide = wideUnset
 	}
 	if wide == wideRevert {
+		if lo := sc.revertOrigin(p, sc.best[p]); lo != nil {
+			if src, ok := sc.parse(lo, v.Vars, cx); ok {
+				copyProp(v, src, p)
+				v.Set = v.Set.With(p)
+				return PropSet{}
+			}
+		}
 		wide = wideUnset
 	}
 	if wide == wideNone {
@@ -241,7 +244,7 @@ func (sc *Scratch) setInitial(p Prop, v *Values, cx *ctx) {
 	}
 	init := initialValues()
 	init.BorderColor = [4]render.Color{cx.color, cx.color, cx.color, cx.color}
-	init.OutlineColor = cx.color
+	init.OutlineColor, init.OutlineAuto = cx.color, true
 	copyProp(v, &init, p)
 	v.Set = v.Set.With(p)
 }
@@ -268,6 +271,32 @@ func (sc *Scratch) revertBelow(p Prop, from int) *decl {
 			return best
 		}
 		from = bestLayer
+	}
+}
+
+// revertOrigin walks the revert chain of p down from the rank from:
+// the best declaration at a lower provider priority — the providers
+// standing in for CSS's origins, so the theme sheets are what an
+// application sheet's revert rolls back to — continuing below one that
+// is itself a revert, until a concrete declaration or the bottom
+// (nil: the theme's own values, unset).
+func (sc *Scratch) revertOrigin(p Prop, from uint64) *decl {
+	for {
+		prio := rankPriority(from)
+		var best *chainEntry
+		for i := range sc.chain {
+			e := &sc.chain[i]
+			if e.p == p && rankPriority(e.rk) < prio && (best == nil || e.rk > best.rk) {
+				best = e
+			}
+		}
+		switch {
+		case best == nil || best.d.wide == wideRevertLayer:
+			return nil
+		case best.d.wide != wideRevert:
+			return best.d
+		}
+		from = best.rk
 	}
 }
 
@@ -299,16 +328,15 @@ func (sc *Scratch) parse(d *decl, vars *Vars, cx *ctx) (*Values, bool) {
 
 // applyMeta resolves the winning content/counter-reset/
 // counter-increment declarations — the meta declarations, which
-// cascade outside the longhand table. The counter scope derives from
-// the previous sibling's (the widget layer supplies it through
-// sc.prevCounters when counters are in play) over the parent's, per
-// CSS's document-order counting; content resolves against the node's
-// own target (attr()) and counters.
-func (sc *Scratch) applyMeta(v, pv *Values, cx *ctx) {
-	v.Counters = sc.prevCounters
-	if v.Counters == nil {
-		v.Counters = pv.Counters
-	}
+// cascade outside the longhand table. The counter set follows
+// css-lists-3 §4.4: inherited from the parent and the previous
+// sibling (sc.prevCounters, supplied by the widget layer when
+// counters are in play) with the values of the element preceding the
+// node in tree order (sc.srcCounters); counter-reset instantiates,
+// counter-increment bumps the innermost counter of its name. Content
+// resolves against the node's own target (attr()) and counters.
+func (sc *Scratch) applyMeta(v, pv *Values, cx *ctx, n Node) {
+	v.Counters = inheritCounters(pv.Counters, sc.prevCounters, sc.srcCounters)
 	if len(sc.metas) == 0 {
 		return
 	}
@@ -324,17 +352,22 @@ func (sc *Scratch) applyMeta(v, pv *Values, cx *ctx) {
 		}
 	}
 	if reset != nil || incr != nil {
-		v.Counters = &CounterScope{parent: v.Counters}
+		var self any = n
+		if ni, ok := n.(nodeIDer); ok {
+			self = ni.StyleID()
+		}
+		cs := v.Counters.clone()
 		if reset != nil {
 			if ts, ok := sc.metaTokens(reset, v.Vars); ok {
-				v.Counters.apply(ts, true)
+				cs.apply(ts, true, self)
 			}
 		}
 		if incr != nil {
 			if ts, ok := sc.metaTokens(incr, v.Vars); ok {
-				v.Counters.apply(ts, false)
+				cs.apply(ts, false, self)
 			}
 		}
+		v.Counters = cs
 	}
 	if content == nil {
 		return
@@ -361,49 +394,133 @@ func (sc *Scratch) metaTokens(d *decl, vars *Vars) ([]token, bool) {
 	return ts, ok && len(ts) > 0
 }
 
-// CounterEntry is one counter's value at one scope level.
+// CounterEntry is one counter of a node's counter set: its name, its
+// value at the node, and the element that instantiated it.
 type CounterEntry struct {
 	Name  string
 	Value int
+	// creator is the instantiating element's identity; sibling marks
+	// an entry inherited from the previous sibling rather than the
+	// parent (a reset there replaces it instead of nesting).
+	creator any
+	sibling bool
 }
 
-// CounterScope is a node's counter environment: its own entries over
-// the chain above (the parent's, or the previous sibling's — CSS
-// counts in document order).
+// CounterScope is a node's CSS counters set, outermost counter first.
+// A computed set is never mutated: a node that changes it clones it.
 type CounterScope struct {
-	parent *CounterScope
-	own    []CounterEntry
+	own []CounterEntry
 }
 
-// get returns the counter's innermost value.
-func (cs *CounterScope) get(name string) int {
-	for ; cs != nil; cs = cs.parent {
-		for i := range cs.own {
-			if cs.own[i].Name == name {
-				return cs.own[i].Value
+// inheritCounters builds a node's inherited counters set (css-lists-3
+// §4.4.1): the parent's counters, then the previous sibling's that the
+// parent lacks (its own resets scope over its following siblings),
+// each taking its value from src, the element preceding the node in
+// tree order, when src holds the same counter.
+func inheritCounters(parent, prev, src *CounterScope) *CounterScope {
+	if prev == nil && src == nil {
+		return parent
+	}
+	cs := parent.clone()
+	if prev != nil {
+		for _, e := range prev.own {
+			if cs.index(e.Name, e.creator) < 0 {
+				e.sibling = true
+				cs.own = append(cs.own, e)
 			}
 		}
+	}
+	if src != nil {
+		for i := range cs.own {
+			if j := src.index(cs.own[i].Name, cs.own[i].creator); j >= 0 {
+				cs.own[i].Value = src.own[j].Value
+			}
+		}
+	}
+	return cs
+}
+
+// Equal reports whether two counter sets hold the same counters with
+// the same values.
+func (cs *CounterScope) Equal(o *CounterScope) bool {
+	if cs == nil || o == nil {
+		return cs.len() == o.len()
+	}
+	return slices.Equal(cs.own, o.own)
+}
+
+// len is the number of counters in the set.
+func (cs *CounterScope) len() int {
+	if cs == nil {
+		return 0
+	}
+	return len(cs.own)
+}
+
+// clone copies the set for a node that changes it.
+func (cs *CounterScope) clone() *CounterScope {
+	if cs == nil {
+		return &CounterScope{}
+	}
+	return &CounterScope{own: slices.Clone(cs.own)}
+}
+
+// index finds the counter instantiated by creator under name, -1 when
+// the set has none.
+func (cs *CounterScope) index(name string, creator any) int {
+	if cs == nil {
+		return -1
+	}
+	for i := range cs.own {
+		if cs.own[i].Name == name && cs.own[i].creator == creator {
+			return i
+		}
+	}
+	return -1
+}
+
+// innermost is the index of the last counter named name, -1 for none.
+func (cs *CounterScope) innermost(name string) int {
+	if cs == nil {
+		return -1
+	}
+	for i, e := range slices.Backward(cs.own) {
+		if e.Name == name {
+			return i
+		}
+	}
+	return -1
+}
+
+// get returns the innermost counter's value, 0 without one.
+func (cs *CounterScope) get(name string) int {
+	if i := cs.innermost(name); i >= 0 {
+		return cs.own[i].Value
 	}
 	return 0
 }
 
-// chain returns the counter's values from the outermost scope in.
+// chain returns the values of every counter named name, outermost
+// first: counters()'s list.
 func (cs *CounterScope) chain(name string) []int {
+	if cs == nil {
+		return nil
+	}
 	var out []int
-	for ; cs != nil; cs = cs.parent {
-		for i := range cs.own {
-			if cs.own[i].Name == name {
-				out = append(out, cs.own[i].Value)
-			}
+	for _, e := range cs.own {
+		if e.Name == name {
+			out = append(out, e.Value)
 		}
 	}
-	slices.Reverse(out)
 	return out
 }
 
-// apply folds one counter-reset/counter-increment declaration into
-// the scope.
-func (cs *CounterScope) apply(ts []token, reset bool) {
+// apply folds one counter-reset (reset) or counter-increment
+// declaration into the set for the element self. A reset
+// instantiates a counter, replacing an innermost one of the same name
+// that self or a previous sibling created; an increment bumps the
+// innermost counter, instantiating one at 0 when the set has none.
+func (cs *CounterScope) apply(ts []token, reset bool, self any) {
 	for i := 0; i < len(ts); i++ {
 		if ts[i].kind != tkIdent {
 			continue
@@ -423,19 +540,19 @@ func (cs *CounterScope) apply(ts []token, reset bool) {
 		} else {
 			i = j - 1
 		}
-		if !reset {
-			n += cs.get(name)
-		}
-		replaced := false
-		for k := range cs.own {
-			if cs.own[k].Name == name {
-				cs.own[k].Value = n
-				replaced = true
+		k := cs.innermost(name)
+		if reset {
+			if k >= 0 && (cs.own[k].sibling || cs.own[k].creator == self) {
+				cs.own = slices.Delete(cs.own, k, k+1)
 			}
+			cs.own = append(cs.own, CounterEntry{Name: name, Value: n, creator: self})
+			continue
 		}
-		if !replaced {
-			cs.own = append(cs.own, CounterEntry{Name: name, Value: n})
+		if k < 0 {
+			cs.own = append(cs.own, CounterEntry{Name: name, creator: self})
+			k = len(cs.own) - 1
 		}
+		cs.own[k].Value += n
 	}
 }
 
@@ -570,6 +687,16 @@ func (sc *Scratch) lookup(vs *Vars, name string) ([]token, bool) {
 // name nothing declares. A universal syntax without an initial value
 // has none, like an unregistered property.
 func (sc *Scratch) registered(name string) ([]token, bool) {
+	reg := sc.registration(name)
+	if reg == nil {
+		return nil, false
+	}
+	return reg.Initial, reg.Initial != nil
+}
+
+// registration is the @property registration of name that applies:
+// the highest-priority layer's, the later on a tie; nil for none.
+func (sc *Scratch) registration(name string) *PropertyReg {
 	var reg *PropertyReg
 	best := -1
 	for i, l := range sc.layers {
@@ -580,10 +707,7 @@ func (sc *Scratch) registered(name string) ([]token, bool) {
 			reg, best = r, i
 		}
 	}
-	if reg == nil {
-		return nil, false
-	}
-	return reg.Initial, reg.Initial != nil
+	return reg
 }
 
 // define resolves a @define-color: the highest-priority layer's value
@@ -655,6 +779,17 @@ func (sc *Scratch) resolveVars(parent *Vars) *Vars {
 			if d.hasVar {
 				ts, ok = substitute(d.val, func(n string) ([]token, bool) { return resolve(n, depth+1) }, depth)
 				ts = trimWS(ts)
+			}
+			// A registered property's value must match its syntax; one
+			// that does not is invalid at computed-value time and acts
+			// as unset — inherited, or the initial value when the
+			// registration does not inherit.
+			if reg := sc.registration(name); ok && reg != nil && reg.Syntax != "*" && !validInitial(reg.Syntax, ts) {
+				if reg.Inherits {
+					ts, ok = sc.lookup(parent, name)
+				} else {
+					ts, ok = reg.Initial, reg.Initial != nil
+				}
 			}
 		}
 		state[name] = done
@@ -755,6 +890,16 @@ func substitute(ts []token, lookup func(string) ([]token, bool), depth int) ([]t
 	return out, true
 }
 
+// CopyLonghand copies longhand p's computed value from src to dst,
+// whether src sets it included.
+func CopyLonghand(dst, src *Values, p Prop) {
+	copyProp(dst, src, p)
+	dst.Set = dst.Set.Without(p)
+	if src.Has(p) {
+		dst.Set = dst.Set.With(p)
+	}
+}
+
 // copyProp copies longhand p's computed value from src to dst.
 func copyProp(dst, src *Values, p Prop) {
 	switch p {
@@ -763,8 +908,29 @@ func copyProp(dst, src *Values, p Prop) {
 	case PropBackgroundColor:
 		dst.Background = src.Background
 	case PropBackgroundImage:
-		dst.Image = src.Image
-		dst.BgImageURL = src.BgImageURL
+		dst.Bg.Images = src.Bg.Images
+	case PropBackgroundSize:
+		dst.Bg.Sizes = src.Bg.Sizes
+	case PropBackgroundPosition:
+		dst.Bg.Positions = src.Bg.Positions
+	case PropBackgroundRepeat:
+		dst.Bg.Repeats = src.Bg.Repeats
+	case PropBackgroundClip:
+		dst.Bg.Clips = src.Bg.Clips
+	case PropBackgroundOrigin:
+		dst.Bg.Origins = src.Bg.Origins
+	case PropBackgroundAttachment:
+		dst.Bg.Attachments = src.Bg.Attachments
+	case PropBorderImageSource:
+		dst.BorderImage.Source = src.BorderImage.Source
+	case PropBorderImageSlice:
+		dst.BorderImage.Slice, dst.BorderImage.Fill = src.BorderImage.Slice, src.BorderImage.Fill
+	case PropBorderImageWidth:
+		dst.BorderImage.Width = src.BorderImage.Width
+	case PropBorderImageOutset:
+		dst.BorderImage.Outset = src.BorderImage.Outset
+	case PropBorderImageRepeat:
+		dst.BorderImage.Repeat = src.BorderImage.Repeat
 	case PropOpacity:
 		dst.Opacity = src.Opacity
 	case PropContainerType:
@@ -829,7 +995,7 @@ func copyProp(dst, src *Values, p Prop) {
 	case PropOutlineStyle:
 		dst.OutlineStyle = src.OutlineStyle
 	case PropOutlineColor:
-		dst.OutlineColor = src.OutlineColor
+		dst.OutlineColor, dst.OutlineAuto = src.OutlineColor, src.OutlineAuto
 	case PropOutlineOffset:
 		dst.OutlineOffset = src.OutlineOffset
 	case PropBorderSpacing:
@@ -859,27 +1025,29 @@ func copyProp(dst, src *Values, p Prop) {
 	case PropIconSize:
 		dst.IconSize = src.IconSize
 	case PropTransitionProperty:
-		dst.Transition.All, dst.Transition.Props = src.Transition.All, src.Transition.Props
+		dst.Transition.Props = src.Transition.Props
 	case PropTransitionDuration:
-		dst.Transition.Duration = src.Transition.Duration
+		dst.Transition.Durations = src.Transition.Durations
 	case PropTransitionTiming:
-		dst.Transition.Timing = src.Transition.Timing
+		dst.Transition.Timings = src.Transition.Timings
 	case PropTransitionDelay:
-		dst.Transition.Delay = src.Transition.Delay
+		dst.Transition.Delays = src.Transition.Delays
 	case PropAnimation:
-		dst.Animation = src.Animation
+		dst.Anim.Names = src.Anim.Names
 	case PropAnimationPlayState:
-		for i := range dst.Animation {
-			dst.Animation[i].Running = src.Animation[i].Running
-		}
+		dst.Anim.Running = src.Anim.Running
 	case PropAnimDuration:
-		dst.AnimDuration = src.AnimDuration
+		dst.Anim.Durations = src.Anim.Durations
 	case PropAnimDelay:
-		dst.AnimDelay = src.AnimDelay
+		dst.Anim.Delays = src.Anim.Delays
 	case PropAnimDirection:
-		dst.AnimDirection = src.AnimDirection
+		dst.Anim.Directions = src.Anim.Directions
 	case PropAnimFill:
-		dst.AnimFill = src.AnimFill
+		dst.Anim.Fills = src.Anim.Fills
+	case PropAnimTiming:
+		dst.Anim.Timings = src.Anim.Timings
+	case PropAnimIteration:
+		dst.Anim.Iterations = src.Anim.Iterations
 	case PropIconTransform:
 		dst.IconXform = src.IconXform
 	case PropIconSource:
@@ -888,8 +1056,18 @@ func copyProp(dst, src *Values, p Prop) {
 		dst.PaletteTint = src.PaletteTint
 	case PropCaretColor:
 		dst.CaretColor = src.CaretColor
-	case PropTextDecoration:
-		dst.Decoration = src.Decoration
+	case PropTextDecorationLine:
+		dst.Decoration.Lines = src.Decoration.Lines
+	case PropTextDecorationStyle:
+		dst.Decoration.Style = src.Decoration.Style
+	case PropTextDecorationColor:
+		dst.Decoration.Color = src.Decoration.Color
+	case PropTextShadow:
+		dst.TextShadow = src.TextShadow
+	case PropFontPalette:
+		dst.Palette = src.Palette
+	case PropOverflowWrap:
+		dst.OverflowWrap = src.OverflowWrap
 	case PropCursor:
 		dst.Cursor = src.Cursor
 	case PropPointerEvents:
@@ -955,11 +1133,11 @@ func copyProp(dst, src *Values, p Prop) {
 	case PropClipPath:
 		dst.Clip = src.Clip
 	case PropMaskImage:
-		dst.Mask.Kind, dst.Mask.Image, dst.Mask.URL = src.Mask.Kind, src.Mask.Image, src.Mask.URL
+		dst.Mask.Image = src.Mask.Image
 	case PropMaskPosition:
-		dst.Mask.PosX, dst.Mask.PosY = src.Mask.PosX, src.Mask.PosY
+		dst.Mask.Pos = src.Mask.Pos
 	case PropMaskSize:
-		dst.Mask.SizeKind, dst.Mask.SizeW, dst.Mask.SizeH = src.Mask.SizeKind, src.Mask.SizeW, src.Mask.SizeH
+		dst.Mask.Size = src.Mask.Size
 	case PropMaskRepeat:
 		dst.Mask.Repeat = src.Mask.Repeat
 	case PropMaskMode:
@@ -1007,7 +1185,7 @@ func copyProp(dst, src *Values, p Prop) {
 	case PropTransitionBehavior:
 		dst.Transition.Discrete = src.Transition.Discrete
 	case PropAnimComposition:
-		dst.AnimComposition = src.AnimComposition
+		dst.Anim.Compositions = src.Anim.Compositions
 	default:
 		copyLayoutProp(&dst.Layout, &src.Layout, p)
 	}

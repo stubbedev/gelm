@@ -11,6 +11,8 @@ package style
 import (
 	"math"
 	"strings"
+
+	"github.com/stubbedev/gelm/render"
 )
 
 // Length is a computed <length-percentage>: Px logical pixels plus Pct
@@ -280,6 +282,12 @@ type Layout struct {
 	GridColumnStart, GridColumnEnd GridLine
 	GridRowStart, GridRowEnd       GridLine
 	JustifyItems, JustifySelf      BoxAlign
+
+	// ObjectFit is object-fit as the render scale policy implementing
+	// it; ObjectPosition is object-position, horizontal then vertical
+	// (objectfit.go).
+	ObjectFit      render.ImageScale
+	ObjectPosition [2]AxisPos
 }
 
 // LayoutProps are the longhands of the Layout group.
@@ -289,7 +297,7 @@ var LayoutProps = setOf(PropDisplay, PropPosition, PropTop, PropRight, PropBotto
 	PropAlignItems, PropAlignSelf, PropAlignContent, PropFlexGrow, PropFlexShrink, PropFlexBasis,
 	PropOrder, PropRowGap, PropColumnGap, PropOverflowX, PropOverflowY, PropVisibility, PropFloat,
 	PropClear).Or(gridContainerProps).Or(setOf(PropGridColumnStart, PropGridColumnEnd,
-	PropGridRowStart, PropGridRowEnd, PropJustifyItems, PropJustifySelf))
+	PropGridRowStart, PropGridRowEnd, PropJustifyItems, PropJustifySelf, PropObjectFit, PropObjectPosition))
 
 // layoutWideProps are the layout longhands a CSS-wide keyword returns
 // to undeclared rather than to a CSS initial value: initial, unset and
@@ -387,6 +395,10 @@ func copyLayoutProp(dst, src *Layout, p Prop) {
 		dst.JustifyItems = src.JustifyItems
 	case PropJustifySelf:
 		dst.JustifySelf = src.JustifySelf
+	case PropObjectFit:
+		dst.ObjectFit = src.ObjectFit
+	case PropObjectPosition:
+		dst.ObjectPosition = src.ObjectPosition
 	}
 }
 
@@ -438,6 +450,9 @@ func layoutPropDefs() map[string]propDef {
 		"visibility": {setOf(PropVisibility), enumInto(func(v *Values) *Visibility { return &v.Layout.Visibility }, "visible", "hidden", "collapse")},
 		"float":      {setOf(PropFloat), enumInto(func(v *Values) *Float { return &v.Layout.Float }, "none", "left", "right", "inline-start", "inline-end")},
 		"clear":      {setOf(PropClear), enumInto(func(v *Values) *Clear { return &v.Layout.Clear }, "none", "left", "right", "both", "inline-start", "inline-end")},
+
+		"object-fit":      {setOf(PropObjectFit), parseObjectFit},
+		"object-position": {setOf(PropObjectPosition), parseObjectPosition},
 	}
 }
 
@@ -594,7 +609,7 @@ func marginInto(side int) func([]token, *ctx, *Values) bool {
 		}
 		n, auto, ok := marginSideOf(comps[0], cx)
 		if ok {
-			v.Margin.SetAt(side, n)
+			*v.Margin.ptr(side) = n
 			v.MarginAuto[side] = auto
 		}
 		return ok

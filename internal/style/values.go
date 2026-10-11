@@ -1,10 +1,10 @@
 package style
 
 import (
+	"math"
 	"math/bits"
 	"slices"
 
-	"github.com/stubbedev/gelm/anim"
 	"github.com/stubbedev/gelm/render"
 )
 
@@ -79,7 +79,7 @@ const (
 	PropIconSource
 	PropIconPalette
 	PropCaretColor
-	PropTextDecoration
+	PropTextDecorationLine
 	PropCursor
 	PropPointerEvents
 	PropUserSelect
@@ -183,6 +183,26 @@ const (
 	PropGridRowEnd
 	PropJustifyItems
 	PropJustifySelf
+	PropObjectFit
+	PropObjectPosition
+	PropTextDecorationStyle
+	PropTextDecorationColor
+	PropTextShadow
+	PropFontPalette
+	PropOverflowWrap
+	PropAnimTiming
+	PropAnimIteration
+	PropBackgroundSize
+	PropBackgroundPosition
+	PropBackgroundRepeat
+	PropBackgroundClip
+	PropBackgroundOrigin
+	PropBackgroundAttachment
+	PropBorderImageSource
+	PropBorderImageSlice
+	PropBorderImageWidth
+	PropBorderImageOutset
+	PropBorderImageRepeat
 	numProps
 )
 
@@ -252,9 +272,12 @@ func (s PropSet) AndNot(o PropSet) PropSet {
 	return PropSet{s.lo &^ o.lo, s.mid &^ o.mid, s.hi &^ o.hi}
 }
 
+// words is the set's bit words, low first.
+func (s PropSet) words() [3]uint64 { return [3]uint64{s.lo, s.mid, s.hi} }
+
 // Each calls fn for every member, in Prop order.
 func (s PropSet) Each(fn func(Prop)) {
-	for i, word := range [3]uint64{s.lo, s.mid, s.hi} {
+	for i, word := range s.words() {
 		for word != 0 {
 			fn(Prop(i*propWordBits + bits.TrailingZeros64(word)))
 			word &= word - 1
@@ -285,18 +308,21 @@ var allProps = func() (s PropSet) {
 
 // inheritedProps is the CSS (and GTK) inherited set: color, the font
 // group, letter-spacing, text-transform, line-height, -gtk-icon-size,
-// the CSS Text group, direction, the scrollbar pair, and visibility.
-// Custom properties inherit too; they live outside the longhand
-// table.
+// the CSS Text group with text-shadow, direction, the interaction
+// properties the spec inherits (cursor, pointer-events, caret-color,
+// caret-shape, accent-color), scrollbar-color, and visibility. Custom
+// properties inherit too; they live outside the longhand table.
 var inheritedProps = setOf(PropColor, PropFontFamily, PropFontSize, PropFontWeight,
 	PropFontStyle, PropLetterSpacing, PropTextTransform, PropLineHeight,
 	PropFontFeatures, PropFontVariations, PropIconSize, PropCursor,
 	PropTextAlign, PropTextIndent,
 	PropWhiteSpace, PropWordBreak, PropLineBreak, PropHyphens, PropWordSpacing,
+	PropOverflowWrap, PropTextShadow,
 	PropFontVariantCaps, PropFontVariantNumeric, PropFontVariantLigatures,
 	PropFontVariantEastAsian, PropFontVariantPosition, PropFontVariantAlternates,
-	PropFontOpticalSizing, PropDirection, PropWritingMode,
-	PropScrollbarColor, PropScrollbarWidth, PropVisibility)
+	PropFontSynthesis, PropFontOpticalSizing, PropFontPalette, PropDirection, PropWritingMode,
+	PropPointerEvents, PropCaretColor, PropCaretShape, PropAccentColor,
+	PropScrollbarColor, PropVisibility)
 
 // Sides is a per-side length set, in logical pixels, in CSS's
 // top-right-bottom-left order.
@@ -324,19 +350,8 @@ func (s Sides) At(i int) int {
 	return [4]int{s.Top, s.Right, s.Bottom, s.Left}[i]
 }
 
-// SetAt writes side i.
-func (s *Sides) SetAt(i int, v int) {
-	switch i {
-	case 0:
-		s.Top = v
-	case 1:
-		s.Right = v
-	case 2:
-		s.Bottom = v
-	case 3:
-		s.Left = v
-	}
-}
+// ptr addresses side i.
+func (s *Sides) ptr(i int) *int { return [4]*int{&s.Top, &s.Right, &s.Bottom, &s.Left}[i] }
 
 // Corners is a per-corner radius set, clockwise from top-left.
 type Corners struct {
@@ -348,18 +363,9 @@ func (c Corners) At(i int) int {
 	return [4]int{c.TopLeft, c.TopRight, c.BottomRight, c.BottomLeft}[i]
 }
 
-// SetAt writes corner i.
-func (c *Corners) SetAt(i, v int) {
-	switch i {
-	case 0:
-		c.TopLeft = v
-	case 1:
-		c.TopRight = v
-	case 2:
-		c.BottomRight = v
-	case 3:
-		c.BottomLeft = v
-	}
+// ptr addresses corner i.
+func (c *Corners) ptr(i int) *int {
+	return [4]*int{&c.TopLeft, &c.TopRight, &c.BottomRight, &c.BottomLeft}[i]
 }
 
 // BorderStyle is a border or outline line style. The subset draws solid
@@ -379,6 +385,9 @@ const (
 	BorderRidge
 	BorderInset
 	BorderOutset
+	// BorderAuto is outline-style: auto, the platform focus ring; no
+	// border takes it.
+	BorderAuto
 )
 
 // Visible reports whether the style draws a line.
@@ -405,14 +414,27 @@ type Shadows struct {
 // List returns the active layers, front (first declared) first.
 func (s *Shadows) List() []Shadow { return s.Layers[:s.N] }
 
-// MaxStops bounds a gradient's color stops.
-const MaxStops = 8
+// MaxStops bounds a gradient's color stops and color hints; a
+// double-position stop counts twice.
+const MaxStops = 16
 
-// GradientStop is one color stop; Pos is a fraction of the gradient
-// line, resolved at parse time (auto positions spread evenly).
+// hintSteps is how many linear segments draw a color hint's curve:
+// close to a count of the exact power curve per channel.
+const hintSteps = 8
+
+// MaxResolvedStops bounds Gradient.Resolve's output: a hint expands
+// into hintSteps-1 stops.
+const MaxResolvedStops = MaxStops * hintSteps
+
+// GradientStop is one color stop or color hint. At a stop's position
+// is Pos of the gradient line plus Px pixels (a <length-percentage>,
+// resolved against the line by Gradient.Resolve); without At the
+// position is auto. A Hint carries no color: it moves the midpoint of
+// the interpolation between its neighbor stops.
 type GradientStop struct {
-	Pos   float64
-	Color render.Color
+	Pos, Px  float64
+	At, Hint bool
+	Color    render.Color
 }
 
 // Gradient is a gradient background image - linear, radial, or conic,
@@ -430,6 +452,81 @@ type Gradient struct {
 	RadiusX, RadiusY float64
 	N                int
 	Stops            [MaxStops]GradientStop
+}
+
+// Resolve lays g's stops on a gradient line line pixels long: CSS
+// Images 3's color-stop fixup (an auto first stop at 0%, an auto last
+// at 100%, every position at least its predecessors', runs of auto
+// stops spread evenly between their neighbors), then each color hint
+// drawn as a power curve of hintSteps segments between its stops. The
+// result appends to dst, which should hold MaxResolvedStops.
+func (g *Gradient) Resolve(line float64, dst []render.GradientStop) []render.GradientStop {
+	var buf [MaxStops]float64
+	n := g.N
+	pos := buf[:n]
+	for i := range n {
+		s := &g.Stops[i]
+		pos[i] = math.NaN()
+		if s.At {
+			pos[i] = s.Pos
+			if line > 0 {
+				pos[i] += s.Px / line
+			}
+		}
+	}
+	if math.IsNaN(pos[0]) {
+		pos[0] = 0
+	}
+	if last := &pos[len(pos)-1]; math.IsNaN(*last) {
+		*last = 1
+	}
+	for i := 1; i < n; i++ {
+		if !math.IsNaN(pos[i]) {
+			pos[i] = math.Max(pos[i], pos[i-1])
+			continue
+		}
+		j := i
+		for math.IsNaN(pos[j]) {
+			j++
+		}
+		step := (pos[j] - pos[i-1]) / float64(j-i+1)
+		for k := i; k < j; k++ {
+			pos[k] = pos[k-1] + step
+		}
+	}
+	for i, at := range pos {
+		s := &g.Stops[i]
+		if !s.Hint || i == 0 || i == len(pos)-1 {
+			dst = append(dst, render.GradientStop{Pos: at, Color: s.Color})
+			continue
+		}
+		c0, c1 := g.Stops[i-1].Color, g.Stops[i+1].Color
+		before, after := pos[:i], pos[i+1:]
+		p0, p1 := before[len(before)-1], after[0]
+		h := 0.5
+		if p1 > p0 {
+			h = (pos[i] - p0) / (p1 - p0)
+		}
+		for k := 1; k < hintSteps; k++ {
+			p := float64(k) / hintSteps
+			dst = append(dst, render.GradientStop{Pos: p0 + p*(p1-p0), Color: mixPremul(c0, c1, 1-hintCurve(p, h), 1)})
+		}
+	}
+	return dst
+}
+
+// hintCurve is how far toward the next stop's color the interpolation
+// has moved at fraction p of the way when the hint sits at fraction h
+// (CSS Images 3 §3.5.3): p^(ln 0.5 / ln h), with the degenerate hints
+// snapping to either color.
+func hintCurve(p, h float64) float64 {
+	switch {
+	case h <= 0:
+		return 1
+	case h >= 1:
+		return 0
+	}
+	return math.Pow(p, math.Log(0.5)/math.Log(h))
 }
 
 // TextTransform is the text-transform keyword.
@@ -504,6 +601,19 @@ const (
 	HyphensAuto
 )
 
+// OverflowWrapK is the overflow-wrap keyword (and its word-wrap
+// alias).
+type OverflowWrapK uint8
+
+// Overflow-wrap keywords: break-word and anywhere both break an
+// otherwise unbreakable word that overflows its line; only anywhere's
+// opportunities count toward the min-content size.
+const (
+	OverflowWrapNormal OverflowWrapK = iota
+	OverflowWrapBreakWord
+	OverflowWrapAnywhere
+)
+
 // TextOverflowK is the text-overflow keyword.
 type TextOverflowK uint8
 
@@ -559,16 +669,20 @@ const (
 	NumSlashedZero
 )
 
-// FontVariantLigatures is font-variant-ligatures' flag set; a flag's
-// absence means its no-* counterpart.
+// FontVariantLigatures is font-variant-ligatures' flag set: each
+// group's on and off keyword, neither meaning the font's default.
 type FontVariantLigatures uint16
 
 // font-variant-ligatures flags.
 const (
 	LigCommon FontVariantLigatures = 1 << iota
+	LigNoCommon
 	LigDiscretionary
+	LigNoDiscretionary
 	LigHistorical
+	LigNoHistorical
 	LigContextual
+	LigNoContextual
 )
 
 // FontVariantEastAsian is font-variant-east-asian's flag set.
@@ -579,7 +693,7 @@ const (
 	EAJis78 FontVariantEastAsian = 1 << iota
 	EAJis83
 	EAJis90
-	EAJis2004
+	EAJis04
 	EASimplified
 	EATraditional
 	EAFullWidth
@@ -617,6 +731,16 @@ const (
 	SynthSmallCaps
 )
 
+// FontPalette is the font-palette keyword.
+type FontPalette uint8
+
+// font-palette keywords.
+const (
+	PaletteNormal FontPalette = iota
+	PaletteLight
+	PaletteDark
+)
+
 // UnicodeBidi is the unicode-bidi keyword.
 type UnicodeBidi uint8
 
@@ -640,54 +764,53 @@ const (
 	WritingVerticalLR
 )
 
-// Timing is a transition or animation timing function: the named
-// curves and cubic-bezier control points, steps() with its jump
-// position, or the linear() piecewise list. Exactly one form is live:
-// LinN > 0 is linear(), else Steps > 0 is steps(), else the bezier.
-type Timing struct {
-	X1, Y1, X2, Y2 float64
-	// Steps is non-zero for steps(n); the bezier is then unused.
-	Steps int
-	// StepPos is steps' jump position (JumpEnd's value is the default,
-	// so the zero Timing keeps the legacy meaning).
-	StepPos uint8
-	// LinN is the number of live linear() points in Lin.
-	LinN int
-	// Lin is the linear() point list, capped at MaxLinearPts.
-	Lin [MaxLinearPts]anim.LinearPt
-}
-
-// MaxLinearPts bounds a linear() point list; points past it are
-// dropped with a warning, like the gradient stop budget.
-const MaxLinearPts = 8
-
-// Transition is the computed transition-* group: which properties
-// animate (All covers every animatable one), for how long, after what
-// delay, along which curve, and whether discrete properties may flip
-// through the tween instead of snapping. Duration zero means no
-// transition.
-type Transition struct {
-	All      bool
-	Props    PropSet
-	Duration float64 // seconds
-	Delay    float64 // seconds
-	Timing   Timing
-	// Discrete is transition-behavior: allow-discrete.
-	Discrete bool
-}
-
-// Covers reports whether a change of p animates.
-func (t *Transition) Covers(p Prop) bool {
-	return t.Duration > 0 && (t.All || t.Props.Has(p))
-}
-
 // Values is the cascade result for one node: the winning declaration
 // per longhand, computed (var() substituted, calc() evaluated, units
 // resolved to pixels), with Set recording which longhands the
 // stylesheet provided, directly or through inheritance. Consumers layer
-// programmatic widget values above it and the theme under it. Values is
-// comparable, so a restyle diffs old against new with ==.
+// programmatic widget values above it and the theme under it. The
+// comparable values sit in the embedded Scalars, so a restyle diffs
+// most of a node's style with one ==; the list- and pointer-valued
+// groups beside it compare through Equal.
 type Values struct {
+	Scalars
+	// Bg is the background-* longhands' layer lists.
+	Bg Background
+	// Clip is the computed clip-path; a zero Kind clips nothing.
+	Clip ClipShape
+	// Mask is the computed mask-image group (position, size, repeat,
+	// mode).
+	Mask Mask
+	// BorderImage is the border-image group; UsedBorderImage reads it
+	// with the undeclared longhands at their initial values.
+	BorderImage BorderImage
+	// Transform carries the transform property: the composed affine
+	// the widget paints its subtree through, with the primitive list
+	// the tweens interpolate. The identity means unset; the parser
+	// always writes the full Xform, so a declared `none` reads as it.
+	Transform Xform
+	// Transition is the transition-* longhands' lists.
+	Transition Transition
+	// Starting is the node's computed @starting-style block, nil when
+	// no matched rule carries one: the values a first style's
+	// transitions start from (the entry transition). Only the
+	// properties its rules declare are meaningful.
+	Starting *Values
+	// Anim is the animation-* longhands' lists as declared, and
+	// Animation the animations Compute zips from them (css-animations-1
+	// §3): one per name that names a @keyframes rule. Neither inherits.
+	Anim      AnimLists
+	Animation []Animation
+	// IconXform is -gtk-icon-transform's composed transform; icons
+	// draw through it.
+	IconXform Xform
+	// Counters is the node's counter environment (counter-reset,
+	// counter-increment): nil when no sheet counts anything.
+	Counters *CounterScope
+}
+
+// Scalars are the comparable computed values of a node.
+type Scalars struct {
 	Set PropSet
 	// Own are the properties the node's own rules declared, before
 	// inheritance filled in the rest of Set: a part that styles only
@@ -697,13 +820,6 @@ type Values struct {
 
 	Color      render.Color
 	Background render.Color
-	Image      Gradient
-	// BgImageURL is background-image's url(...): a file path whose
-	// image paints as the box's background, cover-fit inside the
-	// rounded border (CSS background-size: cover). Empty is none; a
-	// gradient and a URL are mutually exclusive, the last declaration
-	// wins.
-	BgImageURL string
 	Opacity    float64
 	Brightness float64
 
@@ -720,11 +836,6 @@ type Values struct {
 	// Isolate is isolation: isolate — the subtree becomes its own
 	// compositing group.
 	Isolate bool
-	// Clip is the computed clip-path; a zero Kind clips nothing.
-	Clip ClipShape
-	// Mask is the computed mask-image group (position, size, repeat,
-	// mode).
-	Mask Mask
 	// Perspective is the perspective distance in px; zero is none.
 	Perspective float64
 	// Preserve3D is transform-style: preserve-3d; flat otherwise. The
@@ -745,6 +856,10 @@ type Values struct {
 	OutlineStyle  BorderStyle
 	OutlineColor  render.Color
 	OutlineOffset int
+	// OutlineAuto is outline-color: auto (the initial value): the
+	// focus ring's accent under outline-style auto, currentColor
+	// otherwise.
+	OutlineAuto bool
 
 	// MarginAuto marks the margin sides declared auto (top, right,
 	// bottom, left): Margin holds zero there, and the CSS layout
@@ -774,34 +889,11 @@ type Values struct {
 	// Variations is the font-variation-settings axis list in canonical
 	// form (`wdth=80.5;wght=650`, sorted); empty is `normal`.
 	Variations string
-	// Transform carries the transform property: the composed affine
-	// the widget paints its subtree through, with the primitive list
-	// the tweens interpolate. The identity means unset; the parser
-	// always writes the full Xform, so a declared `none` reads as it.
-	Transform Xform
 	// TransformOrigin is the transform's pivot: fraction-of-box plus
 	// pixel offset per axis; the default is the box's center.
 	OriginFrac, OriginPx [2]float64
 	IconSize             int
 
-	Transition Transition
-	// Starting is the node's computed @starting-style block, nil when
-	// no matched rule carries one: the values a first style's
-	// transitions start from (the entry transition). Only the
-	// properties its rules declare are meaningful.
-	Starting *Values
-	// Animation is the computed animation-* group; not inherited. A
-	// comma list runs every entry; one entry is the common case.
-	Animation []Animation
-	// The animation longhands' slots: the shorthand computes the group
-	// and each longhand's slot zips onto it at the end of Compute, so
-	// `animation: a 1s; animation-delay: -2s` keeps the name and the
-	// delay whoever is declared first.
-	AnimDuration, AnimDelay []float64
-	AnimDirection, AnimFill []uint8
-	// IconXform is -gtk-icon-transform's composed transform; icons
-	// draw through it.
-	IconXform Xform
 	// IconSource is -gtk-icon-source's -gtk-icontheme() name: a themed
 	// symbolic icon a widget draws instead of its painted mark (the
 	// checkbutton's tick).
@@ -812,8 +904,12 @@ type Values struct {
 	// CaretColor is caret-color: an entry's caret takes it over the
 	// text color.
 	CaretColor render.Color
-	// Decoration is text-decoration: its lines, style, and color.
+	// Decoration is the text-decoration group: text-decoration-line,
+	// -style and -color, each its own longhand.
 	Decoration render.Decoration
+	// TextShadow is the text-shadow list (spread and inset are always
+	// zero); it inherits.
+	TextShadow Shadows
 	// Cursor is cursor: the hover shape a stylesheet asks for, a
 	// keyword or a url() file cursor with its hotspot. The zero value
 	// is auto; it inherits.
@@ -860,10 +956,6 @@ type Values struct {
 	SnapAlign      SnapAlign
 	SnapStopAlways bool
 
-	// The animation-composition slot, zipped onto the group like the
-	// other animation longhands.
-	AnimComposition []uint8
-
 	// The CSS Text 3 properties. TextAlign, TextIndent, WhiteSpace,
 	// WordBreak, LineBreak, Hyphens, WordSpacing and the font-variant
 	// family inherit; VerticalAlign, LineClamp, TextOverflow,
@@ -890,6 +982,10 @@ type Values struct {
 	VariantAlt       FontVariantAlternates
 	Synthesis        FontSynthesis
 	OpticalSizing    bool
+	// Palette is font-palette; it inherits.
+	Palette FontPalette
+	// OverflowWrap is overflow-wrap; it inherits.
+	OverflowWrap OverflowWrapK
 	// Direction is the CSS direction: 1 ltr, 2 rtl (0 cannot be set -
 	// direction takes no auto keyword).
 	Direction   uint8
@@ -916,9 +1012,6 @@ type Values struct {
 	// content resolved: descendants' open-quote/close-quote start from
 	// it, CSS's inherited quote counter.
 	QuoteDepth int
-	// Counters is the node's counter environment (counter-reset,
-	// counter-increment): nil when no sheet counts anything.
-	Counters *CounterScope
 
 	// Vars is the node's custom-property environment: its own
 	// declarations over the inherited chain. Nodes that declare none
@@ -926,8 +1019,28 @@ type Values struct {
 	Vars *Vars
 }
 
+// Equal reports whether two computed styles are the same: the
+// comparable values with one ==, the groups beside them through their
+// own comparisons. A restyle that leaves a node Equal changes nothing.
+func (v *Values) Equal(o *Values) bool {
+	return v.Scalars == o.Scalars && v.Bg.Equal(&o.Bg) && v.Clip.Equal(&o.Clip) &&
+		v.Mask.Equal(&o.Mask) && v.BorderImage.Equal(&o.BorderImage) &&
+		v.Transform.Equal(&o.Transform) && v.IconXform.Equal(&o.IconXform) &&
+		v.Transition.Equal(&o.Transition) && v.Anim.Equal(&o.Anim) &&
+		slices.Equal(v.Animation, o.Animation) && v.Counters.Equal(o.Counters)
+}
+
 // Has reports whether the property was set for this node.
 func (v *Values) Has(p Prop) bool { return v.Set.Has(p) }
+
+// Origin is the transform-origin pivot: fractions of the box plus
+// pixel offsets per axis, the box's center when nothing declares it.
+func (v *Values) Origin() (frac, px [2]float64) {
+	if !v.Has(PropTransformOrigin) {
+		return [2]float64{0.5, 0.5}, [2]float64{}
+	}
+	return v.OriginFrac, v.OriginPx
+}
 
 // Declares reports whether the node's own rules set p, not its
 // inheritance.

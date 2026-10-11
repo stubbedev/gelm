@@ -32,11 +32,8 @@ func TestCSSCursorRequest(t *testing.T) {
 	if got := cssCursorRequest(style.CursorSpec{URL: "/c.cur", HotX: 2, HotY: 4}); got != "file:/c.cur#2,4" {
 		t.Errorf("url cursor request %q", got)
 	}
-	if path, hx, hy, ok := fileCursorRequest("file:/c.cur#2,4"); !ok || path != "/c.cur" || hx != 2 || hy != 4 {
-		t.Errorf("file request parse: %q %d %d %v", path, hx, hy, ok)
-	}
-	if _, _, _, ok := fileCursorRequest("pointer"); ok {
-		t.Error("a keyword parsed as a file cursor")
+	if got := cssCursorRequest(style.CursorSpec{Name: "pointer", URL: "/c.cur", HotX: 2, HotY: 4}); got != "file:/c.cur#2,4,pointer" {
+		t.Errorf("url cursor request with a fallback %q", got)
 	}
 }
 

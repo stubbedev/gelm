@@ -116,27 +116,23 @@ func TestMaskGroupParses(t *testing.T) {
 		b { mask-image: none; }
 	`)
 	v := computeTree(s, el("a"))
-	if !v.Has(PropMaskImage) || v.Mask.Kind != MaskGradient || v.Mask.Image.N != 2 {
+	if !v.Has(PropMaskImage) || v.Mask.Image.Gradient == nil || v.Mask.Image.Gradient.N != 2 {
 		t.Fatalf("mask: %+v", v.Mask)
 	}
-	if !v.Has(PropMaskPosition) || v.Mask.PosX.V != 25 || v.Mask.PosY.V != 50 {
+	if !v.Has(PropMaskPosition) || v.Mask.Pos != [2]AxisPos{{Frac: 0.25}, {Frac: 0.5}} {
 		t.Errorf("position: %+v", v.Mask)
 	}
-	if !v.Has(PropMaskSize) || v.Mask.SizeKind != MaskSizeLength || v.Mask.SizeW.V != 50 || !v.Mask.SizeW.Pct {
+	want := LayerSize{Kind: SizeExplicit, W: LayerLength{Len: NumVal{V: 50, Pct: true}}, H: LayerLength{Len: NumVal{V: 100, Pct: true}}}
+	if !v.Has(PropMaskSize) || v.Mask.Size != want {
 		t.Errorf("size: %+v", v.Mask)
 	}
-	if !v.Has(PropMaskRepeat) || v.Mask.Repeat {
+	if !v.Has(PropMaskRepeat) || v.Mask.Repeat != (LayerRepeat{TileNoRepeat, TileNoRepeat}) {
 		t.Error("no-repeat")
 	}
 	if !v.Has(PropMaskMode) || !v.Mask.Luminance {
 		t.Error("luminance mode")
 	}
-	if !v.Mask.Repeat && v.Mask.Kind == MaskGradient {
-		// the parse-time default is repeat; the shorthand's no-repeat
-		// overrode it, which the checks above already pin
-		_ = v.Mask
-	}
-	if v = computeTree(s, el("b")); !v.Has(PropMaskImage) || v.Mask.Kind != MaskNone {
+	if v = computeTree(s, el("b")); !v.Has(PropMaskImage) || !v.Mask.Image.None() {
 		t.Errorf("mask none: %+v", v.Mask)
 	}
 }

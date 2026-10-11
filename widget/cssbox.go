@@ -90,16 +90,19 @@ func paintBoxBehind(cv *render.Canvas, v *style.Values, border render.Rect, radi
 	paintBoxBehindCol(cv, v, border, radii, bw, bg, borderColors(v))
 }
 
-// cssGradient is the render gradient a background-image declares.
-func cssGradient(g *style.Gradient, stops []render.GradientStop) render.Gradient {
+// cssGradient is the render gradient a background-image declares,
+// painted over box: its stops resolve against the gradient line the
+// box gives it, into buf.
+func cssGradient(g *style.Gradient, box render.Rect, buf *[style.MaxResolvedStops]render.GradientStop) render.Gradient {
 	out := render.Gradient{
-		Kind: g.Kind, Stops: stops, Angle: g.Angle,
+		Kind: g.Kind, Angle: g.Angle,
 		CenterX: g.CenterX, CenterY: g.CenterY,
 		Circle: g.Circle, Size: g.Size, RadiusX: g.RadiusX, RadiusY: g.RadiusY,
 	}
 	if g.Repeat {
 		out.Extend = render.ExtendRepeat
 	}
+	out.Stops = g.Resolve(out.LineLength(box), buf[:0])
 	return out
 }
 
@@ -112,20 +115,7 @@ func paintBoxBehindCol(cv *render.Canvas, v *style.Values, border render.Rect, r
 			cv.BoxShadow(border, radii, toRenderShadow(sh))
 		}
 	}
-	if bg != 0 {
-		cv.RoundedRectCorners(border, radii, bg)
-	}
-	if g := &v.Image; g.N > 0 {
-		var buf [style.MaxStops]render.GradientStop
-		stops := buf[:g.N]
-		for i := range g.N {
-			stops[i] = render.GradientStop{Pos: g.Stops[i].Pos, Color: g.Stops[i].Color}
-		}
-		cv.PaintGradient(border, radii, cssGradient(g, stops))
-	}
-	if img := bgImageFor(v.BgImageURL); img != nil {
-		cv.DrawImageCoverImage(img, border, radii)
-	}
+	paintBackground(cv, v, border, radii, bw, bg)
 	inner := bw.Shrink(border)
 	innerRadii := insetCorners(radii, bw)
 	for _, sh := range slices.Backward(shadows) {
@@ -133,7 +123,7 @@ func paintBoxBehindCol(cv *render.Canvas, v *style.Values, border render.Rect, r
 			cv.BoxShadow(inner, innerRadii, toRenderShadow(sh))
 		}
 	}
-	if !bw.Zero() {
+	if !paintBorderImage(cv, v, border, bw) && !bw.Zero() {
 		cv.RoundedBorderSides(border, radii, bw, cols)
 	}
 }
@@ -141,7 +131,7 @@ func paintBoxBehindCol(cv *render.Canvas, v *style.Values, border render.Rect, r
 // paintOutline strokes the CSS outline around the border box, offset
 // outward by outline-offset, above the content.
 func paintOutline(cv *render.Canvas, v *style.Values, border render.Rect, radii render.Corners) {
-	w := v.EffOutline()
+	w := outlineWidth(v)
 	if w <= 0 {
 		return
 	}
@@ -151,8 +141,36 @@ func paintOutline(cv *render.Canvas, v *style.Values, border render.Rect, radii 
 		TopLeft: max(0, radii.TopLeft+grow), TopRight: max(0, radii.TopRight+grow),
 		BottomRight: max(0, radii.BottomRight+grow), BottomLeft: max(0, radii.BottomLeft+grow),
 	}
-	col := pickc(0, v, style.PropOutlineColor, pickc(0, v, style.PropColor, Current().Accent))
-	cv.RoundedBorder(r, outer, render.UniformInsets(w), col)
+	cv.RoundedBorder(r, outer, render.UniformInsets(w), outlineColor(v))
+}
+
+// FocusRingWidth is the width of the keyboard focus ring: the window's
+// ring around the focused widget, and an outline-style: auto outline
+// that declares no width of its own.
+const FocusRingWidth = 2
+
+// outlineWidth is the used outline width: zero without a visible
+// style, the focus ring's width for an auto outline declaring none.
+func outlineWidth(v *style.Values) int {
+	w := v.EffOutline()
+	if w == 0 && v.OutlineStyle == style.BorderAuto {
+		return FocusRingWidth
+	}
+	return w
+}
+
+// outlineColor is the outline's used color (css-ui-4 §3.4): the
+// declared color, else for outline-color auto the focus ring's accent
+// under an auto style and currentColor under another, the theme accent
+// where no color is set at all.
+func outlineColor(v *style.Values) render.Color {
+	switch {
+	case v.Has(style.PropOutlineColor) && !v.OutlineAuto:
+		return v.OutlineColor
+	case v.OutlineStyle == style.BorderAuto:
+		return accentOf(v, Current().Accent)
+	}
+	return pickc(0, v, style.PropColor, Current().Accent)
 }
 
 // insetCorners shrinks radii by the adjacent border widths: the padding
@@ -174,5 +192,5 @@ func toRenderShadow(sh style.Shadow) render.BoxShadow {
 // content beyond a background color: an image, shadows, a border, or
 // an outline.
 func hasBoxLayers(v *style.Values) bool {
-	return v.Image.N > 0 || v.Shadow.N > 0 || !borderOf(v).Zero() || v.EffOutline() > 0
+	return v.Bg.Painted() || v.Shadow.N > 0 || !borderOf(v).Zero() || outlineWidth(v) > 0 || v.Has(style.PropBorderImageSource)
 }

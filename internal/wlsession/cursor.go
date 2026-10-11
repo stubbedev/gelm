@@ -199,19 +199,29 @@ func (s *Session) applyCursor() error {
 		debug.Log("input", "cursor surface %d created", surf.Id())
 	}
 	c.gen++
-	if path, hx, hy, ok := parseFileCursor(c.desired); ok {
+	if fc, ok := parseFileCursor(c.desired); ok {
 		c.shown, c.cur = c.desired, nil
-		return s.pushFileCursorLocked(path, hx, hy)
+		return s.pushFileCursorLocked(fc)
 	}
-	if s.applyShapeLocked(c.desired) {
-		c.shown, c.cur = c.desired, nil
+	return s.applyNamedCursorLocked(c.desired)
+}
+
+// applyNamedCursorLocked shows the named shape: through the
+// cursor-shape protocol when the compositor offers it, hidden for
+// CursorHidden, else the theme's (animated) cursor. A file cursor that
+// cannot load lands here with its CSS fallback keyword. Called with
+// cursorState.mu held.
+func (s *Session) applyNamedCursorLocked(desired string) error {
+	c := &s.crs
+	if s.applyShapeLocked(desired) {
+		c.shown, c.cur = desired, nil
 		return nil
 	}
-	if c.desired == CursorHidden {
+	if desired == CursorHidden {
 		c.shown, c.cur = CursorHidden, nil
 		return s.pushCursorLocked(nil)
 	}
-	cur, name, err := s.themeCursor(c.desired)
+	cur, name, err := s.themeCursor(desired)
 	if err != nil {
 		return err
 	}
@@ -227,7 +237,7 @@ func (s *Session) applyCursor() error {
 	if err := s.pushCursorLocked(img); err != nil {
 		return err
 	}
-	debug.Log("input", "cursor %q -> %q (%d frames, %dms loop)", c.desired, name, cur.ImageCount(), c.totalMs)
+	debug.Log("input", "cursor %q -> %q (%d frames, %dms loop)", desired, name, cur.ImageCount(), c.totalMs)
 	s.armCursorLocked(rest)
 	return nil
 }

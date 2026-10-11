@@ -12,11 +12,89 @@ import (
 // color functions; render.Color is premultiplied bytes.
 type rgbaf struct{ r, g, b, a float64 }
 
+// color converts to a premultiplied render.Color; an out-of-gamut
+// color maps into sRGB first (gamutMap).
 func (c rgbaf) color() render.Color {
+	c = gamutMap(c)
 	clamp := func(x float64) float64 { return math.Min(1, math.Max(0, x)) }
 	a := clamp(c.a)
 	to := func(x float64) uint8 { return uint8(math.Round(clamp(x) * a * 255)) }
 	return render.Color(uint32(math.Round(a*255))<<24 | uint32(to(c.r))<<16 | uint32(to(c.g))<<8 | uint32(to(c.b)))
+}
+
+// gamutSlack is how far past [0, 1] a channel may sit and still count
+// as in gamut: conversion noise, far under one 8-bit step.
+const gamutSlack = 1e-6
+
+func inGamut(c rgbaf) bool {
+	in := func(v float64) bool { return v >= -gamutSlack && v <= 1+gamutSlack }
+	return in(c.r) && in(c.g) && in(c.b)
+}
+
+func clipGamut(c rgbaf) rgbaf {
+	clamp := func(x float64) float64 { return math.Min(1, math.Max(0, x)) }
+	return rgbaf{clamp(c.r), clamp(c.g), clamp(c.b), c.a}
+}
+
+// The CSS gamut mapping constants: the just-noticeable difference in
+// deltaE OK and the chroma search's resolution.
+const (
+	gamutJND = 0.02
+	gamutEps = 0.0001
+)
+
+// gamutMap is CSS Color 4 §13.2's gamut mapping onto sRGB: an
+// out-of-gamut color keeps its OKLCH lightness and hue and loses
+// chroma, binary-searched until clipping the candidate moves it less
+// than a just-noticeable difference.
+func gamutMap(c rgbaf) rgbaf {
+	if inGamut(c) {
+		return clipGamut(c)
+	}
+	l, ch, h := labToLch(linearToOklab(rgbaf{srgbDecode(c.r), srgbDecode(c.g), srgbDecode(c.b), 1}))
+	switch {
+	case l >= 1:
+		return rgbaf{1, 1, 1, c.a}
+	case l <= 0:
+		return rgbaf{0, 0, 0, c.a}
+	}
+	at := func(chroma float64) rgbaf {
+		lin := oklabToLinear(lchToLab(l, chroma, h))
+		return rgbaf{srgbEncode(lin.r), srgbEncode(lin.g), srgbEncode(lin.b), c.a}
+	}
+	cur := at(ch)
+	clipped := clipGamut(cur)
+	if deltaEOK(clipped, cur) < gamutJND {
+		return clipped
+	}
+	lo, hi, loIn := 0.0, ch, true
+	for hi-lo > gamutEps {
+		chroma := (lo + hi) / 2
+		cur = at(chroma)
+		if loIn && inGamut(cur) {
+			lo = chroma
+			continue
+		}
+		clipped = clipGamut(cur)
+		e := deltaEOK(clipped, cur)
+		switch {
+		case e >= gamutJND:
+			hi = chroma
+		case gamutJND-e < gamutEps:
+			return clipped
+		default:
+			loIn = false
+			lo = chroma
+		}
+	}
+	return clipped
+}
+
+// deltaEOK is the Euclidean distance of two sRGB colors in Oklab.
+func deltaEOK(a, b rgbaf) float64 {
+	l1, a1, b1 := linearToOklab(rgbaf{srgbDecode(a.r), srgbDecode(a.g), srgbDecode(a.b), 1})
+	l2, a2, b2 := linearToOklab(rgbaf{srgbDecode(b.r), srgbDecode(b.g), srgbDecode(b.b), 1})
+	return math.Sqrt((l1-l2)*(l1-l2) + (a1-a2)*(a1-a2) + (b1-b2)*(b1-b2))
 }
 
 // fromColor unpremultiplies a render.Color.
@@ -287,25 +365,8 @@ func mixSpaceOf(ts []token) (space, bool) {
 	if len(ts) != 1 || ts[0].kind != tkIdent {
 		return 0, false
 	}
-	switch ts[0].s {
-	case "srgb":
-		return spSrgb, true
-	case "srgb-linear":
-		return spSrgbLinear, true
-	case "lab":
-		return spLab, true
-	case "lch":
-		return spLch, true
-	case "oklab":
-		return spOklab, true
-	case "oklch":
-		return spOklch, true
-	case "hsl":
-		return spHsl, true
-	case "hwb":
-		return spHwb, true
-	}
-	return 0, false
+	sp, ok := spaceNames[strings.ToLower(ts[0].s)]
+	return sp, ok
 }
 
 // mixPremul interpolates premultiplied channels: wa is the first color's

@@ -35,6 +35,10 @@ const (
 	// PlaceholderShown is an empty field showing its placeholder
 	// (:placeholder-shown).
 	PlaceholderShown
+	// Targeted is the widget the application marks as the navigation
+	// target (:target): the widget tree has no URL fragment, so the
+	// app names the target the way a fragment would.
+	Targeted
 )
 
 // stateByName maps a pseudo-class name to its bit.
@@ -64,6 +68,8 @@ func stateByName(name string) (State, bool) {
 		return ReadOnly, true
 	case "placeholder-shown":
 		return PlaceholderShown, true
+	case "target":
+		return Targeted, true
 	default:
 		return 0, false
 	}
@@ -152,14 +158,19 @@ type compound struct {
 	state   State
 	structs structural
 	nths    []nth
-	// not holds the :not() alternatives, each a full complex selector:
-	// the compound matches only when none of them does.
-	not []selector
+	// not holds the :not() argument lists, one per :not(): the
+	// compound matches only when no member of any of them does.
+	not []isList
 	// isLists holds :is()/:where() argument lists, all of which must
 	// match.
 	isLists []isList
-	// has holds :has() relative arguments, one of which must match.
-	has []hasArg
+	// has holds the :has() argument lists, one per :has(): each needs
+	// one of its relative arguments to match.
+	has [][]hasArg
+	// scopes counts the compound's :scope pseudo-classes inside an
+	// @scope rule, each a pseudo-class's specificity on top of the
+	// zero-specificity root test it adds to isLists.
+	scopes int
 	// pseudo names a ::before/::after pseudo-element on this compound,
 	// the subject of the rule's declarations.
 	pseudo string
@@ -175,44 +186,80 @@ type compound struct {
 type spec struct{ ids, cls, els int }
 
 func (c *compound) spec() spec {
-	s := spec{cls: len(c.classes) + len(c.attrs) + bits.OnesCount32(uint32(c.state)) + bits.OnesCount32(uint32(c.structs)) + len(c.nths)}
+	s := spec{cls: len(c.classes) + len(c.attrs) + bits.OnesCount32(uint32(c.state)) +
+		bits.OnesCount32(uint32(c.structs)) + len(c.nths) + c.scopes}
 	if c.id != "" {
 		s.ids++
 	}
 	if c.element != "" {
 		s.els++
 	}
-	// :not() and :is() count their most specific argument;
-	// :where() counts nothing (Selectors Level 4).
-	var best spec
+	// Each :not(), :is() and :has() counts its most specific argument,
+	// and :nth-child(of S) its most specific S on top of the
+	// pseudo-class; :where() counts nothing (Selectors Level 4 §17).
 	for i := range c.not {
-		if ns := c.not[i].spec(); ns.greater(best) {
-			best = ns
-		}
+		s = s.plus(c.not[i].best())
 	}
 	for i := range c.isLists {
-		if c.isLists[i].zero {
-			continue
+		if !c.isLists[i].zero {
+			s = s.plus(c.isLists[i].best())
 		}
-		for j := range c.isLists[i].sels {
-			if ns := c.isLists[i].sels[j].spec(); ns.greater(best) {
+	}
+	for i := range c.has {
+		var best spec
+		for j := range c.has[i] {
+			if ns := c.has[i][j].sel.spec(); ns.greater(best) {
 				best = ns
 			}
 		}
+		s = s.plus(best)
 	}
-	s.ids += best.ids
-	s.cls += best.cls
-	s.els += best.els
-	var hbest spec
-	for i := range c.has {
-		if ns := c.has[i].sel.spec(); ns.greater(hbest) {
-			hbest = ns
+	for i := range c.nths {
+		s = s.plus(isList{sels: c.nths[i].of}.best())
+	}
+	return s
+}
+
+// eachNested calls f on every selector of the compound's functional
+// pseudo-class arguments: :not(), :is()/:where(), :has() and the
+// :nth-child(of S) lists.
+func (c *compound) eachNested(f func(sel *selector)) {
+	for i := range c.not {
+		for j := range c.not[i].sels {
+			f(&c.not[i].sels[j])
 		}
 	}
-	s.ids += hbest.ids
-	s.cls += hbest.cls
-	s.els += hbest.els
-	return s
+	for i := range c.isLists {
+		for j := range c.isLists[i].sels {
+			f(&c.isLists[i].sels[j])
+		}
+	}
+	for i := range c.has {
+		for j := range c.has[i] {
+			f(&c.has[i][j].sel)
+		}
+	}
+	for i := range c.nths {
+		for j := range c.nths[i].of {
+			f(&c.nths[i].of[j])
+		}
+	}
+}
+
+// best is the specificity of the list's most specific member.
+func (l isList) best() spec {
+	var best spec
+	for i := range l.sels {
+		if ns := l.sels[i].spec(); ns.greater(best) {
+			best = ns
+		}
+	}
+	return best
+}
+
+// plus adds two specificities.
+func (s spec) plus(o spec) spec {
+	return spec{ids: s.ids + o.ids, cls: s.cls + o.cls, els: s.els + o.els}
 }
 
 func (s spec) greater(o spec) bool {
@@ -254,6 +301,11 @@ type selParser struct {
 	ts    []token
 	pos   int
 	depth int
+	// scope is the enclosing @scope rule's root list, nil outside
+	// one; usedScope reports a :scope anywhere in the selector, shared
+	// with the nested argument parsers.
+	scope     []selector
+	usedScope *bool
 }
 
 func (p *selParser) peek() (token, bool) {
@@ -273,6 +325,33 @@ func (p *selParser) skipWS() {
 // member invalidates the whole list, per CSS.
 func parseSelectorList(src string, ts []token) ([]selector, bool) {
 	return parseSelectorListAt(src, ts, 0)
+}
+
+// parseScopedList parses a style rule's selector list inside an
+// @scope with root list root (css-cascade-6 §2.5.2): `:scope` matches
+// the scoping root, and a selector without one is relative to it —
+// prefixed with a zero-specificity root test and a descendant
+// combinator, `:where(:scope) sel`.
+func parseScopedList(src string, ts []token, root []selector) ([]selector, bool) {
+	var out []selector
+	for _, part := range splitTop(ts, tkComma) {
+		part = trimWS(part)
+		if len(part) == 0 {
+			return nil, false
+		}
+		used := false
+		p := selParser{src: src, ts: part, scope: root, usedScope: &used}
+		sel, ok := p.selector()
+		if !ok {
+			return nil, false
+		}
+		if !used {
+			sel.parts = append([]compound{{isLists: []isList{{sels: root, zero: true}}}}, sel.parts...)
+			sel.combs = append([]byte{' '}, sel.combs...)
+		}
+		out = append(out, sel)
+	}
+	return out, len(out) > 0
 }
 
 // maxPseudoDepth bounds functional pseudo-class nesting (:is inside
@@ -295,6 +374,49 @@ func parseSelectorListAt(src string, ts []token, depth int) ([]selector, bool) {
 		out = append(out, sel)
 	}
 	return out, len(out) > 0
+}
+
+// sub is a parser for a functional pseudo-class's argument tokens one
+// nesting level down, under the same @scope.
+func (p *selParser) sub(ts []token) selParser {
+	return selParser{src: p.src, ts: ts, depth: p.depth + 1, scope: p.scope, usedScope: p.usedScope}
+}
+
+// list parses ts as a selector list one level down; any invalid
+// member invalidates it.
+func (p *selParser) list(ts []token) ([]selector, bool) {
+	var out []selector
+	for _, part := range splitTop(ts, tkComma) {
+		part = trimWS(part)
+		if len(part) == 0 {
+			return nil, false
+		}
+		sp := p.sub(part)
+		sel, ok := sp.selector()
+		if !ok {
+			return nil, false
+		}
+		out = append(out, sel)
+	}
+	return out, len(out) > 0
+}
+
+// forgivingList parses ts as a <forgiving-selector-list> one level
+// down (:is() and :where()): an invalid member drops alone, and an
+// empty result matches nothing.
+func (p *selParser) forgivingList(ts []token) []selector {
+	var out []selector
+	for _, part := range splitTop(ts, tkComma) {
+		part = trimWS(part)
+		if len(part) == 0 {
+			continue
+		}
+		sp := p.sub(part)
+		if sel, ok := sp.selector(); ok {
+			out = append(out, sel)
+		}
+	}
+	return out
 }
 
 // selector parses compounds joined by combinators.
@@ -348,7 +470,7 @@ func (p *selParser) selector() (selector, bool) {
 func compoundHasSimple(c *compound) bool {
 	return c.element != "" || c.id != "" || len(c.classes) > 0 || len(c.attrs) > 0 ||
 		c.state != 0 || c.structs != 0 || len(c.nths) > 0 || len(c.not) > 0 ||
-		len(c.isLists) > 0 || len(c.has) > 0
+		len(c.isLists) > 0 || len(c.has) > 0 || c.scopes > 0
 }
 
 // compound parses one compound selector. At least one simple selector is
@@ -377,6 +499,13 @@ func (p *selParser) compound() (compound, bool) {
 				return compound{}, false
 			}
 			c.classes = append(c.classes, n.s)
+			p.pos++
+		case t.is('&') && p.scope != nil:
+			// Inside @scope, `&` is the scoping root with its
+			// selector's specificity, :is(<scope-start>)
+			// (css-cascade-6 §2.5.2).
+			c.isLists = append(c.isLists, isList{sels: p.scope})
+			*p.usedScope = true
 			p.pos++
 		case t.kind == tkHash:
 			if c.id != "" {
@@ -509,6 +638,16 @@ func (p *selParser) pseudo(c *compound) bool {
 			c.structs |= structEnabled
 		case "read-write":
 			c.structs |= structReadWrite
+		case "scope":
+			// Inside @scope, the scoping root; elsewhere :root
+			// (css-cascade-6 §2.5.2, selectors-4 §14.5).
+			if p.scope == nil {
+				c.structs |= structRoot
+				return true
+			}
+			c.isLists = append(c.isLists, isList{sels: p.scope, zero: true})
+			c.scopes++
+			*p.usedScope = true
 		default:
 			return false
 		}
@@ -523,21 +662,20 @@ func (p *selParser) pseudo(c *compound) bool {
 			if !ok {
 				return false
 			}
-			c.not = append(c.not, sels...)
+			c.not = append(c.not, isList{sels: sels})
 			return true
 		case "is", "where", "-webkit-any", "-moz-any":
-			sels, ok := p.subList(args)
-			if !ok {
+			if p.depth >= maxPseudoDepth {
 				return false
 			}
-			c.isLists = append(c.isLists, isList{sels: sels, zero: t.s == "where"})
+			c.isLists = append(c.isLists, isList{sels: p.forgivingList(args), zero: t.s == "where"})
 			return true
 		case "has":
 			args, ok := p.hasArgs(args)
 			if !ok {
 				return false
 			}
-			c.has = append(c.has, args...)
+			c.has = append(c.has, args)
 			return true
 		case "nth-child", "nth-last-child", "nth-of-type", "nth-last-of-type":
 			micro, of, ok := splitNthOf(args)
@@ -552,7 +690,7 @@ func (p *selParser) pseudo(c *compound) bool {
 				if p.depth >= maxPseudoDepth {
 					return false
 				}
-				sels, okl := parseSelectorListAt(p.src, of, p.depth+1)
+				sels, okl := p.list(of)
 				if !okl {
 					return false
 				}
@@ -600,7 +738,7 @@ func (p *selParser) subList(args []token) ([]selector, bool) {
 	if p.depth >= maxPseudoDepth {
 		return nil, false
 	}
-	return parseSelectorListAt(p.src, args, p.depth+1)
+	return p.list(args)
 }
 
 // hasArgs parses a :has() argument list: each member may lead with a
@@ -620,7 +758,7 @@ func (p *selParser) hasArgs(args []token) ([]hasArg, bool) {
 		if len(part) == 0 {
 			return nil, false
 		}
-		sels, ok := parseSelectorListAt(p.src, part, p.depth+1)
+		sels, ok := p.list(part)
 		if !ok || len(sels) != 1 {
 			return nil, false
 		}

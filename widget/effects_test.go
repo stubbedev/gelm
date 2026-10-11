@@ -130,9 +130,11 @@ func TestBackfaceHiddenSkipsPaint(t *testing.T) {
 }
 
 func TestPerspectiveTransformPaints(t *testing.T) {
-	// perspective(400px) rotateY(60deg): the plane foreshortens — the
-	// painted band is narrower than the box and stays anchored at the
-	// origin edge.
+	// perspective(400px) rotateY(60deg) about the default center origin
+	// (x = 20): a point X px from it lands at 20 + X·cos60 / (1 +
+	// X·sin60/400), so the near (left) half spans 9.55..20 and the far
+	// half 20..29.58 — narrower than the box, and wider on the near
+	// side than the far.
 	loadCSS(t, `.tilt { transform: perspective(400px) rotateY(60deg); background-color: #ffffff; }`)
 	root := NewBox(Column, 0, 0)
 	b := NewBox(Row, 0, 0)
@@ -141,11 +143,14 @@ func TestPerspectiveTransformPaints(t *testing.T) {
 	b.AddClass("tilt")
 	arrangeTree(t, root, 40, 10)
 	data := paintTree(root, 40, 10)
-	if a := pxColorAt(data, render.Stride(40), 3, 5).A(); a < 250 {
-		t.Errorf("the near edge faded: alpha %d", a)
-	}
-	if a := pxColorAt(data, render.Stride(40), 38, 5).A(); a > 40 {
-		t.Errorf("the far edge stayed solid: alpha %d", a)
+	for _, p := range []struct {
+		x     int
+		solid bool
+	}{{8, false}, {10, true}, {20, true}, {30, false}, {38, false}} {
+		a := pxColorAt(data, render.Stride(40), p.x, 5).A()
+		if p.solid && a < 250 || !p.solid && a > 40 {
+			t.Errorf("x=%d: alpha %d, want solid=%v", p.x, a, p.solid)
+		}
 	}
 }
 

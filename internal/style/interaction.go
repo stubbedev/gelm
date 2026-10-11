@@ -8,7 +8,10 @@ import (
 // url() file cursor with its hotspot in pixels. The zero value is
 // auto — the widget's own shape decides.
 type CursorSpec struct {
-	Name       string
+	// Name is the keyword, or with a URL the fallback keyword the
+	// list ends with; empty is auto.
+	Name string
+	// URL is the first url() image and HotX, HotY its hotspot.
 	URL        string
 	HotX, HotY int
 }
@@ -26,11 +29,15 @@ const (
 // UserSelect is the user-select keyword.
 type UserSelect uint8
 
-// User-select values. Auto behaves as text.
+// User-select values. Auto's used value depends on the element and its
+// parent (CSS UI 4 §7.1); contain selects like text, confined to the
+// element.
 const (
-	SelectText UserSelect = iota
+	SelectAuto UserSelect = iota
+	SelectText
 	SelectNone
 	SelectAll
+	SelectContain
 )
 
 // CaretShape is the caret-shape keyword.
@@ -92,43 +99,48 @@ var cursorKeywords = map[string]bool{
 // honor — a url() file cursor (with an optional x y hotspot) or a
 // keyword — wins, the rest are fallbacks it drops.
 func parseCursor(ts []token, _ *ctx, v *Values) bool {
-	comps := components(splitTop(ts, tkComma)[0])
-	if len(comps) == 0 {
-		return false
-	}
-	if len(comps[0]) > 0 && comps[0][0].kind == tkFunc && comps[0][0].s == "url" {
-		u, ok := backgroundImageURL(comps[0])
-		if !ok {
+	entries := splitTop(ts, tkComma)
+	var spec CursorSpec
+	for i, e := range entries {
+		comps := components(e)
+		if len(comps) == 0 {
 			return false
 		}
-		spec := CursorSpec{URL: u}
-		switch len(comps) {
-		case 1:
-		case 3:
-			x, ok1 := intComponent(comps[1])
-			y, ok2 := intComponent(comps[2])
-			if !ok1 || !ok2 {
+		if comps[0][0].kind == tkFunc && comps[0][0].s == "url" {
+			u, ok := backgroundImageURL(comps[0])
+			if !ok {
 				return false
 			}
-			spec.HotX, spec.HotY = x, y
-		default:
+			var hx, hy int
+			switch len(comps) {
+			case 1:
+			case 3:
+				x, ok1 := intComponent(comps[1])
+				y, ok2 := intComponent(comps[2])
+				if !ok1 || !ok2 {
+					return false
+				}
+				hx, hy = x, y
+			default:
+				return false
+			}
+			if spec.URL == "" {
+				spec.URL, spec.HotX, spec.HotY = u, hx, hy
+			}
+			continue
+		}
+		if i != len(entries)-1 || len(comps) != 1 || comps[0][0].kind != tkIdent {
 			return false
 		}
-		v.Cursor = spec
-		return true
+		name := strings.ToLower(comps[0][0].s)
+		if !cursorKeywords[name] {
+			return false
+		}
+		if name != "auto" {
+			spec.Name = name
+		}
 	}
-	if len(comps) != 1 || comps[0][0].kind != tkIdent {
-		return false
-	}
-	name := strings.ToLower(comps[0][0].s)
-	if !cursorKeywords[name] {
-		return false
-	}
-	if name == "auto" {
-		v.Cursor = CursorSpec{}
-	} else {
-		v.Cursor = CursorSpec{Name: name}
-	}
+	v.Cursor = spec
 	return true
 }
 
@@ -165,8 +177,12 @@ func parseUserSelect(ts []token, _ *ctx, v *Values) bool {
 		return false
 	}
 	switch strings.ToLower(comps[0][0].s) {
-	case "auto", "text":
+	case "auto":
+		v.UserSelect = SelectAuto
+	case "text":
 		v.UserSelect = SelectText
+	case "contain":
+		v.UserSelect = SelectContain
 	case "none":
 		v.UserSelect = SelectNone
 	case "all":

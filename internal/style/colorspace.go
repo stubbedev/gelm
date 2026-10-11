@@ -11,8 +11,10 @@ import (
 // color-mix() interpolates in and the color functions construct with.
 type space uint8
 
-// The interpolation spaces. Polar spaces carry a hue angle in the
-// channel hueIdx; hsl/hwb hold it first, lch/oklch third.
+// The interpolation spaces: CSS Color 5's whole set. Polar spaces
+// carry a hue angle in the channel hueIdx; hsl/hwb hold it first,
+// lch/oklch third. The predefined RGB and XYZ spaces interpolate in
+// their own encoded coordinates (predefinedSpaces).
 const (
 	spSrgb space = iota
 	spSrgbLinear
@@ -22,15 +24,44 @@ const (
 	spOklch
 	spHsl
 	spHwb
+	spDisplayP3
+	spA98
+	spProphoto
+	spRec2020
+	spXyzD65
+	spXyzD50
+	spaceCount
 )
 
 // hueIdx is the hue channel's index per space, -1 when rectangular.
-var hueIdx = [8]int{-1, -1, -1, 2, -1, 2, 0, 0}
+var hueIdx = [spaceCount]int{-1, -1, -1, 2, -1, 2, 0, 0, -1, -1, -1, -1, -1, -1}
+
+// spaceNames are the interpolation spaces by their color-mix() name;
+// xyz is xyz-d65.
+var spaceNames = map[string]space{
+	"srgb": spSrgb, "srgb-linear": spSrgbLinear, "lab": spLab, "lch": spLch,
+	"oklab": spOklab, "oklch": spOklch, "hsl": spHsl, "hwb": spHwb,
+	"display-p3": spDisplayP3, "a98-rgb": spA98, "prophoto-rgb": spProphoto,
+	"rec2020": spRec2020, "xyz": spXyzD65, "xyz-d65": spXyzD65, "xyz-d50": spXyzD50,
+}
+
+// predefinedNames are the color() spaces the predefined interpolation
+// spaces stand for.
+var predefinedNames = map[space]string{
+	spDisplayP3: "display-p3", spA98: "a98-rgb", spProphoto: "prophoto-rgb",
+	spRec2020: "rec2020", spXyzD65: "xyz-d65", spXyzD50: "xyz-d50",
+}
+
+// predefinedOf is the color() space the predefined interpolation space
+// sp stands for.
+func predefinedOf(sp space) predefined { return predefinedSpaces[predefinedNames[sp]] }
 
 // mixSpace is CSS Color 5's color-mix() arithmetic generalized over
 // every interpolation space: both colors convert to the space, the
 // channels interpolate premultiplied (hue channels interpolate by the
 // named hue method), and a percentage sum under 100 scales the alpha.
+// A powerless hue — an achromatic color's — is missing, so it takes
+// the other color's hue (CSS Color 4 §4.4, §12.4).
 func mixSpace(a, b rgbaf, wa float64, sp space, hue hueMethod, scale float64) rgbaf {
 	ca, cb := toComps(a, sp), toComps(b, sp)
 	var out [4]float64
@@ -46,12 +77,48 @@ func mixSpace(a, b rgbaf, wa float64, sp space, hue hueMethod, scale float64) rg
 		}
 		out[i] = v
 	}
-	if hi := hueIdx[sp]; hi >= 0 && ca[3] > 0 && cb[3] > 0 {
-		out[hi] = interpHue(ca[hi], cb[hi], 1-wa, hue)
+	if hi := hueIdx[sp]; hi >= 0 {
+		pa, pb := hueless(ca, sp), hueless(cb, sp)
+		switch {
+		case pa && pb:
+			out[hi] = 0
+		case pa:
+			out[hi] = cb[hi]
+		case pb:
+			out[hi] = ca[hi]
+		default:
+			out[hi] = interpHue(ca[hi], cb[hi], 1-wa, hue)
+		}
 	}
 	out[3] *= scale
 	out[3] = math.Min(1, math.Max(0, out[3]))
 	return fromComps(out, sp)
+}
+
+// Achromatic thresholds: a chroma this small leaves the hue at the
+// mercy of conversion noise, so the hue counts as powerless. Each sits
+// far under one 8-bit step of its space's chroma.
+const (
+	powerlessLchC   = 0.02
+	powerlessOklchC = 1e-4
+	powerlessHslS   = 1e-9
+)
+
+// hueless reports whether the polar components cs carry a powerless
+// hue: zero chroma in lch/oklch, zero saturation (or a white or black
+// lightness) in hsl, whiteness and blackness filling hwb.
+func hueless(cs [4]float64, sp space) bool {
+	switch sp {
+	case spLch:
+		return cs[1] < powerlessLchC
+	case spOklch:
+		return cs[1] < powerlessOklchC
+	case spHsl:
+		return cs[1] < powerlessHslS || cs[2] <= 0 || cs[2] >= 1
+	case spHwb:
+		return cs[1]+cs[2] >= 1-powerlessHslS
+	}
+	return false
 }
 
 // interpHue interpolates two hue angles by t toward h2 under the CSS
@@ -123,12 +190,15 @@ func toComps(c rgbaf, sp space) [4]float64 {
 	case spHsl:
 		h, l, s := toHLS(c)
 		return [4]float64{h, s, l, c.a}
-	default:
+	case spHwb:
 		h, _, _ := toHLS(c)
 		mx := math.Max(c.r, math.Max(c.g, c.b))
 		mn := math.Min(c.r, math.Min(c.g, c.b))
 		return [4]float64{h, mn, 1 - mx, c.a}
 	}
+	p := predefinedOf(sp)
+	lin := matApply(p.fromLinearSRGB, xyz{srgbDecode(c.r), srgbDecode(c.g), srgbDecode(c.b)})
+	return [4]float64{p.encode(lin.x), p.encode(lin.y), p.encode(lin.z), c.a}
 }
 
 // fromComps converts sp's components plus alpha back to a color.
@@ -154,8 +224,11 @@ func fromComps(cs [4]float64, sp space) rgbaf {
 		c = rgbaf{srgbEncode(lin.r), srgbEncode(lin.g), srgbEncode(lin.b), 1}
 	case spHsl:
 		c = fromHLS(cs[0], cs[2], cs[1])
-	default:
+	case spHwb:
 		c = hwbToRGB(cs[0], cs[1], cs[2])
+	default:
+		p := predefinedOf(sp)
+		c = p.toSRGB(cs[0], cs[1], cs[2])
 	}
 	c.a = cs[3]
 	return c
@@ -176,18 +249,29 @@ func hwbToRGB(h, w, bk float64) rgbaf {
 	}
 }
 
+// srgbDecode and srgbEncode are the sRGB transfer pair, extended
+// sign-symmetrically past [0, 1] as CSS Color 4 extends every
+// transfer, so out-of-gamut channels round-trip.
 func srgbDecode(c float64) float64 {
-	if c <= 0.04045 {
+	a := math.Abs(c)
+	if a <= 0.04045 {
 		return c / 12.92
 	}
-	return math.Pow((c+0.055)/1.055, 2.4)
+	return math.Copysign(math.Pow((a+0.055)/1.055, 2.4), c)
 }
 
 func srgbEncode(c float64) float64 {
-	if c <= 0.0031308 {
+	a := math.Abs(c)
+	if a <= 0.0031308 {
 		return c * 12.92
 	}
-	return 1.055*math.Pow(c, 1/2.4) - 0.055
+	return math.Copysign(1.055*math.Pow(a, 1/2.4)-0.055, c)
+}
+
+// signed extends a transfer function over [0, ∞) to negative inputs,
+// mirrored through the origin.
+func signed(f func(float64) float64) func(float64) float64 {
+	return func(v float64) float64 { return math.Copysign(f(math.Abs(v)), v) }
 }
 
 // xyz is a CIE XYZ tristimulus value.
@@ -342,12 +426,12 @@ var (
 	hslDef = colorSpaceDef{
 		space: spHsl,
 		names: []string{"h", "s", "l"},
-		chans: [4]chanDef{{angle: true}, {pctFull: 1}, {pctFull: 1}, {pctFull: 1}},
+		chans: [4]chanDef{{angle: true}, {pctFull: 1, numUnit: 0.01}, {pctFull: 1, numUnit: 0.01}, {pctFull: 1}},
 	}
 	hwbDef = colorSpaceDef{
 		space: spHwb,
 		names: []string{"h", "w", "b"},
-		chans: [4]chanDef{{angle: true}, {pctFull: 1}, {pctFull: 1}, {pctFull: 1}},
+		chans: [4]chanDef{{angle: true}, {pctFull: 1, numUnit: 0.01}, {pctFull: 1, numUnit: 0.01}, {pctFull: 1}},
 	}
 	labDef = colorSpaceDef{
 		space: spLab,
@@ -480,16 +564,15 @@ func relativeColor(def colorSpaceDef, comps [][]token, cx *ctx) (colorVal, bool)
 	return spaceFunc(def, joinTokens(comps[2:]), cx, refs)
 }
 
-// refNumeric expresses one origin channel value in the numeric form
-// its channel expressions read.
+// refNumeric expresses one origin channel value as the <number> its
+// keyword resolves to (CSS Color 5 §4.1): the channel in the scale a
+// plain number takes there — degrees for a hue, 0..255 for rgb, 0..100
+// for hsl's saturation and lightness.
 func refNumeric(d chanDef, v float64) numeric {
-	switch {
-	case d.angle:
-		return numeric{v: v, kind: numAngle}
-	case d.numUnit != 0 && d.numUnit != 1:
-		return numeric{v: v / d.numUnit, kind: numNumber}
+	if d.numUnit != 0 {
+		v /= d.numUnit
 	}
-	return numeric{v: v / d.pctFull * 100, kind: numPercent}
+	return numeric{v: v, kind: numNumber}
 }
 
 // joinTokens concatenates component groups with separating whitespace.
@@ -517,13 +600,19 @@ type predefined struct {
 var predefinedSpaces = map[string]predefined{
 	"srgb":         {identity(), identity(), srgbDecode, srgbEncode},
 	"srgb-linear":  {identity(), identity(), linearTransfer, linearTransfer},
-	"xyz":          {linSRGBToXYZ, xyzToLinSRGB, linearTransfer, linearTransfer},
-	"xyz-d65":      {linSRGBToXYZ, xyzToLinSRGB, linearTransfer, linearTransfer},
-	"xyz-d50":      {matMul(d65ToD50, linSRGBToXYZ), matMul(xyzToLinSRGB, d50ToD65), linearTransfer, linearTransfer},
+	"xyz":          {xyzToLinSRGB, linSRGBToXYZ, linearTransfer, linearTransfer},
+	"xyz-d65":      {xyzToLinSRGB, linSRGBToXYZ, linearTransfer, linearTransfer},
+	"xyz-d50":      {matMul(xyzToLinSRGB, d50ToD65), matMul(d65ToD50, linSRGBToXYZ), linearTransfer, linearTransfer},
 	"display-p3":   p3Space(),
 	"a98-rgb":      a98Space(),
 	"prophoto-rgb": prophotoSpace(),
 	"rec2020":      rec2020Space(),
+}
+
+// toSRGB maps the space's encoded channels to gamma-encoded sRGB.
+func (p predefined) toSRGB(c1, c2, c3 float64) rgbaf {
+	lin := matApply(p.toLinearSRGB, xyz{p.decode(c1), p.decode(c2), p.decode(c3)})
+	return rgbaf{srgbEncode(lin.x), srgbEncode(lin.y), srgbEncode(lin.z), 1}
 }
 
 func identity() [9]float64 {
@@ -552,21 +641,24 @@ func p3Space() predefined {
 	}
 }
 
-// a98Space composes the known linear sRGB ↔ linear a98-rgb matrices.
+// a98Space composes linear a98-rgb ↔ XYZ D65 (CSS Color 4) with the
+// sRGB reference matrices, under the 563/256 gamma.
 func a98Space() predefined {
+	a98ToXYZ := [9]float64{
+		573536.0 / 994567, 263643.0 / 1420810, 187206.0 / 994567,
+		591459.0 / 1989134, 6239551.0 / 9945670, 374412.0 / 4972835,
+		53769.0 / 1989134, 351524.0 / 4972835, 4929758.0 / 4972835,
+	}
+	xyzToA98 := [9]float64{
+		1829569.0 / 896150, -506331.0 / 896150, -308931.0 / 896150,
+		-851781.0 / 878810, 1648619.0 / 878810, 36519.0 / 878810,
+		16779.0 / 1248040, -147721.0 / 1248040, 1266979.0 / 1248040,
+	}
 	return predefined{
-		toLinearSRGB: [9]float64{
-			2.0415879038107465, -0.9692436362808795, 0.0134442806320311,
-			-0.5650069742788597, 1.8759675015077207, -0.1183623922310184,
-			-0.3447313507783256, 0.0415550574071756, 1.0151749943912054,
-		},
-		fromLinearSRGB: [9]float64{
-			0.5766690429101305, 0.1855582379065463, 0.1882286462349947,
-			0.2973449752505360, 0.6273635662554661, 0.0752914584939979,
-			0.0270313613864123, 0.0706888525358272, 0.9913375368376388,
-		},
-		decode: func(v float64) float64 { return math.Pow(v, 1/2.19921875) },
-		encode: func(v float64) float64 { return math.Pow(v, 2.19921875) },
+		toLinearSRGB:   matMul(xyzToLinSRGB, a98ToXYZ),
+		fromLinearSRGB: matMul(xyzToA98, linSRGBToXYZ),
+		decode:         signed(func(v float64) float64 { return math.Pow(v, 563.0/256) }),
+		encode:         signed(func(v float64) float64 { return math.Pow(v, 256.0/563) }),
 	}
 }
 
@@ -584,18 +676,18 @@ func prophotoSpace() predefined {
 		-0.5446224939028347, 1.5082327413132781, 0.0205360323914797,
 		0, 0, 1.2119675456389454,
 	}
-	dec := func(v float64) float64 {
+	dec := signed(func(v float64) float64 {
 		if v <= 0.03125 {
 			return v / 16
 		}
 		return math.Pow(v, 1.8)
-	}
-	enc := func(v float64) float64 {
+	})
+	enc := signed(func(v float64) float64 {
 		if v <= 0.001953125 {
 			return v * 16
 		}
 		return math.Pow(v, 1/1.8)
-	}
+	})
 	return predefined{
 		toLinearSRGB:   matMul(xyzToLinSRGB, matMul(d50ToD65, proToXYZ)),
 		fromLinearSRGB: matMul(xyzToPro, matMul(d65ToD50, linSRGBToXYZ)),
@@ -620,18 +712,18 @@ func rec2020Space() predefined {
 		alpha = 1.09929682680944
 		beta  = 0.018053968510807
 	)
-	dec := func(v float64) float64 {
+	dec := signed(func(v float64) float64 {
 		if v < beta*4.5 {
 			return v / 4.5
 		}
 		return math.Pow((v+alpha-1)/alpha, 1/0.45)
-	}
-	enc := func(v float64) float64 {
+	})
+	enc := signed(func(v float64) float64 {
 		if v < beta {
 			return v * 4.5
 		}
 		return alpha*math.Pow(v, 0.45) - alpha + 1
-	}
+	})
 	return predefined{
 		toLinearSRGB:   matMul(xyzToLinSRGB, recToXYZ),
 		fromLinearSRGB: matMul(xyzToRec, linSRGBToXYZ),
@@ -675,8 +767,9 @@ func colorFunc(args []token, cx *ctx) (colorVal, bool) {
 	if vals[3] == 0 && !hasAlpha(comps[1:]) {
 		vals[3] = 1
 	}
-	lin := matApply(sp.toLinearSRGB, xyz{sp.decode(vals[0]), sp.decode(vals[1]), sp.decode(vals[2])})
-	return colorVal{c: rgbaf{srgbEncode(lin.x), srgbEncode(lin.y), srgbEncode(lin.z), vals[3]}.color()}, true
+	c := sp.toSRGB(vals[0], vals[1], vals[2])
+	c.a = vals[3]
+	return colorVal{c: c.color()}, true
 }
 
 // chanOf reads one color() channel: a number 0..1 or a percentage,
@@ -717,24 +810,23 @@ func lightDark(args []token, cx *ctx) (colorVal, bool) {
 	return parseColor(trimWS(parts[1]), cx)
 }
 
-// attrColor parses typed attr(name color), reading the node's
-// attribute and parsing it as a color.
+// attrColor parses typed attr() where a color is taken — untyped,
+// `color` or type(<color>) — reading the node's attribute as a color;
+// a missing or unparsable attribute takes the fallback.
 func attrColor(args []token, cx *ctx) (colorVal, bool) {
-	comps := components(args)
-	if len(comps) != 1 && len(comps) != 2 {
+	c, ok := parseAttrCall(args)
+	if !ok || c.typ != "" && c.typ != "color" {
 		return colorVal{}, false
 	}
-	if len(comps[0]) != 1 || comps[0][0].kind != tkIdent {
+	if val, ok := cx.attrOf(c.name); ok {
+		if cv, ok := parseColor(tokenize(val), cx); ok {
+			return cv, true
+		}
+	}
+	if len(c.fallback) != 1 {
 		return colorVal{}, false
 	}
-	if len(comps) == 2 && (len(comps[1]) != 1 || !comps[1][0].ident("color")) {
-		return colorVal{}, false
-	}
-	val, ok := cx.attrOf(comps[0][0].s)
-	if !ok {
-		return colorVal{}, false
-	}
-	return parseColor(tokenize(val), cx)
+	return parseColor(trimWS(c.fallback[0]), cx)
 }
 
 // SystemColors are the CSS system color keywords mapped to the active

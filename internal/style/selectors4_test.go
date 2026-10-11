@@ -1,6 +1,7 @@
 package style
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/stubbedev/gelm/render"
@@ -16,40 +17,39 @@ func pseudoCompute(s *Sheet, n *node, name string) Values {
 	return out
 }
 
-// counterTree computes root and children in document order, chaining
-// each child's counters off its previous sibling's.
+// counterTree computes the tree around n in tree order, each node
+// over its parent's values, with the counter inputs the widget layer
+// supplies: the previous sibling's set and the set of the node
+// computed just before it.
 func counterTree(s *Sheet, n *node) Values {
 	var sc Scratch
-	var out Values
-	var pv *Values
-	var prev *CounterScope
-	for _, c := range append([]*node{rootOf(n)}, descendants(rootOf(n))...) {
-		out = Values{}
-		sc.SetPrevCounters(prev)
-		Compute([]Layer{{Sheet: s, Priority: PriorityApplication}}, c, pv, nil, Env{Rem: 16}, &sc, &out)
-		pv = &Values{}
-		*pv = out
-		if c == n {
-			return out
+	layers := []Layer{{Sheet: s, Priority: PriorityApplication}}
+	got := map[*node]*Values{}
+	var last *node
+	var walk func(c *node, pv *Values)
+	walk = func(c *node, pv *Values) {
+		var prev, src *CounterScope
+		if p := c.parent; p != nil {
+			if i := slices.Index(p.kids, c); i > 0 {
+				prev, src = got[p.kids[i-1]].Counters, got[last].Counters
+			}
 		}
-		prev = out.Counters
+		out := &Values{}
+		sc.SetPrevCounters(prev, src)
+		Compute(layers, c, pv, nil, Env{Rem: 16}, &sc, out)
+		got[c], last = out, c
+		for _, k := range c.kids {
+			walk(k, out)
+		}
 	}
-	return out
+	walk(rootOf(n), nil)
+	return *got[n]
 }
 
 func rootOf(n *node) *node {
 	for ; n.parent != nil; n = n.parent {
 	}
 	return n
-}
-
-func descendants(n *node) []*node {
-	var out []*node
-	for _, k := range n.kids {
-		out = append(out, k)
-		out = append(out, descendants(k)...)
-	}
-	return out
 }
 
 func TestAttributeSelectors(t *testing.T) {
@@ -370,8 +370,10 @@ func TestCounters(t *testing.T) {
 	var sc Scratch
 	var out Values
 	ComputePseudo([]Layer{{Sheet: sJoin, Priority: PriorityApplication}}, kid, &pv, Env{Rem: 16}, &sc, &out, "before")
-	if out.Content != "9.10 " {
-		t.Errorf("counters(item, \".\") = %q, want %q", out.Content, "9.10 ")
+	// The increment bumps deep's counter, the innermost one in scope;
+	// it instantiates no nested counter (css-lists-3 §4.4).
+	if out.Content != "10 " {
+		t.Errorf("counters(item, \".\") = %q, want %q", out.Content, "10 ")
 	}
 }
 

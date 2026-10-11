@@ -210,11 +210,9 @@ type node struct {
 	// trCancel runs while a transition tween drives the cache's
 	// animated channels (transition.go); nil when none is in flight.
 	trCancel anim.Cancel
-	// CSS animation state (animations.go): one runner per computed
-	// animation, each holding its name, phase within a cycle, completed
-	// cycle count, the tween's cancel, the cascade's channels to revert
-	// to, and which of them the cascade declared.
-	animRuns []animRunner
+	// anims is the CSS animation state (animations.go), nil while the
+	// node runs no animation.
+	anims *nodeAnim
 	// self is the widget embedding this node, recorded by the first
 	// arranging container, so a state flip can walk its own subtree.
 	self Widget
@@ -662,9 +660,30 @@ func (n *node) setParent(p, self Widget) {
 		if n.self != nil {
 			restyleSubtree(n.self)
 		}
+		hasRelink(p)
 		return
 	}
 	n.parent = p
+}
+
+// hasRelink marks what a :has() match may have read wrong before a
+// child of p was linked: p and its ancestors (their relative
+// selectors walk down through the new link) and p's other children
+// (their sibling forms walk across it). Without :has() selectors
+// loaded it is free.
+func hasRelink(p Widget) {
+	if !sensNow.has {
+		return
+	}
+	for a := nodeOf(p); a != nil; a = parentNodeOf(a) {
+		a.styleDirty = true
+	}
+	for _, k := range appendStyleKids(p, nil) {
+		if kn := nodeOf(k); kn != nil {
+			kn.styleDirty = true
+		}
+	}
+	markDamage()
 }
 
 // LayoutPending reports whether w's cached measure is stale - a
@@ -771,7 +790,7 @@ func notifyRemoved(ws ...Widget) {
 // through: the widget itself inside its bounds, unless the pointer
 // passes through it (pointer-events: none on it or an ancestor).
 func (n *node) HitLeaf(self Widget, p Point) Widget {
-	if n.bounds.Contains(p.X, p.Y) && !pointerEventsNoneWithin(self) && shown(self) {
+	if n.bounds.Contains(p.X, p.Y) && !pointerEventsNone(self) && shown(self) && !clippedOut(self, p) {
 		return self
 	}
 	return nil

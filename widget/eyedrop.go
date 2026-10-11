@@ -48,11 +48,12 @@ func (s *ScreenPick) Arrange(r render.Rect) { s.node.Arrange(r) }
 func (s *ScreenPick) Paint(cv *render.Canvas) {
 	b := s.img.Bounds()
 	box := cv.MapRect(s.bounds)
-	src, dw, dh := render.ScaleRect(b.Dx(), b.Dy(), box.W, box.H, ImageFit)
-	if dw <= 0 || dh <= 0 {
+	src, dst := render.PlaceImage(b.Dx(), b.Dy(), box.W, box.H, ImageFit, render.ImageCentered)
+	if dst.Empty() {
 		return
 	}
-	s.fit = render.Rect{X: box.X + (box.W-dw)/2, Y: box.Y + (box.H-dh)/2, W: dw, H: dh}
+	dw, dh := dst.W, dst.H
+	s.fit = render.Rect{X: box.X + dst.X, Y: box.Y + dst.Y, W: dw, H: dh}
 	if sub, ok := s.img.(interface {
 		SubImage(r image.Rectangle) image.Image
 	}); ok && src.Dx() == dw && src.Dy() == dh {

@@ -104,11 +104,20 @@ func (b *Box) cssMeasure(v *style.Values, mode layoutMode, inner Constraints) Si
 	case modeGrid:
 		sz = p.gridMeasure(inner)
 	default:
-		sz = p.flow(inner.Max.W)
+		b.cssDefH = pinned(inner, Column)
+		sz = p.flow(inner.Max.W, definiteOr(inner.Max.H, b.cssDefH))
 	}
 	p.keepNaturals()
 	b.cssBase, b.cssHasBase = p.base, p.hasBase
 	return sz
+}
+
+// definiteOr is n when def holds, else indefinite.
+func definiteOr(n int, def bool) int {
+	if def {
+		return n
+	}
+	return indefinite
 }
 
 // pinned reports whether the constraint pins its extent along a.
@@ -127,7 +136,7 @@ func (b *Box) cssArrange(v *style.Values, mode layoutMode, inner render.Rect) {
 	case modeGrid:
 		p.grid(Size{W: inner.W, H: inner.H}, [2]gridSizing{sizeDefinite, sizeDefinite})
 	default:
-		p.flow(inner.W)
+		p.flow(inner.W, definiteOr(inner.H, b.cssDefH))
 	}
 	p.arrange(Point{X: inner.X, Y: inner.Y})
 	b.cssBase, b.cssHasBase = p.base, p.hasBase
@@ -429,7 +438,10 @@ func clearsSide(it *cssItem, side int8, rtl bool) bool {
 type flowState struct {
 	p     *cssPass
 	width int
-	y     int
+	// height is the content box's height when it is definite, the
+	// basis of the items' percentage heights; indefinite otherwise.
+	height int
+	y      int
 	// prevMB is the bottom margin of the last block, which the next
 	// block's top margin collapses with while havePrev holds.
 	prevMB   int
@@ -458,11 +470,11 @@ type flowLine struct {
 // name as high as the earlier content allows, and clear moves an item
 // below the floats it names. It returns the content size the run
 // needs.
-func (p *cssPass) flow(width int) Size {
+func (p *cssPass) flow(width, height int) Size {
 	if !finite(width) {
 		width = p.flowNaturalWidth()
 	}
-	f := flowState{p: p, width: width}
+	f := flowState{p: p, width: width, height: height}
 	for i := range p.items {
 		it := &p.items[i]
 		switch {
@@ -610,11 +622,11 @@ func (f *flowState) block(i int) {
 	case !autoL && !autoR && f.p.rtl:
 		x += free
 	}
-	h := measureOuter(it.w, Constraints{Min: Size{W: w}, Max: Size{W: w, H: indefinite}}).H
+	h := f.measure(it, Constraints{Min: Size{W: w}, Max: Size{W: w, H: indefinite}}).H
 	it.rect = render.Rect{X: x, Y: top, W: w, H: h}
 	natW := w
 	if f.p.measuring && !ws.definite {
-		natW = measureOuter(it.w, Constraints{Max: Size{W: band, H: indefinite}}).W
+		natW = f.measure(it, Constraints{Max: Size{W: band, H: indefinite}}).W
 	}
 	it.nat = Size{W: natW, H: h}
 	f.extent = max(f.extent, left+natW+f.width-right)
@@ -625,11 +637,36 @@ func (f *flowState) block(i int) {
 	f.prevMB, f.havePrev = mb, true
 }
 
+// measure measures an item under con, its percentage heights resolved
+// against the content box's definite height (CSS 2 §10.5): a definite
+// height pins the block axis, as the flex and grid passes pin their
+// items, and percentage bounds clamp the measured height. Against an
+// indefinite height the percentages read as auto.
+func (f *flowState) measure(it *cssItem, con Constraints) Size {
+	l := &it.v.Layout
+	if !finite(f.height) || !relativeSizing(l.Height) && !relativeSizing(l.MinHeight) && !relativeSizing(l.MaxHeight) {
+		return measureOuter(it.w, con)
+	}
+	hs := resolveAxis(it.w, it.v, Column, f.height, con.Max.W)
+	if hs.definite {
+		h := hs.clamp(hs.size)
+		con.Min.H, con.Max.H = h, h
+		return measureOuter(it.w, con)
+	}
+	con.Min.H = max(con.Min.H, hs.min)
+	sz := measureOuter(it.w, con)
+	sz.H = hs.clamp(sz.H)
+	return sz
+}
+
+// relativeSizing reports a sizing value that depends on its basis.
+func relativeSizing(s style.Sizing) bool { return s.Kind == style.SizingLength && s.Len.Relative() }
+
 // inline adds one inline-level item to the line, ending the line first
 // when the item does not fit beside what it holds.
 func (f *flowState) inline(i int) {
 	it := &f.p.items[i]
-	it.nat = measureOuter(it.w, Constraints{Max: Size{W: f.width, H: indefinite}})
+	it.nat = f.measure(it, Constraints{Max: Size{W: f.width, H: indefinite}})
 	if f.line.n > 0 {
 		left, right := f.band(f.line.y, f.line.y+max(f.line.h, it.nat.H))
 		if f.line.w+it.nat.W > right-left {
@@ -648,7 +685,7 @@ func (f *flowState) inline(i int) {
 // float places one float: beside the line in progress when it fits
 // there, after the line otherwise.
 func (f *flowState) float(it *cssItem) {
-	it.nat = measureOuter(it.w, Constraints{Max: Size{W: f.width, H: indefinite}})
+	it.nat = f.measure(it, Constraints{Max: Size{W: f.width, H: indefinite}})
 	if f.line.n == 0 {
 		f.placeFloat(it, f.y)
 		return

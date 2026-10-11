@@ -426,8 +426,13 @@ type Scroll struct {
 	nat        Size
 	measured   Size // the size Measure last returned, for Shrinkable
 	offX, offY int
-	maxH       int
-	measuredAt int // the width a VerticalOnly child was last measured at
+	// arrOffX, arrOffY are the offset the child was last arranged at:
+	// its descendants' bounds sit there until the next arrange, so
+	// content positions read from them subtract this, not the live
+	// offset.
+	arrOffX, arrOffY int
+	maxH             int
+	measuredAt       int // the width a VerticalOnly child was last measured at
 
 	// ShowBars enables the auto-hiding scrollbar indicators.
 	ShowBars bool
@@ -810,6 +815,7 @@ func (s *Scroll) Arrange(r render.Rect) {
 			W: childW,
 			H: childH,
 		})
+		s.arrOffX, s.arrOffY = s.offX, s.offY
 		setParents(s, s.child)
 	}
 	s.notifyRange()
