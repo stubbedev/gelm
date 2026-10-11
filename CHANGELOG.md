@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-### Parity, fifth pass
+### Parity, sixth pass
 
 - relm4-components' `OpenButton`: `app.NewOpenButton` composes the open
   button and a recent-files dropdown (most recent first, bounded,
