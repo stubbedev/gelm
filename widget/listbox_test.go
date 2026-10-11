@@ -232,6 +232,17 @@ func TestListBoxFilterSortHeaders(t *testing.T) {
 	}
 }
 
+func TestListBoxMinHeightFloorsFilteredMeasure(t *testing.T) {
+	l, _ := listBoxRows(6, 40, 20)
+	l.SetMinHeight(150)
+	full := l.Measure(Constraints{Max: Size{W: 100, H: 1000}})
+	l.SetFilterFunc(func(*ListBoxRow) bool { return false })
+	filtered := l.Measure(Constraints{Max: Size{W: 100, H: 1000}})
+	if filtered.H != 150 || full.H != max(full.H, 150) {
+		t.Fatalf("min height %d does not floor the measure: full %v filtered %v", 150, full, filtered)
+	}
+}
+
 func TestListBoxPlaceholderWhenEmpty(t *testing.T) {
 	l, _ := listBoxRows(2, 40, 20)
 	ph := NewSpacer(30, 10)
