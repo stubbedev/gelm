@@ -2,6 +2,7 @@ package style
 
 import (
 	"fmt"
+	"maps"
 	"math"
 	"slices"
 	"strings"
@@ -67,11 +68,11 @@ func init() {
 		"padding-right":  {setOf(PropPaddingRight), sideInto(func(v *Values) *int { return &v.Padding.Right }, false)},
 		"padding-bottom": {setOf(PropPaddingBottom), sideInto(func(v *Values) *int { return &v.Padding.Bottom }, false)},
 		"padding-left":   {setOf(PropPaddingLeft), sideInto(func(v *Values) *int { return &v.Padding.Left }, false)},
-		"margin":         {setOf(PropMarginTop, PropMarginRight, PropMarginBottom, PropMarginLeft), sidesInto(func(v *Values) *Sides { return &v.Margin }, true)},
-		"margin-top":     {setOf(PropMarginTop), sideInto(func(v *Values) *int { return &v.Margin.Top }, true)},
-		"margin-right":   {setOf(PropMarginRight), sideInto(func(v *Values) *int { return &v.Margin.Right }, true)},
-		"margin-bottom":  {setOf(PropMarginBottom), sideInto(func(v *Values) *int { return &v.Margin.Bottom }, true)},
-		"margin-left":    {setOf(PropMarginLeft), sideInto(func(v *Values) *int { return &v.Margin.Left }, true)},
+		"margin":         {setOf(PropMarginTop, PropMarginRight, PropMarginBottom, PropMarginLeft), parseMargin},
+		"margin-top":     {setOf(PropMarginTop), marginInto(0)},
+		"margin-right":   {setOf(PropMarginRight), marginInto(1)},
+		"margin-bottom":  {setOf(PropMarginBottom), marginInto(2)},
+		"margin-left":    {setOf(PropMarginLeft), marginInto(3)},
 
 		"border-width":        {borderWidths, sidesInto(func(v *Values) *Sides { return &v.BorderWidth }, false)},
 		"border-top-width":    {setOf(PropBorderTopWidth), sideInto(func(v *Values) *int { return &v.BorderWidth.Top }, false)},
@@ -108,8 +109,6 @@ func init() {
 		"outline-color":  {setOf(PropOutlineColor), colorInto(func(v *Values) *render.Color { return &v.OutlineColor })},
 		"outline-offset": {setOf(PropOutlineOffset), lengthInto(func(v *Values) *int { return &v.OutlineOffset }, true)},
 
-		"min-width":      {setOf(PropMinWidth), lengthInto(func(v *Values) *int { return &v.MinWidth }, false)},
-		"min-height":     {setOf(PropMinHeight), lengthInto(func(v *Values) *int { return &v.MinHeight }, false)},
 		"border-spacing": {setOf(PropBorderSpacing), parseBorderSpacing},
 
 		"font-family":             {setOf(PropFontFamily), parseFontFamily},
@@ -199,6 +198,7 @@ func init() {
 		"unicode-bidi":            {setOf(PropUnicodeBidi), parseUnicodeBidi},
 		"writing-mode":            {setOf(PropWritingMode), parseWritingMode},
 	}
+	maps.Copy(propTable, layoutPropDefs())
 }
 
 var (
@@ -302,19 +302,26 @@ func radiusOf(ts []token, cx *ctx) (int, bool) {
 	return 0, false
 }
 
-// expandSides applies the CSS 1-to-4 value expansion.
-func expandSides(vals []int) (Sides, bool) {
+// expand4 applies the CSS 1-to-4 value expansion, top, right, bottom,
+// left.
+func expand4[T any](vals []T) ([4]T, bool) {
 	switch len(vals) {
 	case 1:
-		return Sides{vals[0], vals[0], vals[0], vals[0]}, true
+		return [4]T{vals[0], vals[0], vals[0], vals[0]}, true
 	case 2:
-		return Sides{vals[0], vals[1], vals[0], vals[1]}, true
+		return [4]T{vals[0], vals[1], vals[0], vals[1]}, true
 	case 3:
-		return Sides{vals[0], vals[1], vals[2], vals[1]}, true
+		return [4]T{vals[0], vals[1], vals[2], vals[1]}, true
 	case 4:
-		return Sides{vals[0], vals[1], vals[2], vals[3]}, true
+		return [4]T{vals[0], vals[1], vals[2], vals[3]}, true
 	}
-	return Sides{}, false
+	return [4]T{}, false
+}
+
+// expandSides applies the CSS 1-to-4 value expansion to lengths.
+func expandSides(vals []int) (Sides, bool) {
+	s, ok := expand4(vals)
+	return Sides{s[0], s[1], s[2], s[3]}, ok
 }
 
 // sidesInto parses a 1-4 length shorthand (padding, margin,

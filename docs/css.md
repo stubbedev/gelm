@@ -323,12 +323,22 @@ Each longhand is listed with its shorthand.
 - **Box.**
   - `background`, `background-color`, `background-image` (the linear,
     radial and conic gradients and their `repeating-` forms)
-  - `padding-*`, `margin-*`, `min-width`, `min-height`
+  - `padding-*`, `margin-*` (`auto` too: the CSS layouts below hand
+    it the free space; programmatic containers read it as 0)
   - `border[-side][-width|-style|-color]` (a width draws only with a
     visible style), `border-*-radius`
   - `box-shadow` (lists, inset, spread and blur)
   - `outline[-width|-style|-color|-offset]`
   - `border-spacing` (the Box gap)
+- **Layout.** `display`, `width`, `height`, `min-width`, `min-height`,
+  `max-width`, `max-height`, `box-sizing`, `aspect-ratio`, `position`,
+  `top`/`right`/`bottom`/`left`/`inset`, `z-index`, the flexbox group
+  (`flex`, `flex-grow`, `flex-shrink`, `flex-basis`, `flex-direction`,
+  `flex-wrap`, `flex-flow`, `order`, `justify-content`,
+  `align-items`, `align-self`, `align-content`, `place-content`,
+  `gap`, `row-gap`, `column-gap`), `overflow`/`overflow-x`/
+  `overflow-y`, `visibility`, `float` and `clear` — see
+  [Layout](#layout).
 - **Effects.** `opacity`, `filter`, `backdrop-filter`,
   `mix-blend-mode`, `isolation`, `clip-path`, `mask` (and the
   `mask-image`/`-position`/`-size`/`-repeat`/`-mode` longhands),
@@ -437,6 +447,184 @@ subtree, and ink outside the border box joins the damage rect.
   a claimed GesturePinch a widget opts into, not an axis the scroll
 gates can mask; `manipulation` computes to both pan axes meanwhile.
 
+## Layout
+
+The widget tree is the document. Every widget is one box; a Box (and
+any type embedding one) is the container the CSS layouts run in, the
+way a `div` is in a browser.
+
+**The interaction rule.** Where the stylesheet sets a layout property,
+CSS wins; where it does not, the programmatic layout stands. A Box
+without a `display` declaration keeps its GTK box layout (axis,
+spacing, expand, AppendAligned, homogeneous), and inside a CSS layout
+an undeclared property falls back to the programmatic setting: the
+box axis for `flex-direction` (a column box is a column flexbox), the
+box spacing for `gap`, Append's expand (or SetHExpand/SetVExpand) for
+`flex-grow`, AppendAligned and SetHAlign/SetVAlign across for
+`align-self` when `align-items` is not declared either. The CSS-wide
+keywords (`initial`, `unset`, `revert`, and `all`) return a layout
+longhand to undeclared, so a GTK-style `* { all: unset; }` reset keeps
+the toolkit's layout; `min-width`/`min-height` keep their reading of
+it as a zero floor, and `visibility` inherits as CSS says.
+
+**display.** `block`, `inline`, `inline-block`, `flow-root`, `flex`,
+`inline-flex`, `contents`, `none`, `grid` and `inline-grid`, and the
+two-keyword forms (`block flow`, `inline flow-root`, `inline flex`,
+...). On a Box the inner display picks the layout of its children:
+normal flow for the block and inline values, flexbox for the flex
+values. On every widget the outer display decides how it sits in a CSS
+flow parent: block-level, or inline-level for `inline`,
+`inline-block`, `inline-flex` and `inline-grid`; undeclared, a widget
+is block-level. `none` takes the widget out of layout, paint, hit
+testing, Tab focus and the accessibility snapshot, exactly like
+SetVisible(false), in any container. `contents` dissolves a Box into
+its parent's CSS layout: its children become the parent's items while
+staying its children (they inherit from it, and it paints them); it
+draws no box of its own and takes no hits, and its bounds cover its
+children.
+
+**Normal flow.** Block-level children stack down the content box, as
+wide as the band beside the floats unless a width says otherwise;
+`margin: auto` centers a narrower block, a single auto side pushes it,
+and an RTL box aligns it right. Adjacent block siblings' vertical
+margins collapse (the largest positive plus the most negative).
+Inline-level children fill line boxes, breaking when the next does not
+fit, aligned by `text-align` (start, end, left, right, center) and on
+the line by `vertical-align` (the baseline family — sub, super and
+lengths shift the widget's own baseline — or top, middle, bottom); a
+widget without a baseline sits on its bottom margin edge, as an
+inline-block does. RTL lines run right to left. `float: left`, `right`,
+`inline-start` and `inline-end` pull a child to that side as high as
+the content before it allows — onto the current line when it fits
+beside its inline content — with blocks and line boxes flowing beside
+the floats and moving down when they do not fit; `clear` (`left`,
+`right`, `both`, and the logical sides) moves a block or a float below
+them. The box's height includes its floats.
+
+**Flexbox.** The CSS Flexible Box Layout algorithm (§9): flex base
+sizes from `flex-basis` (a length, a percentage of a definite main
+size, `auto` deferring to `width`/`height`, `content` and the content
+keywords), hypothetical sizes clamped by the min/max sizes with the
+automatic minimum (`min-width: auto` is the content's min-content size,
+capped by a definite size, and zero for an item whose overflow clips),
+greedy line breaking with the gaps, the flexible-length resolution
+with its freeze loop (a flex-grow or flex-shrink sum below one
+distributes only that fraction; shrinking scales by the inner base
+size), cross sizes at the used main sizes, single-line containers
+sized to a definite cross size, baseline groups, `align-content` over
+the lines (`normal` and `stretch` stretch them; the distributed values
+fall back as CSS says), `align-self` per item with `stretch` honoring
+max sizes and auto cross margins, then the main axis: auto margins
+take the free space first, else `justify-content`. Every keyword is
+honored: `flex-start`, `flex-end`, `start`, `end`, `left`, `right`,
+`center`, `normal`, `stretch`, `space-between`, `space-around`,
+`space-evenly`, `self-start`, `self-end`, `baseline`, `first`/`last
+baseline`, with `safe` falling back to start on overflow and `unsafe`
+(the default) overflowing both ways. `row-reverse`, `column-reverse`,
+`wrap-reverse` and an RTL `direction` flip the axes the CSS way (start
+and end stay with the writing mode, flex-start and flex-end follow the
+flow). `order` reorders layout and paint alike. `visibility: collapse`
+removes an item's main size but keeps its cross size as a strut on its
+line. Gap percentages resolve against the content box.
+
+**Sizing.** `width`, `height`, `min-*` and `max-*` take lengths,
+percentages, `calc()` sums and products mixing the two (`calc(100% -
+2em)`), `auto` (`none` for max-*), `min-content`, `max-content`,
+`fit-content` and `fit-content(<length-percentage>)`; `box-sizing`
+picks the content or border box they measure; `aspect-ratio` (`auto`,
+`<ratio>`, `auto <ratio>`) transfers a definite size, or the measured
+width when both are auto, to the other axis. They apply to every
+widget, in any container: a definite size or a bound holds the slot a
+container offers (a column box no longer stretches a 100px-wide child,
+which sits at the start, or by SetHAlign), and a min size widens it.
+Percentages resolve against the containing block — the content box a
+CSS layout hands its items, and in a programmatic container the space
+it offers in the measure constraint. min-content is the widget's
+floor (what it can give up as a Shrinker or WidthShrinker, lowered to
+a MinSizer's floor — a wrapping label's widest word); max-content is
+its unbounded natural size; in the block axis the content keywords are
+auto, as CSS reads them. A plain-pixel `min-width`/`min-height` stays
+each widget's own floor, GTK's reading (a switch's knob, a slider's
+handle).
+
+**Positioning.** `relative` shifts a widget by its offsets (left over
+right, top over bottom, percentages of the parent's content box)
+without moving its siblings. `sticky` keeps a widget inside the
+nearest Scroll's visible viewport, inset by its declared sides, until
+its parent's content box runs out. `absolute` and `fixed` leave the
+flow — the container measures nothing for them — and resolve against
+their containing block: the padding box of the nearest positioned
+ancestor for `absolute`, the tree root's box (the window) for `fixed`
+and for an absolute without one. Each axis follows CSS: a definite
+size wins; both insets set stretch an auto size between them and
+center a definite one under auto margins; otherwise the widget takes
+its shrink-to-fit size from the set inset, or from its static position
+— where the flow reached — with neither. `z-index` (auto stacks as 0)
+orders a container's children in the CSS painting layers: negative
+z-index, in-flow blocks, floats, inline-level boxes, positioned boxes
+at 0, positive z-index; it applies to positioned widgets and to flex
+items. Paint and hit testing read the one order, so the topmost
+painted child is the one the pointer hits.
+
+**overflow and visibility.** `overflow`, `overflow-x` and `overflow-y`
+(`visible`, `hidden`, `clip`, `scroll`, `auto`) clip a Box's children
+to its padding box on each clipping axis, for paint and hit testing
+alike. `visibility: hidden` keeps the widget's space but paints
+nothing, takes no hits and no focus, and leaves the accessibility
+snapshot; a `visibility: visible` child of a hidden Box still shows.
+
+### Layout deferrals
+
+- Grid layout: `display: grid` and `inline-grid` parse, compute and
+  report supported to `@supports`, and lay a Box's children out as
+  block flow (`flow-root`) until the grid tranche lands; the
+  `grid-template-*`, `grid-auto-*`, `grid-row`/`grid-column`/`grid-area`
+  and `place-items`/`place-self` properties are not parsed yet (an
+  unknown-property warning).
+- Inner display on containers other than Box: Grid, CenterBox, Stack,
+  Paned and the other built-in containers keep their own layout
+  algorithms — their placement is their API — so `display: flex` or
+  `block` there only sets how they sit in a CSS parent, and
+  `display: contents` dissolves only a Box (elsewhere the widget keeps
+  its box).
+- Inline formatting is of whole widgets: a widget is an atomic inline
+  box, so `display: inline` lays out as `inline-block` and a label's
+  text never fragments across its parent's line boxes;
+  `text-align: justify` on line boxes reads as start, since there are
+  no spaces between widgets to stretch.
+- Every CSS-laid-out box roots its own block formatting context
+  (`block` reads as `flow-root`): floats never reach into a nested
+  box, and margins never collapse through a parent and its first or
+  last child or through an empty box.
+- Stacking contexts are per container: `z-index` orders a widget
+  among its siblings and never lifts it above its container's
+  siblings, and a dissolved (`contents`) box's children paint with
+  it. Absolute and fixed widgets paint in their parent's pass, so an
+  ancestor's clip (`overflow`, a Scroll viewport) still clips them,
+  and a transform does not make a containing block.
+- The static position of an absolute child of a flex container is the
+  content box's start corner; CSS aligns it as the sole flex item.
+- `overflow: scroll` and `auto` clip without scrollbars — wrap the
+  content in a Scroll for scrolling — and overflow has no effect on
+  widgets other than Box, whose content already stays inside their
+  box (labels ellipsize or clip, a Scroll scrolls by its own policy).
+- `min()`, `max()` and `clamp()` mixing percentages with lengths are
+  invalid: the comparison needs the layout-time basis, which the
+  compute-time evaluator never sees; `calc()` sums and products of
+  them work.
+- `last baseline` aligns on a widget's single baseline (widgets report
+  one), and baseline alignment in a column flex container falls back
+  to start, as CSS's does.
+- A `visibility: visible` descendant shows inside a hidden Box only; a
+  hidden widget of another type hides its whole subtree.
+- Content-box sizes count the built-in padding of a widget that keeps
+  it outside the CSS box (Entry's and TextArea's text inset) as
+  content.
+- The window's root widget takes the window size; CSS sizes on it do
+  not apply.
+- Layout is horizontal-tb: vertical writing modes compute but lay out
+  horizontally, as their paint does.
+
 ## Rendering effects
 
 The effect properties apply to a widget's painted result, per frame.
@@ -532,9 +720,9 @@ declaration or the bottom (then `unset`).
 
 Constructor metrics (a button's padding, a label's size) are
 defaults that a stylesheet overrides. `color`, the `font-*` group,
-`cursor`, and the CSS Text properties inherit. Box properties, and
-`vertical-align`, `line-clamp`, `text-overflow`, `unicode-bidi` and
-`font-synthesis`, do not.
+`cursor`, the CSS Text properties and `visibility` inherit. Box and
+layout properties, and `vertical-align`, `line-clamp`,
+`text-overflow`, `unicode-bidi` and `font-synthesis`, do not.
 
 ## Media state
 
@@ -598,6 +786,12 @@ Style is cached per widget and invalidated, never re-matched per paint:
   cached on the widget across frames — allocated once per size — and
   composite it back through the effect chain; the no-effect frame
   never allocates (the budget tests pin it).
+- A tree that declares no layout property takes the programmatic
+  layout unchanged. The CSS layouts run their passes in per-depth
+  buffers reused across frames, so a static flex and flow tree
+  measures and arranges without allocating
+  (`TestCSSLayoutSteadyFrameAllocatesNothing`); a layout property's
+  change relayouts only the branch it sits in.
 
 `BenchmarkStyleGallery` (73 widgets, 25 rules, i5-10400F):
 

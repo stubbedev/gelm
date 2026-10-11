@@ -1,6 +1,7 @@
 package style
 
 import (
+	"math/bits"
 	"strconv"
 	"strings"
 )
@@ -174,7 +175,7 @@ type compound struct {
 type spec struct{ ids, cls, els int }
 
 func (c *compound) spec() spec {
-	s := spec{cls: len(c.classes) + len(c.attrs) + bits(uint32(c.state)) + bits(uint32(c.structs)) + len(c.nths)}
+	s := spec{cls: len(c.classes) + len(c.attrs) + bits.OnesCount32(uint32(c.state)) + bits.OnesCount32(uint32(c.structs)) + len(c.nths)}
 	if c.id != "" {
 		s.ids++
 	}
@@ -222,15 +223,6 @@ func (s spec) greater(o spec) bool {
 		return s.cls > o.cls
 	}
 	return s.els > o.els
-}
-
-// bits counts the set bits.
-func bits(s uint32) int {
-	n := 0
-	for ; s != 0; s &= s - 1 {
-		n++
-	}
-	return n
 }
 
 // selector is a compound sequence with combinators, left to right.

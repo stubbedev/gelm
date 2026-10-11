@@ -221,7 +221,7 @@ func TestFocusVisibleAndWithin(t *testing.T) {
 	}
 	r.FocusNext()
 	CollectDamage(root)
-	if !entry.focusVisible || entry.style(entry).MinWidth != 300 {
+	if !entry.focusVisible || entry.style(entry).Layout.MinWidth.Px() != 300 {
 		t.Error("keyboard traversal did not make the focus visible")
 	}
 	// Focus leaves the form: nothing within it is focused any more.
@@ -252,7 +252,7 @@ func TestSetStateChecked(t *testing.T) {
 	}
 	sw := NewSwitch(true)
 	arrangeTree(t, sw, 100, 30)
-	if sw.style(sw).MinWidth != 99 {
+	if sw.style(sw).Layout.MinWidth.Px() != 99 {
 		t.Error("an on switch is :checked intrinsically")
 	}
 }
@@ -266,10 +266,10 @@ func TestSiblingSelectorsFollowStructure(t *testing.T) {
 	row.Append(a, false)
 	row.Append(b, false)
 	arrangeTree(t, row, 100, 30)
-	if a.style(a).MinHeight != 5 || b.style(b).Has(style.PropMinHeight) {
+	if a.style(a).Layout.MinHeight.Px() != 5 || b.style(b).Has(style.PropMinHeight) {
 		t.Fatal(":first-child")
 	}
-	if b.style(b).MinWidth != 7 || a.style(a).Has(style.PropMinWidth) {
+	if b.style(b).Layout.MinWidth.Px() != 7 || a.style(a).Has(style.PropMinWidth) {
 		t.Fatal("adjacent sibling")
 	}
 	// A new first child takes :first-child from the old one.
@@ -277,13 +277,13 @@ func TestSiblingSelectorsFollowStructure(t *testing.T) {
 	c.SetElement("spacer")
 	row.InsertAt(0, c, false)
 	arrangeTree(t, row, 100, 30)
-	if a.style(a).Has(style.PropMinHeight) || c.style(c).MinHeight != 5 {
+	if a.style(a).Has(style.PropMinHeight) || c.style(c).Layout.MinHeight.Px() != 5 {
 		t.Error("InsertAt did not move :first-child")
 	}
 	// Hiding the first child makes the next one first.
 	c.SetVisible(false)
 	arrangeTree(t, row, 100, 30)
-	if a.style(a).MinHeight != 5 {
+	if a.style(a).Layout.MinHeight.Px() != 5 {
 		t.Error("a hidden first child still counted")
 	}
 }
@@ -390,7 +390,7 @@ func TestSetClassesAndClasses(t *testing.T) {
 		t.Fatalf("SetClasses: %v", s.Classes())
 	}
 	v := s.style(s)
-	if v.Has(style.PropMinWidth) || v.MinHeight != 2 {
+	if v.Has(style.PropMinWidth) || v.Layout.MinHeight.Px() != 2 {
 		t.Error("the class swap did not restyle")
 	}
 	cl := s.Classes()

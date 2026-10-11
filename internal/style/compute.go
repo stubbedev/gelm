@@ -131,23 +131,19 @@ func (sc *Scratch) computeAll(layers []Layer, n Node, parent, old *Values, env E
 	if cx.lh == 0 {
 		cx.lh = fontRatio(cx.font.LineHeight, fallbackLH) * cx.em
 	}
-	for p := range numProps {
-		if p == PropFontSize || p == PropColor || p == PropLineHeight {
-			continue
-		}
+	// The rest in Prop order, the declared ones alone: computeProp
+	// leaves a longhand without a winning declaration untouched.
+	sc.offered.AndNot(setOf(PropFontSize, PropColor, PropLineHeight)).Each(func(p Prop) {
 		blocked = blocked.Or(sc.computeProp(p, v, pv, cx))
-	}
+	})
 
 	// Inheritance: unset inherited longhands take the parent's value,
 	// unless an explicit `initial` blocked it. The quote depth
 	// inherits too: descendants' open-quote continues the count.
 	v.Own = v.Set
-	for p := range numProps {
-		if inheritedProps.Has(p) && !v.Has(p) && !blocked.Has(p) && pv.Has(p) {
-			copyProp(v, pv, p)
-			v.Set = v.Set.With(p)
-		}
-	}
+	inherit := inheritedProps.AndNot(v.Set).AndNot(blocked).And(pv.Set)
+	inherit.Each(func(p Prop) { copyProp(v, pv, p) })
+	v.Set = v.Set.Or(inherit)
 	v.QuoteDepth = pv.QuoteDepth
 	sc.applyMeta(v, pv, cx)
 	sc.prevCounters = nil
@@ -161,27 +157,16 @@ func (sc *Scratch) computeAll(layers []Layer, n Node, parent, old *Values, env E
 // transition's start values. Only the properties the blocks declare
 // are read; the rest of the struct is meaningless.
 func (sc *Scratch) computeStarting(v *Values, cx *ctx) {
-	var any bool
-	for p := range numProps {
-		if sc.winStart[p] != nil {
-			any = true
-			break
-		}
-	}
-	if !any {
+	if sc.offeredStart.Empty() {
 		return
 	}
 	st := initialValues()
-	for p := range numProps {
-		d := sc.winStart[p]
-		if d == nil {
-			continue
-		}
-		if src, ok := sc.parse(d, v.Vars, cx); ok {
+	sc.offeredStart.Each(func(p Prop) {
+		if src, ok := sc.parse(sc.winStart[p], v.Vars, cx); ok {
 			copyProp(&st, src, p)
 			st.Set = st.Set.With(p)
 		}
-	}
+	})
 	v.Starting = &st
 }
 
@@ -247,8 +232,13 @@ func (sc *Scratch) computeProp(p Prop, v, parent *Values, cx *ctx) PropSet {
 }
 
 // setInitial writes p's initial value. Border and outline colors start
-// as currentColor.
+// as currentColor. A layout longhand stays undeclared instead
+// (layoutWideProps): its initial value is the widget's programmatic
+// layout.
 func (sc *Scratch) setInitial(p Prop, v *Values, cx *ctx) {
+	if layoutWideProps.Has(p) {
+		return
+	}
 	init := initialValues()
 	init.BorderColor = [4]render.Color{cx.color, cx.color, cx.color, cx.color}
 	init.OutlineColor = cx.color
@@ -793,13 +783,13 @@ func copyProp(dst, src *Values, p Prop) {
 	case PropPaddingLeft:
 		dst.Padding.Left = src.Padding.Left
 	case PropMarginTop:
-		dst.Margin.Top = src.Margin.Top
+		dst.Margin.Top, dst.MarginAuto[0] = src.Margin.Top, src.MarginAuto[0]
 	case PropMarginRight:
-		dst.Margin.Right = src.Margin.Right
+		dst.Margin.Right, dst.MarginAuto[1] = src.Margin.Right, src.MarginAuto[1]
 	case PropMarginBottom:
-		dst.Margin.Bottom = src.Margin.Bottom
+		dst.Margin.Bottom, dst.MarginAuto[2] = src.Margin.Bottom, src.MarginAuto[2]
 	case PropMarginLeft:
-		dst.Margin.Left = src.Margin.Left
+		dst.Margin.Left, dst.MarginAuto[3] = src.Margin.Left, src.MarginAuto[3]
 	case PropBorderTopWidth:
 		dst.BorderWidth.Top = src.BorderWidth.Top
 	case PropBorderRightWidth:
@@ -842,10 +832,6 @@ func copyProp(dst, src *Values, p Prop) {
 		dst.OutlineColor = src.OutlineColor
 	case PropOutlineOffset:
 		dst.OutlineOffset = src.OutlineOffset
-	case PropMinWidth:
-		dst.MinWidth = src.MinWidth
-	case PropMinHeight:
-		dst.MinHeight = src.MinHeight
 	case PropBorderSpacing:
 		dst.BorderSpacingH, dst.BorderSpacingV = src.BorderSpacingH, src.BorderSpacingV
 	case PropFontFamily:
@@ -1022,6 +1008,8 @@ func copyProp(dst, src *Values, p Prop) {
 		dst.Transition.Discrete = src.Transition.Discrete
 	case PropAnimComposition:
 		dst.AnimComposition = src.AnimComposition
+	default:
+		copyLayoutProp(&dst.Layout, &src.Layout, p)
 	}
 }
 

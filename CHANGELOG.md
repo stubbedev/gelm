@@ -2,6 +2,47 @@
 
 ## Unreleased
 
+### CSS layout (#159)
+
+- `display` (`block`, `inline`, `inline-block`, `flow-root`, `flex`,
+  `inline-flex`, `contents`, `none`, the two-keyword forms; `grid` and
+  `inline-grid` parse and lay out as block flow until grid layout
+  lands) hands a Box's children to a CSS formatting context in place
+  of the programmatic box layout. Undeclared layout properties keep
+  the programmatic setting: the box axis for `flex-direction`, its
+  spacing for `gap`, a child's expand for `flex-grow`.
+- Flexbox, complete: `flex-direction`, `flex-wrap`, `flex-flow`,
+  `flex`, `flex-grow`, `flex-shrink`, `flex-basis`, `order`,
+  `justify-content`, `align-items`, `align-self`, `align-content`,
+  `place-content`, `gap`/`row-gap`/`column-gap`, with the spec's
+  flexible-length freeze loop, the automatic minimum size, baseline
+  groups, `safe`/`unsafe`, auto margins, reverse directions and
+  `wrap-reverse`, and `visibility: collapse` struts.
+- Normal flow: stacked blocks with collapsing sibling margins and
+  `margin: auto`, inline-level widgets on line boxes aligned by
+  `text-align` and `vertical-align`, and `float`/`clear`.
+- Sizing on every widget: `width`, `height`, `min-*`, `max-*`
+  (lengths, percentages, `calc()` mixing the two, `auto`/`none`,
+  `min-content`, `max-content`, `fit-content`, `fit-content()`),
+  `box-sizing` and `aspect-ratio`, applied at the container boundary
+  whatever the widget type.
+- `position` (`relative`, `absolute`, `fixed`, `sticky`) with
+  `top`/`right`/`bottom`/`left`/`inset`, and `z-index`, which orders a
+  Box's paint and hit testing alike (a Box now hit-tests its topmost
+  child first).
+- `overflow`, `overflow-x`, `overflow-y` clip a Box's children;
+  `visibility: hidden` keeps the space, paints nothing and takes no
+  hits; `display: none` drops the widget from layout, paint, hits,
+  focus and the a11y snapshot.
+- Fix: nested rows short of room no longer overwrite each other's
+  shrink distribution (the per-depth buffer was released before the
+  outer row finished reading it).
+- Hidden widgets (SetVisible or CSS) are no longer focusable, by Tab
+  or SetFocus, a focus that becomes hidden moves on, and DescribeTree
+  leaves them out of the a11y snapshot.
+- calc() sums and products may mix lengths and percentages where a
+  property resolves percentages at layout time (`calc(100% - 2em)`).
+
 ### CSS interaction properties (#159)
 
 - `cursor`: every CSS keyword (default, pointer, crosshair, text, wait,

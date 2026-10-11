@@ -959,16 +959,16 @@ func walkTree(w Widget, depth int, fn func(Widget, int)) {
 
 // SetFocus moves keyboard focus to w, the programmatic counterpart of
 // clicking it: a search entry that should take typing the moment its
-// surface maps is focused this way. A w that cannot take keys (no
-// KeyActionHandler), is disabled, or is not in this router's tree is
-// ignored and focus stays where it was; nil clears focus.
+// surface maps is focused this way. A w that cannot take focus (no
+// KeyActionHandler, disabled, or hidden) or is not in this router's
+// tree is ignored and focus stays where it was; nil clears focus.
 func (r *Router) SetFocus(w Widget) {
 	if w == nil {
 		setFocusStyle(r.focus, nil, false)
 		r.focus = nil
 		return
 	}
-	if _, ok := w.(KeyActionHandler); !ok || !IsEnabled(w) || !inTree(r.Root, w) {
+	if !isFocusable(w) || !inTree(r.Root, w) {
 		return
 	}
 	setFocusStyle(r.focus, w, false)
@@ -994,14 +994,14 @@ func (r *Router) FocusNext() { r.focusStep(1) }
 func (r *Router) FocusPrev() { r.focusStep(-1) }
 
 // focusStep walks the tree collecting focusable widgets and lands on
-// the neighbor of the current focus. Disabled widgets never join the
-// order, so Tab cannot land on one; a focus that went disabled since
-// it was set moves to the next focusable first.
+// the neighbor of the current focus. Disabled and hidden widgets never
+// join the order, so Tab cannot land on one; a focus that went
+// unfocusable since it was set moves to the next focusable first.
 func (r *Router) focusStep(dir int) {
-	r.dropDisabledFocus()
+	r.dropUnfocusable()
 	var order []Widget
 	focusWalker(r.Root, func(w Widget) {
-		if _, ok := w.(KeyActionHandler); ok && IsEnabled(w) {
+		if isFocusable(w) {
 			order = append(order, w)
 		}
 	})
@@ -1025,14 +1025,14 @@ func (r *Router) focusStep(dir int) {
 	RevealRect(r.focus, boundsOf(r.focus))
 }
 
-// dropDisabledFocus moves focus off a widget that stopped accepting
-// input since it took it (disabled directly, or through a container):
-// focus falls to the next focusable widget in paint order, or nowhere
-// when there is none. Delivery paths (KeyAction, Type, SelectAll) and
-// traversal (focusStep) call it before touching r.focus, so keys are
-// never fed into a dead control.
-func (r *Router) dropDisabledFocus() {
-	if r.focus == nil || IsEnabled(r.focus) {
+// dropUnfocusable moves focus off a widget that stopped accepting it
+// since it took it (disabled or hidden, directly or through a
+// container): focus falls to the next focusable widget in paint order,
+// or nowhere when there is none. Delivery paths (KeyAction, Type,
+// SelectAll) and traversal (focusStep) call it before touching
+// r.focus, so keys are never fed into a dead control.
+func (r *Router) dropUnfocusable() {
+	if r.focus == nil || isFocusable(r.focus) {
 		return
 	}
 	next := r.focusAfter(r.focus)
@@ -1040,7 +1040,7 @@ func (r *Router) dropDisabledFocus() {
 	r.focus = next
 }
 
-// focusAfter returns the first focusable, enabled widget after skip
+// focusAfter returns the first focusable widget after skip
 // in paint order (wrapping), or nil when traversal has nowhere to go.
 // Nothing at or below skip qualifies — a container detached from the
 // tree takes its whole subtree out of the traversal order.
@@ -1056,7 +1056,7 @@ func (r *Router) focusAfter(skip Widget) Widget {
 	}
 	for i := range order {
 		w := order[(start+i)%len(order)]
-		if _, ok := w.(KeyActionHandler); ok && IsEnabled(w) && !inSubtree(w, skip) {
+		if isFocusable(w) && !inSubtree(w, skip) {
 			return w
 		}
 	}
@@ -1064,9 +1064,9 @@ func (r *Router) focusAfter(skip Widget) Widget {
 }
 
 // keyboardTarget returns the widget keyboard input should reach,
-// dropping a focus that went disabled since it was set.
+// dropping a focus that went disabled or hidden since it was set.
 func (r *Router) keyboardTarget() Widget {
-	r.dropDisabledFocus()
+	r.dropUnfocusable()
 	return r.focus
 }
 

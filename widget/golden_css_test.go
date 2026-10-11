@@ -176,6 +176,55 @@ func TestGoldenCSSToastShadow(t *testing.T) {
 	}
 }
 
+// TestGoldenCSSLayout pins the CSS layout engines on one page: a flex
+// bar spacing its chips apart and centering them across, a wrapping
+// flex grid of growing tiles with gaps, a positioned stage whose
+// absolutely placed cards stack by z-index and whose overflow clips the
+// one spilling out, and a block flow with a float and inline blocks.
+func TestGoldenCSSLayout(t *testing.T) {
+	box := func(classes ...string) *Box {
+		b := NewBox(Row, 0, 0)
+		b.AddClass(classes...)
+		return b
+	}
+	with := func(parent *Box, kids ...*Box) *Box {
+		for _, k := range kids {
+			parent.Append(k, false)
+		}
+		return parent
+	}
+	bar := with(box("bar"), box("chip", "c1"), box("chip", "c2"), box("chip", "c3"))
+	tiles := box("tiles")
+	for range 7 {
+		tiles.Append(box("tile"), false)
+	}
+	stage := with(box("stage"), box("card", "back"), box("card", "front"), box("spill"))
+	flow := with(box("flow"), box("float"), box("ib"), box("ib"), box("ib"), box("line"))
+	page := with(NewBox(Column, 0, 0), bar, tiles, stage, flow)
+	page.AddClass("page")
+	const w, h = 320, 300
+	cssShot(t, `
+		.page { display: flex; flex-direction: column; gap: 8px; padding: 8px; background-color: #1e1e2e; }
+		.bar { display: flex; justify-content: space-between; align-items: center; padding: 6px;
+			background-color: #313244; border-radius: 6px; }
+		.chip { min-width: 40px; border-radius: 4px; }
+		.c1 { min-height: 16px; background-color: #89b4fa; }
+		.c2 { min-height: 28px; min-width: 90px; background-color: #cba6f7; }
+		.c3 { min-height: 20px; background-color: #94e2d5; }
+		.tiles { display: flex; flex-wrap: wrap; gap: 6px; }
+		.tile { flex: 1 1 60px; min-height: 24px; background-color: #fab387; border-radius: 3px; }
+		.stage { position: relative; height: 70px; overflow: hidden; background-color: #45475a; border-radius: 6px; }
+		.card { position: absolute; width: 90px; height: 40px; border-radius: 4px; }
+		.back { left: 12px; top: 8px; z-index: 1; background-color: #a6e3a1; }
+		.front { left: 60px; top: 24px; z-index: 2; background-color: #f38ba8; }
+		.spill { position: absolute; right: -20px; bottom: -12px; width: 70px; height: 36px; background-color: #f9e2af; }
+		.flow { display: block; padding: 4px; background-color: #313244; }
+		.float { float: right; width: 60px; height: 40px; background-color: #74c7ec; }
+		.ib { display: inline-block; width: 50px; height: 18px; margin: 2px; background-color: #b4befe; }
+		.line { height: 10px; background-color: #f5c2e7; clear: both; }
+	`, page, "css-layout", goldenFrame(w, h), goldenAfterArrange(func() { settle(t, page, w, h) }))
+}
+
 func TestGoldenCSSDialogCard(t *testing.T) {
 	face := goldenFace(t)
 	// The app-level surfaces name their card; dialog styles the

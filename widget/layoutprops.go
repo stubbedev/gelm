@@ -1,6 +1,9 @@
 package widget
 
-import "github.com/stubbedev/gelm/render"
+import (
+	"github.com/stubbedev/gelm/internal/style"
+	"github.com/stubbedev/gelm/render"
+)
 
 type expandSetting uint8
 
@@ -133,7 +136,19 @@ func layoutMarginOf(w Widget) render.Insets {
 	return render.Insets{}
 }
 
+// measureWithMargin measures a container's child as a flow participant:
+// its margin box, CSS sizing included, and nothing for an absolutely
+// or fixed positioned child, which leaves the flow (csspos.go).
 func measureWithMargin(w Widget, con Constraints) Size {
+	if outOfFlow(w) {
+		return Size{}
+	}
+	return measureOuter(w, con)
+}
+
+// measureMargin is the widget's own Measure inside its programmatic
+// margin, with no CSS sizing around it.
+func measureMargin(w Widget, con Constraints) Size {
 	m := layoutMarginOf(w)
 	if m.Zero() {
 		return w.Measure(con)
@@ -150,23 +165,42 @@ func measureWithMargin(w Widget, con Constraints) Size {
 // arrangeChild arranges a container's child inside r with its margin
 // and alignment: the margin shrinks r, and a non-fill alignment keeps
 // the child's natural size at the start, center or end of what is left.
+// CSS applies around it: an out-of-flow child is placed against its
+// containing block from r's corner (its static position), a sized one
+// holds r to its definite size and min/max bounds, and a relative or
+// sticky one shifts by its offsets.
 func arrangeChild(w Widget, r render.Rect) {
+	n := nodeOf(w)
+	var v *style.Values
+	if n != nil {
+		v = n.style(w)
+		if v.Layout.Position.OutOfFlow() && v.Has(style.PropPosition) {
+			placeOutOfFlow(w, v, Point{X: r.X, Y: r.Y})
+			return
+		}
+	}
 	l := layoutOf(w)
+	h, va := AlignFill, AlignFill
+	if l != nil {
+		h, va = l.halign, l.valign
+	}
+	if v != nil && cssSized(v) {
+		r = holdSlot(n, r, h, va)
+	}
 	if l == nil || (l.margin.Zero() && l.halign == AlignFill && l.valign == AlignFill) {
-		w.Arrange(r)
+		arrangeAt(w, v, r)
 		return
 	}
 	r = l.margin.Shrink(r)
-	if l.halign != AlignFill || l.valign != AlignFill {
+	if h != AlignFill || va != AlignFill {
 		nat := w.Measure(Constraints{Max: Size{W: r.W, H: r.H}})
-		h, v := l.halign, l.valign
 		if h == AlignBaseline {
 			h = AlignStart
 		}
-		if v == AlignBaseline {
-			v = AlignStart
+		if va == AlignBaseline {
+			va = AlignStart
 		}
-		r = alignRect(r, nat, h, v)
+		r = alignRect(r, nat, h, va)
 	}
-	w.Arrange(r)
+	arrangeAt(w, v, r)
 }

@@ -558,8 +558,8 @@ func TestUnitsAndCalc(t *testing.T) {
 		e { min-width: max(3px, 1rem); min-height: clamp(1px, 50px, 20px); }
 	`)
 	v := computeTree(s, el("a"))
-	if v.Padding.Top != 16 || v.Margin.Top != 16 || v.MinWidth != 36 || v.MinHeight != 9 {
-		t.Errorf("rem/pt/calc: %v %v %d %d", v.Padding, v.Margin, v.MinWidth, v.MinHeight)
+	if v.Padding.Top != 16 || v.Margin.Top != 16 || v.Layout.MinWidth.Px() != 36 || v.Layout.MinHeight.Px() != 9 {
+		t.Errorf("rem/pt/calc: %v %v %d %d", v.Padding, v.Margin, v.Layout.MinWidth.Px(), v.Layout.MinHeight.Px())
 	}
 	v = computeTree(s, el("b"))
 	if v.Padding.Top != 10 || v.Margin.Top != -3 {
@@ -573,8 +573,8 @@ func TestUnitsAndCalc(t *testing.T) {
 	if v := computeTree(s, el("d")); v.Opacity != 0.5 || v.LetterSpacing != 1.6 {
 		t.Errorf("calc number / em spacing: %v %v", v.Opacity, v.LetterSpacing)
 	}
-	if v := computeTree(s, el("e")); v.MinWidth != 16 || v.MinHeight != 20 {
-		t.Errorf("max/clamp: %d %d", v.MinWidth, v.MinHeight)
+	if v := computeTree(s, el("e")); v.Layout.MinWidth.Px() != 16 || v.Layout.MinHeight.Px() != 20 {
+		t.Errorf("max/clamp: %d %d", v.Layout.MinWidth.Px(), v.Layout.MinHeight.Px())
 	}
 	warns := capture(t)
 	Parse(`x { padding: calc(1px * 2px); } y { padding: calc(1px + 2); } z { padding: calc(1px / 0); }`)
