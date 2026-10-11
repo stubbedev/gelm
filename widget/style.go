@@ -286,18 +286,15 @@ func SetRootFontSize(px float64) {
 // RootFontSize returns the current root font size.
 func RootFontSize() float64 { return styleEnv.Rem }
 
-// mediaViewport is the @media viewport (SetMediaViewport), and
-// styleViewports the per-window ones (SetMediaViewportFor, keyed by
-// each window's style root): a tree computes against its own window's
-// size, falling back to the global value when its root reports none.
-// mediaContrast and mediaDPI are the appearance inputs SetTheme cannot
-// derive: prefers-contrast and resolution. All loop-goroutine state,
-// like styleEnv.
+// mediaViewport is the @media viewport (SetMediaViewport) a tree
+// computes against when its style root reports none of its own
+// (SetMediaViewportFor). mediaContrast and mediaDPI are the appearance
+// inputs SetTheme cannot derive: prefers-contrast and resolution. All
+// loop-goroutine state, like styleEnv.
 var (
-	mediaViewport  struct{ w, h int }
-	styleViewports = map[*node]struct{ w, h int }{}
-	mediaContrast  bool
-	mediaDPI       = 96.0
+	mediaViewport struct{ w, h int }
+	mediaContrast bool
+	mediaDPI      = 96.0
 )
 
 // SetMediaViewport sets the size @media width/height/aspect-ratio/
@@ -324,17 +321,17 @@ func SetMediaViewport(w, h int) {
 // conditions, the vw/vh family, and container units against this
 // size, so two windows of one application style independently off
 // one stylesheet. A tree whose root reports no viewport falls back to
-// SetMediaViewport's global value.
+// SetMediaViewport's global value; 0×0 clears the tree's own size.
 func SetMediaViewportFor(root Widget, w, h int) {
 	n := nodeOf(root)
 	if n == nil {
 		SetMediaViewport(w, h)
 		return
 	}
-	if vp, ok := styleViewports[n]; ok && vp.w == w && vp.h == h {
+	if n.viewport.w == w && n.viewport.h == h {
 		return
 	}
-	styleViewports[n] = struct{ w, h int }{w, h}
+	n.viewport.w, n.viewport.h = w, h
 	if !sensNow.media {
 		return
 	}
@@ -342,8 +339,16 @@ func SetMediaViewportFor(root Widget, w, h int) {
 	markDamage()
 }
 
-// MediaViewport returns the current @media viewport, 0×0 until set.
-func MediaViewport() (int, int) { return mediaViewport.w, mediaViewport.h }
+// MediaViewportOf returns the @media viewport w's tree computes
+// against: its style root's own size, else the global one; 0×0 until
+// either is set.
+func MediaViewportOf(w Widget) (int, int) {
+	vp := mediaViewport
+	if n := nodeOf(w); n != nil {
+		vp = viewportOf(n)
+	}
+	return vp.w, vp.h
+}
 
 // SetMediaContrast turns the prefers-contrast media feature on or
 // // off; the desktop's contrast preference, which no Theme field
@@ -409,10 +414,18 @@ func envNow() style.Env {
 // the size its own style root reported, the global value otherwise.
 func envFor(n *node) style.Env {
 	env := envNow()
-	if vp, ok := styleViewports[styleRootOf(n)]; ok {
-		env.Media.Width, env.Media.Height = float64(vp.w), float64(vp.h)
-	}
+	vp := viewportOf(n)
+	env.Media.Width, env.Media.Height = float64(vp.w), float64(vp.h)
 	return env
+}
+
+// viewportOf is the @media viewport n's tree computes against: its
+// style root's own size, else the global one.
+func viewportOf(n *node) struct{ w, h int } {
+	if r := styleRootOf(n); r.viewport.w > 0 && r.viewport.h > 0 {
+		return r.viewport
+	}
+	return mediaViewport
 }
 
 // styleRootOf is n's style root: the topmost node of its styling

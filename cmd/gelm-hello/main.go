@@ -474,7 +474,7 @@ func (s *showcase) mapped(w, h int) {
 	app.Trace("demo", "mapped %dx%d", w, h)
 	s.root.Measure(widget.Constraints{Max: widget.Size{W: w, H: h}})
 	s.root.Arrange(render.Rect{W: w, H: h})
-	mw, mh := widget.MediaViewport()
+	mw, mh := widget.MediaViewportOf(s.root)
 	app.Trace("demo", "media viewport %dx%d", mw, mh)
 	app.Trace("demo", "css before %q after %q",
 		widget.PseudoContent(s.sixthHead, "before"), widget.PseudoContent(s.sixthHead, "after"))
