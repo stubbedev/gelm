@@ -129,26 +129,49 @@ func init() {
 		"transition-duration":        {setOf(PropTransitionDuration), timeInto(func(v *Values) *float64 { return &v.Transition.Duration })},
 		"transition-delay":           {setOf(PropTransitionDelay), timeInto(func(v *Values) *float64 { return &v.Transition.Delay })},
 		"transition-timing-function": {setOf(PropTransitionTiming), parseTransitionTiming},
+		"transition-behavior":        {setOf(PropTransitionBehavior), parseTransitionBehavior},
 
-		"animation":            {animationProps, parseAnimation},
-		"animation-name":       {setOf(PropAnimation), parseAnimationName},
-		"animation-duration":   {setOf(PropAnimDuration), animTimeInto(func(v *Values, secs float64) { v.AnimDuration = []float64{secs} })},
-		"animation-delay":      {setOf(PropAnimDelay), animTimeInto(func(v *Values, secs float64) { v.AnimDelay = []float64{secs} })},
-		"animation-direction":  {setOf(PropAnimDirection), parseAnimationDirection},
-		"animation-fill-mode":  {setOf(PropAnimFill), parseAnimationFillMode},
-		"animation-play-state": {setOf(PropAnimationPlayState), parseAnimationPlayState},
-		"-gtk-icon-transform":  {setOf(PropIconTransform), parseIconTransform},
-		"-gtk-icon-source":     {setOf(PropIconSource), parseIconSource},
-		"-gtk-icon-palette":    {setOf(PropIconPalette), parseIconPalette},
-		"caret-color":          {setOf(PropCaretColor), parseCaretColor},
-		"text-decoration":      {setOf(PropTextDecoration), parseTextDecoration},
-		"cursor":               {setOf(PropCursor), parseCursor},
-		"pointer-events":       {setOf(PropPointerEvents), parsePointerEvents},
-		"user-select":          {setOf(PropUserSelect), parseUserSelect},
-		"caret-shape":          {setOf(PropCaretShape), parseCaretShape},
-		"accent-color":         {setOf(PropAccentColor), parseAccentColor},
-		"appearance":           {setOf(PropAppearance), parseAppearance},
-		"touch-action":         {setOf(PropTouchAction), parseTouchAction},
+		"animation":             {animationProps, parseAnimation},
+		"animation-name":        {setOf(PropAnimation), parseAnimationName},
+		"animation-duration":    {setOf(PropAnimDuration), animTimeInto(func(v *Values, secs float64) { v.AnimDuration = []float64{secs} })},
+		"animation-delay":       {setOf(PropAnimDelay), animTimeInto(func(v *Values, secs float64) { v.AnimDelay = []float64{secs} })},
+		"animation-direction":   {setOf(PropAnimDirection), parseAnimationDirection},
+		"animation-fill-mode":   {setOf(PropAnimFill), parseAnimationFillMode},
+		"animation-play-state":  {setOf(PropAnimationPlayState), parseAnimationPlayState},
+		"animation-composition": {setOf(PropAnimComposition), parseAnimationComposition},
+
+		"scroll-behavior":       {setOf(PropScrollBehavior), parseScrollBehavior},
+		"scroll-margin":         {scrollMarginProps, parseScrollMargin},
+		"scroll-margin-top":     {setOf(PropScrollMarginTop), sideInto(func(v *Values) *int { return &v.ScrollMargin.Top }, true)},
+		"scroll-margin-right":   {setOf(PropScrollMarginRight), sideInto(func(v *Values) *int { return &v.ScrollMargin.Right }, true)},
+		"scroll-margin-bottom":  {setOf(PropScrollMarginBottom), sideInto(func(v *Values) *int { return &v.ScrollMargin.Bottom }, true)},
+		"scroll-margin-left":    {setOf(PropScrollMarginLeft), sideInto(func(v *Values) *int { return &v.ScrollMargin.Left }, true)},
+		"scroll-padding":        {scrollPaddingProps, parseScrollPadding},
+		"scroll-padding-top":    {setOf(PropScrollPaddingTop), sideInto(func(v *Values) *int { return &v.ScrollPad.Top }, false)},
+		"scroll-padding-right":  {setOf(PropScrollPaddingRight), sideInto(func(v *Values) *int { return &v.ScrollPad.Right }, false)},
+		"scroll-padding-bottom": {setOf(PropScrollPaddingBottom), sideInto(func(v *Values) *int { return &v.ScrollPad.Bottom }, false)},
+		"scroll-padding-left":   {setOf(PropScrollPaddingLeft), sideInto(func(v *Values) *int { return &v.ScrollPad.Left }, false)},
+		"scroll-snap-type":      {setOf(PropScrollSnapType), parseScrollSnapType},
+		"scroll-snap-align":     {setOf(PropScrollSnapAlign), parseScrollSnapAlign},
+		"scroll-snap-stop":      {setOf(PropScrollSnapStop), parseScrollSnapStop},
+		"overscroll-behavior":   {setOf(PropOverscrollX, PropOverscrollY), func(ts []token, cx *ctx, v *Values) bool { return parseOverscroll(ts, cx, v, 0) }},
+		"overscroll-behavior-x": {setOf(PropOverscrollX), func(ts []token, cx *ctx, v *Values) bool { return parseOverscroll(ts, cx, v, 0) }},
+		"overscroll-behavior-y": {setOf(PropOverscrollY), func(ts []token, cx *ctx, v *Values) bool { return parseOverscroll(ts, cx, v, 1) }},
+		"scrollbar-color":       {setOf(PropScrollbarColor), parseScrollbarColor},
+		"scrollbar-width":       {setOf(PropScrollbarWidth), parseScrollbarWidth},
+		"scrollbar-gutter":      {setOf(PropScrollbarGutter), parseScrollbarGutter},
+		"-gtk-icon-transform":   {setOf(PropIconTransform), parseIconTransform},
+		"-gtk-icon-source":      {setOf(PropIconSource), parseIconSource},
+		"-gtk-icon-palette":     {setOf(PropIconPalette), parseIconPalette},
+		"caret-color":           {setOf(PropCaretColor), parseCaretColor},
+		"text-decoration":       {setOf(PropTextDecoration), parseTextDecoration},
+		"cursor":                {setOf(PropCursor), parseCursor},
+		"pointer-events":        {setOf(PropPointerEvents), parsePointerEvents},
+		"user-select":           {setOf(PropUserSelect), parseUserSelect},
+		"caret-shape":           {setOf(PropCaretShape), parseCaretShape},
+		"accent-color":          {setOf(PropAccentColor), parseAccentColor},
+		"appearance":            {setOf(PropAppearance), parseAppearance},
+		"touch-action":          {setOf(PropTouchAction), parseTouchAction},
 
 		"text-align":              {setOf(PropTextAlign), parseTextAlign},
 		"text-indent":             {setOf(PropTextIndent), parseTextIndent},
@@ -182,7 +205,11 @@ var (
 	borderColors = setOf(PropBorderTopColor, PropBorderRightColor, PropBorderBottomColor, PropBorderLeftColor)
 	borderRadii  = setOf(PropBorderTopLeftRadius, PropBorderTopRightRadius, PropBorderBottomRightRadius,
 		PropBorderBottomLeftRadius)
-	transitionProps  = setOf(PropTransitionProperty, PropTransitionDuration, PropTransitionTiming, PropTransitionDelay)
+	scrollMarginProps  = setOf(PropScrollMarginTop, PropScrollMarginRight, PropScrollMarginBottom, PropScrollMarginLeft)
+	scrollPaddingProps = setOf(PropScrollPaddingTop, PropScrollPaddingRight, PropScrollPaddingBottom,
+		PropScrollPaddingLeft)
+	transitionProps = setOf(PropTransitionProperty, PropTransitionDuration, PropTransitionTiming, PropTransitionDelay,
+		PropTransitionBehavior)
 	animationProps   = setOf(PropAnimation, PropAnimationPlayState)
 	fontVariantProps = setOf(PropFontVariantCaps, PropFontVariantNumeric, PropFontVariantLigatures,
 		PropFontVariantEastAsian, PropFontVariantPosition, PropFontVariantAlternates)
@@ -2210,15 +2237,15 @@ func timingOf(ts []token, cx *ctx) (Timing, bool) {
 	if ts[0].kind == tkIdent {
 		switch strings.ToLower(ts[0].s) {
 		case "linear":
-			return Timing{0, 0, 1, 1, 0}, true
+			return Timing{X1: 0, Y1: 0, X2: 1, Y2: 1}, true
 		case "ease":
-			return Timing{0.25, 0.1, 0.25, 1, 0}, true
+			return Timing{X1: 0.25, Y1: 0.1, X2: 0.25, Y2: 1}, true
 		case "ease-in":
-			return Timing{0.42, 0, 1, 1, 0}, true
+			return Timing{X1: 0.42, Y1: 0, X2: 1, Y2: 1}, true
 		case "ease-out":
-			return Timing{0, 0, 0.58, 1, 0}, true
+			return Timing{X1: 0, Y1: 0, X2: 0.58, Y2: 1}, true
 		case "ease-in-out":
-			return Timing{0.42, 0, 0.58, 1, 0}, true
+			return Timing{X1: 0.42, Y1: 0, X2: 0.58, Y2: 1}, true
 		}
 		return Timing{}, false
 	}
@@ -2239,13 +2266,29 @@ func timingOf(ts []token, cx *ctx) (Timing, bool) {
 			}
 			f[i] = n.v
 		}
-		return Timing{f[0], f[1], f[2], f[3], 0}, true
+		return Timing{X1: f[0], Y1: f[1], X2: f[2], Y2: f[3]}, true
 	case "steps":
 		n, ok := evalNumeric(args[0], cx)
 		if !ok || n.kind != numNumber || n.v < 1 {
 			return Timing{}, false
 		}
-		return Timing{Steps: int(n.v)}, true
+		t := Timing{Steps: int(n.v)}
+		if len(args) == 2 {
+			comps := components(args[1])
+			if len(comps) != 1 || comps[0][0].kind != tkIdent {
+				return Timing{}, false
+			}
+			jump, ok := timingJump(strings.ToLower(comps[0][0].s))
+			if !ok {
+				return Timing{}, false
+			}
+			t.StepPos = uint8(jump)
+		} else if len(args) > 2 {
+			return Timing{}, false
+		}
+		return t, true
+	case "linear":
+		return parseLinearPoints(args, cx)
 	}
 	return Timing{}, false
 }
@@ -2304,13 +2347,14 @@ func parseTransitionProperty(ts []token, _ *ctx, v *Values) bool {
 // `[property] [duration] [timing] [delay]` in any order, the first time
 // the duration and the second the delay.
 func parseTransition(ts []token, cx *ctx, v *Values) bool {
-	v.Transition = Transition{Timing: Timing{0.25, 0.1, 0.25, 1, 0}}
+	v.Transition = Transition{Timing: Timing{X1: 0.25, Y1: 0.1, X2: 0.25, Y2: 1}}
 	for _, item := range splitTop(ts, tkComma) {
 		var props PropSet
 		all := false
 		haveP, haveD, haveDelay, haveT := false, false, false, false
 		var dur, delay float64
-		timing := Timing{0.25, 0.1, 0.25, 1, 0}
+		discrete := false
+		timing := Timing{X1: 0.25, Y1: 0.1, X2: 0.25, Y2: 1}
 		for _, c := range components(item) {
 			if t, ok := timeOf(c, cx); ok {
 				switch {
@@ -2326,6 +2370,16 @@ func parseTransition(ts []token, cx *ctx, v *Values) bool {
 			if !haveT {
 				if tm, ok := timingOf(c, cx); ok {
 					timing, haveT = tm, true
+					continue
+				}
+			}
+			if len(c) == 1 && c[0].kind == tkIdent {
+				switch strings.ToLower(c[0].s) {
+				case "allow-discrete":
+					discrete = true
+					continue
+				case "normal":
+					discrete = false
 					continue
 				}
 			}
@@ -2350,6 +2404,7 @@ func parseTransition(ts []token, cx *ctx, v *Values) bool {
 		}
 		v.Transition.All = v.Transition.All || all
 		v.Transition.Props = v.Transition.Props.Or(props)
+		v.Transition.Discrete = v.Transition.Discrete || discrete
 		// One duration per node: the longest wins, which is what a
 		// multi-property transition looks like on screen.
 		if dur > v.Transition.Duration {

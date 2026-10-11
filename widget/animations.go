@@ -16,6 +16,7 @@ import (
 
 	"github.com/stubbedev/gelm/anim"
 	"github.com/stubbedev/gelm/internal/style"
+	"github.com/stubbedev/gelm/render"
 )
 
 // animRunner is one computed animation's live state on a node.
@@ -278,36 +279,76 @@ func endPhase(a *style.Animation, lastCycle int) float64 {
 }
 
 // applyFrame writes the keyframes' interpolated channels at a phase
-// into the style cache. Channels the keyframes do not animate hold
-// their cascade values untouched.
+// into the style cache, composed onto the values the cache holds -
+// the cascade after a recompute, an earlier frame's result otherwise
+// - per the animation's composition mode: replace overwrites, add
+// sums (clamped where the value cannot leave its range), accumulate
+// likewise (the channels here are scalars, colors, and composed
+// transforms, where accumulate and add agree). Channels the keyframes
+// do not animate hold their cascade values untouched.
 func (n *node) applyFrame(a *style.Animation, phase float64) {
 	av := a.Keyframes.At(phase)
 	mask := a.Keyframes.Mask
+	mode := a.Composition
 	if mask&uint32(style.ChOpacity) != 0 {
-		n.cs.Opacity = av.Opacity
+		n.cs.Opacity = composeFloat(n.cs.Opacity, av.Opacity, mode, 0, 1)
 		n.cs.Set = n.cs.Set.With(style.PropOpacity)
 	}
 	if mask&uint32(style.ChColor) != 0 {
-		n.cs.Color = av.Color
+		n.cs.Color = composeColor(n.cs.Color, av.Color, mode)
 		n.cs.Set = n.cs.Set.With(style.PropColor)
 	}
 	if mask&uint32(style.ChBackground) != 0 {
-		n.cs.Background = av.Background
+		n.cs.Background = composeColor(n.cs.Background, av.Background, mode)
 		n.cs.Set = n.cs.Set.With(style.PropBackgroundColor)
 	}
 	if mask&uint32(style.ChBrightness) != 0 {
-		n.cs.Brightness = av.Brightness
+		n.cs.Brightness = math.Max(0, composeFloat(n.cs.Brightness, av.Brightness, mode, 0, math.MaxFloat64))
 		n.cs.Set = n.cs.Set.With(style.PropFilter)
 	}
 	if mask&uint32(style.ChTransform) != 0 {
-		n.cs.Transform = av.Transform
+		n.cs.Transform = composeXform(n.cs.Transform, av.Transform, mode)
 		n.cs.Set = n.cs.Set.With(style.PropTransform)
 	}
 	if mask&uint32(style.ChIconXform) != 0 {
-		n.cs.IconXform = av.IconXform
+		n.cs.IconXform = composeXform(n.cs.IconXform, av.IconXform, mode)
 		n.cs.Set = n.cs.Set.With(style.PropIconTransform)
 	}
 	n.Invalidate()
+}
+
+// composeFloat joins one float effect onto its underlying value per
+// the composition mode, clamped to [lo, hi].
+func composeFloat(u, e float64, mode uint8, lo, hi float64) float64 {
+	if mode == style.CompReplace {
+		return e
+	}
+	return min(max(u+e, lo), hi)
+}
+
+// composeColor joins one color effect onto its underlying value per
+// the composition mode, per channel with saturation at 255.
+func composeColor(u, e render.Color, mode uint8) render.Color {
+	if mode == style.CompReplace {
+		return e
+	}
+	chan255 := func(x, y uint8) uint8 {
+		return min(255, x+y)
+	}
+	return render.Color(uint32(chan255(u.A(), e.A()))<<24 |
+		uint32(chan255(u.R(), e.R()))<<16 |
+		uint32(chan255(u.G(), e.G()))<<8 |
+		uint32(chan255(u.B(), e.B())))
+}
+
+// composeXform joins one transform effect onto its underlying value
+// per the composition mode: addition composes the maps, the effect's
+// functions applying after the underlying's.
+func composeXform(u, e style.Xform, mode uint8) style.Xform {
+	if mode == style.CompReplace {
+		return e
+	}
+	return u.After(e)
 }
 
 // revert puts one animation's channels back to the cascade's,

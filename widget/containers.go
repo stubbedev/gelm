@@ -487,6 +487,8 @@ type Scroll struct {
 	kin        kinetic
 	overshoot  [2]float64
 	cancelGlow anim.Cancel
+	// cancelScroll stops the scroll-behavior: smooth tween.
+	cancelScroll anim.Cancel
 }
 
 // gutter is the scrollbar strip width reserved inside the viewport.
@@ -546,6 +548,7 @@ func (s *Scroll) SetChild(child Widget) {
 	s.child = child
 	s.offX, s.offY = 0, 0
 	s.dragV, s.dragH = false, false
+	s.stopSmooth()
 	s.nat = Size{}
 	clearParents(old)
 	s.InvalidateLayout()
@@ -698,13 +701,23 @@ func (s *Scroll) measureContent(con Constraints) Size {
 		s.nat = measureChild(s, s.child, Constraints{Max: Size{W: w, H: math.MaxInt}})
 	}
 	want := s.nat
+	stable, both := s.gutterStable()
+	if stable {
+		// scrollbar-gutter: stable reserves the bar's column up front,
+		// both-edges a matching one on the far side, so content does not
+		// reflow when a bar appears.
+		want.W += gutter
+		if both {
+			want.W += gutter
+		}
+	}
 	if s.VerticalOnly && s.child != nil {
 		want.W += gutter // the bar's column is always there
 	}
 	if s.maxH > 0 && want.H > s.maxH {
 		// Capped, the content overflows: the vertical bar's gutter
 		// comes on top of the content width, not out of it.
-		if !s.VerticalOnly {
+		if !s.VerticalOnly && !stable {
 			want.W += gutter
 		}
 		want.H = s.maxH
@@ -739,7 +752,8 @@ func (s *Scroll) Arrange(r render.Rect) {
 	s.view = inner
 	r = inner
 	gutterV, gutterH := 0, 0
-	if s.nat.H > r.H && r.H > 40 {
+	stable, both := s.gutterStable()
+	if s.nat.H > r.H && r.H > 40 || stable {
 		gutterV = gutter
 	}
 	if s.nat.W > r.W && r.W > 40 {
@@ -753,7 +767,21 @@ func (s *Scroll) Arrange(r render.Rect) {
 		}
 	}
 	s.viewW = r.W - gutterV
+	if both {
+		// both-edges: the matching empty column on the near edge.
+		s.viewW -= gutter
+	}
 	s.viewH = r.H - gutterH
+	// Mandatory snapping re-settles through a relayout or resize: the
+	// offset a viewport change invalidated lands back on its snap
+	// position before the frame paints.
+	if st := s.snapStyle(); st.Mandatory {
+		if x, y := s.snapTarget(s.offX, s.offY); x != s.offX || y != s.offY {
+			maxX, maxY := s.scrollMax()
+			s.offX, s.offY = min(max(0, x), maxX), min(max(0, y), maxY)
+			s.Invalidate()
+		}
+	}
 
 	childW, childH := s.nat.W, s.nat.H
 	if s.VerticalOnly {
@@ -807,12 +835,13 @@ func (s *Scroll) Paint(cv *render.Canvas) {
 	}
 	s.paintGlow(cv)
 	if s.ShowBars && s.alpha > 0 {
+		spec := barSpecOf(v)
 		s.tickFade()
 		if track, handle := s.vBarGeometry(); track.W > 0 {
-			paintScrollbar(cv, track, handle, s.alpha)
+			paintScrollbar(cv, track, handle, s.alpha, spec)
 		}
 		if track, handle := s.hBarGeometry(); track.W > 0 {
-			paintScrollbar(cv, track, handle, s.alpha)
+			paintScrollbar(cv, track, handle, s.alpha, spec)
 		}
 	}
 	cv.PopClip(prev)
@@ -884,7 +913,11 @@ func (s *Scroll) ScrollBy(dx, dy int) {
 		return
 	}
 	s.kin.stop()
-	s.SetOffset(s.offX+dx*wheelStep(s.viewW), s.offY+dy*wheelStep(s.viewH))
+	s.stopSmooth()
+	// The wheel never animates (scroll-behavior scopes smooth to
+	// programmatic scrolls), but snapping still settles the step.
+	x, y := s.snapTarget(s.offX+dx*wheelStep(s.viewW), s.offY+dy*wheelStep(s.viewH))
+	s.SetOffset(x, y)
 	s.showBars()
 }
 
@@ -904,6 +937,7 @@ func (s *Scroll) SetPressed(on bool) {
 	}
 	s.dragV, s.dragH = false, false
 	s.invalidateStyle()
+	s.snapCurrent()
 }
 
 // DragMove implements DragMover. The first call inside a scrollbar
@@ -916,6 +950,7 @@ func (s *Scroll) DragMove(p Point) {
 	if !IsEnabled(s) {
 		return
 	}
+	s.stopSmooth()
 	vTrack, _ := s.vBarGeometry()
 	hTrack, _ := s.hBarGeometry()
 	switch {
@@ -951,7 +986,11 @@ func (s *Scroll) ClickAt(p Point) {
 		}
 		if !track.Empty() && track.Contains(p.X, p.Y) {
 			at, n := along(p, track, axis)
-			s.SetAxisOffset(axis, s.AxisRange(axis).paged(at, n))
+			target := s.AxisRange(axis).paged(at, n)
+			if st := s.snapStyle(); st.Mandatory {
+				target = s.snapAxisTo(axis, target, true)
+			}
+			s.SetAxisOffset(axis, target)
 			return
 		}
 	}
@@ -990,7 +1029,10 @@ func (s *Scroll) ScrollEnd() {
 	s.kin.fling(func(dx, dy float64) bool {
 		s.showBars()
 		return s.movePixels(dx, dy)
-	}, s.releaseGlow)
+	}, func() {
+		s.snapCurrent()
+		s.releaseGlow()
+	})
 }
 
 // movePixels applies a pixel delta, keeping the sub-pixel remainder;
@@ -1010,7 +1052,7 @@ func (s *Scroll) movePixels(dx, dy float64) bool {
 	lost := [2]int{x0 + wx - s.offX, y0 + wy - s.offY}
 	for axis, l := range lost {
 		if l != 0 {
-			s.pushGlow(axis, float64(l))
+			s.overscroll(axis, l)
 		}
 	}
 	return s.offX != x0 || s.offY != y0

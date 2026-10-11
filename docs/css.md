@@ -288,10 +288,25 @@ Each longhand is listed with its shorthand.
   `transform`, `transform-origin`, `perspective`, `transform-style`
   and `backface-visibility`.
 - **Motion.**
-  - `transition`, `transition-property`, `-duration`, `-delay` and
-    `-timing-function`, tweened on the animation clock
-  - `animation` and its longhands, including `animation-play-state`,
-    driving `@keyframes`
+  - `transition`, `transition-property`, `-duration`, `-delay`,
+    `-timing-function` and `-behavior`, tweened on the animation
+    clock. `transition-behavior: allow-discrete` flips a discrete
+    property (`isolation`, `mix-blend-mode`, `backface-visibility`,
+    `appearance`, `caret-shape`) through the tween — the from value
+    holds to halfway, the to value from halfway on.
+  - `animation` and its longhands, including `animation-play-state`
+    and `animation-composition` (`replace`, `add`, `accumulate`),
+    driving `@keyframes`. The composition joins each frame onto the
+    underlying cascade value: add sums the scalars and colors
+    (clamped) and post-composes the transforms; accumulate reads the
+    same here — the animation channels carry scalars and composed
+    maps, where the two modes agree.
+  - Every timing function slot takes `steps(n)` with its jump
+    position (`jump-start`, `jump-end`, `jump-none`, `jump-both`,
+    `start`, `end`) and `linear(...)`, the piecewise list of values
+    with optional percent stops.
+  - `@starting-style` inside a rule names the values a newly styled
+    widget's transitions start from — the entry transition.
 - **Icons.** `-gtk-icon-size`, `-gtk-icon-source`, `-gtk-icon-palette`
   and `-gtk-icon-transform`.
 - **Interaction.**
@@ -330,6 +345,35 @@ Each longhand is listed with its shorthand.
     stripping it means redesigning each widget's unstyled paint; a
     stylesheet already restyles every chrome surface through the box
     model (`background`, `border`, the part selectors).
+- **Scrolling.** The properties style the `Scroll` viewport
+  (`scrolledwindow`) and what it scrolls.
+  - `scroll-behavior`: `smooth` animates programmatic scrolls —
+    `RevealRect` and friends — over an eased 300 ms; `auto` (and the
+    wheel, always) lands at once, as the spec scopes smooth scrolling
+    to programmatic scrolls.
+  - `scroll-margin` (all four sides, negatives allowed) grows a
+    widget's revealed rect; `scroll-padding` insets the viewport the
+    reveal and snap math use.
+  - `scroll-snap-type` (`none`, or `x`/`y`/`block`/`inline`/`both`
+    with `proximity` or `mandatory`) turns snapping on for the
+    container; `scroll-snap-align` (`start`/`end`/`center`, block and
+    inline) on the scrolled children names the snap areas, and
+    `scroll-snap-stop: always` makes one a gesture cannot skip past.
+    Mandatory snapping re-settles through a relayout or resize;
+    proximity takes a position when the resting offset lies within
+    half a viewport of it (the UA freedom the spec leaves).
+  - `overscroll-behavior` (and `-x`/`-y`; `auto`, `contain`, `none`):
+    `auto` chains motion a clamp swallowed to the parent scroll — the
+    root scroll, with none above, takes the edge glow — `contain`
+    keeps the glow here without chaining, `none` shows nothing.
+  - `scrollbar-color` (`auto` or thumb then track) and
+    `scrollbar-width` (`auto`, `thin`, `none`) reach the bars —
+    Scroll's own and the standalone Scrollbar — and inherit, so one
+    declaration covers a subtree. `scrollbar-gutter` (`auto`,
+    `stable`, `stable both-edges`) reserves the bar's column in
+    measure even without overflow (a matching one on the near edge
+    under `both-edges`), so content does not reflow when a bar
+    appears.
 
 The box model applies to the containers, controls and text widgets,
 painted in GTK's order: outer shadows, background, image, inset

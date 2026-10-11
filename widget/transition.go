@@ -83,18 +83,42 @@ func xformChan(p style.Prop, from, to style.Xform, fromPresent, toPresent bool, 
 	}}
 }
 
+// discChan captures one discrete channel under transition-behavior:
+// allow-discrete - the value stays on the from side through the
+// tween's first half and flips to to at the halfway point, the CSS
+// discrete interpolation.
+func discChan[T comparable](p style.Prop, from, to T, set func(*style.Values, T)) *tweenChan {
+	if from == to {
+		return nil
+	}
+	return &tweenChan{prop: p, apply: func(cs *style.Values, e float64) {
+		if e < 0.5 {
+			set(cs, from)
+			return
+		}
+		set(cs, to)
+	}}
+}
+
 // transitionValues starts (or retargets) the transition tween a
 // restyle asks for. The tween's start is whatever the cache holds -
 // the settled values, or an earlier tween's interpolated ones - so a
 // change mid-flight turns smoothly. A first style applies at once:
 // nothing settled to move from, and an unarranged widget paints
 // nothing yet.
-func (n *node) transitionValues(old, v style.Values) {
+func (n *node) transitionValues(old, v style.Values, firstStyle bool) {
 	if n.trCancel != nil {
 		n.trCancel()
 		n.trCancel = nil
 	}
-	if v.Transition.Duration <= 0 || anim.Instant() || n.styleSeen == 0 || n.bounds.Empty() {
+	// A first style has nothing settled to move from - unless the
+	// cascade carries an @starting-style block, whose values start the
+	// entry transition.
+	fresh := firstStyle
+	if fresh && v.Starting != nil {
+		old, fresh = *v.Starting, false
+	}
+	if v.Transition.Duration <= 0 || anim.Instant() || fresh || (n.bounds.Empty() && v.Starting == nil) {
 		return
 	}
 	both := func(p style.Prop) bool { return old.Has(p) && v.Has(p) }
@@ -132,6 +156,18 @@ func (n *node) transitionValues(old, v style.Values) {
 	}
 	add(xformChan(style.PropTransform, old.Transform, v.Transform, old.Has(style.PropTransform), v.Has(style.PropTransform), func(cs *style.Values, m style.Xform) { cs.Transform = m }))
 	add(xformChan(style.PropIconTransform, old.IconXform, v.IconXform, old.Has(style.PropIconTransform), v.Has(style.PropIconTransform), func(cs *style.Values, m style.Xform) { cs.IconXform = m }))
+	// The discrete channels ride only under allow-discrete, and flip
+	// at the halfway point instead of interpolating.
+	disc := func(c *tweenChan) {
+		if c != nil && v.Transition.Discrete {
+			chans = append(chans, c)
+		}
+	}
+	disc(discChan(style.PropIsolation, old.Isolate, v.Isolate, func(cs *style.Values, x bool) { cs.Isolate = x }))
+	disc(discChan(style.PropBackfaceVisibility, old.BackfaceHidden, v.BackfaceHidden, func(cs *style.Values, x bool) { cs.BackfaceHidden = x }))
+	disc(discChan(style.PropMixBlendMode, old.Blend, v.Blend, func(cs *style.Values, x render.BlendMode) { cs.Blend = x }))
+	disc(discChan(style.PropAppearance, old.Appearance, v.Appearance, func(cs *style.Values, x style.Appearance) { cs.Appearance = x }))
+	disc(discChan(style.PropCaretShape, old.CaretShape, v.CaretShape, func(cs *style.Values, x style.CaretShape) { cs.CaretShape = x }))
 	if len(chans) == 0 {
 		return
 	}
@@ -182,11 +218,15 @@ func mixColor(a, b render.Color, t float64) render.Color {
 		uint32(mix(a.B(), b.B())))
 }
 
-// cssTiming maps the computed transition timing onto an easing: the
-// cubic bezier solved per sample, steps quantized.
+// cssTiming maps the computed transition or animation timing onto
+// an easing: the linear() piecewise list, the steps curve with its
+// jump position, or the cubic bezier solved per sample.
 func cssTiming(tm style.Timing) anim.Easing {
+	if tm.LinN > 0 {
+		return anim.Piecewise(tm.Lin[:tm.LinN])
+	}
 	if tm.Steps > 0 {
-		return func(t float64) float64 { return math.Floor(t*float64(tm.Steps)) / float64(tm.Steps) }
+		return anim.Steps(tm.Steps, anim.StepPos(tm.StepPos))
 	}
 	return anim.CubicBezier(tm.X1, tm.Y1, tm.X2, tm.Y2)
 }

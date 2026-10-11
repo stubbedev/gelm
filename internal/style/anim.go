@@ -59,8 +59,9 @@ type Keyframe struct {
 
 // Animation is one computed animation: which @keyframes rule runs, for
 // how long after what delay, along which curve, how many times, in
-// which direction, and what holds when it is not running. A nil
-// Keyframes (an unknown name, or `animation: none`) runs nothing.
+// which direction, what holds when it is not running, and how its
+// effect composes onto the underlying style. A nil Keyframes (an
+// unknown name, or `animation: none`) runs nothing.
 type Animation struct {
 	Name      string
 	Duration  float64 // seconds
@@ -71,7 +72,10 @@ type Animation struct {
 	Direction uint8 // DirNormal..DirAlternateReverse
 	Fill      uint8 // FillNone..FillBoth
 	Running   bool
-	Keyframes *Keyframes
+	// Composition is animation-composition: how a frame joins the
+	// underlying value (CompReplace, CompAdd, CompAccumulate).
+	Composition uint8
+	Keyframes   *Keyframes
 }
 
 // The animation-direction values.
@@ -317,6 +321,12 @@ func parseOneAnimation(ts []token, cx *ctx) (a Animation, none, ok bool) {
 				a.Fill = FillBackwards
 			case "both":
 				a.Fill = FillBoth
+			case "replace":
+				a.Composition = CompReplace
+			case "add":
+				a.Composition = CompAdd
+			case "accumulate":
+				a.Composition = CompAccumulate
 			case "linear", "ease", "ease-in", "ease-out", "ease-in-out":
 				a.Timing, _ = timingOf(part, cx)
 			default:
@@ -371,6 +381,7 @@ func mergeAnimSlots(v *Values) {
 	zipF(v.AnimDelay, func(a *Animation, x float64) { a.Delay = x })
 	zipU(v.AnimDirection, func(a *Animation, x uint8) { a.Direction = x })
 	zipU(v.AnimFill, func(a *Animation, x uint8) { a.Fill = x })
+	zipU(v.AnimComposition, func(a *Animation, x uint8) { a.Composition = x })
 }
 
 // parseAnimationPlayState parses `running` or `paused` without
