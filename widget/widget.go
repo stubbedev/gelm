@@ -161,6 +161,9 @@ type node struct {
 	// parent, but :root, inheritance and scoped-sheet lookup stop at it
 	// (SetStyleRoot).
 	styleRoot bool
+	// viewport is the @media viewport a style root's window reported
+	// (SetMediaViewportFor); zero falls back to the global one.
+	viewport struct{ w, h int }
 
 	// style identity: the element name (a constructor-set override and
 	// the type-derived default, resolved once), the `#id`, the classes

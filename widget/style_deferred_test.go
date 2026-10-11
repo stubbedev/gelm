@@ -44,6 +44,24 @@ func TestPerWindowMediaViewport(t *testing.T) {
 	}
 }
 
+func TestMediaViewportOfFollowsTheStyleRoot(t *testing.T) {
+	resetMedia(t)
+	root := NewBox(Column, 0, 0)
+	leaf := NewSpacer(0, 0)
+	root.Append(leaf, false)
+	SetStyleRoot(root)
+	arrangeTree(t, root, 100, 100)
+	SetMediaViewport(640, 480)
+	SetMediaViewportFor(root, 320, 200)
+	if w, h := MediaViewportOf(leaf); w != 320 || h != 200 {
+		t.Errorf("a widget reads its window's viewport, got %dx%d", w, h)
+	}
+	SetMediaViewportFor(root, 0, 0)
+	if w, h := MediaViewportOf(leaf); w != 640 || h != 480 {
+		t.Errorf("a cleared window falls back to the global viewport, got %dx%d", w, h)
+	}
+}
+
 func TestContainerQueryResize(t *testing.T) {
 	resetMedia(t)
 	face := goldenFace(t)
