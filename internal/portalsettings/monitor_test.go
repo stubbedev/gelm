@@ -726,3 +726,17 @@ func TestIconThemeFollowsThroughCache(t *testing.T) {
 		t.Error("the empty setting disturbed the cache")
 	}
 }
+
+func TestUpdateAfterCloseDeliversNothing(t *testing.T) {
+	address, _ := startBus(t)
+	publishMock(t, address)
+	m := newTestMonitor(t, address)
+	onChange, snapshot := collect()
+	m.OnColorSchemeChange(onChange)
+	m.Close()
+	m.scheme.update(m, appearance.Light, true)
+	m.scheme.update(m, appearance.Dark, true)
+	if got := snapshot(); len(got) != 0 {
+		t.Fatalf("a change after Close reached a listener: %v", got)
+	}
+}

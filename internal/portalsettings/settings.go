@@ -58,7 +58,7 @@ func (s *setting[T]) update(m *Monitor, v T, deliver bool) {
 	changed := v != s.current
 	s.current = v
 	var fns []func(T)
-	if deliver && changed {
+	if deliver && changed && !m.closed {
 		fns = slices.Clone(s.listeners)
 	}
 	m.mu.Unlock()
