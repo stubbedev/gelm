@@ -40,12 +40,25 @@ var propTable map[string]propDef
 
 func init() {
 	propTable = map[string]propDef{
-		"color":            {setOf(PropColor), colorInto(func(v *Values) *render.Color { return &v.Color })},
-		"background-color": {setOf(PropBackgroundColor), colorInto(func(v *Values) *render.Color { return &v.Background })},
-		"background-image": {setOf(PropBackgroundImage), parseBackgroundImage},
-		"background":       {setOf(PropBackgroundColor, PropBackgroundImage), parseBackground},
-		"opacity":          {setOf(PropOpacity), parseOpacity},
-		"filter":           {setOf(PropFilter), parseFilter},
+		"color":               {setOf(PropColor), colorInto(func(v *Values) *render.Color { return &v.Color })},
+		"background-color":    {setOf(PropBackgroundColor), colorInto(func(v *Values) *render.Color { return &v.Background })},
+		"background-image":    {setOf(PropBackgroundImage), parseBackgroundImage},
+		"background":          {setOf(PropBackgroundColor, PropBackgroundImage), parseBackground},
+		"opacity":             {setOf(PropOpacity), parseOpacity},
+		"filter":              {setOf(PropFilter), parseFilter},
+		"backdrop-filter":     {setOf(PropBackdropFilter), parseBackdropFilter},
+		"mix-blend-mode":      {setOf(PropMixBlendMode), parseMixBlendMode},
+		"isolation":           {setOf(PropIsolation), parseIsolation},
+		"clip-path":           {setOf(PropClipPath), parseClipPath},
+		"mask":                {setOf(PropMaskImage, PropMaskPosition, PropMaskSize, PropMaskRepeat, PropMaskMode), parseMask},
+		"mask-image":          {setOf(PropMaskImage), parseMaskImage},
+		"mask-position":       {setOf(PropMaskPosition), parseMaskPosition},
+		"mask-size":           {setOf(PropMaskSize), parseMaskSize},
+		"mask-repeat":         {setOf(PropMaskRepeat), parseMaskRepeat},
+		"mask-mode":           {setOf(PropMaskMode), parseMaskMode},
+		"perspective":         {setOf(PropPerspective), parsePerspective},
+		"transform-style":     {setOf(PropTransformStyle), parseTransformStyle},
+		"backface-visibility": {setOf(PropBackfaceVisibility), parseBackfaceVisibility},
 
 		"padding":        {setOf(PropPaddingTop, PropPaddingRight, PropPaddingBottom, PropPaddingLeft), sidesInto(func(v *Values) *Sides { return &v.Padding }, false)},
 		"padding-top":    {setOf(PropPaddingTop), sideInto(func(v *Values) *int { return &v.Padding.Top }, false)},
@@ -531,42 +544,6 @@ func parseOpacity(ts []token, cx *ctx, v *Values) bool {
 	}
 	v.Opacity = math.Min(1, math.Max(0, n.v))
 	return true
-}
-
-// parseFilter parses `none` or a list of brightness()/opacity()
-// functions; brightness multiplies, opacity folds into the brightness
-// channel's companion, Values.Opacity is left alone (CSS applies the
-// filter's opacity on top of the property). Other filter functions are
-// rejected.
-func parseFilter(ts []token, cx *ctx, v *Values) bool {
-	comps := components(ts)
-	if len(comps) == 1 && comps[0][0].ident("none") {
-		v.Brightness = 1
-		return true
-	}
-	b := 1.0
-	for _, c := range comps {
-		if c[0].kind != tkFunc || c[0].s != "brightness" {
-			return false
-		}
-		n, ok := evalNumeric(funcArgs(c), cx)
-		if !ok {
-			return false
-		}
-		switch n.kind {
-		case numNumber:
-		case numPercent:
-			n.v /= 100
-		default:
-			return false
-		}
-		if n.v < 0 {
-			return false
-		}
-		b *= n.v
-	}
-	v.Brightness = b
-	return len(comps) > 0
 }
 
 // parseBackground parses the background shorthand: at most one color
@@ -1133,12 +1110,11 @@ func composeTransform(ts []token, cx *ctx) (Xform, bool) {
 		if len(comp) == 0 || comp[0].kind != tkFunc {
 			return Xform{}, false
 		}
-		affine, part, ok := transformPrim(comp[0].s, splitTop(funcArgs(comp), tkComma), cx)
+		_, part, ok := transformPrim(comp[0].s, splitTop(funcArgs(comp), tkComma), cx)
 		if !ok {
 			return Xform{}, false
 		}
-		x.M = x.M.Mul(affine)
-		x.Parts = append(x.Parts, part)
+		x.compose(part)
 	}
 	return x, true
 }
@@ -1302,6 +1278,42 @@ func transformPrim(name string, args [][]token, cx *ctx) (render.Affine, XformPa
 			}
 		}
 		return render.Affine{A: nums[0], B: nums[1], C: nums[2], D: nums[3], E: nums[4], F: nums[5]}, XformPart{Op: XformMatrix, N: nums}, true
+	case "perspective":
+		if len(args) != 1 {
+			return render.Affine{}, XformPart{}, false
+		}
+		d, ok := num(0)
+		if !ok || d <= 0 {
+			return render.Affine{}, XformPart{}, false
+		}
+		return render.Identity, XformPart{Op: XformPerspective, N: [6]float64{d}}, true
+	case "rotatex":
+		if len(args) != 1 {
+			return render.Affine{}, XformPart{}, false
+		}
+		deg, ok := angle(0)
+		if !ok {
+			return render.Affine{}, XformPart{}, false
+		}
+		return render.Identity, XformPart{Op: XformRotateX, N: [6]float64{deg}}, true
+	case "rotatey":
+		if len(args) != 1 {
+			return render.Affine{}, XformPart{}, false
+		}
+		deg, ok := angle(0)
+		if !ok {
+			return render.Affine{}, XformPart{}, false
+		}
+		return render.Identity, XformPart{Op: XformRotateY, N: [6]float64{deg}}, true
+	case "translatez":
+		if len(args) != 1 {
+			return render.Affine{}, XformPart{}, false
+		}
+		dz, ok := num(0)
+		if !ok {
+			return render.Affine{}, XformPart{}, false
+		}
+		return render.Identity, XformPart{Op: XformTranslateZ, N: [6]float64{dz}}, true
 	}
 	return render.Affine{}, XformPart{}, false
 }

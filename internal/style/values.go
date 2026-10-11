@@ -106,6 +106,18 @@ const (
 	PropDirection
 	PropUnicodeBidi
 	PropWritingMode
+	PropBackdropFilter
+	PropMixBlendMode
+	PropIsolation
+	PropClipPath
+	PropMaskImage
+	PropMaskPosition
+	PropMaskSize
+	PropMaskRepeat
+	PropMaskMode
+	PropPerspective
+	PropTransformStyle
+	PropBackfaceVisibility
 	numProps
 )
 
@@ -593,6 +605,32 @@ type Values struct {
 	BgImageURL string
 	Opacity    float64
 	Brightness float64
+
+	// Filter is the computed filter list; Brightness stays the
+	// brightness-only fast path's product, kept in sync by the
+	// parser so the tween engines keep their channel.
+	Filter render.Filters
+	// Backdrop is the computed backdrop-filter list, applied to what
+	// paints behind the widget rather than the widget itself.
+	Backdrop render.Filters
+	// Blend is the computed mix-blend-mode; BlendNormal composites as
+	// plain source-over.
+	Blend render.BlendMode
+	// Isolate is isolation: isolate — the subtree becomes its own
+	// compositing group.
+	Isolate bool
+	// Clip is the computed clip-path; a zero Kind clips nothing.
+	Clip ClipShape
+	// Mask is the computed mask-image group (position, size, repeat,
+	// mode).
+	Mask Mask
+	// Perspective is the perspective distance in px; zero is none.
+	Perspective float64
+	// Preserve3D is transform-style: preserve-3d; flat otherwise. The
+	// painter flattens either way today — see docs/css.md.
+	Preserve3D bool
+	// BackfaceHidden is backface-visibility: hidden.
+	BackfaceHidden bool
 
 	Padding     Sides
 	Margin      Sides

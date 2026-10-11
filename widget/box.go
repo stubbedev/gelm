@@ -546,12 +546,13 @@ func (b *Box) ArrangeRoot(r render.Rect) {
 // applies to the children as one.
 func (b *Box) Paint(cv *render.Canvas) {
 	v := b.style(b)
-	if v.Has(style.PropTransform) && v.Transform.M != render.Identity {
+	if v.Has(style.PropTransform) && (v.Transform.M != render.Identity || !v.Transform.P.Flat()) {
 		b.paintTransformed(cv, v)
 		return
 	}
-	fx := pushEffects(cv, v)
 	radii := radiusOr(v, 0)
+	fx := pushEffects(cv, &b.node, v, b.bounds, radii)
+	cv = fx.cv
 	bg := pickc(0, v, style.PropBackgroundColor, 0)
 	if bg != 0 || hasBoxLayers(v) {
 		paintBoxBehind(cv, v, b.bounds, radii, borderOf(v), bg)
@@ -563,7 +564,7 @@ func (b *Box) Paint(cv *render.Canvas) {
 		PaintChild(cv, c.w)
 	}
 	paintOutline(cv, v, b.bounds, radii)
-	fx.pop(cv)
+	fx.pop()
 }
 
 // paintTransformed paints the box's subtree offscreen and composites
@@ -577,11 +578,20 @@ func (b *Box) paintTransformed(cv *render.Canvas, v *style.Values) {
 	m := v.Transform.M.About(ox, oy)
 	region := m.MapBounds(b.bounds)
 	region = region.Union(b.bounds)
+	var p3 render.M3
+	if v.Transform.P != render.Identity3 || v.Perspective > 0 {
+		p3 = render.Affine3(render.Translate(ox, oy)).Mul(v.Transform.P).Mul(render.Affine3(render.Translate(-ox, -oy)))
+		if v.Perspective > 0 {
+			p3 = render.Perspective4(v.Perspective).Plane3().Mul(p3)
+		}
+		region = p3.MapBounds(b.bounds).Union(region)
+	}
 	l := cv.Layer(b.layer, region)
 	b.layer = l
 	lc := l.Canvas()
-	fx := pushEffects(lc, v)
 	radii := radiusOr(v, 0)
+	var fx effects
+	fx.pushFast(lc, v)
 	bg := pickc(0, v, style.PropBackgroundColor, 0)
 	if bg != 0 || hasBoxLayers(v) {
 		paintBoxBehind(lc, v, b.bounds, radii, borderOf(v), bg)
@@ -593,7 +603,14 @@ func (b *Box) paintTransformed(cv *render.Canvas, v *style.Values) {
 		PaintChild(lc, c.w)
 	}
 	paintOutline(lc, v, b.bounds, radii)
-	fx.pop(lc)
+	fx.popFast()
+	if v.BackfaceHidden && v.Transform.Backface {
+		return
+	}
+	if v.Transform.P != render.Identity3 || v.Perspective > 0 {
+		cv.CompositeProjective(l, region, p3, 1)
+		return
+	}
 	cv.Composite(l, l.Canvas().Rect(), m, 1)
 }
 

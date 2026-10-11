@@ -209,10 +209,11 @@ func (i *Icon) Arrange(r render.Rect) {
 // last frame.
 func (i *Icon) Paint(cv *render.Canvas) {
 	v := i.style(i)
-	fx := pushEffects(cv, v)
-	defer fx.pop(cv)
 	b := boxOf(v, render.Insets{})
 	radii := radiusOr(v, 0)
+	fx := pushEffects(cv, &i.node, v, i.bounds, radii)
+	cv = fx.cv
+	defer fx.pop()
 	if bg := pickc(0, v, style.PropBackgroundColor, 0); bg != 0 || hasBoxLayers(v) {
 		paintBoxBehind(cv, v, i.bounds, radii, b.border, bg)
 	}

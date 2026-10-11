@@ -427,19 +427,21 @@ func (m *Menu) nextSelectable(i, dir int) int {
 func (m *Menu) Paint(cv *render.Canvas) {
 	t := Current()
 	v := m.style(m)
-	fx := pushEffects(cv, v)
 	radii := radiusOr(v, t.Radius)
+	fx := pushEffects(cv, &m.node, v, m.bounds, radii)
+	cv = fx.cv
 	paintBoxBehind(cv, v, m.bounds, radii, borderOf(v), pickc(0, v, style.PropBackgroundColor, t.Surface))
 	paintOutline(cv, v, m.bounds, radii)
-	fx.pop(cv)
+	fx.pop()
 
 	cw := m.contents.style(&m.contents)
-	cfx := pushEffects(cv, cw)
 	_, rowsRect := boxRects(boxOf(cw, menuContentsPad), m.bounds)
 	m.contents.Arrange(rowsRect)
 	cradii := radiusOr(cw, 0)
+	cfx := pushEffects(cv, &m.contents.node, cw, rowsRect, cradii)
+	cv = fx.cv
 	paintBoxBehind(cv, cw, rowsRect, cradii, borderOf(cw), pickc(0, cw, style.PropBackgroundColor, 0))
-	cfx.pop(cv)
+	cfx.pop()
 
 	lineH := m.face.Shape("lg", m.sizePx).LineHeight()
 	slot := m.iconSlot()
@@ -456,14 +458,15 @@ func (m *Menu) Paint(cv *render.Canvas) {
 		})
 		row := pad.margin.Shrink(render.Rect{X: rowsRect.X, Y: rowsRect.Y + i*stride, W: rowsRect.W, H: band})
 		rp.Arrange(row)
-		rfx := pushEffects(cv, rv)
 		rradii := radiusOr(rv, t.Radius)
+		rfx := pushEffects(cv, &rp.node, rv, row, rradii)
+		cv = fx.cv
 		var hoverBg render.Color
 		if i == m.hovered && m.selectable(i) {
 			hoverBg = t.HoverAccent()
 		}
 		paintBoxBehind(cv, rv, row, rradii, borderOf(rv), pickc(0, rv, style.PropBackgroundColor, hoverBg))
-		rfx.pop(cv)
+		rfx.pop()
 		if it.Kind == ItemSeparator {
 			y := row.Y + row.H/2
 			cv.Line(row.X+8, y, row.X+row.W-8, y, 1, t.Border)

@@ -864,9 +864,10 @@ func PaintBoxLayers(cv *render.Canvas, w Widget) {
 		return
 	}
 	v := n.style(w)
-	fx := pushEffects(cv, v)
-	defer fx.pop(cv)
 	radii := radiusOr(v, 0)
+	fx := pushEffects(cv, n, v, n.bounds, radii)
+	cv = fx.cv
+	defer fx.pop()
 	bg := pickc(0, v, style.PropBackgroundColor, 0)
 	if bg != 0 || hasBoxLayers(v) {
 		paintBoxBehind(cv, v, n.bounds, radii, borderOf(v), bg)
@@ -1492,7 +1493,28 @@ func styleChanged(a, b *style.Values) bool {
 		a.VariantAlt != b.VariantAlt || a.OpticalSizing != b.OpticalSizing ||
 		a.Direction != b.Direction || a.UnicodeBidi != b.UnicodeBidi ||
 		a.WritingMode != b.WritingMode ||
+		a.Filter != b.Filter || a.Backdrop != b.Backdrop || a.Blend != b.Blend ||
+		a.Isolate != b.Isolate || a.Perspective != b.Perspective ||
+		a.Preserve3D != b.Preserve3D || a.BackfaceHidden != b.BackfaceHidden ||
+		!clipShapeEqual(&a.Clip, &b.Clip) || !maskEqual(&a.Mask, &b.Mask) ||
 		!animsEqual(a.Animation, b.Animation)
+}
+
+// clipShapeEqual compares two clip shapes field-wise; the polygon is
+// a slice, so Values cannot compare it with ==.
+func clipShapeEqual(a, b *style.ClipShape) bool {
+	if a.Kind != b.Kind || a.Inset != b.Inset || a.InsetRad != b.InsetRad ||
+		a.Rad != b.Rad || a.RadX != b.RadX || a.RadY != b.RadY ||
+		a.CenterX != b.CenterX || a.CenterY != b.CenterY || a.Path != b.Path {
+		return false
+	}
+	return slices.Equal(a.Poly, b.Poly)
+}
+
+// maskEqual compares two mask groups field-wise; the gradient's
+// fixed array and the rest are straight ==.
+func maskEqual(a, b *style.Mask) bool {
+	return *a == *b
 }
 
 // animsEqual compares the computed animation groups entrywise.
@@ -1579,7 +1601,6 @@ type layoutFacts struct {
 func inheritedKey(v style.Values) inheritedFacts {
 	keep := style.SetOf(style.PropColor, style.PropFontSize, style.PropFontFamily,
 		style.PropFontWeight, style.PropFontStyle, style.PropLetterSpacing,
-		style.PropTextTransform, style.PropIconSize, style.PropCursor,
 		style.PropTextAlign, style.PropTextIndent, style.PropWhiteSpace, style.PropWordBreak,
 		style.PropLineBreak, style.PropHyphens, style.PropWordSpacing,
 		style.PropFontVariantCaps, style.PropFontVariantNumeric, style.PropFontVariantLigatures,
@@ -1632,6 +1653,12 @@ func inkOf(v *style.Values) render.Insets {
 		reach := max(0, o+v.OutlineOffset)
 		ink.Top, ink.Right = max(ink.Top, reach), max(ink.Right, reach)
 		ink.Bottom, ink.Left = max(ink.Bottom, reach), max(ink.Left, reach)
+	}
+	// The filter list paints outside the box too: blur's skirt and
+	// every drop-shadow's reach.
+	if e := v.Filter.Extent(); !e.Zero() {
+		ink.Top, ink.Right = max(ink.Top, e.Top), max(ink.Right, e.Right)
+		ink.Bottom, ink.Left = max(ink.Bottom, e.Bottom), max(ink.Left, e.Left)
 	}
 	return ink
 }

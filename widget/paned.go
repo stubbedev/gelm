@@ -311,11 +311,12 @@ func (p *Paned) Paint(cv *render.Canvas) {
 		bg = th.TextMuted
 	}
 	sv := p.sep.style(&p.sep)
-	fx := pushEffects(cv, sv)
-	defer fx.pop(cv)
 	rect := p.sepRect()
 	p.sep.Arrange(rect)
 	radii := radiusOr(sv, min(rect.W, rect.H)/2)
+	fx := pushEffects(cv, &p.node, sv, rect, radii)
+	cv = fx.cv
+	defer fx.pop()
 	paintBoxBehind(cv, sv, rect, radii, borderOf(sv), pickc(0, sv, style.PropBackgroundColor, bg))
 	paintOutline(cv, sv, rect, radii)
 }

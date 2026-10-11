@@ -110,8 +110,9 @@ func (b *Button) Paint(cv *render.Canvas) {
 	if b.BgExplicit {
 		fill = prog
 	}
-	fx := pushEffects(cv, v)
 	radii := radiusOr(v, b.radius)
+	fx := pushEffects(cv, &b.node, v, b.bounds, radii)
+	cv = fx.cv
 	paintBoxBehind(cv, v, b.bounds, radii, borderOf(v), fill)
 	if IsEnabled(b) {
 		PaintChild(cv, b.child)
@@ -121,7 +122,7 @@ func (b *Button) Paint(cv *render.Canvas) {
 		cv.PopAlpha(a)
 	}
 	paintOutline(cv, v, b.bounds, radii)
-	fx.pop(cv)
+	fx.pop()
 }
 
 // Role implements Roleer.
