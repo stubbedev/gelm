@@ -3,8 +3,8 @@ package widget
 // The CSS layout of a Box (docs/css.md). A declared display hands the
 // box's children to a CSS formatting context in place of the
 // programmatic box layout: flow for block, inline, inline-block and
-// flow-root (and for grid and inline-grid, whose grid layout is a later
-// tranche), flexbox for flex and inline-flex (cssflex.go). A
+// flow-root, flexbox for flex and inline-flex (cssflex.go), grid for
+// grid and inline-grid (cssgrid.go). A
 // display:contents child box dissolves into the pass, its children
 // laid out as the box's own while staying parented to it. The
 // interaction rule: where the stylesheet sets a layout property, CSS
@@ -33,6 +33,8 @@ const (
 	modeFlow
 	// modeFlex is CSS flexbox.
 	modeFlex
+	// modeGrid is CSS grid.
+	modeGrid
 )
 
 // layoutModeOf maps a Box's computed display to its layout. Without a
@@ -46,6 +48,8 @@ func layoutModeOf(v *style.Values) layoutMode {
 	switch v.Layout.Display {
 	case style.DisplayFlex, style.DisplayInlineFlex:
 		return modeFlex
+	case style.DisplayGrid, style.DisplayInlineGrid:
+		return modeGrid
 	case style.DisplayContents, style.DisplayNone:
 		return modeBox
 	}
@@ -87,19 +91,19 @@ func (b *Box) flowAxis() Axis {
 // A flex container's main size is definite when the constraint pins it
 // or, along a row, bounds it (a block-level box fills the width it is
 // offered); its cross size likewise, a column's width being definite
-// when bounded.
+// when bounded. A grid's are gridMeasure's.
 func (b *Box) cssMeasure(v *style.Values, mode layoutMode, inner Constraints) Size {
 	p := b.beginPass(v, mode, true)
 	defer p.end()
 	var sz Size
-	if mode == modeFlex {
+	switch mode {
+	case modeFlex:
 		main, _ := b.flexDirection(v)
-		pinned := func(a Axis) bool {
-			return extent(inner.Min, a) == extent(inner.Max, a) && finite(extent(inner.Max, a))
-		}
-		sz = p.flex(inner.Max, pinned(main) || main == Row && finite(inner.Max.W),
-			pinned(otherAxis(main)) || main == Column && finite(inner.Max.W))
-	} else {
+		sz = p.flex(inner.Max, pinned(inner, main) || main == Row && finite(inner.Max.W),
+			pinned(inner, otherAxis(main)) || main == Column && finite(inner.Max.W))
+	case modeGrid:
+		sz = p.gridMeasure(inner)
+	default:
 		sz = p.flow(inner.Max.W)
 	}
 	p.keepNaturals()
@@ -107,14 +111,22 @@ func (b *Box) cssMeasure(v *style.Values, mode layoutMode, inner Constraints) Si
 	return sz
 }
 
+// pinned reports whether the constraint pins its extent along a.
+func pinned(con Constraints, a Axis) bool {
+	return extent(con.Min, a) == extent(con.Max, a) && finite(extent(con.Max, a))
+}
+
 // cssArrange lays the box's children out in its content box inner by
 // its CSS layout.
 func (b *Box) cssArrange(v *style.Values, mode layoutMode, inner render.Rect) {
 	p := b.beginPass(v, mode, false)
 	defer p.end()
-	if mode == modeFlex {
+	switch mode {
+	case modeFlex:
 		p.flex(Size{W: inner.W, H: inner.H}, true, true)
-	} else {
+	case modeGrid:
+		p.grid(Size{W: inner.W, H: inner.H}, [2]gridSizing{sizeDefinite, sizeDefinite})
+	default:
 		p.flow(inner.W)
 	}
 	p.arrange(Point{X: inner.X, Y: inner.Y})
@@ -172,6 +184,8 @@ type cssItem struct {
 
 	// The flex scratch (cssflex.go).
 	flexItem
+	// grid is the grid scratch (cssgrid.go).
+	grid gridItem
 }
 
 // cssPass is one CSS layout run over a Box's children; measure and
@@ -273,7 +287,8 @@ func (p *cssPass) keepNaturals() {
 
 // arrange arranges every item at origin, the content box's corner:
 // flow items in their rects, hidden ones empty, out-of-flow ones
-// against their containing blocks from their static positions, and
+// against their containing blocks (a grid item's grid area, where the
+// grid resolved one) from their static positions, and
 // each display:contents box around what it holds.
 func (p *cssPass) arrange(origin Point) {
 	for i := range p.items {
@@ -287,7 +302,13 @@ func (p *cssPass) arrange(origin Point) {
 			r.Y += origin.Y
 			arrangeAt(it.w, it.v, layoutMarginOf(it.w).Shrink(r))
 		case itemOut:
-			placeOutOfFlow(it.w, it.v, Point{X: origin.X + it.static.X, Y: origin.Y + it.static.Y})
+			cb := ownContainingBlock(it.w, it.v)
+			if it.grid.hasCB {
+				cb = it.grid.cb
+				cb.X += origin.X
+				cb.Y += origin.Y
+			}
+			placeOutOfFlow(it.w, it.v, Point{X: origin.X + it.static.X, Y: origin.Y + it.static.Y}, cb)
 		}
 		setParents(it.host, it.w)
 	}

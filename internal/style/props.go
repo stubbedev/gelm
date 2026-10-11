@@ -199,6 +199,7 @@ func init() {
 		"writing-mode":            {setOf(PropWritingMode), parseWritingMode},
 	}
 	maps.Copy(propTable, layoutPropDefs())
+	maps.Copy(propTable, gridPropDefs())
 }
 
 var (

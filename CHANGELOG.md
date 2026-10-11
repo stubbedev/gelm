@@ -5,10 +5,9 @@
 ### CSS layout (#159)
 
 - `display` (`block`, `inline`, `inline-block`, `flow-root`, `flex`,
-  `inline-flex`, `contents`, `none`, the two-keyword forms; `grid` and
-  `inline-grid` parse and lay out as block flow until grid layout
-  lands) hands a Box's children to a CSS formatting context in place
-  of the programmatic box layout. Undeclared layout properties keep
+  `inline-flex`, `grid`, `inline-grid`, `contents`, `none`, the
+  two-keyword forms) hands a Box's children to a CSS formatting context
+  in place of the programmatic box layout. Undeclared layout properties keep
   the programmatic setting: the box axis for `flex-direction`, its
   spacing for `gap`, a child's expand for `flex-grow`.
 - Flexbox, complete: `flex-direction`, `flex-wrap`, `flex-flow`,
@@ -18,6 +17,19 @@
   flexible-length freeze loop, the automatic minimum size, baseline
   groups, `safe`/`unsafe`, auto margins, reverse directions and
   `wrap-reverse`, and `visibility: collapse` struts.
+- Grid layout (CSS Grid Level 2): `grid-template-columns`/`-rows`
+  with `fr`, `minmax()`, `fit-content()`, the content keywords, named
+  lines and `repeat()` (integer, `auto-fill`, `auto-fit` collapsing
+  empty tracks), `grid-template-areas`, the `grid-template` and `grid`
+  shorthands, `grid-auto-columns`/`-rows`/`-flow` (row, column,
+  dense), placement by line numbers (negative too), `span`, named lines
+  and areas through `grid-row`/`grid-column`/`grid-area` and their
+  longhands, §8.5 auto-placement with implicit tracks, the §11 track
+  sizing algorithm (spanning items, fr resolution, stretched auto
+  tracks), `justify-items`/`justify-self` with `place-items`/
+  `place-self`, content distribution, baseline groups, `order`, and
+  absolutely positioned items placed on grid lines. `subgrid` parses
+  and lays out as `none` (docs/css.md's deferral).
 - Normal flow: stacked blocks with collapsing sibling margins and
   `margin: auto`, inline-level widgets on line boxes aligned by
   `text-align` and `vertical-align`, and `float`/`clear`.

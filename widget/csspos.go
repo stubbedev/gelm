@@ -143,15 +143,20 @@ func containingBlock(w Widget, fixed bool) render.Rect {
 	return render.Rect{}
 }
 
+// ownContainingBlock is containingBlock for w's computed position.
+func ownContainingBlock(w Widget, v *style.Values) render.Rect {
+	return containingBlock(w, v.Layout.Position == style.PositionFixed)
+}
+
 // placeOutOfFlow arranges an absolutely or fixed positioned widget
-// against its containing block. Each axis resolves CSS's way: a
+// against its containing block cb (ownContainingBlock's, or the grid
+// area a grid container resolves for it). Each axis resolves CSS's way: a
 // definite size wins; with both insets set an auto size stretches
 // between them, and auto margins then center a definite one; otherwise
 // the widget takes its shrink-to-fit size. A set inset places the box
 // from its side, left and top first; with neither set the box keeps its
 // static position, the corner the container's flow left for it.
-func placeOutOfFlow(w Widget, v *style.Values, static Point) {
-	cb := containingBlock(w, v.Layout.Position == style.PositionFixed)
+func placeOutOfFlow(w Widget, v *style.Values, static Point, cb render.Rect) {
 	ws := resolveAxis(w, v, Row, cb.W, cb.H)
 	hs := resolveAxis(w, v, Column, cb.H, cb.W)
 	left, hasL := insetOf(v, 3, cb.W)
@@ -208,7 +213,7 @@ func placeOutOfFlow(w Widget, v *style.Values, static Point) {
 // layers — negative z-index, in-flow blocks, floats, inline-level
 // boxes, positioned boxes at z-index 0, positive z-index — then the
 // z-index within a layer and order-modified document order. z-index
-// applies to positioned boxes and to flex items. The zero key is an
+// applies to positioned boxes and to flex and grid items. The zero key is an
 // in-flow block at z-index 0: tree order.
 type stackKey struct {
 	layer, z, order int
@@ -223,10 +228,11 @@ func stackKeyOf(w Widget, mode layoutMode) stackKey {
 	v := n.style(w)
 	pos := positioned(v)
 	var k stackKey
-	if mode == modeFlex {
+	items := mode == modeFlex || mode == modeGrid
+	if items {
 		k.order = v.Layout.Order
 	}
-	if pos || mode == modeFlex {
+	if pos || items {
 		k.z = v.Layout.ZIndex
 	}
 	switch {

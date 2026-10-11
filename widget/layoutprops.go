@@ -175,7 +175,7 @@ func arrangeChild(w Widget, r render.Rect) {
 	if n != nil {
 		v = n.style(w)
 		if v.Layout.Position.OutOfFlow() && v.Has(style.PropPosition) {
-			placeOutOfFlow(w, v, Point{X: r.X, Y: r.Y})
+			placeOutOfFlow(w, v, Point{X: r.X, Y: r.Y}, ownContainingBlock(w, v))
 			return
 		}
 	}

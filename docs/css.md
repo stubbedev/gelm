@@ -336,7 +336,13 @@ Each longhand is listed with its shorthand.
   (`flex`, `flex-grow`, `flex-shrink`, `flex-basis`, `flex-direction`,
   `flex-wrap`, `flex-flow`, `order`, `justify-content`,
   `align-items`, `align-self`, `align-content`, `place-content`,
-  `gap`, `row-gap`, `column-gap`), `overflow`/`overflow-x`/
+  `gap`, `row-gap`, `column-gap`), the grid group
+  (`grid-template-columns`, `grid-template-rows`,
+  `grid-template-areas`, `grid-template`, `grid-auto-columns`,
+  `grid-auto-rows`, `grid-auto-flow`, `grid`, `grid-row-start`,
+  `grid-row-end`, `grid-column-start`, `grid-column-end`, `grid-row`,
+  `grid-column`, `grid-area`, `justify-items`, `justify-self`,
+  `place-items`, `place-self`), `overflow`/`overflow-x`/
   `overflow-y`, `visibility`, `float` and `clear` — see
   [Layout](#layout).
 - **Effects.** `opacity`, `filter`, `backdrop-filter`,
@@ -472,7 +478,7 @@ it as a zero floor, and `visibility` inherits as CSS says.
 two-keyword forms (`block flow`, `inline flow-root`, `inline flex`,
 ...). On a Box the inner display picks the layout of its children:
 normal flow for the block and inline values, flexbox for the flex
-values. On every widget the outer display decides how it sits in a CSS
+values, grid for `grid` and `inline-grid`. On every widget the outer display decides how it sits in a CSS
 flow parent: block-level, or inline-level for `inline`,
 `inline-block`, `inline-flex` and `inline-grid`; undeclared, a widget
 is block-level. `none` takes the widget out of layout, paint, hit
@@ -527,6 +533,69 @@ flow). `order` reorders layout and paint alike. `visibility: collapse`
 removes an item's main size but keeps its cross size as a strut on its
 line. Gap percentages resolve against the content box.
 
+**Grid.** The CSS Grid Layout Module Level 2 algorithm. The explicit
+grid comes from `grid-template-columns` and `grid-template-rows` —
+track sizes as lengths, percentages (auto while the container's extent
+is indefinite), `fr`, `auto`, `min-content`, `max-content`,
+`fit-content(<length-percentage>)` and `minmax(min, max)`; named lines
+in brackets, merged where two lists meet; `repeat()` by an integer,
+or `auto-fill` and `auto-fit` (as many repetitions of their fixed
+tracks as fit the definite size or max size with the gaps, the fewest
+that reach a definite min size, else one; `auto-fit` collapses the
+repetitions no item lands in, gutters included) — and from
+`grid-template-areas` (rows of names and `.` null cells, every name a
+rectangle, its edges named `<area>-start` and `<area>-end`), with the
+`grid-template` and `grid` shorthands (`grid` also takes `auto-flow`,
+`dense` and the implicit sizes on either side of the slash).
+Placement reads `grid-row-start`/`-end`, `grid-column-start`/`-end`,
+`grid-row`, `grid-column` and `grid-area`: line numbers, negative ones
+counting from the explicit grid's end, `span N`, named lines with an
+optional count, a span to a named line, and area names (a lone name is
+the area's edge, else the first line so called); past the explicit
+grid every implicit line counts as having any name, and lines clamp to
+±10000 as browsers clamp them. Auto-placement follows §8.5 in
+order-modified document order, `grid-auto-flow` `row` or `column`,
+sparse (the cursor never backtracks) or `dense` (each item takes the
+first hole that fits), items locked to a row (or column) first, then
+the rest; implicit tracks before and after the explicit grid take
+`grid-auto-columns`/`grid-auto-rows`, the first track after it the
+first size and the last before it the last, cycling. Track sizing is
+§11's: base sizes and growth limits, the non-spanning items'
+contributions, then the spanning items' grouped by span (minimum,
+min-content and max-content contributions to the intrinsic minimums,
+then to the intrinsic maximums, past the growth limits as the spec
+distributes, fit-content() clamped), the items crossing flexible
+tracks by fr ratio, the maximized tracks, the fr expansion (by the free
+space of a definite extent, or under a max-content constraint by the
+largest fr the tracks and items ask for), and `stretch` of auto tracks
+under `justify-content`/`align-content` `normal` or `stretch`. A grid
+item's minimum contribution is its automatic minimum size where CSS
+applies one: its min-content contribution, capped by fixed spanned
+maximums; zero for an item spanning several tracks one of them
+flexible, or whose overflow clips. The columns size first, the rows at
+the items' used widths. `justify-content` and `align-content` distribute the free
+space over the tracks with every keyword and `safe`/`unsafe`;
+`justify-self`/`justify-items` and `align-self`/`align-items`, with
+`place-items` and `place-self`, align each item in its area — `normal`
+stretches an item without an aspect ratio and starts one with it, auto
+margins take the free space first, `self-start`/`self-end` follow the
+item's own direction, `left`/`right` the physical sides — and the
+baseline values share a baseline across a row (first baseline in its
+first row, last baseline in its last; a widget without a baseline
+aligns its bottom edge), growing the row by the shim; the grid's first
+baseline is its first row's. Gaps are `row-gap`/`column-gap`
+(percentages of a definite content box), the box spacing where
+undeclared. `order` reorders placement and paint, and `z-index` orders
+grid items like flex items. An RTL grid runs its columns from the
+right. An absolutely positioned child of a positioned grid resolves
+its containing block from its grid lines — the area they name, an
+`auto` line, a lone span or a line outside the grid standing for the
+padding edge, and no implicit tracks made. Measured in a bounded width
+a block-level grid fills it and an `inline-grid` shrinks to its
+max-content width when that fits; an unbounded measure is the
+max-content size, and the grid's min-content size answers the shrink
+queries (`min-content` sizes, a flex item's automatic minimum).
+
 **Sizing.** `width`, `height`, `min-*` and `max-*` take lengths,
 percentages, `calc()` sums and products mixing the two (`calc(100% -
 2em)`), `auto` (`none` for max-*), `min-content`, `max-content`,
@@ -575,16 +644,36 @@ snapshot; a `visibility: visible` child of a hidden Box still shows.
 
 ### Layout deferrals
 
-- Grid layout: `display: grid` and `inline-grid` parse, compute and
-  report supported to `@supports`, and lay a Box's children out as
-  block flow (`flow-root`) until the grid tranche lands; the
-  `grid-template-*`, `grid-auto-*`, `grid-row`/`grid-column`/`grid-area`
-  and `place-items`/`place-self` properties are not parsed yet (an
-  unknown-property warning).
+- `subgrid`: `grid-template-columns`/`grid-template-rows: subgrid`
+  with its line-name lists parse, compute and report supported, and
+  lay out as `none`, CSS's reading of `subgrid` on a grid that is not a
+  subgrid. A subgrid's items size its parent's tracks, so the parent's
+  pass would have to place and measure a nested Box's children inside
+  its own track sizing and hand its tracks to that Box's arrange; the
+  widget tree measures and arranges each child Box as one widget.
+- The grid sizing algorithm's second pass (§11.1 steps 3 and 4: the
+  columns re-resolved when an item's min-content width changed with the
+  row sizes) does not run: a horizontal widget's width does not depend
+  on its row's height.
+- Under a max-content constraint (an unbounded measure) the fr size and
+  the maximized tracks do not redo against the container's own
+  min-width/min-height or max-width/max-height (§11.6, §11.7); the
+  container's sizes clamp the result, and the arrange, sizing into the
+  definite box, honors them exactly.
+- `justify-self` and `justify-items` `baseline` align as `start` (`last
+  baseline` as `end`): no widget has a baseline across the row axis.
+  The grid reports a first baseline only, widgets having one.
+- `justify-items: legacy` computes to `normal` and `legacy left`,
+  `right` or `center` to the bare keyword: the legacy keyword's
+  inheritance into descendants' `legacy` is HTML's `<center>`
+  mechanism, not modeled.
+- The static position of an absolute child of a grid that is not its
+  containing block is the content box's start corner, as in a flex
+  container; CSS aligns it as the sole item of a content-box area.
 - Inner display on containers other than Box: Grid, CenterBox, Stack,
   Paned and the other built-in containers keep their own layout
-  algorithms — their placement is their API — so `display: flex` or
-  `block` there only sets how they sit in a CSS parent, and
+  algorithms — their placement is their API — so `display: flex`,
+  `grid` or `block` there only sets how they sit in a CSS parent, and
   `display: contents` dissolves only a Box (elsewhere the widget keeps
   its box).
 - Inline formatting is of whole widgets: a widget is an atomic inline
