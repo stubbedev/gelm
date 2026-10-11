@@ -730,6 +730,48 @@ func copyProp(dst, src *Values, p Prop) {
 		dst.Appearance = src.Appearance
 	case PropTouchAction:
 		dst.TouchAction = src.TouchAction
+	case PropTextAlign:
+		dst.TextAlign = src.TextAlign
+	case PropTextIndent:
+		dst.TextIndent = src.TextIndent
+	case PropWhiteSpace:
+		dst.WhiteSpace = src.WhiteSpace
+	case PropWordBreak:
+		dst.WordBreak = src.WordBreak
+	case PropLineBreak:
+		dst.LineBreak = src.LineBreak
+	case PropHyphens:
+		dst.Hyphens = src.Hyphens
+	case PropWordSpacing:
+		dst.WordSpacing = src.WordSpacing
+	case PropVerticalAlign:
+		dst.VerticalAlign, dst.VerticalAlignPx, dst.VerticalAlignPct = src.VerticalAlign, src.VerticalAlignPx, src.VerticalAlignPct
+	case PropLineClamp:
+		dst.LineClamp = src.LineClamp
+	case PropTextOverflow:
+		dst.Overflow = src.Overflow
+	case PropFontVariantCaps:
+		dst.VariantCaps = src.VariantCaps
+	case PropFontVariantNumeric:
+		dst.VariantNumeric = src.VariantNumeric
+	case PropFontVariantLigatures:
+		dst.VariantLig = src.VariantLig
+	case PropFontVariantEastAsian:
+		dst.VariantEA = src.VariantEA
+	case PropFontVariantPosition:
+		dst.VariantPos = src.VariantPos
+	case PropFontVariantAlternates:
+		dst.VariantAlt = src.VariantAlt
+	case PropFontSynthesis:
+		dst.Synthesis = src.Synthesis
+	case PropFontOpticalSizing:
+		dst.OpticalSizing = src.OpticalSizing
+	case PropDirection:
+		dst.Direction = src.Direction
+	case PropUnicodeBidi:
+		dst.UnicodeBidi = src.UnicodeBidi
+	case PropWritingMode:
+		dst.WritingMode = src.WritingMode
 	}
 }
 

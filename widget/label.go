@@ -270,7 +270,7 @@ func (l *Label) effStyleIn(v *style.Values) (render.Font, float64) {
 			face, weight = f, 0 // the resolver served the weight
 		}
 	}
-	return l.faces.get(face, v, weight), px
+	return l.faces.get(face, v, weight, int(px)), px
 }
 
 // effStyle is effStyleIn over the widget's current cascade.
@@ -282,7 +282,8 @@ func (l *Label) effStyle() (render.Font, float64) { return l.effStyleIn(l.style(
 func (l *Label) styleRestyled(old, new style.Values) {
 	of, opx := l.effStyleIn(&old)
 	nf, npx := l.effStyleIn(&new)
-	if of != nf || opx != npx || old.TextTransform != new.TextTransform {
+	if of != nf || opx != npx || old.TextTransform != new.TextTransform ||
+		l.effDirection(&old) != l.effDirection(&new) {
 		l.retext()
 		l.InvalidateLayout()
 	}
@@ -301,11 +302,142 @@ func (l *Label) shown() string {
 	return transformText(l.text, l.style(l).TextTransform)
 }
 
+// effDirection is the base paragraph direction the label resolves
+// with: the CSS direction (and unicode-bidi's overrides, which force
+// the base the same way) over the programmatic one.
+func (l *Label) effDirection(v *style.Values) Direction {
+	if v.Has(style.PropDirection) {
+		if v.Direction == 2 {
+			return DirectionRTL
+		}
+		return DirectionLTR
+	}
+	if v.Has(style.PropUnicodeBidi) && (v.UnicodeBidi == style.BidiOverride || v.UnicodeBidi == style.BidiIsolateOverride) {
+		if l.shaped != nil && l.shaped.RTL() {
+			return DirectionRTL
+		}
+		return DirectionLTR
+	}
+	return l.dir
+}
+
+// alignOf is the horizontal placement: the CSS text-align over the
+// programmatic alignment, left and right absolute against the
+// resolved direction (start and end mirror with it).
+func (l *Label) alignOf(v *style.Values) render.Alignment {
+	if !v.Has(style.PropTextAlign) {
+		return l.align
+	}
+	rtl := l.shaped != nil && l.shaped.RTL()
+	switch v.TextAlign {
+	case style.AlignEnd:
+		return render.AlignEnd
+	case style.AlignLeft:
+		if rtl {
+			return render.AlignEnd
+		}
+		return render.AlignStart
+	case style.AlignRight:
+		if rtl {
+			return render.AlignStart
+		}
+		return render.AlignEnd
+	case style.AlignCenter:
+		return render.AlignCenter
+	default: // start, and justify on a single line
+		return render.AlignStart
+	}
+}
+
+// justifies reports whether wrapped rows distribute their leftover
+// width across the spaces (text-align justify: everything but the
+// final row).
+func (l *Label) justifies(v *style.Values) bool {
+	return v.Has(style.PropTextAlign) && v.TextAlign == style.AlignJustify
+}
+
+// wrapOf is whether rows wrap at the offered width: white-space
+// nowrap and pre turn wrapping off, pre-wrap, pre-line and
+// break-spaces on; normal keeps the programmatic mode.
+func (l *Label) wrapOf(v *style.Values) bool {
+	if v.Has(style.PropLineClamp) && v.LineClamp > 0 {
+		return true
+	}
+	if !v.Has(style.PropWhiteSpace) {
+		return l.wrap
+	}
+	switch v.WhiteSpace {
+	case style.WhiteSpaceNowrap, style.WhiteSpacePre:
+		return false
+	}
+	return true
+}
+
+// ellOf is the truncation mode: line-clamp implies an end ellipsis,
+// text-overflow ellipsis takes end when nothing stronger is set, and
+// clip clears a stylesheet ellipsis.
+func (l *Label) ellOf(v *style.Values) EllipsizeMode {
+	if v.Has(style.PropLineClamp) && v.LineClamp > 0 {
+		return EllipsizeEnd
+	}
+	if v.Has(style.PropTextOverflow) {
+		if v.Overflow == style.TextOverflowEllipsis {
+			if l.ell == EllipsizeNone {
+				return EllipsizeEnd
+			}
+			return l.ell
+		}
+		return EllipsizeNone
+	}
+	return l.ell
+}
+
+// maxLinesOf is the row cap: CSS line-clamp over GTK's lines.
+func (l *Label) maxLinesOf(v *style.Values) int {
+	if v.Has(style.PropLineClamp) && v.LineClamp > 0 {
+		return v.LineClamp
+	}
+	return l.maxLines
+}
+
+// wrapOpts is the CSS wrap configuration the breaker takes: word-break,
+// hyphens, line-break anywhere, and the white-space family's space
+// preservation.
+func wrapOpts(v *style.Values) render.WrapOptions {
+	var o render.WrapOptions
+	switch v.WordBreak {
+	case style.WordBreakBreakAll:
+		o.Break = render.WrapWordBreakAll
+	case style.WordBreakKeepAll:
+		o.Break = render.WrapWordKeepAll
+	}
+	switch v.Hyphens {
+	case style.HyphensManual:
+		o.Hyphens = render.HyphensManual
+	case style.HyphensAuto:
+		o.Hyphens = render.HyphensAuto
+	}
+	o.Anywhere = v.LineBreak == style.LineBreakAnywhere
+	switch v.WhiteSpace {
+	case style.WhiteSpacePre, style.WhiteSpacePreWrap, style.WhiteSpaceBreakSpaces:
+		o.PreserveSpaces = true
+	}
+	return o
+}
+
+// indentOf is the first row's indent (text-indent) at the start edge.
+func (l *Label) indentOf(v *style.Values) float64 {
+	if !v.Has(style.PropTextIndent) {
+		return 0
+	}
+	return v.TextIndent
+}
+
 // retext re-resolves and reshapes the run under the label's base
 // direction and refreshes the cached natural size.
 func (l *Label) retext() {
 	face, px := l.effStyle()
-	l.shaped = face.ShapeDir(l.shown(), px, l.dir)
+	l.shaped = face.ShapeDir(l.shown(), px, l.effDirection(l.style(l)))
 	l.natural = Size{
 		W: int(math.Ceil(l.shaped.Advance())),
 		H: l.lineBox(l.style(l)),
@@ -343,7 +475,7 @@ func (l *Label) Measure(con Constraints) Size {
 // box, the minimum GTK gives an ellipsized label. Wrapping and
 // clipping labels keep their width.
 func (l *Label) ShrinkableWidth() int {
-	if l.wrap || l.ell == EllipsizeNone {
+	if l.wrapOf(l.style(l)) || l.ellOf(l.style(l)) == EllipsizeNone {
 		return 0
 	}
 	face, px := l.effStyle()
@@ -381,10 +513,13 @@ func (l *Label) widthFloor() int {
 // nearest would truncate a text laid out at exactly its natural size.
 func (l *Label) textNatural(con Constraints) Size {
 	con = l.capWidth(con)
+	v := l.style(l)
 	face, px := l.effStyle()
-	lineH := l.lineBox(l.style(l))
-	if !l.wrap {
-		if l.shaped.Advance() <= float64(con.Max.W) || l.ell == EllipsizeNone {
+	lineH := l.lineBox(v)
+	wrap, ell := l.wrapOf(v), l.ellOf(v)
+	indent := int(math.Ceil(l.indentOf(v)))
+	if !wrap {
+		if l.shaped.Advance() <= float64(con.Max.W) || ell == EllipsizeNone {
 			// The whole text fits the offered width, or it overflows and
 			// clips: no mode applies. The height comes from the live line
 			// box — natural was cached before any stylesheet resolved.
@@ -392,14 +527,14 @@ func (l *Label) textNatural(con Constraints) Size {
 			sz.H = lineH
 			return clampSize(sz, con)
 		}
-		truncated := render.EllipsizeText(face, l.shown(), l.ell, float64(con.Max.W), px)
+		truncated := render.EllipsizeText(face, l.shown(), ell, float64(con.Max.W), px)
 		return clampSize(Size{
 			W: int(math.Ceil(face.Shape(truncated, px).Advance())),
 			H: lineH,
 		}, con)
 	}
 	rows := l.wrapped(float64(con.Max.W))
-	w := 0.0
+	w := float64(indent)
 	for _, ln := range rows {
 		w = math.Max(w, face.Shape(ln, px).Advance())
 	}
@@ -411,12 +546,14 @@ func (l *Label) textNatural(con Constraints) Size {
 // reports and draws the same rows.
 func (l *Label) wrapped(width float64) []string {
 	face, px := l.effStyle()
-	lines := render.WrapText(face, l.shown(), width, px)
-	if n := l.maxLines; n > 0 && l.ell != EllipsizeNone && len(lines) > n {
-		lines = append(lines[:n-1], strings.Join(lines[n-1:], " "))
+	v := l.style(l)
+	ell, maxLines := l.ellOf(v), l.maxLinesOf(v)
+	lines := render.WrapTextOpts(face, l.shown(), width, px, wrapOpts(v))
+	if maxLines > 0 && ell != EllipsizeNone && len(lines) > maxLines {
+		lines = append(lines[:maxLines-1], strings.Join(lines[maxLines-1:], " "))
 	}
-	if last := len(lines) - 1; l.ell != EllipsizeNone && lines[last] != "" {
-		lines[last] = render.EllipsizeText(face, lines[last], l.ell, width, px)
+	if last := len(lines) - 1; ell != EllipsizeNone && lines[last] != "" {
+		lines[last] = render.EllipsizeText(face, lines[last], ell, width, px)
 	}
 	return lines
 }
@@ -432,7 +569,7 @@ func (l *Label) MinSize() Size {
 	v := l.style(l)
 	o := boxOf(v, render.Insets{}).outer()
 	floor := Size{H: l.lineBox(v)}
-	if l.wrap && l.text != "" {
+	if l.wrapOf(v) && l.text != "" {
 		w := 0.0
 		for _, tok := range render.WrapText(face, l.shown(), 1, px) {
 			w = math.Max(w, face.Shape(tok, px).Advance())
@@ -465,12 +602,12 @@ func (l *Label) Paint(cv *render.Canvas) {
 	content := b.padding.Shrink(b.border.Shrink(l.bounds))
 	face, px := l.effStyleIn(v)
 	col := l.textColor(v)
-	if l.wrap {
-		l.paintWrapped(cv, face, px, col, content)
+	if l.wrapOf(v) {
+		l.paintWrapped(cv, face, px, col, content, v)
 	} else {
 		text := l.shown()
-		if l.ell != EllipsizeNone && l.shaped.Advance() > float64(content.W) {
-			text = render.EllipsizeText(face, text, l.ell, float64(content.W), px)
+		if ell := l.ellOf(v); ell != EllipsizeNone && l.shaped.Advance() > float64(content.W) {
+			text = render.EllipsizeText(face, text, ell, float64(content.W), px)
 		}
 		// A CSS line-height taller than the glyphs centers them in the
 		// taller box (half-leading); a smaller one lets them overflow
@@ -485,33 +622,61 @@ func (l *Label) Paint(cv *render.Canvas) {
 				line.H = l.shaped.LineHeight()
 			}
 		}
-		l.drawLine(cv, face, px, text, line, col, cssDecoration(v))
+		l.drawLine(cv, face, px, text, line, col, cssDecoration(v), l.alignOf(v), l.effDirection(v), 0)
 	}
 	paintOutline(cv, v, l.bounds, radii)
 	fx.pop(cv)
 }
 
 // drawLine draws one aligned line of text and its decoration.
-func (l *Label) drawLine(cv *render.Canvas, face render.Font, px float64, text string, box render.Rect, col render.Color, deco render.Decoration) {
-	sh := face.DrawAlignedDir(cv, text, box, px, col, l.align, l.dir)
-	if sh != nil && deco.Lines != 0 {
-		x, baseline := render.AlignedPen(sh, box, l.align, l.dir)
+func (l *Label) drawLine(cv *render.Canvas, face render.Font, px float64, text string, box render.Rect, col render.Color, deco render.Decoration, align render.Alignment, dir Direction, justify float64) {
+	sh := face.ShapeDir(text, px, dir)
+	if float64(box.H) < float64(sh.LineHeight()) {
+		return
+	}
+	x, baseline := render.AlignedPen(sh, box, align, dir)
+	if justify > 0 && sh.SeparatorCount() > 0 {
+		sh.DrawJustified(cv, x, baseline, col, justify)
+	} else {
+		sh.Draw(cv, x, baseline, col)
+	}
+	if deco.Lines != 0 {
 		sh.DrawDecoration(cv, x, baseline, deco, col)
 	}
 }
 
 // paintWrapped draws the wrapped rows, the stack vertically centered in
-// a taller rect, each row aligned like a single line.
-func (l *Label) paintWrapped(cv *render.Canvas, face render.Font, px float64, col render.Color, box render.Rect) {
+// a taller rect, each row aligned per the cascade - justify spreads
+// everything but the final row across the width, and the first row
+// carries the text indent at its start edge.
+func (l *Label) paintWrapped(cv *render.Canvas, face render.Font, px float64, col render.Color, box render.Rect, v *style.Values) {
 	lines := l.wrapped(float64(box.W))
-	lineH := l.lineBox(l.style(l))
+	lineH := l.lineBox(v)
+	align, dir := l.alignOf(v), l.effDirection(v)
 	y := box.Y
 	if extra := box.H - len(lines)*lineH; extra > 0 {
 		y += extra / 2
 	}
-	deco := cssDecoration(l.style(l))
-	for _, ln := range lines {
-		l.drawLine(cv, face, px, ln, render.Rect{X: box.X, Y: y, W: box.W, H: lineH}, col, deco)
+	deco := cssDecoration(v)
+	rtl := l.shaped != nil && l.shaped.RTL()
+	for i, ln := range lines {
+		row, just := box, 0.0
+		if indent := l.indentOf(v); i == 0 && indent != 0 {
+			if rtl {
+				row.W -= int(math.Round(indent))
+			} else {
+				row.X += int(math.Round(indent))
+				row.W -= int(math.Round(indent))
+			}
+		}
+		if l.justifies(v) && i < len(lines)-1 {
+			if sh := face.ShapeDir(ln, px, dir); sh.SeparatorCount() > 0 {
+				if gap := (float64(box.W) - sh.Advance()) / float64(sh.SeparatorCount()); gap > 0 {
+					just = gap
+				}
+			}
+		}
+		l.drawLine(cv, face, px, ln, render.Rect{X: row.X, Y: y, W: box.W, H: lineH}, col, deco, align, dir, just)
 		y += lineH
 	}
 }

@@ -27,13 +27,12 @@ var ignoredProps = map[string]bool{
 	"-gtk-icon-filter": true, "-gtk-dpi": true, "-gtk-secondary-caret-color": true,
 	"text-shadow": true, "text-decoration-line": true,
 	"text-decoration-color": true, "text-decoration-style": true,
-	"font-variant-numeric": true, "font-variant": true,
 	"font-stretch": true, "font-kerning": true,
 	"background-size": true, "background-position": true,
 	"background-repeat": true, "background-clip": true, "background-origin": true,
 	"background-blend-mode": true, "border-image": true, "border-image-source": true,
 	"border-image-slice": true, "border-image-width": true, "border-image-repeat": true,
-	"outline-radius": true, "-gtk-outline-radius": true, "text-overflow": true,
+	"outline-radius": true, "-gtk-outline-radius": true,
 }
 
 // propTable maps every supported property name to its definition.
@@ -137,6 +136,30 @@ func init() {
 		"accent-color":         {setOf(PropAccentColor), parseAccentColor},
 		"appearance":           {setOf(PropAppearance), parseAppearance},
 		"touch-action":         {setOf(PropTouchAction), parseTouchAction},
+
+		"text-align":              {setOf(PropTextAlign), parseTextAlign},
+		"text-indent":             {setOf(PropTextIndent), parseTextIndent},
+		"white-space":             {setOf(PropWhiteSpace), parseWhiteSpace},
+		"word-break":              {setOf(PropWordBreak), parseWordBreak},
+		"line-break":              {setOf(PropLineBreak), parseLineBreak},
+		"hyphens":                 {setOf(PropHyphens), parseHyphens},
+		"word-spacing":            {setOf(PropWordSpacing), parseWordSpacing},
+		"vertical-align":          {setOf(PropVerticalAlign), parseVerticalAlign},
+		"line-clamp":              {setOf(PropLineClamp), parseLineClamp},
+		"-webkit-line-clamp":      {setOf(PropLineClamp), parseLineClamp},
+		"text-overflow":           {setOf(PropTextOverflow), parseTextOverflow},
+		"font-variant-caps":       {setOf(PropFontVariantCaps), parseFontVariantCaps},
+		"font-variant-numeric":    {setOf(PropFontVariantNumeric), parseFontVariantNumeric},
+		"font-variant-ligatures":  {setOf(PropFontVariantLigatures), parseFontVariantLigatures},
+		"font-variant-east-asian": {setOf(PropFontVariantEastAsian), parseFontVariantEastAsian},
+		"font-variant-position":   {setOf(PropFontVariantPosition), parseFontVariantPosition},
+		"font-variant-alternates": {setOf(PropFontVariantAlternates), parseFontVariantAlternates},
+		"font-variant":            {fontVariantProps, parseFontVariant},
+		"font-synthesis":          {setOf(PropFontSynthesis), parseFontSynthesis},
+		"font-optical-sizing":     {setOf(PropFontOpticalSizing), parseFontOpticalSizing},
+		"direction":               {setOf(PropDirection), parseDirection},
+		"unicode-bidi":            {setOf(PropUnicodeBidi), parseUnicodeBidi},
+		"writing-mode":            {setOf(PropWritingMode), parseWritingMode},
 	}
 }
 
@@ -146,8 +169,10 @@ var (
 	borderColors = setOf(PropBorderTopColor, PropBorderRightColor, PropBorderBottomColor, PropBorderLeftColor)
 	borderRadii  = setOf(PropBorderTopLeftRadius, PropBorderTopRightRadius, PropBorderBottomRightRadius,
 		PropBorderBottomLeftRadius)
-	transitionProps = setOf(PropTransitionProperty, PropTransitionDuration, PropTransitionTiming, PropTransitionDelay)
-	animationProps  = setOf(PropAnimation, PropAnimationPlayState)
+	transitionProps  = setOf(PropTransitionProperty, PropTransitionDuration, PropTransitionTiming, PropTransitionDelay)
+	animationProps   = setOf(PropAnimation, PropAnimationPlayState)
+	fontVariantProps = setOf(PropFontVariantCaps, PropFontVariantNumeric, PropFontVariantLigatures,
+		PropFontVariantEastAsian, PropFontVariantPosition, PropFontVariantAlternates)
 )
 
 // animTimeInto applies a time longhand across the computed animations.
@@ -1559,6 +1584,584 @@ func parseTextTransform(ts []token, _ *ctx, v *Values) bool {
 		v.TextTransform = TransformLowercase
 	case "capitalize":
 		v.TextTransform = TransformCapitalize
+	default:
+		return false
+	}
+	return true
+}
+
+// identOf returns comps' single identifier, lowercased, if the value
+// is exactly one identifier.
+func identOf(comps [][]token) (string, bool) {
+	if len(comps) != 1 || comps[0][0].kind != tkIdent {
+		return "", false
+	}
+	return strings.ToLower(comps[0][0].s), true
+}
+
+// parseTextAlign parses text-align: start, end, left, right, center,
+// justify (and GTK's fill, which reads as justify).
+func parseTextAlign(ts []token, _ *ctx, v *Values) bool {
+	s, ok := identOf(components(ts))
+	if !ok {
+		return false
+	}
+	switch s {
+	case "start":
+		v.TextAlign = AlignStart
+	case "end":
+		v.TextAlign = AlignEnd
+	case "left":
+		v.TextAlign = AlignLeft
+	case "right":
+		v.TextAlign = AlignRight
+	case "center":
+		v.TextAlign = AlignCenter
+	case "justify", "fill":
+		v.TextAlign = AlignJustify
+	default:
+		return false
+	}
+	return true
+}
+
+// parseTextIndent parses text-indent: a length (percentages need the
+// containing block, which the style pass never sees, so they are
+// invalid here).
+func parseTextIndent(ts []token, cx *ctx, v *Values) bool {
+	comps := components(ts)
+	if len(comps) != 1 {
+		return false
+	}
+	n, ok := evalNumeric(comps[0], cx)
+	if !ok || n.kind != numLength && n.kind != numNumber {
+		return false
+	}
+	v.TextIndent = n.v
+	return true
+}
+
+// parseWhiteSpace parses white-space: normal, pre, nowrap,
+// pre-wrap, pre-line, break-spaces.
+func parseWhiteSpace(ts []token, _ *ctx, v *Values) bool {
+	s, ok := identOf(components(ts))
+	if !ok {
+		return false
+	}
+	switch s {
+	case "normal":
+		v.WhiteSpace = WhiteSpaceNormal
+	case "pre":
+		v.WhiteSpace = WhiteSpacePre
+	case "nowrap":
+		v.WhiteSpace = WhiteSpaceNowrap
+	case "pre-wrap":
+		v.WhiteSpace = WhiteSpacePreWrap
+	case "pre-line":
+		v.WhiteSpace = WhiteSpacePreLine
+	case "break-spaces":
+		v.WhiteSpace = WhiteSpaceBreakSpaces
+	default:
+		return false
+	}
+	return true
+}
+
+// parseWordBreak parses word-break: normal, break-all, keep-all.
+func parseWordBreak(ts []token, _ *ctx, v *Values) bool {
+	s, ok := identOf(components(ts))
+	if !ok {
+		return false
+	}
+	switch s {
+	case "normal":
+		v.WordBreak = WordBreakNormal
+	case "break-all":
+		v.WordBreak = WordBreakBreakAll
+	case "keep-all":
+		v.WordBreak = WordBreakKeepAll
+	default:
+		return false
+	}
+	return true
+}
+
+// parseLineBreak parses line-break: auto, loose, normal, strict,
+// anywhere.
+func parseLineBreak(ts []token, _ *ctx, v *Values) bool {
+	s, ok := identOf(components(ts))
+	if !ok {
+		return false
+	}
+	switch s {
+	case "auto":
+		v.LineBreak = LineBreakAuto
+	case "loose":
+		v.LineBreak = LineBreakLoose
+	case "normal":
+		v.LineBreak = LineBreakNormal
+	case "strict":
+		v.LineBreak = LineBreakStrict
+	case "anywhere":
+		v.LineBreak = LineBreakAnywhere
+	default:
+		return false
+	}
+	return true
+}
+
+// parseHyphens parses hyphens: none, manual, auto.
+func parseHyphens(ts []token, _ *ctx, v *Values) bool {
+	s, ok := identOf(components(ts))
+	if !ok {
+		return false
+	}
+	switch s {
+	case "none":
+		v.Hyphens = HyphensNone
+	case "manual":
+		v.Hyphens = HyphensManual
+	case "auto":
+		v.Hyphens = HyphensAuto
+	default:
+		return false
+	}
+	return true
+}
+
+// parseWordSpacing parses word-spacing: normal or a length.
+// Percentages resolve against the computed line-height.
+func parseWordSpacing(ts []token, cx *ctx, v *Values) bool {
+	comps := components(ts)
+	if len(comps) != 1 {
+		return false
+	}
+	if comps[0][0].ident("normal") {
+		v.WordSpacing = 0
+		return true
+	}
+	n, ok := evalNumeric(comps[0], cx)
+	if !ok || n.kind != numLength && n.kind != numNumber {
+		return false
+	}
+	v.WordSpacing = n.v
+	return true
+}
+
+// parseVerticalAlign parses vertical-align: baseline, sub, super,
+// text-top, text-bottom, top, middle, bottom, or a length/percentage
+// (against the computed line-height).
+func parseVerticalAlign(ts []token, cx *ctx, v *Values) bool {
+	comps := components(ts)
+	if len(comps) != 1 {
+		return false
+	}
+	if comps[0][0].kind == tkIdent {
+		switch strings.ToLower(comps[0][0].s) {
+		case "baseline":
+			v.VerticalAlign = VerticalAlignBaseline
+		case "sub":
+			v.VerticalAlign = VerticalAlignSub
+		case "super":
+			v.VerticalAlign = VerticalAlignSuper
+		case "text-top":
+			v.VerticalAlign = VerticalAlignTextTop
+		case "text-bottom":
+			v.VerticalAlign = VerticalAlignTextBottom
+		case "top":
+			v.VerticalAlign = VerticalAlignTop
+		case "middle":
+			v.VerticalAlign = VerticalAlignMiddle
+		case "bottom":
+			v.VerticalAlign = VerticalAlignBottom
+		default:
+			return false
+		}
+		v.VerticalAlignPx = 0
+		return true
+	}
+	n, ok := evalNumeric(comps[0], cx)
+	if !ok {
+		return false
+	}
+	switch n.kind {
+	case numNumber, numLength:
+		v.VerticalAlign, v.VerticalAlignPx, v.VerticalAlignPct = VerticalAlignLength, n.v, false
+	case numPercent:
+		// A fraction of the line box, resolved by the consumer: the
+		// parse cache is per declaration, so it cannot see this node's
+		// line-height.
+		v.VerticalAlign, v.VerticalAlignPx, v.VerticalAlignPct = VerticalAlignLength, n.v/100, true
+	default:
+		return false
+	}
+	return true
+}
+
+// parseLineClamp parses line-clamp (and -webkit-line-clamp): none or a
+// positive integer.
+func parseLineClamp(ts []token, cx *ctx, v *Values) bool {
+	comps := components(ts)
+	if len(comps) != 1 {
+		return false
+	}
+	if comps[0][0].ident("none") {
+		v.LineClamp = 0
+		return true
+	}
+	n, ok := evalNumeric(comps[0], cx)
+	if !ok || n.kind != numNumber || n.v < 1 || n.v != math.Trunc(n.v) {
+		return false
+	}
+	v.LineClamp = int(n.v)
+	return true
+}
+
+// parseTextOverflow parses text-overflow: clip or ellipsis.
+func parseTextOverflow(ts []token, _ *ctx, v *Values) bool {
+	s, ok := identOf(components(ts))
+	if !ok {
+		return false
+	}
+	switch s {
+	case "clip":
+		v.Overflow = TextOverflowClip
+	case "ellipsis":
+		v.Overflow = TextOverflowEllipsis
+	default:
+		return false
+	}
+	return true
+}
+
+// parseFontVariantCaps parses font-variant-caps.
+func parseFontVariantCaps(ts []token, _ *ctx, v *Values) bool {
+	s, ok := identOf(components(ts))
+	if !ok {
+		return false
+	}
+	switch s {
+	case "normal":
+		v.VariantCaps = CapsNormal
+	case "small-caps":
+		v.VariantCaps = CapsSmallCaps
+	case "all-small-caps":
+		v.VariantCaps = CapsAllSmallCaps
+	case "petite-caps":
+		v.VariantCaps = CapsPetiteCaps
+	case "all-petite-caps":
+		v.VariantCaps = CapsAllPetiteCaps
+	case "unicase":
+		v.VariantCaps = CapsUnicase
+	case "titling-caps":
+		v.VariantCaps = CapsTitlingCaps
+	default:
+		return false
+	}
+	return true
+}
+
+// parseFontVariantNumeric parses font-variant-numeric's keyword list.
+func parseFontVariantNumeric(ts []token, _ *ctx, v *Values) bool {
+	comps := components(ts)
+	if len(comps) == 0 {
+		return false
+	}
+	var flags FontVariantNumeric
+	for _, c := range comps {
+		s, ok := identOf([][]token{c})
+		if !ok {
+			return false
+		}
+		switch s {
+		case "normal":
+			flags = 0
+		case "lining-nums":
+			flags |= NumLining
+		case "oldstyle-nums":
+			flags |= NumOldStyle
+		case "proportional-nums":
+			flags |= NumProportional
+		case "tabular-nums":
+			flags |= NumTabular
+		case "diagonal-fractions":
+			flags |= NumDiagonalFractions
+		case "stacked-fractions":
+			flags |= NumStackedFractions
+		case "ordinal":
+			flags |= NumOrdinal
+		case "slashed-zero":
+			flags |= NumSlashedZero
+		default:
+			return false
+		}
+	}
+	v.VariantNumeric = flags
+	return true
+}
+
+// parseFontVariantLigatures parses font-variant-ligatures' keyword
+// list; a no-* flag clears its counterpart.
+func parseFontVariantLigatures(ts []token, _ *ctx, v *Values) bool {
+	comps := components(ts)
+	if len(comps) == 0 {
+		return false
+	}
+	var flags FontVariantLigatures
+	for _, c := range comps {
+		s, ok := identOf([][]token{c})
+		if !ok {
+			return false
+		}
+		switch s {
+		case "normal":
+			flags = 0
+		case "common-ligatures":
+			flags |= LigCommon
+		case "no-common-ligatures":
+			flags &^= LigCommon
+		case "discretionary-ligatures":
+			flags |= LigDiscretionary
+		case "no-discretionary-ligatures":
+			flags &^= LigDiscretionary
+		case "historical-ligatures":
+			flags |= LigHistorical
+		case "no-historical-ligatures":
+			flags &^= LigHistorical
+		case "contextual":
+			flags |= LigContextual
+		case "no-contextual":
+			flags &^= LigContextual
+		default:
+			return false
+		}
+	}
+	v.VariantLig = flags
+	return true
+}
+
+// parseFontVariantEastAsian parses font-variant-east-asian's keyword
+// list.
+func parseFontVariantEastAsian(ts []token, _ *ctx, v *Values) bool {
+	comps := components(ts)
+	if len(comps) == 0 {
+		return false
+	}
+	var flags FontVariantEastAsian
+	for _, c := range comps {
+		s, ok := identOf([][]token{c})
+		if !ok {
+			return false
+		}
+		switch s {
+		case "normal":
+			flags = 0
+		case "jis78":
+			flags |= EAJis78
+		case "jis83":
+			flags |= EAJis83
+		case "jis90":
+			flags |= EAJis90
+		case "jis2004":
+			flags |= EAJis2004
+		case "simplified":
+			flags |= EASimplified
+		case "traditional":
+			flags |= EATraditional
+		case "full-width":
+			flags |= EAFullWidth
+		case "proportional-width":
+			flags |= EAProportional
+		case "ruby":
+			flags |= EARuby
+		default:
+			return false
+		}
+	}
+	v.VariantEA = flags
+	return true
+}
+
+// parseFontVariantPosition parses font-variant-position.
+func parseFontVariantPosition(ts []token, _ *ctx, v *Values) bool {
+	s, ok := identOf(components(ts))
+	if !ok {
+		return false
+	}
+	switch s {
+	case "normal":
+		v.VariantPos = PositionNormal
+	case "sub":
+		v.VariantPos = PositionSub
+	case "super":
+		v.VariantPos = PositionSuper
+	default:
+		return false
+	}
+	return true
+}
+
+// parseFontVariantAlternates parses font-variant-alternates: normal
+// or historical-forms (the functional forms need per-glyph knowledge
+// the font stack does not expose).
+func parseFontVariantAlternates(ts []token, _ *ctx, v *Values) bool {
+	s, ok := identOf(components(ts))
+	if !ok {
+		return false
+	}
+	switch s {
+	case "normal":
+		v.VariantAlt = AlternatesNormal
+	case "historical-forms":
+		v.VariantAlt = AlternatesHistorical
+	default:
+		return false
+	}
+	return true
+}
+
+// parseFontVariant parses the font-variant shorthand: any mix of the
+// sub-property keywords, each landing on its own longhand.
+func parseFontVariant(ts []token, cx *ctx, v *Values) bool {
+	comps := components(ts)
+	if len(comps) == 0 {
+		return false
+	}
+	scratch := &Values{}
+	seen := false
+	for _, c := range comps {
+		switch {
+		case parseFontVariantCaps(c, cx, scratch):
+			seen = true
+		case parseFontVariantNumeric(c, cx, scratch):
+			seen = true
+		case parseFontVariantLigatures(c, cx, scratch):
+			seen = true
+		case parseFontVariantEastAsian(c, cx, scratch):
+			seen = true
+		case parseFontVariantPosition(c, cx, scratch):
+			seen = true
+		case parseFontVariantAlternates(c, cx, scratch):
+			seen = true
+		default:
+			return false
+		}
+	}
+	if !seen {
+		return false
+	}
+	v.VariantCaps = scratch.VariantCaps
+	v.VariantNumeric = scratch.VariantNumeric
+	v.VariantLig = scratch.VariantLig
+	v.VariantEA = scratch.VariantEA
+	v.VariantPos = scratch.VariantPos
+	v.VariantAlt = scratch.VariantAlt
+	return true
+}
+
+// parseFontSynthesis parses font-synthesis: none or weight, style,
+// small-caps.
+func parseFontSynthesis(ts []token, _ *ctx, v *Values) bool {
+	comps := components(ts)
+	if len(comps) == 0 {
+		return false
+	}
+	var flags FontSynthesis
+	for _, c := range comps {
+		s, ok := identOf([][]token{c})
+		if !ok {
+			return false
+		}
+		switch s {
+		case "none":
+			flags = 0
+		case "weight":
+			flags |= SynthWeight
+		case "style":
+			flags |= SynthStyle
+		case "small-caps":
+			flags |= SynthSmallCaps
+		default:
+			return false
+		}
+	}
+	v.Synthesis = flags
+	return true
+}
+
+// parseFontOpticalSizing parses font-optical-sizing: auto or none.
+func parseFontOpticalSizing(ts []token, _ *ctx, v *Values) bool {
+	s, ok := identOf(components(ts))
+	if !ok {
+		return false
+	}
+	switch s {
+	case "auto":
+		v.OpticalSizing = true
+	case "none":
+		v.OpticalSizing = false
+	default:
+		return false
+	}
+	return true
+}
+
+// parseDirection parses direction: ltr or rtl.
+func parseDirection(ts []token, _ *ctx, v *Values) bool {
+	s, ok := identOf(components(ts))
+	if !ok {
+		return false
+	}
+	switch s {
+	case "ltr":
+		v.Direction = 1
+	case "rtl":
+		v.Direction = 2
+	default:
+		return false
+	}
+	return true
+}
+
+// parseUnicodeBidi parses unicode-bidi.
+func parseUnicodeBidi(ts []token, _ *ctx, v *Values) bool {
+	s, ok := identOf(components(ts))
+	if !ok {
+		return false
+	}
+	switch s {
+	case "normal":
+		v.UnicodeBidi = BidiNormal
+	case "embed":
+		v.UnicodeBidi = BidiEmbed
+	case "isolate":
+		v.UnicodeBidi = BidiIsolate
+	case "bidi-override":
+		v.UnicodeBidi = BidiOverride
+	case "isolate-override":
+		v.UnicodeBidi = BidiIsolateOverride
+	case "plaintext":
+		v.UnicodeBidi = BidiPlaintext
+	default:
+		return false
+	}
+	return true
+}
+
+// parseWritingMode parses writing-mode: horizontal-tb, vertical-rl,
+// vertical-lr.
+func parseWritingMode(ts []token, _ *ctx, v *Values) bool {
+	s, ok := identOf(components(ts))
+	if !ok {
+		return false
+	}
+	switch s {
+	case "horizontal-tb":
+		v.WritingMode = WritingHorizontalTB
+	case "vertical-rl":
+		v.WritingMode = WritingVerticalRL
+	case "vertical-lr":
+		v.WritingMode = WritingVerticalLR
 	default:
 		return false
 	}

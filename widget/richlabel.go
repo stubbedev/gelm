@@ -185,7 +185,7 @@ func (l *RichLabel) faceFor(st TextStyle) render.Font {
 			f = v
 		}
 	}
-	return l.faces.get(f, l.style(l), 0)
+	return l.faces.get(f, l.style(l), 0, int(fontPx(l.style(l), l.sizePx)))
 }
 
 // styleRestyled implements styleRestyler: a changed letter spacing or

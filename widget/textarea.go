@@ -1005,7 +1005,7 @@ func (t *TextArea) px() float64 { return fontPx(t.style(t), t.sizePx) }
 
 // font is the face the text shapes with: the constructor face styled
 // by the cascade (letter-spacing, font-variation-settings, tnum).
-func (t *TextArea) font() render.Font { return t.faces.get(t.face, t.style(t), 0) }
+func (t *TextArea) font() render.Font { return t.faces.get(t.face, t.style(t), 0, int(t.px())) }
 
 // textPad is an unstyled area's padding.
 var textPad = render.Insets{Top: 6, Right: 8, Bottom: 6, Left: 8}
