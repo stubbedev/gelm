@@ -28,7 +28,7 @@ type InspectInfo struct {
 	// CursorTheme is the resolved xcursor theme name and its nominal
 	// size; CursorErr reports why it is unavailable when empty.
 	CursorTheme string
-	CursorSize  int
+	CursorSize  uint32
 	CursorErr   error
 	// FractionalScale reports both wp_viewporter and
 	// wp_fractional_scale_manager_v1 are bound, so surfaces scale
@@ -59,7 +59,7 @@ func (s *Session) Globals() map[string]uint32 {
 // shapes from: the theme's name and nominal size. The theme loads on
 // first use (the cursor path loads it on the first SetCursor anyway),
 // so this can report a load failure; the error says which.
-func (s *Session) CursorTheme() (name string, size int, err error) {
+func (s *Session) CursorTheme() (name string, size uint32, err error) {
 	if cursorThm == nil && cursorErr == nil {
 		if s.shm == nil {
 			return "", 0, errNoShm
@@ -72,5 +72,5 @@ func (s *Session) CursorTheme() (name string, size int, err error) {
 	if cursorThm == nil {
 		return "", 0, errNoShm
 	}
-	return cursorThm.Name, int(cursorThm.Size), nil
+	return cursorThm.Name, cursorThm.Size, nil
 }

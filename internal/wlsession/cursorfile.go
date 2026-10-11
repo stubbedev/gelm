@@ -27,7 +27,7 @@ const fileCursorPrefix = "file:"
 // fileCursor is one parsed file cursor request.
 type fileCursor struct {
 	path     string
-	hx, hy   int
+	hx, hy   int32
 	fallback string
 }
 
@@ -46,18 +46,26 @@ func parseFileCursor(name string) (fileCursor, bool) {
 	if len(parts) != 2 && len(parts) != 3 {
 		return fileCursor{}, false
 	}
-	fc := fileCursor{path: path}
-	var err error
-	if fc.hx, err = strconv.Atoi(parts[0]); err != nil || fc.hx < 0 {
+	hx, okx := hotspotCoord(parts[0])
+	hy, oky := hotspotCoord(parts[1])
+	if !okx || !oky {
 		return fileCursor{}, false
 	}
-	if fc.hy, err = strconv.Atoi(parts[1]); err != nil || fc.hy < 0 {
-		return fileCursor{}, false
-	}
+	fc := fileCursor{path: path, hx: hx, hy: hy}
 	if len(parts) == 3 {
 		fc.fallback = parts[2]
 	}
 	return fc, true
+}
+
+// hotspotCoord parses one hotspot coordinate: a non-negative integer
+// in the int32 range wl_pointer.set_cursor carries.
+func hotspotCoord(s string) (int32, bool) {
+	v, err := strconv.ParseInt(s, 10, 32)
+	if err != nil || v < 0 {
+		return 0, false
+	}
+	return int32(v), true
 }
 
 // pushFileCursorLocked shows the widest image of the xcursor file
@@ -93,7 +101,7 @@ func (s *Session) pushFileCursorLocked(fc fileCursor) error {
 	if err := s.crs.surface.Commit(); err != nil {
 		return fmt.Errorf("cursor commit: %w", err)
 	}
-	if err := s.pointer.SetCursor(s.pointerEnterSerial, s.crs.surface, int32(fc.hx), int32(fc.hy)); err != nil {
+	if err := s.pointer.SetCursor(s.pointerEnterSerial, s.crs.surface, fc.hx, fc.hy); err != nil {
 		return fmt.Errorf("set cursor: %w", err)
 	}
 	return nil
