@@ -10,9 +10,8 @@ import (
 // match+compute over the showcase gallery, the single-widget restyle a
 // class toggle costs, and the steady-frame paint with a stylesheet
 // loaded — which must not move against BenchmarkShowcasePaint, the
-// no-stylesheet counterpart. The bar is the prototype's: ~59µs full
-// restyle, ~274ns single restyle (bench/css-proto), zero steady-state
-// style allocations.
+// no-stylesheet counterpart. The budgets are bench/baseline.md's, with
+// zero steady-state style allocations.
 
 // galleryCSS is the benchmark stylesheet, the design doc's standard
 // shape: ~25 rules over element/class/id/state selectors, descendant

@@ -1,23 +1,35 @@
-// Package gelm is a retained-mode widget kit for Wayland, written in
-// pure Go (no cgo).
+// Package gelm is a pure-Go (no cgo) widget toolkit for Wayland and a
+// counterpart of relm4: a component framework with typed messages, a
+// retained widget tree with GTK4/libadwaita-class widgets, xdg-shell
+// windows and layer-shell surfaces, a CSS engine over a typed palette,
+// the desktop's portals and protocols, and one event loop that idles
+// at 0% CPU.
 //
-// The public API lives in two packages:
+// Applications import the public packages:
 //
-//	app       - the parked event loop, windows (xdg toplevels and
-//	              layer surfaces), popovers, dialogs, and input wiring
-//	widget    - the retained widget tree: labels, buttons, entries,
-//	              text areas, lists, notebooks, menus, icons, themes
+//	component  the component framework: components, controllers,
+//	           factories, workers, commands (headless tests in
+//	           component/componenttest)
+//	ui         typed view builders, one per widget
+//	app        the session, windows and layer surfaces, the loop,
+//	           dialogs, popovers, desktop services
+//	widget     the widget tree, theme, CSS, actions, bindings
+//	           (libadwaita style classes in widget/css)
+//	render     the premultiplied canvas, shaped text, icons
+//	anim       tweens, easing, springs and timelines
+//	appearance the desktop's color scheme, accent and contrast
+//	i18n       gettext catalogs
+//	highlight  syntax highlighters for the code view
+//	media      video and sound playback
+//	pdf        PDF writing
+//	transfer   clipboard and drag-and-drop content
+//	dmabuf     dma-buf frame descriptions
+//	capture    screen and window capture
+//	vinput     virtual pointer and keyboard injection
+//	wlr        generated Wayland protocol bindings
 //
-// Supporting it:
-//
-//	render    - premultiplied-alpha canvas, shaped text, icons
-//	wlr       - generated Wayland protocol bindings
-//	internal  - session, buffer arena, scale, popup, and drag-drop
-//	            plumbing
-//	cmd       - the demos (gelm-hello showcase, gelm-multi, panel,
-//	              bar, gelm-invoke threading demo)
-//
-// The docs/ directory carries the design contracts: architecture,
-// input model, application model, threading model, accessibility
-// decision, icon theming, and the debug inspector.
+// Everything under internal/ is implementation. The docs/ directory
+// holds the reference: architecture, components, the application,
+// input and threading models, CSS, appearance, icons, accessibility,
+// the inspector, and the capability map in docs/completeness.md.
 package gelm

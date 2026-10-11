@@ -42,15 +42,11 @@ type cacheEntry struct {
 // (name, size, scale) key with the scale in the 120-based convention of
 // internal/scale (120 is 1x, 240 is 2x). It is safe for concurrent use.
 //
-// Theme changes are explicit, not watched: SetTheme, SetSearchPaths and
-// InvalidateTheme drop every cached raster, bump Generation, and run the
-// OnReset listeners. There is no live
-// theme-change signal - following the freedesktop setting would drag
-// xsettings (or a settings daemon protocol) in as a new dependency, so
-// that is deferred by design (stubbedev/gelm#20). Callers that follow
-// the desktop theme call InvalidateTheme when they learn about a
-// switch; widget.Icon watches Generation so its next damage pass picks
-// the change up.
+// SetTheme, SetSearchPaths and InvalidateTheme drop every cached
+// raster, bump Generation, and run the OnReset listeners; the
+// application follows the desktop's icon theme through the settings
+// portal and applies each switch with ApplyIconTheme. widget.Icon
+// watches Generation so its next damage pass picks a change up.
 type Cache struct {
 	mu    sync.Mutex
 	theme string
@@ -131,8 +127,7 @@ func (c *Cache) SearchPaths() []string {
 
 // Generation counts cache-wide resets: every SetTheme, SetSearchPaths,
 // or InvalidateTheme call bumps it. Widgets compare their resolved
-// generation against it to notice a theme switch without a live
-// theme-change signal.
+// generation against it to notice a theme switch.
 func (c *Cache) Generation() uint64 {
 	c.mu.Lock()
 	defer c.mu.Unlock()
