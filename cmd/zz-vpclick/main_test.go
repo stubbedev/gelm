@@ -8,7 +8,7 @@ import (
 func TestParseRejectsBadCommandLines(t *testing.T) {
 	for _, args := range []string{
 		"", "1", "-1 2", "1 2147483648", "1 x",
-		"1 2 key", "1 2 key -5", "1 2 key 4294967296",
+		"1 2 key", "1 2 key -5", "1 2 key 65536",
 		"1 2 scroll", "1 2 scroll down", "1 2 type", "1 2 click 3", "1 2 bogus",
 	} {
 		if act, err := parse(strings.Fields(args)); err == nil || act != nil {
