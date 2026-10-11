@@ -1074,6 +1074,9 @@ func (t *TextArea) Paint(cv *render.Canvas) {
 		textCol = st.Color
 	}
 	caretCol := textCol
+	if v.Has(style.PropCaretColor) {
+		caretCol = v.CaretColor
+	}
 	if st, ok := t.scheme["cursor"]; ok && st.Color != 0 {
 		caretCol = st.Color
 	}
@@ -1189,17 +1192,21 @@ func (t *TextArea) Paint(cv *render.Canvas) {
 			}
 		}
 	}
-	// Cursor bar on the caret's visual row, while the area has keyboard
-	// focus; hidden while the input method hides its composing caret.
-	// Every frame reads the same pan, so a repaint (blink or otherwise)
-	// never jumps it.
+	// Caret in its CSS shape on the caret's visual row, while the area
+	// has keyboard focus; hidden while the input method hides its
+	// composing caret. Every frame reads the same pan, so a repaint
+	// (blink or otherwise) never jumps it.
 	caret := t.caretPos()
 	if t.focused && (!t.composing() || t.peCur >= 0) {
 		row := t.rowOf(caret)
-		cv.FillRect(render.Rect{
-			X: t.caretX(caret.line, caret.col), Y: c.Y + row*lineH + 2,
-			W: 2, H: lineH - 4,
-		}, caretCol)
+		adv := 0
+		if caret.col < len(t.lines[caret.line]) {
+			lsh := t.shapeLine(t.lines[caret.line])
+			for _, band := range lsh.AppendCaretBands(t.bands[:0], caret.col, caret.col+1) {
+				adv = int(band[1] - band[0] + 0.5)
+			}
+		}
+		cv.FillRect(caretShapeRect(t.caretX(caret.line, caret.col), c.Y+row*lineH+2, lineH-4, adv, v.CaretShape), caretCol)
 	}
 	cv.PopClip(prev)
 }
@@ -1275,6 +1282,11 @@ func (t *TextArea) ClickAt(p Point) {
 	t.clearPreedit()
 	t.cursor = t.posAt(p)
 	t.anchor = t.cursor
+	switch userSelectOf(t) {
+	case style.SelectAll:
+		t.SelectAll()
+		return
+	}
 	t.hasPref = false
 }
 
@@ -1286,6 +1298,9 @@ func (t *TextArea) DragMove(p Point) {
 	t.clearPreedit()
 	t.autoPan(p)
 	t.cursor = t.posAt(p)
+	if userSelectOf(t) == style.SelectNone {
+		t.anchor = t.cursor
+	}
 	t.hasPref = false
 }
 
@@ -1302,6 +1317,10 @@ func (t *TextArea) autoPan(p Point) {
 // land on.
 func (t *TextArea) DoubleClickAt(p Point) {
 	t.clearPreedit()
+	if userSelectOf(t) == style.SelectNone {
+		t.ClickAt(p)
+		return
+	}
 	at := t.posAt(p)
 	line := t.lines[at.line]
 	if len(line) == 0 {

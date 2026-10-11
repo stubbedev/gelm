@@ -74,7 +74,7 @@ func init() {
 		"border-right-color":  {setOf(PropBorderRightColor), colorInto(func(v *Values) *render.Color { return &v.BorderColor[1] })},
 		"border-bottom-color": {setOf(PropBorderBottomColor), colorInto(func(v *Values) *render.Color { return &v.BorderColor[2] })},
 		"border-left-color":   {setOf(PropBorderLeftColor), colorInto(func(v *Values) *render.Color { return &v.BorderColor[3] })},
-		"border":              {borderWidths | borderStyles | borderColors, borderSideInto(0b1111)},
+		"border":              {borderWidths.Or(borderStyles).Or(borderColors), borderSideInto(0b1111)},
 		"border-top":          {setOf(PropBorderTopWidth, PropBorderTopStyle, PropBorderTopColor), borderSideInto(0b0001)},
 		"border-right":        {setOf(PropBorderRightWidth, PropBorderRightStyle, PropBorderRightColor), borderSideInto(0b0010)},
 		"border-bottom":       {setOf(PropBorderBottomWidth, PropBorderBottomStyle, PropBorderBottomColor), borderSideInto(0b0100)},
@@ -130,6 +130,13 @@ func init() {
 		"-gtk-icon-palette":    {setOf(PropIconPalette), parseIconPalette},
 		"caret-color":          {setOf(PropCaretColor), parseCaretColor},
 		"text-decoration":      {setOf(PropTextDecoration), parseTextDecoration},
+		"cursor":               {setOf(PropCursor), parseCursor},
+		"pointer-events":       {setOf(PropPointerEvents), parsePointerEvents},
+		"user-select":          {setOf(PropUserSelect), parseUserSelect},
+		"caret-shape":          {setOf(PropCaretShape), parseCaretShape},
+		"accent-color":         {setOf(PropAccentColor), parseAccentColor},
+		"appearance":           {setOf(PropAppearance), parseAppearance},
+		"touch-action":         {setOf(PropTouchAction), parseTouchAction},
 	}
 }
 
@@ -1649,13 +1656,13 @@ func transitionTarget(name string) (PropSet, bool) {
 		return def.covers, true
 	}
 	if ignoredProps[name] {
-		return 0, true
+		return PropSet{}, true
 	}
-	return 0, false
+	return PropSet{}, false
 }
 
 func parseTransitionProperty(ts []token, _ *ctx, v *Values) bool {
-	v.Transition.All, v.Transition.Props = false, 0
+	v.Transition.All, v.Transition.Props = false, PropSet{}
 	for _, item := range splitTop(ts, tkComma) {
 		comps := components(item)
 		if len(comps) != 1 || comps[0][0].kind != tkIdent {
@@ -1673,7 +1680,7 @@ func parseTransitionProperty(ts []token, _ *ctx, v *Values) bool {
 		if !ok {
 			return false
 		}
-		v.Transition.Props |= ps
+		v.Transition.Props = v.Transition.Props.Or(ps)
 	}
 	return true
 }
@@ -1727,7 +1734,7 @@ func parseTransition(ts []token, cx *ctx, v *Values) bool {
 			all = true // the property defaults to all
 		}
 		v.Transition.All = v.Transition.All || all
-		v.Transition.Props |= props
+		v.Transition.Props = v.Transition.Props.Or(props)
 		// One duration per node: the longest wins, which is what a
 		// multi-property transition looks like on screen.
 		if dur > v.Transition.Duration {

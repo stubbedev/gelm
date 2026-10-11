@@ -859,9 +859,18 @@ func (l *RichLabel) SetSelectable(on bool) {
 // Selectable reports whether the label takes drag selections.
 func (l *RichLabel) Selectable() bool { return l.selectable }
 
-// PressAt starts a drag selection at the pressed rune.
+// PressAt starts a drag selection at the pressed rune. user-select
+// none never starts one; all selects the whole text.
 func (l *RichLabel) PressAt(p Point) {
 	if !l.selectable {
+		return
+	}
+	switch userSelectOf(l) {
+	case style.SelectNone:
+		return
+	case style.SelectAll:
+		l.selDrag = true
+		l.SetSelection(0, len([]rune(l.Text())))
 		return
 	}
 	l.selAnchor = l.runeAt(p)
@@ -871,7 +880,7 @@ func (l *RichLabel) PressAt(p Point) {
 
 // DragMove extends the drag selection to the pointer.
 func (l *RichLabel) DragMove(p Point) {
-	if !l.selDrag {
+	if !l.selDrag || userSelectOf(l) == style.SelectNone {
 		return
 	}
 	l.SetSelection(l.selAnchor, l.runeAt(p))

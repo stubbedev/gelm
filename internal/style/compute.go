@@ -110,15 +110,15 @@ func (sc *Scratch) computeAll(layers []Layer, n Node, parent, old *Values, env E
 	// color next: currentColor everywhere else resolves against it.
 	// line-height third: the lh unit reads it.
 	var blocked PropSet
-	blocked |= sc.computeProp(PropFontSize, v, pv, cx)
+	blocked = blocked.Or(sc.computeProp(PropFontSize, v, pv, cx))
 	if v.Has(PropFontSize) {
 		cx.em = v.FontSize
 	}
-	blocked |= sc.computeProp(PropColor, v, pv, cx)
+	blocked = blocked.Or(sc.computeProp(PropColor, v, pv, cx))
 	if v.Has(PropColor) {
 		cx.color = v.Color
 	}
-	blocked |= sc.computeProp(PropLineHeight, v, pv, cx)
+	blocked = blocked.Or(sc.computeProp(PropLineHeight, v, pv, cx))
 	if v.Has(PropLineHeight) {
 		cx.lh = v.LineHeight
 	}
@@ -129,7 +129,7 @@ func (sc *Scratch) computeAll(layers []Layer, n Node, parent, old *Values, env E
 		if p == PropFontSize || p == PropColor || p == PropLineHeight {
 			continue
 		}
-		blocked |= sc.computeProp(p, v, pv, cx)
+		blocked = blocked.Or(sc.computeProp(p, v, pv, cx))
 	}
 
 	// Inheritance: unset inherited longhands take the parent's value,
@@ -138,7 +138,7 @@ func (sc *Scratch) computeAll(layers []Layer, n Node, parent, old *Values, env E
 	for p := range numProps {
 		if inheritedProps.Has(p) && !v.Has(p) && !blocked.Has(p) && pv.Has(p) {
 			copyProp(v, pv, p)
-			v.Set |= 1 << p
+			v.Set = v.Set.With(p)
 		}
 	}
 	sc.applyMeta(v, pv, cx)
@@ -153,15 +153,15 @@ func (sc *Scratch) computeAll(layers []Layer, n Node, parent, old *Values, env E
 func (sc *Scratch) computeProp(p Prop, v, parent *Values, cx *ctx) PropSet {
 	d := sc.win[p]
 	if d == nil {
-		return 0
+		return PropSet{}
 	}
 	wide := d.wide
 	if wide == wideRevertLayer {
 		if lo := sc.winLow[p]; lo != nil && lo.wide != wideRevertLayer {
 			if src, ok := sc.parse(lo, v.Vars, cx); ok {
 				copyProp(v, src, p)
-				v.Set |= 1 << p
-				return 0
+				v.Set = v.Set.With(p)
+				return PropSet{}
 			}
 		}
 		wide = wideUnset
@@ -173,8 +173,8 @@ func (sc *Scratch) computeProp(p Prop, v, parent *Values, cx *ctx) PropSet {
 		src, ok := sc.parse(d, v.Vars, cx)
 		if ok {
 			copyProp(v, src, p)
-			v.Set |= 1 << p
-			return 0
+			v.Set = v.Set.With(p)
+			return PropSet{}
 		}
 		// Invalid at computed-value time: the declaration acts as unset.
 		wide = wideUnset
@@ -190,7 +190,7 @@ func (sc *Scratch) computeProp(p Prop, v, parent *Values, cx *ctx) PropSet {
 	case wideInherit:
 		if parent.Has(p) {
 			copyProp(v, parent, p)
-			v.Set |= 1 << p
+			v.Set = v.Set.With(p)
 		} else if !inheritedProps.Has(p) {
 			sc.setInitial(p, v, cx)
 		}
@@ -201,11 +201,11 @@ func (sc *Scratch) computeProp(p Prop, v, parent *Values, cx *ctx) PropSet {
 		// `all: unset`.
 		if !inheritedProps.Has(p) {
 			sc.setInitial(p, v, cx)
-			return 0
+			return PropSet{}
 		}
-		return 1 << p
+		return setOf(p)
 	}
-	return 0
+	return PropSet{}
 }
 
 // setInitial writes p's initial value. Border and outline colors start
@@ -215,7 +215,7 @@ func (sc *Scratch) setInitial(p Prop, v *Values, cx *ctx) {
 	init.BorderColor = [4]render.Color{cx.color, cx.color, cx.color, cx.color}
 	init.OutlineColor = cx.color
 	copyProp(v, &init, p)
-	v.Set |= 1 << p
+	v.Set = v.Set.With(p)
 }
 
 // parse substitutes and parses d once per compute.
@@ -716,6 +716,20 @@ func copyProp(dst, src *Values, p Prop) {
 		dst.CaretColor = src.CaretColor
 	case PropTextDecoration:
 		dst.Decoration = src.Decoration
+	case PropCursor:
+		dst.Cursor = src.Cursor
+	case PropPointerEvents:
+		dst.PointerEvents = src.PointerEvents
+	case PropUserSelect:
+		dst.UserSelect = src.UserSelect
+	case PropCaretShape:
+		dst.CaretShape = src.CaretShape
+	case PropAccentColor:
+		dst.AccentColor, dst.AccentAuto = src.AccentColor, src.AccentAuto
+	case PropAppearance:
+		dst.Appearance = src.Appearance
+	case PropTouchAction:
+		dst.TouchAction = src.TouchAction
 	}
 }
 

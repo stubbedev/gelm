@@ -1179,12 +1179,18 @@ func (e *Entry) Paint(cv *render.Canvas) {
 			}, render.RGBA(a.R(), a.G(), a.B(), 200))
 		}
 	}
-	// Cursor bar after the text before the caret, while the entry has
-	// keyboard focus (GTK's rule); hidden while the input method hides
-	// its composing caret. Every frame reads the same offset, so a
-	// repaint (blink or otherwise) never jumps it.
+	// Caret in its CSS shape after the text before it, while the
+	// entry has keyboard focus (GTK's rule); hidden while the input
+	// method hides its composing caret. Every frame reads the same
+	// offset, so a repaint (blink or otherwise) never jumps it.
 	if caret := e.caretRune(); caret >= 0 && e.focused && !e.caretHidden {
-		cv.FillRect(render.Rect{X: e.caretX(sh, caret), Y: c.Y, W: 2, H: c.H}, caretCol)
+		adv := 0
+		if caret < len(e.runes) {
+			for _, band := range sh.AppendCaretBands(e.bands[:0], caret, caret+1) {
+				adv = int(band[1] - band[0] + 0.5)
+			}
+		}
+		cv.FillRect(caretShapeRect(e.caretX(sh, caret), c.Y, c.H, adv, v.CaretShape), caretCol)
 	}
 	cv.PopClip(prev)
 	e.paintIcons(cv)
@@ -1290,13 +1296,19 @@ func (e *Entry) ClickAt(p Point) {
 	sh := e.shape(e.displayText())
 	e.cursor = text.SnapCluster(e.runes, sh.CaretAt(float64(p.X-e.lineX(sh))))
 	e.anchor = e.cursor
+	switch userSelectOf(e) {
+	case style.SelectAll:
+		e.SelectAll()
+		return
+	}
 	e.Invalidate()
 }
 
 // DragMove extends the selection while the pointer drags; the anchor
 // stays where the press landed. A motion past either edge auto-pans
 // one step so the drag can reach text outside the viewport. Drag edges
-// snap to cluster starts like ClickAt.
+// snap to cluster starts like ClickAt. user-select: none keeps the
+// drag a pure caret move: the anchor follows the cursor.
 func (e *Entry) DragMove(p Point) {
 	e.clearPreedit()
 	inner := e.innerRect()
@@ -1304,15 +1316,23 @@ func (e *Entry) DragMove(p Point) {
 	e.clampPan()
 	sh := e.shape(e.displayText())
 	e.cursor = text.SnapCluster(e.runes, sh.CaretAt(float64(p.X-e.lineX(sh))))
+	if userSelectOf(e) == style.SelectNone {
+		e.anchor = e.cursor
+	}
 	e.Invalidate()
 }
 
 // DoubleClickAt selects the run of same-class runes (word or
 // whitespace) under the clicked position, over the shared word
 // segmentation — the same words the ctrl+arrows steps land on.
+// user-select: none keeps the click a caret placement.
 func (e *Entry) DoubleClickAt(p Point) {
 	e.clearPreedit()
 	if len(e.runes) == 0 {
+		return
+	}
+	if userSelectOf(e) == style.SelectNone {
+		e.ClickAt(p)
 		return
 	}
 	sh := e.shape(e.displayText())

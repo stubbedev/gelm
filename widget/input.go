@@ -262,6 +262,10 @@ const scrollStepPx = 40
 // when it is a PixelScroller; any other gets whole steps as the pixels
 // add up to them.
 func (r *Router) AxisPixels(dx, dy float64) {
+	gateTouchAxis(r.hover, &dx, &dy)
+	if dx == 0 && dy == 0 && r.pixelTarget == nil {
+		return
+	}
 	for target := r.hover; target != nil; target = parentOf(target) {
 		if si, ok := target.(ScrollInputHandler); ok {
 			if IsEnabled(target) {

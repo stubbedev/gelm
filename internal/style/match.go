@@ -308,22 +308,29 @@ func (sc *Scratch) offer(d *decl, rk uint64, layer uint8) {
 		return
 	}
 	cov := d.covers
-	for p := Prop(0); cov != 0; p++ {
-		if cov&1 != 0 {
-			if rk >= sc.best[p] {
-				if sc.win[p] != nil {
-					if layer > sc.bestLayer[p] {
-						sc.lowRank[p], sc.winLow[p], sc.lowLayer[p] = sc.best[p], sc.win[p], sc.bestLayer[p]
-					} else if layer < sc.bestLayer[p] && sc.lowLayer[p] >= layer {
-						sc.lowRank[p], sc.winLow[p], sc.lowLayer[p] = 0, nil, 0
-					}
+	offers := func(p Prop) {
+		if rk >= sc.best[p] {
+			if sc.win[p] != nil {
+				if layer > sc.bestLayer[p] {
+					sc.lowRank[p], sc.winLow[p], sc.lowLayer[p] = sc.best[p], sc.win[p], sc.bestLayer[p]
+				} else if layer < sc.bestLayer[p] && sc.lowLayer[p] >= layer {
+					sc.lowRank[p], sc.winLow[p], sc.lowLayer[p] = 0, nil, 0
 				}
-				sc.best[p], sc.win[p], sc.bestLayer[p] = rk, d, layer
-			} else if layer < sc.bestLayer[p] && rk >= sc.lowRank[p] {
-				sc.lowRank[p], sc.winLow[p], sc.lowLayer[p] = rk, d, layer
 			}
+			sc.best[p], sc.win[p], sc.bestLayer[p] = rk, d, layer
+		} else if layer < sc.bestLayer[p] && rk >= sc.lowRank[p] {
+			sc.lowRank[p], sc.winLow[p], sc.lowLayer[p] = rk, d, layer
 		}
-		cov >>= 1
+	}
+	for p := Prop(0); p < propWordBits && (cov.lo>>p) != 0; p++ {
+		if cov.lo&(1<<p) != 0 {
+			offers(p)
+		}
+	}
+	for i := Prop(0); i < numProps-propWordBits && (cov.hi>>i) != 0; i++ {
+		if cov.hi&(1<<i) != 0 {
+			offers(i + propWordBits)
+		}
 	}
 }
 

@@ -209,7 +209,14 @@ Each longhand is listed with its shorthand.
   - `font-feature-settings`, `font-variation-settings`
   - `letter-spacing`, `line-height`, `text-transform`
   - `text-decoration` (underline, overline and line-through in solid,
-    double, dotted, dashed or wavy, with a color), `caret-color`
+    double, dotted, dashed or wavy, with a color), `caret-color`,
+    `caret-shape` (auto, bar, block, underscore — the entry and text
+    area caret's painted form)
+  - `user-select` (none, text, all) on the surfaces that select:
+    Entry, TextArea, RichLabel. `none` keeps a press a caret move and
+    a drag from extending a selection; `all` selects everything on a
+    press. Plain Label carries no selection machinery, so the value
+    changes nothing there.
 - **Box.**
   - `background`, `background-color`, `background-image` (the linear,
     radial and conic gradients and their `repeating-` forms)
@@ -228,11 +235,57 @@ Each longhand is listed with its shorthand.
     driving `@keyframes`
 - **Icons.** `-gtk-icon-size`, `-gtk-icon-source`, `-gtk-icon-palette`
   and `-gtk-icon-transform`.
+- **Interaction.**
+  - `cursor`: every CSS keyword (default, pointer, crosshair, text,
+    wait, progress, help, move, the n/s/e/w/ne/nw/se/sw/ns/ew/nesw/
+    nwse-resize family, zoom-in, zoom-out, grab, grabbing, none,
+    context-menu, cell, vertical-text, alias, copy, no-drop,
+    not-allowed, col-resize, row-resize, all-scroll) maps onto the
+    cursor-shape-v1 vocabulary, with the xcursor theme as the
+    fallback for compositors without the protocol (the theme path
+    carries the classic core names). `cursor: url("file.cur") x y`
+    loads the named xcursor file and pins the CSS hotspot over the
+    file's own; the first frame shows. The property inherits — one
+    declaration covers a subtree — and outranks a widget's built-in
+    shape (text fields' caret, buttons' hand); `auto` defers to it.
+  - `pointer-events`: `none` takes the widget out of hit testing; set
+    on a container it covers the children too, and the press falls
+    through to whatever is behind (a Stack's lower child, the parent).
+    Widgets with hand-written HitTests outside the shared HitLeaf do
+    not honor it. `auto` is the default.
+  - `accent-color`: a color or `auto` (the theme accent). The checked
+    and accent surfaces follow it: the switch's on track, the
+    checkbutton and radio fill, the progressbar and levelbar fill,
+    the slider's highlight. An explicit background on the part still
+    wins.
+  - `touch-action`: `pan-x`, `pan-y`, `none` (and the direction forms
+    `pan-left/right/up/down`, which gate their axis) gate the touch
+    scroll path — the two-finger pan and the kinetic glide after it.
+    The wheel path is never gated (touch-action speaks to touch
+    manipulation only) and the touchpad's pixel scroll shares the
+    gated path. `manipulation` parses as both pan axes; the pinch
+    half of its meaning is deferred below.
+  - `appearance`: `none` and `auto` parse and compute. `none`'s chrome
+    stripping is deferred: the widgets' default look is programmatic
+    painting against the theme, not CSS pseudo-element chrome, so
+    stripping it means redesigning each widget's unstyled paint; a
+    stylesheet already restyles every chrome surface through the box
+    model (`background`, `border`, the part selectors).
 
 The box model applies to the containers, controls and text widgets,
 painted in GTK's order: outer shadows, background, image, inset
 shadows, border, content, outline. Opacity and filter apply over the
 subtree, and ink outside the border box joins the damage rect.
+
+### Deferred
+
+- `appearance: none` paints nothing (parses and computes): widget
+  chrome here is programmatic theme painting, not CSS pseudo-element
+  chrome, so `none` needs a per-widget unstyled redesign.
+- `touch-action`'s pinch semantics (`manipulation`'s zoom half,
+  `pinch-zoom`) are deferred: the gesture layer exposes pinch only as
+  a claimed GesturePinch a widget opts into, not an axis the scroll
+gates can mask; `manipulation` computes to both pan axes meanwhile.
 
 ## Cascade
 
@@ -255,8 +308,8 @@ revert-layer beneath a revert-layer behaves as `unset`), and as
 `unset` when no lower layer declares the property.
 
 Constructor metrics (a button's padding, a label's size) are
-defaults that a stylesheet overrides. `color` and `font-*` inherit.
-Box properties do not.
+defaults that a stylesheet overrides. `color`, the `font-*` group and
+`cursor` inherit. Box properties do not.
 
 ## Media state
 

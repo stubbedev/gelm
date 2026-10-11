@@ -718,10 +718,11 @@ func notifyRemoved(ws ...Widget) {
 	}
 }
 
-// HitLeaf returns the widget when p falls inside its bounds, else nil. It
-// is the leaf implementation of HitTest.
+// HitLeaf is the leaf hit test every widget without children routes
+// through: the widget itself inside its bounds, unless the pointer
+// passes through it (pointer-events: none on it or an ancestor).
 func (n *node) HitLeaf(self Widget, p Point) Widget {
-	if n.bounds.Contains(p.X, p.Y) {
+	if n.bounds.Contains(p.X, p.Y) && !pointerEventsNoneWithin(self) {
 		return self
 	}
 	return nil

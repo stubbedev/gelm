@@ -14,6 +14,9 @@ type meter struct {
 	node
 	value  float64
 	trough meterTrough
+	// self is the embedding widget, for reading its own cascade
+	// (accent-color) where the meter paints the fill.
+	self Widget
 	// troughFill and fillFill color the parts the cascade gives no
 	// background; nil leaves them cascade-only.
 	troughFill, fillFill func(*Theme) Color
@@ -32,6 +35,7 @@ func (t *meterTrough) appendStyleKids(buf []Widget) []Widget { return append(buf
 // initMeter names the nodes and links them under self.
 func (m *meter) initMeter(self Widget, value float64, fill string) {
 	m.value = math01(value)
+	m.self = self
 	m.trough.SetElement("trough")
 	m.trough.fill.SetElement(fill)
 	setParents(self, &m.trough)
@@ -96,8 +100,12 @@ func (m *meter) paintMeter(cv *render.Canvas, from, to float64) {
 	fr := render.Rect{X: inner.X + x0, Y: inner.Y, W: x1 - x0, H: inner.H}
 	m.trough.fill.Arrange(fr)
 	fv := m.trough.fill.style(&m.trough.fill)
+	fill := fallback(m.fillFill, t)
+	if m.self != nil {
+		fill = accentOf(m.style(m.self), fill)
+	}
 	fxp := pushEffects(cv, fv)
-	paintBoxBehind(cv, fv, fr, radiusOr(fv, inner.H/2), borderOf(fv), pickc(0, fv, style.PropBackgroundColor, fallback(m.fillFill, t)))
+	paintBoxBehind(cv, fv, fr, radiusOr(fv, inner.H/2), borderOf(fv), pickc(0, fv, style.PropBackgroundColor, fill))
 	fxp.pop(cv)
 }
 

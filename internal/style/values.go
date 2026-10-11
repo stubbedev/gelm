@@ -78,27 +78,88 @@ const (
 	PropIconPalette
 	PropCaretColor
 	PropTextDecoration
+	PropCursor
+	PropPointerEvents
+	PropUserSelect
+	PropCaretShape
+	PropAccentColor
+	PropAppearance
+	PropTouchAction
 	numProps
 )
 
-// PropSet is a set of longhands.
-type PropSet uint64
+// PropSet is a set of longhands, two words wide (the longhand table
+// passed sixty-four).
+type PropSet struct{ lo, hi uint64 }
 
 // Has reports whether p is in the set.
-func (s PropSet) Has(p Prop) bool { return s&(1<<p) != 0 }
+func (s PropSet) Has(p Prop) bool {
+	if p < propWordBits {
+		return s.lo&(1<<p) != 0
+	}
+	return s.hi&(1<<(p-propWordBits)) != 0
+}
+
+// Empty reports whether the set has no member.
+func (s PropSet) Empty() bool { return s == PropSet{} }
+
+// With returns the set plus p.
+func (s PropSet) With(p Prop) PropSet {
+	if p < propWordBits {
+		s.lo |= 1 << p
+	} else {
+		s.hi |= 1 << (p - propWordBits)
+	}
+	return s
+}
+
+// Without returns the set minus p.
+func (s PropSet) Without(p Prop) PropSet {
+	if p < propWordBits {
+		s.lo &^= 1 << p
+	} else {
+		s.hi &^= 1 << (p - propWordBits)
+	}
+	return s
+}
+
+// Or returns the union of the sets.
+func (s PropSet) Or(o PropSet) PropSet {
+	s.lo |= o.lo
+	s.hi |= o.hi
+	return s
+}
+
+// And returns the intersection of the sets.
+func (s PropSet) And(o PropSet) PropSet {
+	s.lo &= o.lo
+	s.hi &= o.hi
+	return s
+}
+
+// propWordBits is the props per set word.
+const propWordBits = 64
 
 // setOf builds a PropSet from its members.
 func setOf(ps ...Prop) PropSet {
 	var s PropSet
 	for _, p := range ps {
-		s |= 1 << p
+		s = s.With(p)
 	}
 	return s
 }
 
-// allProps is every longhand: the reach of the `all` shorthand. The
-// shift form holds with the 64-bit set full.
-const allProps = ^PropSet(0) >> (64 - numProps)
+// SetOf builds a PropSet from its members; the exported form for the
+// consumers outside the engine.
+func SetOf(ps ...Prop) PropSet { return setOf(ps...) }
+
+// allProps is every longhand: the reach of the `all` shorthand.
+var allProps = func() (s PropSet) {
+	for p := range numProps {
+		s = s.With(p)
+	}
+	return s
+}()
 
 // inheritedProps is the CSS (and GTK) inherited set: color, the font
 // group, letter-spacing, text-transform, line-height, and
@@ -106,7 +167,7 @@ const allProps = ^PropSet(0) >> (64 - numProps)
 // longhand table.
 var inheritedProps = setOf(PropColor, PropFontFamily, PropFontSize, PropFontWeight,
 	PropFontStyle, PropLetterSpacing, PropTextTransform, PropLineHeight,
-	PropFontFeatures, PropFontVariations, PropIconSize)
+	PropFontFeatures, PropFontVariations, PropIconSize, PropCursor)
 
 // Sides is a per-side length set, in logical pixels, in CSS's
 // top-right-bottom-left order.
@@ -372,6 +433,27 @@ type Values struct {
 	CaretColor render.Color
 	// Decoration is text-decoration: its lines, style, and color.
 	Decoration render.Decoration
+	// Cursor is cursor: the hover shape a stylesheet asks for, a
+	// keyword or a url() file cursor with its hotspot. The zero value
+	// is auto; it inherits.
+	Cursor CursorSpec
+	// PointerEvents is pointer-events: none takes the widget out of
+	// hit testing.
+	PointerEvents PointerEvents
+	// UserSelect is user-select on the text surfaces that select.
+	UserSelect UserSelect
+	// CaretShape is caret-shape: the caret's painted form.
+	CaretShape CaretShape
+	// AccentColor is accent-color over the theme accent; AccentAuto
+	// marks the auto keyword falling back to the theme.
+	AccentColor render.Color
+	AccentAuto  bool
+	// Appearance is appearance: parsed only, none's chrome stripping
+	// is deferred (docs/css.md).
+	Appearance Appearance
+	// TouchAction is touch-action: the pan axes a touch scroll may
+	// move.
+	TouchAction TouchAction
 
 	// Content is a pseudo-element's resolved content (::before,
 	// ::after): the strings, attr() values, and counter readings joined;

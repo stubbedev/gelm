@@ -694,7 +694,7 @@ func TestInheritanceSet(t *testing.T) {
 	if v.Has(PropBackgroundColor) || v.Has(PropPaddingTop) {
 		t.Error("non-inherited properties inherited")
 	}
-	if v.Declares(PropColor) || v.Own != 0 {
+	if v.Declares(PropColor) || !v.Own.Empty() {
 		t.Errorf("inherited values count as declared: own %b", v.Own)
 	}
 	if v := computeTree(s, b.add("label", "own")); v.Color != render.RGB(7, 7, 7) || !v.Declares(PropColor) || v.Declares(PropFontSize) {
@@ -844,7 +844,7 @@ func TestParseEmpty(t *testing.T) {
 	if s == nil || len(s.rules) != 0 {
 		t.Fatal("empty stylesheet must parse to an empty sheet")
 	}
-	if v := computeTree(s, el("button")); v.Set != 0 {
+	if v := computeTree(s, el("button")); !v.Set.Empty() {
 		t.Error("empty sheet set properties")
 	}
 }
