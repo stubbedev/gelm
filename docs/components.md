@@ -280,8 +280,8 @@ func (l *List) Init(cx *component.Context[ListMsg, struct{}]) widget.Widget {
 - Edits apply to the container in place as they are made: `PushBack`,
   `PushFront`, `Insert`, `Remove`, `Move`, `Swap` and `Clear`. Items
   that stay keep their widgets, moved items move without detaching (so
-  focus and selection survive), and nothing is rebuilt. There is no
-  guard to drop.
+  focus and selection survive), and nothing is rebuilt. Unlike relm4,
+  there is no guard to drop.
 - Items are read with `Len`, `Get(i)` and `All()` (an `iter.Seq2`), and
   sent input with `Send(i, msg)` and `Broadcast(msg)`.
 - Item outputs reach `Forward`/`ForwardTo` with the emitting item's
@@ -315,8 +315,8 @@ Views: `BoxView`, `FlowBoxView`, `StackView` (pages named per item),
 `NotebookView` (tabs titled per item) and `GridView` (cells placed by
 index). The container holds only the factory's items. Implement
 `FactoryView[C]` to render into anything else. Large, virtualized data
-sets use `widget.List` or `ColumnView` with a model instead, relm4's
-`TypedListView`.
+sets use `widget.TypedList[T]`, `widget.List` or `ColumnView[T]` with a
+model instead, relm4's `TypedListView`.
 
 ## Workers
 

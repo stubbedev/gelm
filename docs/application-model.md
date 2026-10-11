@@ -66,7 +66,8 @@ lost connection into a rebuild instead of the exit, for the case it can
 honestly cover: the connection was lost without a protocol verdict (a
 compositor that killed the client would do it again) and every window
 came from `NewWindow`, `NewLayer`, or a dialog (a host built outside
-the application cannot be rebuilt; its loop exits as before).
+the application cannot be rebuilt, so its loop exits with the
+disconnect error).
 `DisconnectedEvent.Reconnecting` tells the hook which way it goes.
 
 1. The policy hook fires, the windows are set aside with their toasts,
@@ -174,13 +175,13 @@ test is `TestSingleInstanceForwardsToPrimary`
 
 ## File dialogs
 
-`app.OpenFileDialog`, `OpenFilesDialog`, `OpenFolderDialog`, and
-`SaveFileDialog` wrap `widget.FileChooser` - the pure-Go picker
+`Application.OpenFileDialog`, `OpenFilesDialog`, `OpenFolderDialog`,
+and `SaveFileDialog` wrap `widget.FileChooser` - the pure-Go picker
 - in the standard Dialog: a places row (Up, Home, Filesystem, and
 Recent when recents are on), the directory listing, pattern filters,
 a name row in save mode, and an ok button that refuses to close the
-dialog until the choice is valid (the new `DialogConfig.
-ValidateResponse` veto). Save asks before replacing an existing file;
+dialog until the choice is valid (the `DialogConfig.ValidateResponse`
+veto). Save asks before replacing an existing file;
 choices land in `OnOpen`/`OnSave` on the loop goroutine, exactly once.
 
 **The picker is portal-free by decision.** gelm ships every widget the
@@ -188,8 +189,8 @@ picker needs, a portal FileChooser adds a D-Bus dependency and a
 second UI to keep honest, and portal-less sessions (lab machines,
 early boot, tests) get the same dialog. The seam is
 `FileChooser.SetSource` - the listing comes from an injected
-`DirSource`, so a future xdg-desktop-portal backend plugs in under the
-same dialog API without touching the picker's UI. Recents are the
+`DirSource`, so a different listing backend plugs in under the same
+dialog API without touching the picker's UI. Recents are the
 XDG `recently-used.xbel` list (`internal/recentfiles`), shared with
 the desktop's other citizens, bounded and written atomically, with
 their uris through the same `transfer.FileURI`/`URIPath` the
@@ -236,7 +237,7 @@ navigation opening the existing menu popovers, `widget.ActionBar` the
 bottom bar. A press on the bar's background starts the
 compositor's `xdg_toplevel.move` grab (the `WindowMover` contract any
 widget can implement), a double press maximizes, and
-`app.AttachHeader(win, bar)` wires controls and double-press to the
+`Application.AttachHeader(win, bar)` wires controls and double-press to the
 window in one call - `Window.SetTitle`, `Minimize`, and
 `ToggleMaximize` are the runtime setters the controls fire into.
 
@@ -272,13 +273,14 @@ URI launch never trade tokens.
 | `gtk::Window::close-request` | `Window.SetCloseRequest` | return false to veto |
 | `gtk::Application::quit` | `Application.Quit` | authoritative, bypasses vetoes |
 | GApplication single instance, `command-line`, `open` | `app.ClaimInstance` | see Single instance above |
-| `FileDialog`, relm4 `open_dialog`/`save_dialog` | `app.OpenFileDialog` family | see File dialogs above |
+| `FileDialog`, relm4 `open_dialog`/`save_dialog` | the `Application.OpenFileDialog` family | see File dialogs above |
 | `UriLauncher`, `FileLauncher` | `Application.OpenURL`, `OpenPath` | portal OpenURI with an activation token, xdg-open fallback |
 | per-window `scale-factor` | per-window scale with live `preferred_scale` | see Multi-output above |
 
 The component side of relm4 (components, workers, commands, factories)
-is mapped in [threading.md](threading.md). The widget-by-widget map is
-[completeness.md](completeness.md).
+is described in [components.md](components.md) and mapped in
+[threading.md](threading.md#the-relm4-mapping). The widget-by-widget
+map is [completeness.md](completeness.md).
 
 ## What is deliberately absent
 

@@ -642,7 +642,7 @@ var confExceptionsRendering = []confException{
 		tree:   nBox("#a"),
 		want:   []confCheck{wantPixel(30, 30, renBase), wantProbe("filter declared", renHas("a", style.PropFilter), false)},
 		reason: "an SVG filter graph needs a document loader the engine does not have",
-		doc:    "Deferred: `url()` filters — they name SVG filter graphs",
+		doc:    "`url()` filters are not supported: they name SVG filter graphs",
 	},
 	{
 		name:   "transform-style preserve-3d paints flat",
@@ -669,7 +669,7 @@ var confExceptionsRendering = []confException{
 		tree:   nBox("#a"),
 		want:   []confCheck{wantProbe("mask-image declared", renHas("a", style.PropMaskImage), false)},
 		reason: "the effect chain composites one mask layer",
-		doc:    "multiple mask layers (a comma list rejects the declaration",
+		doc:    "Multiple mask layers are not supported: a comma list rejects the declaration",
 	},
 	{
 		name: "background-blend-mode composites source-over",

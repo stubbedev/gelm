@@ -17,8 +17,9 @@ allocates. Real trace instrumentation stays behind the tag
 (`internal/debug`, `GOELM_DEBUG`), so prod binaries carry no trace
 output.
 
-The tree dump and doctor block are plain function calls
-(`widget.DumpTree`, `inspect.Doctor`) and always available.
+The tree dump is a plain function call (`widget.DumpTree`,
+`widget.DumpTreeTo`) and the doctor block prints on `GELM_DOCTOR=1`;
+both are always available.
 
 ## Turning it on
 
@@ -64,8 +65,9 @@ arms the inspector keeps both combos to itself.
 
 ## The tree dump
 
-`inspect.Dump(root, router)` (or `widget.DumpTree` directly) renders
-one indented line per widget in paint order:
+`widget.DumpTree(root, router)` renders one indented line per widget
+in paint order; the inspector's `ctrl+shift+d` prints it under a
+banner line naming the widget count (internal/inspect `Dump`):
 
     gelm tree dump: 5 widgets
     *widget.Box bounds=0,0+400x300
@@ -88,10 +90,10 @@ up in the dump and the overlay labels.
 
 ## The doctor block
 
-`inspect.Doctor(sess, inspect.DoctorOptions{...})` renders the
-diagnostics block a bug report carries verbatim. Apps print it at
-startup when `GELM_DOCTOR=1` is set (the app package does this in
-`NewApplication`):
+The doctor block is the diagnostics a bug report carries verbatim.
+Every app prints it at startup when `GELM_DOCTOR=1` (or
+`true`/`yes`/`on`) is set; `NewApplication` renders it through
+internal/inspect `Doctor`:
 
     gelm doctor
     go: go1.27.1 (linux/amd64)
@@ -108,17 +110,15 @@ startup when `GELM_DOCTOR=1` is set (the app package does this in
   logical geometry the fractional scale applies to.
 - `cursor theme` — the xcursor theme that loaded, or why it could
   not.
-- `fonts` — the faces `sysfont.Sans`/`Monospace` resolved (override
-  with `DoctorOptions.Sans`/`Mono`) plus the installed standard
-  fallback families.
+- `fonts` — the default sans and monospace faces the system font
+  lookup resolved, plus the installed standard fallback families.
 - `buffer` — the one shm pixel format gelm submits
   (`buffer.FormatName`).
 - `fractional scale` — whether surfaces scale fractionally or fall
   back to integer `set_buffer_scale`.
 
-The session snapshot itself is `Session.Inspect()` (type
-`wlsession.InspectInfo`), so tools can consume the values without
-parsing the block.
+The session snapshot itself is `Application.Session().Inspect()`, so
+tools can read the values without parsing the block.
 
 ## Tests
 

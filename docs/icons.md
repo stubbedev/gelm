@@ -19,7 +19,11 @@ How gelm resolves and paints themed icons.
   made), `NewThemeIcon` (theme name), `NewFileIcon` (png / svg / svgz
   path), `NewSVGIcon` (embedded bytes, for apps that ship their own
   glyphs). Icons rasterize at the canvas device scale, so a fractional
-  rescale re-rasterizes crisply.
+  rescale re-rasterizes crisply. `widget.ThemeIconExists` asks whether
+  a theme name resolves, `widget.SetIconSearchPaths` replaces the base
+  directories (GTK's `IconTheme.set_search_path`; nil restores the XDG
+  default), and `widget.RefreshIcons` forgets every resolved icon so
+  icons installed or removed since are picked up.
 - `render.Icon.Tint` — the recoloring primitive.
 
 ## Symbolic recoloring
@@ -59,10 +63,9 @@ swaps the resolution theme, drops every cached raster, and bumps
 - An emptied setting keeps the previous theme (Warn, the
   degraded-but-running convention) — a broken portal never blanks the
   UI.
-- `icons.Cache.OnIconThemeChanged` hears about every applied switch
-  (on the monitor's goroutine; bridge with `Application.Invoke`).
+- Inside the toolkit, `icons.Cache.OnIconThemeChanged` hears about
+  every applied switch, on the monitor's goroutine.
 
 This is a lookup refresh, never a palette swap: the "toolkit never
 flips its own theme" rule stands, and the color-scheme preference
-stays the app's to wire (docs/appearance.md). `SetTheme` and
-`InvalidateTheme` remain the explicit paths.
+stays the app's to wire ([appearance.md](appearance.md)).

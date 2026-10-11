@@ -50,11 +50,11 @@ live in [architecture.md](architecture.md#non-goals).
 | HeaderBar, WindowControls, ActionBar | the same names; `Application.AttachHeader`, `AttachMenuBar` | widget/chrome.go, app/chrome.go |
 | Popover | `app.Popover`, anchored to any widget, on toplevels and layer surfaces | app/popover.go |
 | Dialog, MessageDialog, AlertDialog | `app.Dialog`, `MessageBox`, `PromptDialog`, `ProgressDialog`; modality through xdg-dialog-v1 | app/dialog.go, app/prompt.go |
-| FileDialog | `app.OpenFileDialog`, `OpenFilesDialog`, `OpenFolderDialog`, `SaveFileDialog` (pure-Go picker, XDG recents); relm4-components' `OpenButton` is `app.NewOpenButton` (label, filters, folder mode, recent-files dropdown over the shared store) | app/filedialog.go, app/openbutton.go, widget/filechooser.go |
+| FileDialog | `Application.OpenFileDialog`, `OpenFilesDialog`, `OpenFolderDialog`, `SaveFileDialog` (pure-Go picker, XDG recents); relm4-components' `OpenButton` is `Application.NewOpenButton` (label, filters, folder mode, recent-files dropdown over the shared store) | app/filedialog.go, app/openbutton.go, widget/filechooser.go |
 | ColorDialogButton, FontDialogButton, Inscription | `ColorButton` and `FontButton` (`Application.AttachColorButton`/`AttachFontButton` open the choosers; `BindColor`/`BindFont`), `Inscription` (sized by character and line counts) | widget/dialogbuttons.go, widget/inscription.go, app/chrome.go |
 | ColorDialog, FontDialog, Calendar, EmojiChooser | `ColorChooserDialog`, `FontChooserDialog`, `CalendarDialog`, `EmojiChooser` | app/dialog.go, app/emojichooser.go |
 | adw AboutDialog | `Application.AboutDialog` | app/about.go |
-| ShortcutsWindow | `ShortcutsView` + `app.ShortcutsDialog` from the accelerator registry | widget/shortcuts.go, app/accel.go |
+| ShortcutsWindow | `ShortcutsView` + `Application.ShortcutsDialog` from the accelerator registry | widget/shortcuts.go, app/accel.go |
 | adw Toast | `Toast` + `Application.ShowToast` (stacking, action, hover pause) | widget/toast.go, app/toast.go |
 | Tooltip | `SetTooltip`, `SetTooltipMarkup`, `SetTooltipOptions` on any widget | widget/widget.go, app/tooltip.go |
 | GLArea | `widget.GPUArea`: application-rendered dmabufs (zero copy, async import checked against the advertised formats) or CPU images, on a subsurface below the window, paced by `OnFrame` | widget/gpuarea.go, app/gpuarea.go, dmabuf/ |
@@ -109,6 +109,5 @@ live in [architecture.md](architecture.md#non-goals).
 
 ## Known gaps
 
-None. The Hyprland VM gate was promoted to blocking (#118); sway and
-Hyprland both run the full compositor-in-the-loop suite as required
-CI gates.
+None. Sway and Hyprland both run the full compositor-in-the-loop
+suite as required CI gates.

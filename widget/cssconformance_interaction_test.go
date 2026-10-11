@@ -826,7 +826,7 @@ var confExceptionsInteraction = []confException{
 			return false
 		}, true)},
 		reason: "widget chrome is programmatic theme painting, not CSS pseudo-element chrome; stripping it needs a per-widget unstyled design",
-		doc:    "`appearance: none` paints nothing (parses and computes)",
+		doc:    "`appearance: none` parses and computes and leaves the widget's chrome painted",
 	},
 	{
 		name: "touch-action manipulation pans both axes",
@@ -840,7 +840,7 @@ var confExceptionsInteraction = []confException{
 		},
 		want:   []confCheck{uiOffset(0, 40)},
 		reason: "the gesture layer exposes pinch only as a claimed GesturePinch a widget opts into, not an axis the scroll gates can mask",
-		doc:    "`touch-action`'s pinch semantics (`manipulation`'s zoom half, `pinch-zoom`) are deferred",
+		doc:    "`touch-action`'s pinch semantics (`manipulation`'s zoom half, `pinch-zoom`) are not supported",
 	},
 }
 

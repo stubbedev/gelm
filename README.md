@@ -1,14 +1,19 @@
 # gelm
 
 A pure-Go (no cgo) widget toolkit for Wayland, built as a
-feature-complete counterpart of [relm4](https://relm4.org): a retained
-widget tree with GTK4/libadwaita-class widgets, xdg-shell and
-layer-shell windows, a GTK-flavored CSS layer over a typed palette,
-and an event loop that idles at 0% CPU.
+feature-complete counterpart of [relm4](https://relm4.org): a component
+framework with typed messages, a retained widget tree with
+GTK4/libadwaita-class widgets, xdg-shell and layer-shell windows, a
+GTK-flavored CSS engine over a typed palette, the desktop's portals and
+protocols, and an event loop that idles at 0% CPU.
 
-It works end to end on real compositors. Sway is the required
-headless gate (`just headless`); Hyprland runs the same suite in a
-private NixOS VM (`just hyprland-vm`) and is a required gate too.
+## Status
+
+gelm runs on sway and Hyprland, and both are required CI gates: the
+compositor-in-the-loop suite runs against a private headless sway
+(`just headless`) and against Hyprland in a private NixOS VM
+(`just hyprland-vm`). [docs/completeness.md](docs/completeness.md) maps
+every capability against relm4, GTK4 and libadwaita.
 
 ## Install
 
@@ -16,13 +21,31 @@ private NixOS VM (`just hyprland-vm`) and is a required gate too.
 go get github.com/stubbedev/gelm@latest
 ```
 
-Apps import the public packages: `component` (the component
-framework, headless tests through `component/componenttest`), `ui`
-(typed view builders), `app` (session, windows, loop, dialogs, desktop services),
-`widget` (the widget tree, theme, CSS), `i18n` (gettext), `anim`,
-`appearance`, `render`, `pdf` (PDF writing), `media` (video and sound playback), `dmabuf` (dma-buf descriptions),
-`transfer`, `highlight`, `capture`, and `widget/css`.
-Everything under `internal/` is implementation.
+## Packages
+
+Apps import the public packages; everything under `internal/` is
+implementation.
+
+| Package | Contents |
+| --- | --- |
+| `component` | the component framework: components, controllers, factories, workers, commands |
+| `component/componenttest` | a loop that runs components in tests without a compositor |
+| `ui` | typed view builders, one per widget |
+| `app` | the session, windows and layer surfaces, the loop, dialogs, popovers, desktop services |
+| `widget` | the widget tree, theme, CSS, actions, bindings |
+| `widget/css` | libadwaita's style classes and named colors as constants |
+| `render` | the premultiplied canvas, shaped text, icons |
+| `anim` | tweens, easing, springs and timelines |
+| `appearance` | the desktop's color scheme, accent and contrast preferences |
+| `i18n` | gettext catalogs (`.mo`, `.po`) |
+| `highlight` | syntax highlighters for the code view |
+| `media` | video and sound playback |
+| `pdf` | PDF writing |
+| `transfer` | the shared shape of clipboard and drag-and-drop content |
+| `dmabuf` | dma-buf frame descriptions |
+| `capture` | screen and window capture |
+| `vinput` | virtual pointer and keyboard injection |
+| `wlr` | generated Wayland protocol bindings |
 
 ## A minimal app
 
@@ -90,7 +113,7 @@ func main() {
 This program is kept compiling as `ExampleRun` in
 `component/example_test.go`. [docs/components.md](docs/components.md)
 walks through components, the typed builders, factories, workers and
-actions. `app.NewApplication` and `NewWindow` remain the lower-level
+actions. `app.NewApplication` and `NewWindow` are the lower-level
 path for apps that want the widget tree without components
 (`ExampleApplication` in `app/example_test.go`).
 
@@ -99,14 +122,28 @@ path for apps that want the widget tree without components
 ```sh
 devenv shell       # pinned Go, gopls, golangci-lint, just, sway; CGO_ENABLED=0
 just demo          # the gelm-hello showcase
-just check         # vet, lint, test, build: the release gates
-just headless      # the compositor-in-the-loop suite on a private headless sway
-just bench         # benchmarks (archived by CI, not a gate)
 ```
 
+The gates, all required in CI:
+
+```sh
+just check         # go vet, golangci-lint, go test, build
+just fmt-check     # gofumpt and gci formatting
+just headless      # the compositor-in-the-loop suite on a private headless sway
+just hyprland-vm   # the same suite against Hyprland in a private NixOS VM (needs KVM)
+just atspi         # the AT-SPI bridge on a private accessibility bus
+just atspi-verify  # the bridge against real at-spi2-core
+```
+
+`just bench` runs the benchmarks; CI archives the numbers without
+gating on them ([bench/baseline.md](bench/baseline.md) holds the
+method and the allocation budgets the tests enforce). `just goldens`
+regenerates the golden-image snapshots after a deliberate visual
+change.
+
 `nix build .#gelm` builds the module and every demo with the pinned
-toolchain. Pushing a `v*` tag releases the demo binaries
-(linux/amd64 and arm64) through goreleaser.
+toolchain. Pushing a `v*` tag releases `gelm-hello`, `gelm-bar` and
+`gelm-panel` (linux/amd64 and arm64) through goreleaser.
 
 ## Documentation
 
@@ -131,13 +168,13 @@ toolchain. Pushing a `v*` tag releases the demo binaries
 | `cmd/gelm-hello` | the showcase as a component: core widgets, a context menu on typed actions, tooltips, Tab focus, drag-to-move |
 | `cmd/gelm-bar` | a layer-shell top bar repainting only what changed each second |
 | `cmd/gelm-panel` | a right-anchored layer-shell panel with live widgets |
-| `cmd/gelm-launcher` | the M5 launcher: a keyboard-exclusive overlay, a filtered app grid, live toplevel thumbnails through `capture` |
-| `cmd/gelm-osd` | the M5 OSD: a transient layer-shell volume/brightness popup over the overlay layer |
-| `cmd/gelm-lock` | the M5 lock screen: one ext-session-lock surface per output with an auth entry |
+| `cmd/gelm-launcher` | a launcher: a keyboard-exclusive overlay, a filtered app grid, live toplevel thumbnails through `capture` |
+| `cmd/gelm-osd` | an OSD: a transient layer-shell volume/brightness popup over the overlay layer |
+| `cmd/gelm-lock` | a lock screen: one ext-session-lock surface per output with an auth entry |
 | `cmd/gelm-multi` | one loop: per-output layer bars, on-demand windows, close-request veto |
 | `cmd/gelm-invoke` | a lifetime-bound spawned command and `Every` feeding a component |
 | `cmd/gelm-messages` | the typed messaging layer and single-instance forwarding |
-| `cmd/gelm-settings` | the M5 settings app: PreferencesView rows, the adaptive shell, typed persisted settings |
+| `cmd/gelm-settings` | a settings app: PreferencesView rows, the adaptive shell, typed persisted settings |
 | `cmd/gelm-columns` | ten thousand sorted, filtered rows; the tree view; drag-to-reorder |
 | `cmd/gelm-dialogs` | every dialog constructor: message, prompt, color, font, calendar, file, adaptive, about |
 | `cmd/gelm-dnd` | cross-window drag-and-drop: swatches that drag and drop between two toplevels |
@@ -160,9 +197,14 @@ All pure Go:
 in `third_party/`),
 [godbus/dbus](https://github.com/godbus/dbus),
 [go-text/typesetting](https://github.com/go-text/typesetting),
+[rivo/uniseg](https://github.com/rivo/uniseg),
 [golang.org/x/image](https://pkg.go.dev/golang.org/x/image),
+[golang.org/x/text](https://pkg.go.dev/golang.org/x/text),
+[golang.org/x/sys](https://pkg.go.dev/golang.org/x/sys),
 [srwiley/oksvg](https://github.com/srwiley/oksvg) +
 [rasterx](https://github.com/srwiley/rasterx),
+[kettek/apng](https://github.com/kettek/apng),
+[yalue/native_endian](https://github.com/yalue/native_endian),
 [unxed/xkb-go](https://github.com/unxed/xkb-go), and
 [jfreymuth/pulse](https://github.com/jfreymuth/pulse) (the PulseAudio
 protocol, which pipewire-pulse also serves). `media.OpenFile` runs
