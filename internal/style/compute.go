@@ -145,6 +145,36 @@ func (sc *Scratch) computeAll(layers []Layer, n Node, parent, old *Values, env E
 	sc.prevCounters = nil
 	resolveKeyframes(v, layers)
 	mergeAnimSlots(v)
+	sc.computeStarting(v, cx)
+}
+
+// computeStarting parses the winning @starting-style declarations
+// into v.Starting, nil when no matched rule carries any: the entry
+// transition's start values. Only the properties the blocks declare
+// are read; the rest of the struct is meaningless.
+func (sc *Scratch) computeStarting(v *Values, cx *ctx) {
+	var any bool
+	for p := range numProps {
+		if sc.winStart[p] != nil {
+			any = true
+			break
+		}
+	}
+	if !any {
+		return
+	}
+	st := initialValues()
+	for p := range numProps {
+		d := sc.winStart[p]
+		if d == nil {
+			continue
+		}
+		if src, ok := sc.parse(d, v.Vars, cx); ok {
+			copyProp(&st, src, p)
+			st.Set = st.Set.With(p)
+		}
+	}
+	v.Starting = &st
 }
 
 // computeProp computes one longhand from its winning declaration. It
@@ -797,6 +827,44 @@ func copyProp(dst, src *Values, p Prop) {
 		dst.Preserve3D = src.Preserve3D
 	case PropBackfaceVisibility:
 		dst.BackfaceHidden = src.BackfaceHidden
+	case PropScrollBehavior:
+		dst.ScrollSmooth = src.ScrollSmooth
+	case PropScrollMarginTop:
+		dst.ScrollMargin.Top = src.ScrollMargin.Top
+	case PropScrollMarginRight:
+		dst.ScrollMargin.Right = src.ScrollMargin.Right
+	case PropScrollMarginBottom:
+		dst.ScrollMargin.Bottom = src.ScrollMargin.Bottom
+	case PropScrollMarginLeft:
+		dst.ScrollMargin.Left = src.ScrollMargin.Left
+	case PropScrollPaddingTop:
+		dst.ScrollPad.Top = src.ScrollPad.Top
+	case PropScrollPaddingRight:
+		dst.ScrollPad.Right = src.ScrollPad.Right
+	case PropScrollPaddingBottom:
+		dst.ScrollPad.Bottom = src.ScrollPad.Bottom
+	case PropScrollPaddingLeft:
+		dst.ScrollPad.Left = src.ScrollPad.Left
+	case PropScrollSnapType:
+		dst.Snap = src.Snap
+	case PropScrollSnapAlign:
+		dst.SnapAlign = src.SnapAlign
+	case PropScrollSnapStop:
+		dst.SnapStopAlways = src.SnapStopAlways
+	case PropOverscrollX:
+		dst.Overscroll[0] = src.Overscroll[0]
+	case PropOverscrollY:
+		dst.Overscroll[1] = src.Overscroll[1]
+	case PropScrollbarColor:
+		dst.BarThumb, dst.BarTrack, dst.BarColorAuto = src.BarThumb, src.BarTrack, src.BarColorAuto
+	case PropScrollbarWidth:
+		dst.BarWidth = src.BarWidth
+	case PropScrollbarGutter:
+		dst.BarGutter = src.BarGutter
+	case PropTransitionBehavior:
+		dst.Transition.Discrete = src.Transition.Discrete
+	case PropAnimComposition:
+		dst.AnimComposition = src.AnimComposition
 	}
 }
 

@@ -106,6 +106,20 @@ func (x *Xform) compose(p XformPart) {
 	x.Parts = append(x.Parts, p)
 }
 
+// After returns x composed with o after it: o's functions apply
+// once x's have, the transform addition composite (u followed by b).
+// The animation-composition add and accumulate modes both build it -
+// matched-list accumulation needs the per-function lists two
+// keyframes would have to share, and the channels here carry the
+// composed map, so both modes compose.
+func (x Xform) After(o Xform) Xform {
+	out := x
+	for _, p := range o.Parts {
+		out.compose(p)
+	}
+	return out
+}
+
 // lerpParts walks two matching primitive lists function by function.
 func lerpParts(a, b []XformPart, t float64) (render.Affine, render.M3, bool) {
 	if len(a) != len(b) || len(a) == 0 {

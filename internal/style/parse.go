@@ -204,7 +204,8 @@ func (s *Sheet) addKeyframes(kf *Keyframes) {
 }
 
 // rule is one selector of one stylesheet rule with its specificity,
-// declarations, @media condition, and cascade layer.
+// declarations, @media condition, cascade layer, and — when the rule
+// carries one — its @starting-style block.
 type rule struct {
 	sel   selector
 	spec  spec
@@ -214,6 +215,9 @@ type rule struct {
 	// pseudo names the ::before/::after pseudo-element this rule
 	// addresses; empty styles the element itself.
 	pseudo string
+	// start is the rule's @starting-style block, the entry
+	// transition's declarations; nil when the rule carries none.
+	start *Block
 }
 
 // Parse compiles css into a Sheet. Malformed declarations and rules are
@@ -253,6 +257,9 @@ type parser struct {
 	src   string
 	sheet Sheet
 	order int
+	// startBlock is the @starting-style block of the rule body being
+	// parsed; ruleBody attaches it to the rules it files.
+	startBlock *Block
 	// warn, when set, receives this parse's warnings instead of the
 	// sink (ParseCollecting).
 	warn func(msg string)
@@ -851,6 +858,8 @@ func (p *parser) ruleBody(ts []token, parents [][]token) {
 		return
 	}
 	block := &Block{decls: decls}
+	starting := p.startBlock
+	p.startBlock = nil
 	for _, par := range parents {
 		sels, ok := parseSelectorList(p.src, par)
 		if !ok {
@@ -858,7 +867,7 @@ func (p *parser) ruleBody(ts []token, parents [][]token) {
 			continue
 		}
 		for _, sel := range sels {
-			p.add(sel, block)
+			p.add(sel, block, starting)
 		}
 	}
 }
@@ -963,6 +972,8 @@ func (p *parser) nestedAt(ts []token, i int, parents [][]token) int {
 		}
 		p.ruleBody(body, parents)
 		p.layer = save
+	case "starting-style":
+		p.startBlock = &Block{decls: p.declarations(body)}
 	default:
 		p.warnAt(ts[i].s)
 	}
@@ -1146,13 +1157,13 @@ func containsVar(ts []token) bool {
 // add files one compiled rule into the index and folds its selector
 // into the sensitivity summary, carrying the parser's active @media
 // condition and cascade layer.
-func (p *parser) add(sel selector, block *Block) {
+func (p *parser) add(sel selector, block, start *Block) {
 	if p.dead > 0 {
 		return
 	}
 	s := &p.sheet
 	idx := int32(len(s.rules))
-	r := rule{sel: sel, spec: sel.spec(), block: block, mq: -1, layer: p.layer, pseudo: sel.parts[len(sel.parts)-1].pseudo}
+	r := rule{sel: sel, spec: sel.spec(), block: block, mq: -1, layer: p.layer, pseudo: sel.parts[len(sel.parts)-1].pseudo, start: start}
 	if p.mq != nil {
 		r.mq = int32(len(s.mediaQs))
 		for i, q := range s.mediaQs {

@@ -162,6 +162,10 @@ type Scratch struct {
 	best      [numProps]uint64
 	win       [numProps]*decl
 	bestLayer [numProps]uint8
+	// winStart/bestStart track the winning @starting-style
+	// declaration per longhand — the entry transition's values.
+	bestStart [numProps]uint64
+	winStart  [numProps]*decl
 	// lowRank/winLow/lowLayer track the best declaration strictly
 	// below the winner's cascade layer — the value revert-layer rolls
 	// back to.
@@ -211,6 +215,8 @@ func (sc *Scratch) collect(layers []Layer, n Node) {
 	clear(sc.best[:])
 	clear(sc.win[:])
 	clear(sc.bestLayer[:])
+	clear(sc.bestStart[:])
+	clear(sc.winStart[:])
 	clear(sc.lowRank[:])
 	clear(sc.winLow[:])
 	clear(sc.lowLayer[:])
@@ -276,7 +282,15 @@ func (sc *Scratch) bucket(rules []int32, s *Sheet, prio, layer int, n Node) {
 		}
 		for i := range r.block.decls {
 			d := &r.block.decls[i]
-			sc.offer(d, rank(prio, r.spec, int(r.layer), layer, d.order, d.important), r.layer)
+			rk := rank(prio, r.spec, int(r.layer), layer, d.order, d.important)
+			sc.offer(d, rk, r.layer)
+		}
+		if r.start != nil {
+			for i := range r.start.decls {
+				d := &r.start.decls[i]
+				rk := rank(prio, r.spec, int(r.layer), layer, d.order, d.important)
+				sc.offerStart(d, rk)
+			}
 		}
 	}
 }
@@ -320,6 +334,31 @@ func (sc *Scratch) offer(d *decl, rk uint64, layer uint8) {
 			sc.best[p], sc.win[p], sc.bestLayer[p] = rk, d, layer
 		} else if layer < sc.bestLayer[p] && rk >= sc.lowRank[p] {
 			sc.lowRank[p], sc.winLow[p], sc.lowLayer[p] = rk, d, layer
+		}
+	}
+	for p := Prop(0); p < propWordBits && (cov.lo>>p) != 0; p++ {
+		if cov.lo&(1<<p) != 0 {
+			offers(p)
+		}
+	}
+	for i := Prop(0); i < numProps-propWordBits && (cov.hi>>i) != 0; i++ {
+		if cov.hi&(1<<i) != 0 {
+			offers(i + propWordBits)
+		}
+	}
+}
+
+// offerStart records one @starting-style declaration for every
+// longhand it covers where its rank wins, in the starting-value
+// competition of its own (the entry transition's cascade).
+func (sc *Scratch) offerStart(d *decl, rk uint64) {
+	if d.custom || d.meta {
+		return
+	}
+	cov := d.covers
+	offers := func(p Prop) {
+		if rk >= sc.bestStart[p] {
+			sc.bestStart[p], sc.winStart[p] = rk, d
 		}
 	}
 	for p := Prop(0); p < propWordBits && (cov.lo>>p) != 0; p++ {

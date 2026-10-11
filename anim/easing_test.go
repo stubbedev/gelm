@@ -129,3 +129,71 @@ func TestEasingShapes(t *testing.T) {
 		}
 	})
 }
+
+// The steps() jump positions against the spec's worked curves.
+func TestStepsTiming(t *testing.T) {
+	end := Steps(2, JumpEnd)
+	if got := []float64{end(0), end(0.25), end(0.5), end(0.99), end(1)}; got[0] != 0 || got[1] != 0 || got[2] != 0.5 || got[3] != 0.5 || got[4] != 1 {
+		t.Errorf("steps(2, jump-end) = %v, want 0,0,0,0.5,1", got)
+	}
+	start := Steps(2, JumpStart)
+	if got := []float64{start(0), start(0.25), start(0.5), start(0.75), start(1)}; got[0] != 0 || got[1] != 0.5 || got[2] != 0.5 || got[3] != 1 || got[4] != 1 {
+		t.Errorf("steps(2, jump-start) = %v, want 0,0.5,0.5,1,1", got)
+	}
+	none := Steps(2, JumpNone)
+	if got := []float64{none(0), none(0.24), none(0.25), none(0.5), none(0.74), none(0.75)}; got[0] != 0 || got[1] != 0 || got[2] != 0.5 || got[3] != 0.5 || got[4] != 0.5 || got[5] != 1 {
+		t.Errorf("steps(2, jump-none) = %v, want 0,0,0.5,0.5,0.5,1", got)
+	}
+	both := Steps(2, JumpBoth)
+	if got := []float64{both(0), both(0.25), both(0.5), both(0.75), both(1)}; got[0] != 1.0/3 || got[1] != 1.0/3 || got[2] != 2.0/3 || got[3] != 2.0/3 || got[4] != 1 {
+		t.Errorf("steps(2, jump-both) = %v, want 1/3,1/3,2/3,2/3,1", got)
+	}
+	// steps(1, jump-none) is the two-point round; steps(1, jump-end)
+	// holds then lands.
+	if lin := Steps(1, JumpNone); lin(0.25) != 0 || lin(0.5) != 1 || lin(0.75) != 1 {
+		t.Errorf("steps(1, jump-none) = %v %v %v, want 0 0.5 1", lin(0.25), lin(0.5), lin(0.75))
+	}
+	if end1 := Steps(1, JumpEnd); end1(0.99) != 0 || end1(1) != 1 {
+		t.Errorf("steps(1, jump-end) at 0.99,1 = %v,%v, want 0,1", end1(0.99), end1(1))
+	}
+}
+
+// linear() interpolates between its points, spreading the ones
+// without positions and holding outside the bracket.
+func TestPiecewiseEasing(t *testing.T) {
+	ramp := Piecewise([]LinearPt{{Value: 0}, {Value: 0.5, Pos: 0.5, HasPos: true}, {Value: 1}})
+	if got := ramp(0.25); got != 0.25 {
+		t.Errorf("ramp(0.25) = %v, want 0.25", got)
+	}
+	if got := ramp(0.75); got != 0.75 {
+		t.Errorf("ramp(0.75) = %v, want 0.75", got)
+	}
+	if got := ramp(-1); got != 0 {
+		t.Errorf("ramp(-1) = %v, want held 0", got)
+	}
+	if got := ramp(2); got != 1 {
+		t.Errorf("ramp(2) = %v, want held 1", got)
+	}
+
+	// Points without positions spread evenly: 0, 1, 0 land at 0, 0.5, 1.
+	bounce := Piecewise([]LinearPt{{Value: 0}, {Value: 1}, {Value: 0}})
+	if got := bounce(0.25); got != 0.5 {
+		t.Errorf("bounce(0.25) = %v, want 0.5", got)
+	}
+	if got := bounce(0.5); got != 1 {
+		t.Errorf("bounce(0.5) = %v, want 1", got)
+	}
+	if got := bounce(0.75); got != 0.5 {
+		t.Errorf("bounce(0.75) = %v, want 0.5", got)
+	}
+
+	// An interior explicit stop brackets the spread around it: the
+	// free point lands at 0.375, halfway from 0 to the 75% stop.
+	mixed := Piecewise([]LinearPt{{Value: 0}, {Value: 1}, {Value: 0.5, Pos: 0.75, HasPos: true}, {Value: 1}})
+	if got := mixed(0.25); math.Abs(got-2.0/3) > 1e-9 {
+		t.Errorf("mixed(0.25) = %v, want 2/3 up to the free point at 0.375", got)
+	}
+	if got := mixed(0.5); math.Abs(got-5.0/6) > 1e-9 {
+		t.Errorf("mixed(0.5) = %v, want 5/6 down to the 75%% stop", got)
+	}
+}

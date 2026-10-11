@@ -3,6 +3,7 @@ package style
 import (
 	"slices"
 
+	"github.com/stubbedev/gelm/anim"
 	"github.com/stubbedev/gelm/render"
 )
 
@@ -118,6 +119,25 @@ const (
 	PropPerspective
 	PropTransformStyle
 	PropBackfaceVisibility
+	PropScrollBehavior
+	PropScrollMarginTop
+	PropScrollMarginRight
+	PropScrollMarginBottom
+	PropScrollMarginLeft
+	PropScrollPaddingTop
+	PropScrollPaddingRight
+	PropScrollPaddingBottom
+	PropScrollPaddingLeft
+	PropScrollSnapType
+	PropScrollSnapAlign
+	PropScrollSnapStop
+	PropOverscrollX
+	PropOverscrollY
+	PropScrollbarColor
+	PropScrollbarWidth
+	PropScrollbarGutter
+	PropTransitionBehavior
+	PropAnimComposition
 	numProps
 )
 
@@ -212,7 +232,8 @@ var inheritedProps = setOf(PropColor, PropFontFamily, PropFontSize, PropFontWeig
 	PropWhiteSpace, PropWordBreak, PropLineBreak, PropHyphens, PropWordSpacing,
 	PropFontVariantCaps, PropFontVariantNumeric, PropFontVariantLigatures,
 	PropFontVariantEastAsian, PropFontVariantPosition, PropFontVariantAlternates,
-	PropFontOpticalSizing, PropDirection, PropWritingMode)
+	PropFontOpticalSizing, PropDirection, PropWritingMode,
+	PropScrollbarColor, PropScrollbarWidth)
 
 // Sides is a per-side length set, in logical pixels, in CSS's
 // top-right-bottom-left order.
@@ -556,23 +577,40 @@ const (
 	WritingVerticalLR
 )
 
-// Timing is a transition timing function, reduced to the named curves
-// and cubic-bezier control points.
+// Timing is a transition or animation timing function: the named
+// curves and cubic-bezier control points, steps() with its jump
+// position, or the linear() piecewise list. Exactly one form is live:
+// LinN > 0 is linear(), else Steps > 0 is steps(), else the bezier.
 type Timing struct {
 	X1, Y1, X2, Y2 float64
 	// Steps is non-zero for steps(n); the bezier is then unused.
 	Steps int
+	// StepPos is steps' jump position (JumpEnd's value is the default,
+	// so the zero Timing keeps the legacy meaning).
+	StepPos uint8
+	// LinN is the number of live linear() points in Lin.
+	LinN int
+	// Lin is the linear() point list, capped at MaxLinearPts.
+	Lin [MaxLinearPts]anim.LinearPt
 }
+
+// MaxLinearPts bounds a linear() point list; points past it are
+// dropped with a warning, like the gradient stop budget.
+const MaxLinearPts = 8
 
 // Transition is the computed transition-* group: which properties
 // animate (All covers every animatable one), for how long, after what
-// delay, along which curve. Duration zero means no transition.
+// delay, along which curve, and whether discrete properties may flip
+// through the tween instead of snapping. Duration zero means no
+// transition.
 type Transition struct {
 	All      bool
 	Props    PropSet
 	Duration float64 // seconds
 	Delay    float64 // seconds
 	Timing   Timing
+	// Discrete is transition-behavior: allow-discrete.
+	Discrete bool
 }
 
 // Covers reports whether a change of p animates.
@@ -677,6 +715,11 @@ type Values struct {
 	IconSize             int
 
 	Transition Transition
+	// Starting is the node's computed @starting-style block, nil when
+	// no matched rule carries one: the values a first style's
+	// transitions start from (the entry transition). Only the
+	// properties its rules declare are meaningful.
+	Starting *Values
 	// Animation is the computed animation-* group; not inherited. A
 	// comma list runs every entry; one entry is the common case.
 	Animation []Animation
@@ -722,6 +765,34 @@ type Values struct {
 	// TouchAction is touch-action: the pan axes a touch scroll may
 	// move.
 	TouchAction TouchAction
+
+	// The scroll-container group: scroll-behavior gates animated
+	// programmatic scrolls, scroll-padding insets the viewport for
+	// reveal and snap math, scroll-snap-type turns snapping on,
+	// overscroll-behavior gates chaining to the parent scroll, and
+	// scrollbar-gutter reserves the bar's space in measure. The
+	// scrollbar-color/width pair is inherited and reaches the bars.
+	ScrollSmooth bool
+	ScrollPad    Sides
+	Snap         SnapType
+	Overscroll   [2]Overscroll
+	BarThumb     render.Color
+	BarTrack     render.Color
+	// BarColorAuto marks scrollbar-color: auto (the default look).
+	BarColorAuto bool
+	BarWidth     uint8
+	BarGutter    uint8
+
+	// The scrolled-child group: scroll-margin insets the revealed rect,
+	// scroll-snap-align names the child a snap position, and
+	// scroll-snap-stop makes one the gesture cannot skip past.
+	ScrollMargin   Sides
+	SnapAlign      SnapAlign
+	SnapStopAlways bool
+
+	// The animation-composition slot, zipped onto the group like the
+	// other animation longhands.
+	AnimComposition []uint8
 
 	// The CSS Text 3 properties. TextAlign, TextIndent, WhiteSpace,
 	// WordBreak, LineBreak, Hyphens, WordSpacing and the font-variant

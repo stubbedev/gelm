@@ -1274,6 +1274,7 @@ func (n *node) style(w Widget) *style.Values {
 // zero-style case changes nothing and costs one compare.
 func (n *node) restyle(w Widget) *style.Values {
 	old := n.cs
+	firstStyle := n.styleSeen == 0
 	var v style.Values
 	var parent *style.Values
 	if pw := n.parent; pw != nil && !n.styleRoot {
@@ -1306,7 +1307,7 @@ func (n *node) restyle(w Widget) *style.Values {
 	n.styleSeen = styleGen
 	n.styleDirty = false
 	n.ink = inkOf(&v)
-	n.transitionValues(old, v)
+	n.transitionValues(old, v, firstStyle)
 	n.syncAnimation(v)
 	// Values carries the animation group, a slice, and so is not
 	// comparable; the field-wise diff decides whether the widget's
@@ -1497,6 +1498,12 @@ func styleChanged(a, b *style.Values) bool {
 		a.Isolate != b.Isolate || a.Perspective != b.Perspective ||
 		a.Preserve3D != b.Preserve3D || a.BackfaceHidden != b.BackfaceHidden ||
 		!clipShapeEqual(&a.Clip, &b.Clip) || !maskEqual(&a.Mask, &b.Mask) ||
+		a.ScrollSmooth != b.ScrollSmooth || a.ScrollPad != b.ScrollPad ||
+		a.Snap != b.Snap || a.Overscroll != b.Overscroll ||
+		a.BarThumb != b.BarThumb || a.BarTrack != b.BarTrack ||
+		a.BarColorAuto != b.BarColorAuto || a.BarWidth != b.BarWidth ||
+		a.BarGutter != b.BarGutter || a.ScrollMargin != b.ScrollMargin ||
+		a.SnapAlign != b.SnapAlign || a.SnapStopAlways != b.SnapStopAlways ||
 		!animsEqual(a.Animation, b.Animation)
 }
 
@@ -1537,6 +1544,7 @@ func layoutKey(v style.Values) layoutFacts {
 	eff := v.EffBorder()
 	return layoutFacts{
 		padding: v.Padding, margin: v.Margin, border: eff,
+		gutter: v.BarGutter,
 		setPad: v.HasAny(style.PropPaddingTop, style.PropPaddingRight, style.PropPaddingBottom, style.PropPaddingLeft),
 		minW:   v.MinWidth, minH: v.MinHeight, spacingH: v.BorderSpacingH, spacingV: v.BorderSpacingV,
 		setSpacing: v.Has(style.PropBorderSpacing),
@@ -1582,6 +1590,7 @@ type textFacts struct {
 type layoutFacts struct {
 	padding, margin, border style.Sides
 	setPad                  bool
+	gutter                  uint8
 	minW, minH              int
 	spacingH, spacingV      int
 	setSpacing              bool
@@ -1605,11 +1614,13 @@ func inheritedKey(v style.Values) inheritedFacts {
 		style.PropLineBreak, style.PropHyphens, style.PropWordSpacing,
 		style.PropFontVariantCaps, style.PropFontVariantNumeric, style.PropFontVariantLigatures,
 		style.PropFontVariantEastAsian, style.PropFontVariantPosition, style.PropFontVariantAlternates,
-		style.PropFontOpticalSizing, style.PropDirection, style.PropWritingMode)
+		style.PropFontOpticalSizing, style.PropDirection, style.PropWritingMode,
+		style.PropScrollbarColor, style.PropScrollbarWidth)
 	return inheritedFacts{
 		set: v.Set.And(keep), color: v.Color, fontSize: v.FontSize, fontFamily: v.FontFamily,
 		fontWeight: v.FontWeight, italic: v.Italic, letter: v.LetterSpacing,
 		transform: v.TextTransform, iconSize: v.IconSize, vars: v.Vars, cursor: v.Cursor,
+		barThumb: v.BarThumb, barTrack: v.BarTrack, barAuto: v.BarColorAuto, barWidth: v.BarWidth,
 		text: textFacts{
 			indent: v.TextIndent, white: v.WhiteSpace, wordBreak: v.WordBreak, lineBreak: v.LineBreak,
 			hyphens: v.Hyphens, word: v.WordSpacing, optical: v.OpticalSizing,
@@ -1632,6 +1643,10 @@ type inheritedFacts struct {
 	transform  style.TextTransform
 	iconSize   int
 	cursor     style.CursorSpec
+	barThumb   render.Color
+	barTrack   render.Color
+	barAuto    bool
+	barWidth   uint8
 	text       textFacts
 	align      style.TextAlign
 	dir        uint8

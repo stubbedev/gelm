@@ -1,6 +1,9 @@
 package widget
 
-import "github.com/stubbedev/gelm/render"
+import (
+	"github.com/stubbedev/gelm/internal/style"
+	"github.com/stubbedev/gelm/render"
+)
 
 // ScrollRange is one axis of a scroll position (GTK Adjustment's
 // numbers): Offset into a Total extent, of which Page is visible. The
@@ -59,13 +62,62 @@ func along(p Point, track render.Rect, axis Axis) (at, n int) {
 	return p.Y - track.Y, track.H
 }
 
+// barSpec is the computed look of one bar: the scrollbar-color pair
+// and the scrollbar-width thickness. The zero value is the built-in
+// look at full thickness.
+type barSpec struct {
+	thumb, track render.Color
+	width        uint8
+}
+
+// barSpecOf reads the scrollbar-color/width pair off one computed
+// style — the Scroll's own for its bars, the standalone Scrollbar's
+// (inherited) for itself. auto keeps the built-in colors.
+func barSpecOf(v *style.Values) barSpec {
+	spec := barSpec{thumb: render.RGB(0x58, 0x5b, 0x70), track: render.RGB(0, 0, 0)}
+	if v.Has(style.PropScrollbarColor) && !v.BarColorAuto {
+		spec.thumb, spec.track = v.BarThumb, v.BarTrack
+	}
+	if v.Has(style.PropScrollbarWidth) {
+		spec.width = v.BarWidth
+	}
+	return spec
+}
+
+// thickness is the painted thickness of the bar's parts.
+func (b barSpec) thickness() int {
+	if b.width == style.BarWidthThin {
+		return 4
+	}
+	return gutter
+}
+
+// scaleColor multiplies a color's channels and alpha by f.
+func scaleColor(c render.Color, f float64) render.Color {
+	ch := func(x uint8) uint8 { return uint8(float64(x)*f + 0.5) }
+	return render.RGBA(ch(c.R()), ch(c.G()), ch(c.B()), ch(c.A()))
+}
+
 // paintScrollbar draws a track and its thumb at alpha (0..1): the one
-// look Scroll's fading bars and the standalone Scrollbar share.
-func paintScrollbar(cv *render.Canvas, track, thumb render.Rect, alpha float64) {
-	bar := render.RGB(0x58, 0x5b, 0x70)
-	a := uint8(alpha * 255)
-	cv.RoundedRect(track, 1, render.RGBA(0, 0, 0, a/3))
-	cv.RoundedRect(thumb, 2, render.RGBA(bar.R(), bar.G(), bar.B(), a))
+// look Scroll's fading bars and the standalone Scrollbar share, under
+// the scrollbar-color pair and scrollbar-width thickness. none draws
+// nothing.
+func paintScrollbar(cv *render.Canvas, track, thumb render.Rect, alpha float64, spec barSpec) {
+	if spec.width == style.BarWidthNone || alpha <= 0 {
+		return
+	}
+	if t := spec.thickness(); t < min(track.W, track.H) {
+		// thin: centered in the gutter across the bar's axis.
+		if track.W <= track.H {
+			thumb.X += (track.W - t) / 2
+			thumb.W = t
+		} else {
+			thumb.Y += (track.H - t) / 2
+			thumb.H = t
+		}
+	}
+	cv.RoundedRect(track, 1, scaleColor(spec.track, alpha/3))
+	cv.RoundedRect(thumb, 2, scaleColor(spec.thumb, alpha))
 }
 
 // Adjustable is a scroll position a Scrollbar shows and drives - GTK's
@@ -107,11 +159,15 @@ func NewScrollbar(target Adjustable, axis Axis) *Scrollbar {
 func (b *Scrollbar) Axis() Axis { return b.axis }
 
 // Measure is the bar's thickness across its axis; along it the bar
-// takes what its parent stretches it to.
+// takes what its parent stretches it to. scrollbar-width: none
+// collapses it, thin keeps the slot and paints slimmer.
 func (b *Scrollbar) Measure(con Constraints) Size {
 	sz := Size{W: gutter}
 	if b.axis == Row {
 		sz = Size{H: gutter}
+	}
+	if barSpecOf(b.style(b)).width == style.BarWidthNone {
+		sz = Size{}
 	}
 	return clampSize(sz, con)
 }
@@ -119,7 +175,7 @@ func (b *Scrollbar) Measure(con Constraints) Size {
 // Paint draws the track and thumb while the target overflows.
 func (b *Scrollbar) Paint(cv *render.Canvas) {
 	if r := b.target.AxisRange(b.axis); r.Overflows() {
-		paintScrollbar(cv, b.bounds, r.thumbRect(b.bounds, b.axis), 1)
+		paintScrollbar(cv, b.bounds, r.thumbRect(b.bounds, b.axis), 1, barSpecOf(b.style(b)))
 	}
 }
 

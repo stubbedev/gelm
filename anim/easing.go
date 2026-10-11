@@ -104,6 +104,108 @@ func CubicBezier(x1, y1, x2, y2 float64) Easing {
 	}
 }
 
+// StepPos is where a steps() curve jumps: at the start of each
+// interval, the end, both edges, or neither.
+type StepPos uint8
+
+// The steps() jump positions. JumpEnd is the CSS default (and the
+// legacy `end` keyword); JumpStart is the legacy `start`.
+const (
+	JumpEnd StepPos = iota
+	JumpStart
+	JumpNone
+	JumpBoth
+)
+
+// Steps returns the steps(n, jump) timing function: progress held in
+// n equal intervals with a jump at each interval boundary per jump.
+// steps(1, JumpEnd) is the discrete flip browsers give un-animated
+// toggles; JumpNone spreads n+1 points with no jump at either end,
+// so steps(1, JumpNone) rounds at the midpoint.
+func Steps(n int, jump StepPos) Easing {
+	if n < 1 {
+		n = 1
+	}
+	return func(t float64) float64 {
+		switch jump {
+		case JumpStart:
+			return math.Ceil(t*float64(n)) / float64(n)
+		case JumpNone:
+			return math.Floor(t*float64(n)+0.5) / float64(n)
+		case JumpBoth:
+			return (math.Floor(t*float64(n)) + 1) / float64(n+1)
+		}
+		return math.Floor(t*float64(n)) / float64(n)
+	}
+}
+
+// LinearPt is one point of a linear() easing: the output value and,
+// when HasPos, its input position as a fraction of the timeline.
+type LinearPt struct {
+	Value float64
+	Pos   float64
+	// HasPos marks an explicit percentage stop; the rest spread
+	// evenly between their bracketing explicit stops.
+	HasPos bool
+}
+
+// Piecewise returns the linear(...) easing: output interpolated
+// linearly between the points, held at the first and last outside
+// them. Points without positions spread evenly between the nearest
+// explicit stops (0 and 1 implied at the ends), the CSS rule.
+func Piecewise(pts []LinearPt) Easing {
+	n := len(pts)
+	if n == 0 {
+		return Linear
+	}
+	pos := make([]float64, n)
+	for i := range pts {
+		if pts[i].HasPos {
+			pos[i] = pts[i].Pos
+		}
+	}
+	if !pts[0].HasPos {
+		pos[0] = 0
+	}
+	if !pts[n-1].HasPos {
+		pos[n-1] = 1
+	}
+	// Interior points without positions: evenly spaced between the
+	// previous and next explicit stops.
+	for i := 0; i < n; {
+		if pts[i].HasPos || i == 0 || i == n-1 {
+			i++
+			continue
+		}
+		j := i
+		for j < n-1 && !pts[j].HasPos {
+			j++
+		}
+		lo, hi := pos[i-1], pos[j]
+		for k := i; k < j; k++ {
+			pos[k] = lo + (hi-lo)*float64(k-i+1)/float64(j-i+1)
+		}
+		i = j
+	}
+	return func(t float64) float64 {
+		switch {
+		case t <= pos[0]:
+			return pts[0].Value
+		case t >= pos[n-1]:
+			return pts[n-1].Value
+		}
+		i := 1
+		for ; i < n && pos[i] < t; i++ {
+		}
+		a, b := pos[i-1], pos[i]
+		if b <= a {
+			return pts[i].Value
+		}
+		u := (t - a) / (b - a)
+		return pts[i-1].Value + (pts[i].Value-pts[i-1].Value)*u
+	}
+}
+
 // Spring returns a damped-spring easing: the value leaves 0 with zero
 // velocity and settles at 1, oscillating on the way when underdamped.
 // zeta is the damping ratio - below 1 overshoots (0.3 to 0.6 give a
