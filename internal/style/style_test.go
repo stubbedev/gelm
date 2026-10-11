@@ -26,7 +26,14 @@ type node struct {
 	parent *node
 	kids   []*node
 	hidden bool
+	// cont/hasCont stand in for the widget layer's query container
+	// resolution (the nearest container-type ancestor).
+	cont    Container
+	hasCont bool
 }
+
+// StyleContainer reports the node's stand-in query container.
+func (n *node) StyleContainer() (Container, bool) { return n.cont, n.hasCont }
 
 func (n *node) StyleTarget(t *Target) { *t = n.target }
 
@@ -793,7 +800,7 @@ func TestWarnAndSkipPolicy(t *testing.T) {
 		entry { padding: 4px; color: #abcdef; }
 		button:link { color: #333333; }
 		button { background-color: #445566; `)
-	want := []string{"unknown property", "bad selector", "bad selector", "@import", "bad selector", "unterminated"}
+	want := []string{"unknown property", "bad selector", "@import", "bad selector", "unterminated"}
 	if len(*warns) != len(want) {
 		t.Fatalf("got %d warnings, want %d: %v", len(*warns), len(want), *warns)
 	}

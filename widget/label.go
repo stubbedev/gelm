@@ -6,6 +6,7 @@ import (
 	"unicode"
 
 	"github.com/stubbedev/gelm/internal/style"
+	"github.com/stubbedev/gelm/internal/text"
 	"github.com/stubbedev/gelm/render"
 )
 
@@ -623,10 +624,60 @@ func (l *Label) Paint(cv *render.Canvas) {
 				line.H = l.shaped.LineHeight()
 			}
 		}
-		l.drawLine(cv, face, px, text, line, col, cssDecoration(v), l.alignOf(v), l.effDirection(v), 0)
+		if fl := PseudoStyle(l, "first-letter"); fl != nil && text != "" &&
+			fl.HasAny(style.PropColor, style.PropFontSize, style.PropFontWeight, style.PropFontFamily) {
+			l.drawFirstLetter(cv, fl, face, px, text, line, col, cssDecoration(v), l.alignOf(v), l.effDirection(v))
+		} else {
+			l.drawLine(cv, face, px, text, line, col, cssDecoration(v), l.alignOf(v), l.effDirection(v), 0)
+		}
 	}
 	paintOutline(cv, v, l.bounds, radii)
 	fx.pop()
+}
+
+// drawFirstLetter paints the plain single-line draw with the
+// ::first-letter cascade applied: the first grapheme cluster in the
+// pseudo-element's own face, size, and color at the line start, the
+// remainder in the label's style in the box the cluster vacates.
+func (l *Label) drawFirstLetter(cv *render.Canvas, fl *style.Values, face render.Font, px float64, line string, box render.Rect, col render.Color, deco render.Decoration, align render.Alignment, dir Direction) {
+	rs := []rune(line)
+	_, end := text.ClusterRun(rs, 0)
+	first, rest := string(rs[:end]), string(rs[end:])
+	fFace, fPx := face, px
+	if fl.Has(style.PropFontSize) {
+		fPx = fl.FontSize
+	}
+	if fl.Has(style.PropFontWeight) || fl.Has(style.PropFontFamily) {
+		family := ""
+		if fl.Has(style.PropFontFamily) {
+			family = fl.FontFamily
+		}
+		weight := 0
+		if fl.Has(style.PropFontWeight) {
+			weight = fl.FontWeight
+		}
+		if f, ok := resolveFace(family, weight); ok {
+			fFace = f
+		}
+	}
+	fCol := col
+	if fl.Has(style.PropColor) {
+		fCol = fl.Color
+	}
+	shF := fFace.Shape(first, fPx)
+	if rest == "" {
+		shF.Draw(cv, box.X, box.Y+(box.H-shF.LineHeight())/2+int(shF.Ascent()), fCol)
+		return
+	}
+	restBox := box
+	if dir == DirectionRTL {
+		restBox.W = max(restBox.W-int(shF.Advance()), 0)
+	} else {
+		restBox.X += int(shF.Advance())
+		restBox.W = max(restBox.W-int(shF.Advance()), 0)
+	}
+	l.drawLine(cv, face, px, rest, restBox, col, deco, align, dir, 0)
+	shF.Draw(cv, restBox.X-int(shF.Advance()), box.Y+(box.H-shF.LineHeight())/2+int(shF.Ascent()), fCol)
 }
 
 // drawLine draws one aligned line of text and its decoration.

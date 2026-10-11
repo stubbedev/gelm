@@ -171,6 +171,13 @@ func Serif() (*render.Typeface, error) {
 	return lookup(fontscan.Serif, regAspect, 0, 'x')
 }
 
+// FaceFile loads a font file's first face — the @font-face loader's
+// entry point for app fonts declared in stylesheets. The path is the
+// stylesheet's own src, app input like every stylesheet path.
+func FaceFile(path string) (*render.Typeface, error) {
+	return loadFaceFile(path, 0)
+}
+
 // Best resolves the family a widget asks for: any installed family
 // name (symbol and emoji faces included, even though they lack latin
 // coverage), or a CSS generic - sans-serif, serif, monospace. Size is

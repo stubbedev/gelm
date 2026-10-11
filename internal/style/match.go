@@ -110,19 +110,20 @@ const (
 	PriorityUser        = 800
 )
 
-// rank packs (important, priority, ids, classes, elements, cascade
-// layer, sheet, order) into one comparable value, most significant
-// first: a `!important` declaration outranks every normal one, then
-// the provider priority decides, then specificity, then the @layer
-// order (255: unlayered, which outranks every layer), then the
-// sheet's install position, then source order.
-func rank(prio int, sp spec, layer, sheet, order int, imp bool) uint64 {
+// rank packs (important, priority, scope proximity, ids, classes,
+// elements, cascade layer, sheet, order) into one comparable value,
+// most significant first: a `!important` declaration outranks every
+// normal one, then the provider priority decides, then @scope
+// proximity (an inner scope beats an outer one), then specificity,
+// then the @layer order (255: unlayered, which outranks every
+// layer), then the sheet's install position, then source order.
+func rank(prio int, sp spec, layer, sheet, order int, imp bool, prox int) uint64 {
 	clampTo := func(v, bits int) uint64 {
 		limit := 1<<bits - 1
 		return uint64(min(max(v, 0), limit))
 	}
-	r := clampTo(prio, 10)<<53 | clampTo(sp.ids, 6)<<47 | clampTo(sp.cls, 9)<<38 |
-		clampTo(sp.els, 6)<<32 | clampTo(layer, 8)<<24 | clampTo(sheet, 6)<<18 | clampTo(order, 18)
+	r := clampTo(prio, 10)<<53 | clampTo(prox, 3)<<50 | clampTo(sp.ids, 6)<<44 |
+		clampTo(sp.cls, 9)<<35 | clampTo(sp.els, 6)<<29 | clampTo(layer, 8)<<21 | clampTo(sheet, 6)<<15 | clampTo(order, 15)
 	if imp {
 		r |= 1 << 63
 	}
@@ -146,6 +147,10 @@ type Scratch struct {
 	// pseudo-class nesting level (:is inside :has inside ...), so a
 	// nested evaluation never clobbers the target it runs within.
 	bufs [maxPseudoDepth + 2]Target
+	// sibBufs are the sibling-fill targets of :nth-child(of S), one
+	// per depth like bufs: a selector inside the of-list runs one
+	// level deeper, so its own nth-of never clobbers this one's.
+	sibBufs [maxPseudoDepth + 2]Target
 	// hasBudget is the remaining :has() node visits of this compute.
 	hasBudget int
 	// pseudo, when not empty, restricts the compute to the rules of
@@ -158,6 +163,16 @@ type Scratch struct {
 	// media is the environment the sheets' @media conditions evaluate
 	// against, copied from the compute's Env.
 	media Media
+	// container is the nearest query container the node's @container
+	// conditions and container units resolve against; have reports
+	// whether one exists.
+	container     Container
+	haveContainer bool
+	// revertChain records every declaration per layer when a loaded
+	// sheet carries a revert-layer value: the chain computeProp walks
+	// down, layer below layer.
+	revertChain bool
+	chain       []chainEntry
 
 	best      [numProps]uint64
 	win       [numProps]*decl
@@ -166,12 +181,6 @@ type Scratch struct {
 	// declaration per longhand — the entry transition's values.
 	bestStart [numProps]uint64
 	winStart  [numProps]*decl
-	// lowRank/winLow/lowLayer track the best declaration strictly
-	// below the winner's cascade layer — the value revert-layer rolls
-	// back to.
-	lowRank  [numProps]uint64
-	winLow   [numProps]*decl
-	lowLayer [numProps]uint8
 
 	customs []customWin
 	byName  map[string]int
@@ -200,6 +209,15 @@ type customWin struct {
 	rank uint64
 }
 
+// chainEntry is one declaration's per-layer record on the
+// revert-layer chain of one longhand.
+type chainEntry struct {
+	p     Prop
+	d     *decl
+	rk    uint64
+	layer uint8
+}
+
 // parsedDecl caches one declaration's parse within a compute, so a
 // shorthand winning several longhands parses once.
 type parsedDecl struct {
@@ -217,11 +235,26 @@ func (sc *Scratch) collect(layers []Layer, n Node) {
 	clear(sc.bestLayer[:])
 	clear(sc.bestStart[:])
 	clear(sc.winStart[:])
-	clear(sc.lowRank[:])
-	clear(sc.winLow[:])
-	clear(sc.lowLayer[:])
 	sc.customs = sc.customs[:0]
 	sc.metas = sc.metas[:0]
+	sc.chain = sc.chain[:0]
+	sc.revertChain = false
+	sc.haveContainer = false
+	var anyContainer bool
+	for _, l := range layers {
+		if l.Sheet == nil {
+			continue
+		}
+		if len(l.Sheet.containerQs) > 0 || l.Sheet.sens.CqUnits {
+			anyContainer = true
+		}
+		sc.revertChain = sc.revertChain || l.Sheet.sens.RevertLayer
+	}
+	if anyContainer {
+		if cn, ok := n.(containerNode); ok {
+			sc.container, sc.haveContainer = cn.StyleContainer()
+		}
+	}
 	sc.hasBudget = maxHasBudget
 	if sc.byName == nil {
 		sc.byName = map[string]int{}
@@ -258,7 +291,7 @@ func (sc *Scratch) collect(layers []Layer, n Node) {
 			// like a `*` rule in a widget-scoped provider; they rank as the
 			// last layer at their priority.
 			for i := range b.decls {
-				sc.offer(&b.decls[i], rank(sc.self.InlinePriority, spec{}, 255, 63, b.decls[i].order, b.decls[i].important), 255)
+				sc.offer(&b.decls[i], rank(sc.self.InlinePriority, spec{}, 255, 63, b.decls[i].order, b.decls[i].important, 0), 255)
 			}
 		}
 	}
@@ -277,27 +310,30 @@ func (sc *Scratch) bucket(rules []int32, s *Sheet, prio, layer int, n Node) {
 		if r.pseudo != sc.pseudo {
 			continue
 		}
+		if r.cq >= 0 && !s.containerQs[r.cq].matches(sc.container, sc.haveContainer) {
+			continue
+		}
 		if !sc.selectorMatches(&r.sel, n) {
 			continue
 		}
 		for i := range r.block.decls {
 			d := &r.block.decls[i]
-			rk := rank(prio, r.spec, int(r.layer), layer, d.order, d.important)
+			rk := rank(prio, r.spec, int(r.layer), layer, d.order, d.important, int(r.scopeDepth))
 			sc.offer(d, rk, r.layer)
 		}
 		if r.start != nil {
 			for i := range r.start.decls {
 				d := &r.start.decls[i]
-				rk := rank(prio, r.spec, int(r.layer), layer, d.order, d.important)
+				rk := rank(prio, r.spec, int(r.layer), layer, d.order, d.important, int(r.scopeDepth))
 				sc.offerStart(d, rk)
 			}
 		}
 	}
 }
 
-// offer records d for every longhand it covers where its rank wins,
-// tracking also the best declaration below the winner's cascade layer
-// (the revert-layer fallback).
+// offer records d for every longhand it covers where its rank wins;
+// with a revert-layer value in play it also files the declaration on
+// the longhand's per-layer chain, the record revert-layer walks down.
 func (sc *Scratch) offer(d *decl, rk uint64, layer uint8) {
 	if d.meta {
 		if i, ok := sc.metaByName[d.name]; ok {
@@ -323,17 +359,11 @@ func (sc *Scratch) offer(d *decl, rk uint64, layer uint8) {
 	}
 	cov := d.covers
 	offers := func(p Prop) {
+		if sc.revertChain {
+			sc.chain = append(sc.chain, chainEntry{p: p, d: d, rk: rk, layer: layer})
+		}
 		if rk >= sc.best[p] {
-			if sc.win[p] != nil {
-				if layer > sc.bestLayer[p] {
-					sc.lowRank[p], sc.winLow[p], sc.lowLayer[p] = sc.best[p], sc.win[p], sc.bestLayer[p]
-				} else if layer < sc.bestLayer[p] && sc.lowLayer[p] >= layer {
-					sc.lowRank[p], sc.winLow[p], sc.lowLayer[p] = 0, nil, 0
-				}
-			}
 			sc.best[p], sc.win[p], sc.bestLayer[p] = rk, d, layer
-		} else if layer < sc.bestLayer[p] && rk >= sc.lowRank[p] {
-			sc.lowRank[p], sc.winLow[p], sc.lowLayer[p] = rk, d, layer
 		}
 	}
 	for p := Prop(0); p < propWordBits && (cov.lo>>p) != 0; p++ {
@@ -415,6 +445,9 @@ func (sc *Scratch) matchFrom(sel *selector, i, d int, n Node) (Node, bool) {
 		return nil, false
 	default: // descendant
 		for p := n.StyleParent(); p != nil; p = p.StyleParent() {
+			if len(sel.upper) > 0 && sc.scopeBlocks(sel, d, p) {
+				return nil, false
+			}
 			if sc.nodeMatches(part, d, p) {
 				if root, ok := sc.matchFrom(sel, i-1, d, p); ok {
 					return root, true
@@ -423,6 +456,18 @@ func (sc *Scratch) matchFrom(sel *selector, i, d int, n Node) (Node, bool) {
 		}
 		return nil, false
 	}
+}
+
+// scopeBlocks reports whether n crosses a @scope upper boundary: the
+// scope root cannot be n nor beyond it.
+func (sc *Scratch) scopeBlocks(sel *selector, d int, n Node) bool {
+	for i := range sel.upper {
+		n.StyleTarget(&sc.bufs[d])
+		if sc.matchesSub(&sel.upper[i], &sc.bufs[d], d, n) {
+			return true
+		}
+	}
+	return false
 }
 
 // nodeMatches fills the ancestor buffer for n and tests part.
@@ -464,7 +509,7 @@ func (sc *Scratch) compoundMatches(c *compound, t *Target, d int, n Node) bool {
 		return false
 	}
 	if c.structs != 0 || len(c.nths) > 0 {
-		if !sc.structsMatch(c, t, n) {
+		if !sc.structsMatch(c, t, d, n) {
 			return false
 		}
 	}
@@ -537,8 +582,9 @@ func attrsMatch(attrs []attrTest, t *Target) bool {
 	return true
 }
 
-// structsMatch tests the structural pseudo-classes and an+b tests.
-func (sc *Scratch) structsMatch(c *compound, t *Target, n Node) bool {
+// structsMatch tests the structural pseudo-classes and an+b tests,
+// including the `of S` sibling filter of :nth-child(an+b of S).
+func (sc *Scratch) structsMatch(c *compound, t *Target, d int, n Node) bool {
 	st := c.structs
 	if st&structRoot != 0 && n.StyleParent() != nil {
 		return false
@@ -566,12 +612,68 @@ func (sc *Scratch) structsMatch(c *compound, t *Target, n Node) bool {
 			return false
 		}
 	}
+	return sc.nthsOfMatch(c.nths, d, n)
+}
+
+// nthsOfMatch evaluates the `of S`-scoped an+b tests: the index
+// counts only the visible siblings matching the of-list, from the
+// start (or the end for the -last forms).
+func (sc *Scratch) nthsOfMatch(nths []nth, d int, n Node) bool {
+	scoped := false
+	for i := range nths {
+		if nths[i].of == nil {
+			continue
+		}
+		scoped = true
+		break
+	}
+	if !scoped {
+		return true
+	}
+	p := n.StyleParent()
+	if p == nil {
+		return false
+	}
+	for i := range nths {
+		x := &nths[i]
+		if x.of == nil {
+			continue
+		}
+		count, mine := 0, 0
+		for _, sib := range p.StyleChildren() {
+			if sc.sibMatchesOf(x.of, d, sib) {
+				count++
+				if sameNode(sib, n) {
+					mine = count
+				}
+			}
+		}
+		if mine == 0 || !x.matches(mine, count) {
+			return false
+		}
+	}
 	return true
+}
+
+// sibMatchesOf tests one sibling against an of-list, filling the
+// depth's sibling buffer (one level deeper than the compound's, so a
+// nested of-list cannot clobber it).
+func (sc *Scratch) sibMatchesOf(sels []selector, d int, sib Node) bool {
+	if d+1 >= len(sc.bufs) {
+		return false
+	}
+	sib.StyleTarget(&sc.sibBufs[d])
+	for i := range sels {
+		if sc.matchesSub(&sels[i], &sc.sibBufs[d], d+1, sib) {
+			return true
+		}
+	}
+	return false
 }
 
 func hasPlainNth(nths []nth) bool {
 	for _, x := range nths {
-		if !x.ofType {
+		if !x.ofType && x.of == nil {
 			return true
 		}
 	}
@@ -604,7 +706,7 @@ func positionOk(st structural, idx, cnt int) bool {
 
 func nthsMatch(nths []nth, idx, cnt int, ofType bool) bool {
 	for _, x := range nths {
-		if x.ofType != ofType {
+		if x.ofType != ofType || x.of != nil {
 			continue
 		}
 		if !x.matches(idx, cnt) {

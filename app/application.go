@@ -608,6 +608,7 @@ func (a *Application) newWindow(host Host, scale int, root widget.Widget, hooks 
 	ov := inspect.NewOverlay(root)
 	ov.SetOn(a.inspectOn)
 	w := newHostWindow(a.sess, host, scale, ov, hooks, a.dnd, a.primary, animKind, hostCloser(host))
+	w.styleRoot = root
 	w.keyChain = a.combineOnKey(hooks.onKey)
 	if w.input != nil {
 		w.input.transferError = a.reportTransfer

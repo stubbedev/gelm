@@ -81,8 +81,9 @@ type sensitivity struct {
 	states   style.State
 	classes  map[string]bool
 	siblings bool
-	// media reports whether any loaded sheet carries @media rules: the
-	// viewport and preference setters restyle only then.
+	// media reports whether any loaded sheet carries @media or
+	// @container rules: the viewport and preference setters restyle
+	// only then (containers resize with the window).
 	media bool
 	// has reports a :has() selector: a descendant or following
 	// sibling's facts feed an ancestor's match, so class and state
@@ -167,7 +168,7 @@ func relayer() {
 		layersNow = append(layersNow, style.Layer{Sheet: s.sheet, Priority: s.priority})
 	}
 	for _, s := range append(slices.Clone(sheets), scopedSheets...) {
-		if s.sheet.MediaQueries() > 0 {
+		if s.sheet.MediaQueries() > 0 || s.sheet.ContainerQueries() > 0 || s.sheet.Sensitivity().CqUnits {
 			sensNow.media = true
 		}
 		sn := s.sheet.Sensitivity()
@@ -184,6 +185,7 @@ func relayer() {
 		}
 	}
 	styleGen++
+	loadFontFaces()
 	markDamage()
 }
 
@@ -284,26 +286,55 @@ func SetRootFontSize(px float64) {
 // RootFontSize returns the current root font size.
 func RootFontSize() float64 { return styleEnv.Rem }
 
-// mediaViewport is the @media viewport (SetMediaViewport),
-// mediaContrast and mediaDPI the appearance inputs SetTheme cannot
-// derive: prefers-contrast and resolution. Loop-goroutine state, like
-// styleEnv.
+// mediaViewport is the @media viewport (SetMediaViewport), and
+// styleViewports the per-window ones (SetMediaViewportFor, keyed by
+// each window's style root): a tree computes against its own window's
+// size, falling back to the global value when its root reports none.
+// mediaContrast and mediaDPI are the appearance inputs SetTheme cannot
+// derive: prefers-contrast and resolution. All loop-goroutine state,
+// like styleEnv.
 var (
-	mediaViewport struct{ w, h int }
-	mediaContrast bool
-	mediaDPI      = 96.0
+	mediaViewport  struct{ w, h int }
+	styleViewports = map[*node]struct{ w, h int }{}
+	mediaContrast  bool
+	mediaDPI       = 96.0
 )
 
 // SetMediaViewport sets the size @media width/height/aspect-ratio/
-// orientation conditions evaluate against — the window's logical
-// size, which the app layer feeds from its resize callback. The whole
-// // tree restyles when the size changes. Call it from the event-loop
+// orientation conditions evaluate against for trees whose window
+// reported no viewport of its own — the window's logical size, which
+// the app layer feeds from its resize callback. The whole tree
+// restyles when the size changes. Call it from the event-loop
 // goroutine, like SetTheme.
 func SetMediaViewport(w, h int) {
 	if w == mediaViewport.w && h == mediaViewport.h {
 		return
 	}
 	mediaViewport.w, mediaViewport.h = w, h
+	if !sensNow.media {
+		return
+	}
+	styleGen++
+	markDamage()
+}
+
+// SetMediaViewportFor sets the @media viewport of one window's tree:
+// root is the widget SetStyleRoot marked (the app layer passes each
+// window's content root), and every widget below it computes @media
+// conditions, the vw/vh family, and container units against this
+// size, so two windows of one application style independently off
+// one stylesheet. A tree whose root reports no viewport falls back to
+// SetMediaViewport's global value.
+func SetMediaViewportFor(root Widget, w, h int) {
+	n := nodeOf(root)
+	if n == nil {
+		SetMediaViewport(w, h)
+		return
+	}
+	if vp, ok := styleViewports[n]; ok && vp.w == w && vp.h == h {
+		return
+	}
+	styleViewports[n] = struct{ w, h int }{w, h}
 	if !sensNow.media {
 		return
 	}
@@ -372,6 +403,28 @@ func envNow() style.Env {
 		env.RootLineHeight = env.Rem * ratioOr(m.LineHeight, 1.2)
 	}
 	return env
+}
+
+// envFor is envNow with the viewport of n's window: each tree reads
+// the size its own style root reported, the global value otherwise.
+func envFor(n *node) style.Env {
+	env := envNow()
+	if vp, ok := styleViewports[styleRootOf(n)]; ok {
+		env.Media.Width, env.Media.Height = float64(vp.w), float64(vp.h)
+	}
+	return env
+}
+
+// styleRootOf is n's style root: the topmost node of its styling
+// chain.
+func styleRootOf(n *node) *node {
+	for {
+		p := styleParentNodeOf(n)
+		if p == nil {
+			return n
+		}
+		n = p
+	}
 }
 
 // ratioOr falls back to the CSS default ratio when the face reports
@@ -562,13 +615,76 @@ func SetFaceResolver(f func(family string, weight int) (render.Font, bool)) {
 	faceResolver.Store(&f)
 }
 
-// resolveFace consults the installed resolver; ok is false when none
-// is installed or it declines the family.
+// resolveFace consults the @font-face registry first, then the
+// installed resolver; ok is false when the registry has no match and
+// no resolver is installed or it declines the family.
 func resolveFace(family string, weight int) (render.Font, bool) {
+	if f := fontFaceOf(family, weight); f != nil {
+		return f, true
+	}
 	if f := faceResolver.Load(); f != nil {
 		return (*f)(family, weight)
 	}
 	return nil, false
+}
+
+// fontFaceEntry is one loaded @font-face: the family it serves, its
+// weight range, and the loaded face. The style half of the
+// font-style descriptor is recorded but never matched — the
+// font-family resolver's signature carries family and weight only.
+type fontFaceEntry struct {
+	family             string
+	weightLo, weightHi int
+	italic             bool
+	face               render.Font
+}
+
+// fontFaceList is the loaded @font-face registry, rebuilt on every
+// relayer. Loop-goroutine state, like sheets.
+var fontFaceList []fontFaceEntry
+
+// loadFontFaces loads every loaded sheet's @font-face src files and
+// rebuilds the family registry the font-family resolver consults
+// first. A src that cannot be read or parsed reports through the
+// parse-warning sink naming the family and path, and that face alone
+// drops — the same policy a failing hot reload follows.
+func loadFontFaces() {
+	fontFaceList = fontFaceList[:0]
+	for _, s := range append(slices.Clone(sheets), scopedSheets...) {
+		for _, f := range s.sheet.FontFaces() {
+			tf, err := sysfont.FaceFile(f.Src)
+			if err != nil {
+				style.Warn(fmt.Sprintf("@font-face %s: load %s: %v", f.Family, f.Src, err))
+				continue
+			}
+			fontFaceList = append(fontFaceList, fontFaceEntry{
+				family: f.Family, weightLo: f.WeightLo, weightHi: f.WeightHi,
+				italic: f.Italic, face: tf,
+			})
+		}
+	}
+}
+
+// fontFaceOf resolves a family and weight through the @font-face
+// registry: a face whose weight range holds the weight, else the
+// family's first face, else nil.
+func fontFaceOf(family string, weight int) render.Font {
+	if weight == 0 {
+		weight = 400
+	}
+	var first render.Font
+	for _, e := range fontFaceList {
+		if !strings.EqualFold(e.family, family) {
+			continue
+		}
+		if weight >= e.weightLo && weight <= e.weightHi {
+			return e.face
+		}
+		if first == nil {
+			first = e.face
+		}
+	}
+	return first
 }
 
 // effShadow resolves the box-shadow cascade for a floating surface:
@@ -873,6 +989,7 @@ func PaintBoxLayers(cv *render.Canvas, w Widget) {
 		paintBoxBehind(cv, v, n.bounds, radii, borderOf(v), bg)
 	}
 	paintPseudos(cv, w, n, v)
+	paintPseudoImage(cv, n, v)
 	paintOutline(cv, v, n.bounds, radii)
 }
 
@@ -1023,6 +1140,31 @@ func (s *styleTargeter) StyleChildren() []style.Node {
 		s.n.kidsAdaps, s.n.kids, s.n.kidsGen = adaps, out, gen
 	}
 	return s.n.kids
+}
+
+// StyleContainer resolves the nearest query container: the closest
+// style ancestor whose computed cascade sets container-type, with
+// its arranged bounds (the container's own style is cached — a
+// descendant computes after its ancestors — so this walk never
+// reenters the matcher). Containers stop at a style root.
+func (s *styleTargeter) StyleContainer() (style.Container, bool) {
+	pw := s.n.parent
+	for pw != nil && !s.n.styleRoot {
+		pn := nodeOf(pw)
+		if pn == nil {
+			return style.Container{}, false
+		}
+		v := pn.style(pw)
+		if v.Has(style.PropContainerType) && v.ContainerType != style.ContainerNormal {
+			return style.Container{
+				W: float64(pn.bounds.W), H: float64(pn.bounds.H),
+				Size:  v.ContainerType == style.ContainerSize,
+				Names: v.ContainerNames,
+			}, true
+		}
+		pw = pn.parent
+	}
+	return style.Container{}, false
 }
 
 // visibleSiblings returns the visible children of n's parent and n's
@@ -1294,12 +1436,12 @@ func (n *node) restyle(w Widget) *style.Values {
 		if sensNow.counters {
 			styleScratch.SetPrevCounters(prevCountersOf(n, w))
 		}
-		style.Compute(layers, &styleSelf, parent, &old, envNow(), &styleScratch, &v)
+		style.Compute(layers, &styleSelf, parent, &old, envFor(n), &styleScratch, &v)
 		if sensNow.pseudo {
 			n.computePseudos(layers, &v)
 		}
 	} else if n.pseudoGen != styleGen {
-		n.pseudo = [2]style.Values{}
+		n.pseudo = [3]style.Values{}
 		n.pseudoGen = styleGen
 	}
 	n.cs = v
@@ -1332,7 +1474,7 @@ func (n *node) restyle(w Widget) *style.Values {
 }
 
 // pseudoNames are the painted pseudo-elements, in cache order.
-var pseudoNames = [2]string{"before", "after"}
+var pseudoNames = [3]string{"before", "after", "first-letter"}
 
 // prevCountersOf is the previous visible sibling's counter scope, the
 // document-order link CSS counting walks. Computed lazily like any
@@ -1356,7 +1498,7 @@ func (n *node) computePseudos(layers []style.Layer, self *style.Values) {
 	oldPseudo := n.pseudo
 	for i, name := range pseudoNames {
 		var pv style.Values
-		style.ComputePseudo(layers, &styleSelf, self, envNow(), &styleScratch, &pv, name)
+		style.ComputePseudo(layers, &styleSelf, self, envFor(n), &styleScratch, &pv, name)
 		n.pseudo[i] = pv
 	}
 	n.pseudoGen = styleGen
@@ -1370,7 +1512,8 @@ func (n *node) computePseudos(layers []style.Layer, self *style.Values) {
 
 // pseudoChanged is styleChanged plus the pseudo-element-only values.
 func pseudoChanged(a, b *style.Values) bool {
-	return a.HasContent != b.HasContent || a.Content != b.Content || a.Counters != b.Counters || styleChanged(a, b)
+	return a.HasContent != b.HasContent || a.Content != b.Content || a.ContentURL != b.ContentURL ||
+		a.QuoteDepth != b.QuoteDepth || a.Counters != b.Counters || styleChanged(a, b)
 }
 
 // PseudoStyle returns w's computed ::before/::after style — the
@@ -1385,7 +1528,7 @@ func PseudoStyle(w Widget, pseudo string) *style.Values {
 	}
 	for i, name := range pseudoNames {
 		if name == pseudo {
-			if n.pseudoGen != styleGen {
+			if n.pseudoGen != styleGen || n.styleDirty {
 				n.style(w)
 			}
 			return &n.pseudo[i]
@@ -1449,6 +1592,33 @@ func paintPseudos(cv *render.Canvas, w Widget, n *node, v *style.Values) {
 		baseline := box.Y + (box.H-sh.LineHeight())/2 + int(sh.Ascent())
 		col := pickc(0, pv, style.PropColor, v.Color)
 		sh.Draw(cv, x, baseline, col)
+	}
+}
+
+// paintPseudoImage paints a pseudo-element's content: url() image at
+// the content start (::before) or end (::after), vertically centered
+// at its natural size beside any text content.
+func paintPseudoImage(cv *render.Canvas, n *node, v *style.Values) {
+	if !sensNow.pseudo || n.pseudoGen != styleGen {
+		return
+	}
+	b := boxOf(v, render.Insets{})
+	box := b.padding.Shrink(b.border.Shrink(n.bounds))
+	for i := range pseudoNames {
+		pv := &n.pseudo[i]
+		if pv.ContentURL == "" {
+			continue
+		}
+		img := bgImageFor(pv.ContentURL)
+		if img == nil {
+			continue
+		}
+		iw, ih := img.Size()
+		x, y := box.X, box.Y+max((box.H-ih)/2, 0)
+		if i == 1 {
+			x = box.X + max(box.W-iw, 0)
+		}
+		img.Draw(cv, x, y)
 	}
 }
 

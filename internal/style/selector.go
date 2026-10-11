@@ -1,7 +1,6 @@
 package style
 
 import (
-	"slices"
 	"strconv"
 	"strings"
 )
@@ -88,12 +87,16 @@ const (
 	structReadWrite
 )
 
-// nth is one :nth-child(an+b) (and -last, -of-type) test.
+// nth is one :nth-child(an+b) (and -last, -of-type) test, with the
+// Level 4 `of S` selector-scoped sibling filter.
 type nth struct {
 	a, b int
 	last bool
 	// ofType counts only siblings of the subject's element name.
 	ofType bool
+	// of holds the `of S` selector list: an+b counts only the
+	// siblings matching it, nil for the plain form.
+	of []selector
 }
 
 // matches reports whether the 1-based position satisfies an+b for some
@@ -236,6 +239,10 @@ type selector struct {
 	// combs holds len(parts)-1 entries: ' ' descendant, '>' child, '+'
 	// adjacent sibling, '~' general sibling.
 	combs []byte
+	// upper holds a @scope rule's upper bound selectors: a
+	// descendant walk crossing a node matching one leaves the scope,
+	// and the scope root cannot lie beyond it. nil outside @scope.
+	upper []selector
 }
 
 func (s *selector) spec() spec {
@@ -541,9 +548,23 @@ func (p *selParser) pseudo(c *compound) bool {
 			c.has = append(c.has, args...)
 			return true
 		case "nth-child", "nth-last-child", "nth-of-type", "nth-last-of-type":
-			x, ok := parseNth(rawText(p.src, nthArg(args)))
+			micro, of, ok := splitNthOf(args)
 			if !ok {
 				return false
+			}
+			x, ok := parseNth(rawText(p.src, micro))
+			if !ok {
+				return false
+			}
+			if of != nil {
+				if p.depth >= maxPseudoDepth {
+					return false
+				}
+				sels, okl := parseSelectorListAt(p.src, of, p.depth+1)
+				if !okl {
+					return false
+				}
+				x.of = sels
 			}
 			x.last = t.s == "nth-last-child" || t.s == "nth-last-of-type"
 			x.ofType = t.s == "nth-of-type" || t.s == "nth-last-of-type"
@@ -566,6 +587,13 @@ func (p *selParser) pseudoElem(c *compound) bool {
 		c.pseudo = "before"
 	case "after":
 		c.pseudo = "after"
+	case "first-letter":
+		c.pseudo = "first-letter"
+	case "first-line":
+		// Parsed, never matched: line fragmentation happens inside the
+		// text shaper at paint time, and a widget's text is one shaped
+		// run with no per-line box the cascade could address.
+		c.pseudo = "first-line"
 	case "placeholder", "selection", "marker":
 		c.partElem = strings.ToLower(t.s)
 	default:
@@ -609,16 +637,35 @@ func (p *selParser) hasArgs(args []token) ([]hasArg, bool) {
 	return out, len(out) > 0
 }
 
-// nthArg strips the `of S` clause (Selects Level 4's
-// :nth-child(an+b of S)) this engine does not support yet, so the
-// an+b microsyntax reads clean text.
-func nthArg(ts []token) []token {
-	for i := range slices.Backward(ts) {
-		if ts[i].ident("of") && i+1 < len(ts) {
-			return ts[:i]
+// splitNthOf splits a :nth-child argument at its top-level `of`:
+// the an+b microsyntax's tokens and the `of S` selector's tokens (nil
+// when absent). ok is false when an `of` clause is empty.
+func splitNthOf(ts []token) (micro, of []token, ok bool) {
+	for i := range ts {
+		if !ts[i].ident("of") {
+			continue
 		}
+		// Only a top-level `of` splits; one inside a selector's
+		// functional pseudo-class does not.
+		nesting := 0
+		for _, t := range ts[:i] {
+			switch t.kind {
+			case tkFunc, tkLParen, tkLBrack:
+				nesting++
+			case tkRParen, tkRBrack, tkRBrace:
+				nesting--
+			}
+		}
+		if nesting != 0 {
+			continue
+		}
+		of = trimWS(ts[i+1:])
+		if len(of) == 0 {
+			return nil, nil, false
+		}
+		return trimWS(ts[:i]), of, true
 	}
-	return ts
+	return ts, nil, true
 }
 
 // parseNth parses the an+b microsyntax: odd, even, an, b, an+b, an-b.

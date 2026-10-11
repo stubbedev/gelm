@@ -50,6 +50,9 @@ type hostWindow struct {
 	win *Window
 	// layer is the handle of a NewLayer surface (nil otherwise).
 	layer *LayerWindow
+	// styleRoot is the tree the window styles — the widget marked as
+	// its style root — for the per-window media viewport.
+	styleRoot widget.Widget
 
 	// blocked suppresses pointer input while a modal dialog is open;
 	// isDialog marks the exempt dialog windows themselves.
@@ -468,7 +471,14 @@ func (w *hostWindow) reportSize(bw, bh int) {
 		return
 	}
 	w.reportedW, w.reportedH = bw, bh
-	widget.SetMediaViewport(bw, bh)
+	// Per-window media viewport: each tree's @media conditions and
+	// container units read its own size, not the last-resized
+	// window's.
+	if w.styleRoot != nil {
+		widget.SetMediaViewportFor(w.styleRoot, bw, bh)
+	} else {
+		widget.SetMediaViewport(bw, bh)
+	}
 	if w.cfg.onResize != nil {
 		w.cfg.onResize(bw, bh)
 	}

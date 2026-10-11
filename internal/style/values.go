@@ -138,6 +138,8 @@ const (
 	PropScrollbarGutter
 	PropTransitionBehavior
 	PropAnimComposition
+	PropContainerType
+	PropContainerName
 	numProps
 )
 
@@ -826,11 +828,26 @@ type Values struct {
 	UnicodeBidi UnicodeBidi
 	WritingMode WritingMode
 
+	// ContainerType is container-type (container queries): normal
+	// (the default) names no query container, inline-size one whose
+	// inline axis its descendants query, size one whose both axes do.
+	ContainerType ContainerType
+	// ContainerNames is container-name: the space-separated custom-ident
+	// list a @container name filter matches against.
+	ContainerNames string
+
 	// Content is a pseudo-element's resolved content (::before,
 	// ::after): the strings, attr() values, and counter readings joined;
 	// HasContent reports a content declaration won at all.
 	Content    string
 	HasContent bool
+	// ContentURL is content: url(...): an image painted as the
+	// pseudo-element's generated content, beside Content's text.
+	ContentURL string
+	// QuoteDepth is the open-quote nesting depth after this node's
+	// content resolved: descendants' open-quote/close-quote start from
+	// it, CSS's inherited quote counter.
+	QuoteDepth int
 	// Counters is the node's counter environment (counter-reset,
 	// counter-increment): nil when no sheet counts anything.
 	Counters *CounterScope

@@ -46,10 +46,15 @@ func Compute(layers []Layer, n Node, parent, old *Values, env Env, sc *Scratch, 
 
 // ComputePseudo is Compute for one pseudo-element (::before, ::after)
 // of n: only the rules addressing that pseudo-element cascade, and the
-// result inherits from parent, the element's own computed style.
+// result inherits from parent, the element's own computed style. A
+// content declaration's quote keywords move the element's inherited
+// quote depth, so descendants' open-quote continues the count.
 func ComputePseudo(layers []Layer, n Node, parent *Values, env Env, sc *Scratch, v *Values, name string) {
 	sc.pseudo = name
 	sc.computeAll(layers, n, parent, nil, env, v)
+	if parent != nil && v.HasContent {
+		parent.QuoteDepth = v.QuoteDepth
+	}
 }
 
 func (sc *Scratch) computeAll(layers []Layer, n Node, parent, old *Values, env Env, v *Values) {
@@ -84,6 +89,7 @@ func (sc *Scratch) computeAll(layers []Layer, n Node, parent, old *Values, env E
 		rem: env.Rem, em: env.FontPx, weight: 400, self: &sc.self,
 		vpW: env.Media.Width, vpH: env.Media.Height,
 		font: env.Font, rlh: env.RootLineHeight, dark: env.Media.Dark,
+		cq: sc.container, cqHave: sc.haveContainer,
 	}
 	if sc.cx.rlh == 0 {
 		sc.cx.rlh = fontRatio(env.Font.LineHeight, fallbackLH) * env.Rem
@@ -133,7 +139,8 @@ func (sc *Scratch) computeAll(layers []Layer, n Node, parent, old *Values, env E
 	}
 
 	// Inheritance: unset inherited longhands take the parent's value,
-	// unless an explicit `initial` blocked it.
+	// unless an explicit `initial` blocked it. The quote depth
+	// inherits too: descendants' open-quote continues the count.
 	v.Own = v.Set
 	for p := range numProps {
 		if inheritedProps.Has(p) && !v.Has(p) && !blocked.Has(p) && pv.Has(p) {
@@ -141,6 +148,7 @@ func (sc *Scratch) computeAll(layers []Layer, n Node, parent, old *Values, env E
 			v.Set = v.Set.With(p)
 		}
 	}
+	v.QuoteDepth = pv.QuoteDepth
 	sc.applyMeta(v, pv, cx)
 	sc.prevCounters = nil
 	resolveKeyframes(v, layers)
@@ -187,7 +195,7 @@ func (sc *Scratch) computeProp(p Prop, v, parent *Values, cx *ctx) PropSet {
 	}
 	wide := d.wide
 	if wide == wideRevertLayer {
-		if lo := sc.winLow[p]; lo != nil && lo.wide != wideRevertLayer {
+		if lo := sc.revertBelow(p, int(sc.bestLayer[p])); lo != nil && lo.wide != wideRevertLayer {
 			if src, ok := sc.parse(lo, v.Vars, cx); ok {
 				copyProp(v, src, p)
 				v.Set = v.Set.With(p)
@@ -246,6 +254,31 @@ func (sc *Scratch) setInitial(p Prop, v *Values, cx *ctx) {
 	init.OutlineColor = cx.color
 	copyProp(v, &init, p)
 	v.Set = v.Set.With(p)
+}
+
+// revertBelow walks the revert-layer chain of p down from cascade
+// layer from: the best declaration in the next layer below, and when
+// that one is itself a revert-layer, the layer below it, until a
+// concrete declaration or the bottom (nil).
+func (sc *Scratch) revertBelow(p Prop, from int) *decl {
+	for {
+		var best *decl
+		var bestRk uint64
+		bestLayer := -1
+		for i := range sc.chain {
+			e := &sc.chain[i]
+			if e.p != p || int(e.layer) >= from {
+				continue
+			}
+			if bestLayer < 0 || e.rk > bestRk {
+				best, bestRk, bestLayer = e.d, e.rk, int(e.layer)
+			}
+		}
+		if best == nil || best.wide != wideRevertLayer {
+			return best
+		}
+		from = bestLayer
+	}
 }
 
 // parse substitutes and parses d once per compute.
@@ -321,8 +354,10 @@ func (sc *Scratch) applyMeta(v, pv *Values, cx *ctx) {
 		return
 	}
 	cx.counters = v.Counters
-	if s, ok := parseContentTokens(ts, cx); ok {
-		v.Content, v.HasContent = s, true
+	cx.quoteDepth = pv.QuoteDepth
+	if c, ok := parseContentTokens(ts, cx); ok {
+		v.Content, v.ContentURL, v.HasContent = c.text, c.url, true
+		v.QuoteDepth = c.depth
 	}
 }
 
@@ -415,22 +450,73 @@ func (cs *CounterScope) apply(ts []token, reset bool) {
 }
 
 // parseContentTokens resolves a content value: strings, attr(),
-// counter() and counters(). Anything else is invalid at
-// computed-value time and drops the declaration.
-func parseContentTokens(ts []token, cx *ctx) (string, bool) {
+// counter() and counters(), url() (an image in the generated
+// content), and the quote keywords open-quote/close-quote/
+// no-open-quote/no-close-quote over the inherited quote depth.
+// Anything else is invalid at computed-value time and drops the
+// declaration.
+type parsedContent struct {
+	text  string
+	url   string
+	depth int
+}
+
+// defaultQuotes are the quote pairs the quote keywords emit without
+// a quotes property: the typographic double and single pairs.
+var defaultQuotes = [][2]string{{"\u201c", "\u201d"}, {"\u2018", "\u2019"}}
+
+func parseContentTokens(ts []token, cx *ctx) (parsedContent, bool) {
+	var c parsedContent
+	c.depth = cx.quoteDepth
 	if len(ts) == 1 && ts[0].kind == tkIdent {
 		switch strings.ToLower(ts[0].s) {
 		case "none", "normal":
-			return "", true
+			return c, true
 		}
-		return "", false
+		return c, false
 	}
 	var b strings.Builder
+	quote := func(closing bool) string {
+		pair := defaultQuotes[min(c.depth, len(defaultQuotes)-1)]
+		if closing {
+			return pair[1]
+		}
+		return pair[0]
+	}
 	for i := 0; i < len(ts); i++ {
 		t := ts[i]
 		switch {
 		case t.kind == tkString:
 			b.WriteString(t.s)
+		case t.kind == tkIdent:
+			switch strings.ToLower(t.s) {
+			case "open-quote":
+				b.WriteString(quote(false))
+				c.depth++
+			case "close-quote":
+				c.depth = max(0, c.depth-1)
+				b.WriteString(quote(true))
+			case "no-open-quote":
+				c.depth++
+			case "no-close-quote":
+				c.depth = max(0, c.depth-1)
+			default:
+				return c, false
+			}
+		case t.kind == tkFunc && t.s == "url":
+			end := blockEnd(ts, i)
+			inner := trimWS(funcArgs(ts[i:end]))
+			if len(inner) == 0 {
+				return c, false
+			}
+			if len(inner) == 1 && inner[0].kind == tkString {
+				c.url = inner[0].s
+			} else if len(inner) == 1 && inner[0].kind == tkIdent {
+				c.url = inner[0].s
+			} else {
+				c.url = tokensText(inner)
+			}
+			i = end - 1
 		case t.kind == tkFunc && t.s == "attr" && cx.self != nil:
 			end := blockEnd(ts, i)
 			if a := trimWS(funcArgs(ts[i:end])); len(a) > 0 && a[0].kind == tkIdent {
@@ -453,10 +539,11 @@ func parseContentTokens(ts []token, cx *ctx) (string, bool) {
 			i = end - 1
 		case t.kind == tkWS || t.kind == tkComma:
 		default:
-			return "", false
+			return parsedContent{}, false
 		}
 	}
-	return b.String(), true
+	c.text = b.String()
+	return c, true
 }
 
 // counterValue renders counter(name) or counters(name, sep).
@@ -476,13 +563,37 @@ func (cx *ctx) counterValue(name, sep string) string {
 }
 
 // lookup resolves a var() reference: the node's inherited custom
-// properties first, then the @define-color defines of the compute's
-// layers.
+// properties first, then the @define-color defines, then the @property
+// registrations' initial values, of the compute's layers.
 func (sc *Scratch) lookup(vs *Vars, name string) ([]token, bool) {
 	if ts, ok := vs.lookup(name); ok {
 		return ts, true
 	}
-	return sc.define(name, 0)
+	if ts, ok := sc.define(name, 0); ok {
+		return ts, true
+	}
+	return sc.registered(name)
+}
+
+// registered resolves a @property registration: the highest-priority
+// layer's (the later on a tie), whose initial value answers for a
+// name nothing declares. A universal syntax without an initial value
+// has none, like an unregistered property.
+func (sc *Scratch) registered(name string) ([]token, bool) {
+	var reg *PropertyReg
+	best := -1
+	for i, l := range sc.layers {
+		if l.Sheet == nil || l.Sheet.properties == nil {
+			continue
+		}
+		if r, ok := l.Sheet.properties[name]; ok && (best < 0 || l.Priority >= sc.layers[best].Priority) {
+			reg, best = r, i
+		}
+	}
+	if reg == nil {
+		return nil, false
+	}
+	return reg.Initial, reg.Initial != nil
 }
 
 // define resolves a @define-color: the highest-priority layer's value
@@ -513,9 +624,10 @@ func (sc *Scratch) define(name string, depth int) ([]token, bool) {
 // winning declarations with their own var() references substituted
 // (against each other and the inherited chain), cycles made invalid.
 func (sc *Scratch) resolveVars(parent *Vars) *Vars {
-	if len(sc.customs) == 0 {
+	if len(sc.customs) == 0 && !sc.hasNonInheritedProps() {
 		return parent
 	}
+	sc.seedRegistrations()
 	own := make(map[string][]token, len(sc.customs))
 	const (
 		pending = iota
@@ -572,6 +684,47 @@ func (sc *Scratch) resolveVars(parent *Vars) *Vars {
 	return &Vars{parent: parent, own: own}
 }
 
+// hasNonInheritedProps reports whether any loaded layer registers an
+// inherits: false @property: those resolve on nodes that declare
+// nothing for them, so the environment must be built even without a
+// custom declaration.
+func (sc *Scratch) hasNonInheritedProps() bool {
+	for _, l := range sc.layers {
+		if l.Sheet == nil {
+			continue
+		}
+		for _, reg := range l.Sheet.properties {
+			if !reg.Inherits {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// seedRegistrations injects every inherits: false registration the
+// node did not declare as a synthetic own declaration holding the
+// registration's initial value, which stops the inherited chain:
+// the CSS semantics of a non-inherited registered property.
+func (sc *Scratch) seedRegistrations() {
+	for _, l := range sc.layers {
+		if l.Sheet == nil || l.Sheet.properties == nil {
+			continue
+		}
+		for name, reg := range l.Sheet.properties {
+			if reg.Inherits {
+				continue
+			}
+			if _, mine := sc.byName[name]; mine {
+				continue
+			}
+			d := &decl{name: name, custom: true, val: reg.Initial}
+			sc.byName[name] = len(sc.customs)
+			sc.customs = append(sc.customs, customWin{d: d})
+		}
+	}
+}
+
 // substitute replaces every var(--name[, fallback]) in ts with the named
 // value (or the substituted fallback). ok is false when a reference
 // cannot resolve: the declaration is then invalid at computed-value
@@ -624,6 +777,10 @@ func copyProp(dst, src *Values, p Prop) {
 		dst.BgImageURL = src.BgImageURL
 	case PropOpacity:
 		dst.Opacity = src.Opacity
+	case PropContainerType:
+		dst.ContainerType = src.ContainerType
+	case PropContainerName:
+		dst.ContainerNames = src.ContainerNames
 	case PropFilter:
 		dst.Brightness = src.Brightness
 		dst.Filter = src.Filter
