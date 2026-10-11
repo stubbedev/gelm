@@ -2,6 +2,7 @@ package wlsession
 
 import (
 	"fmt"
+	"slices"
 	"testing"
 	"time"
 
@@ -80,8 +81,14 @@ func TestCursorCandidates(t *testing.T) {
 		}
 	})
 
-	t.Run("hand and text shapes pass through", func(t *testing.T) {
-		for _, shape := range []string{"grabbing", "hand1", "xterm", "left_ptr"} {
+	t.Run("grabbing leads with itself and falls back to the closed hand", func(t *testing.T) {
+		if got := cursorCandidates("grabbing"); !slices.Equal(got, []string{"grabbing", "closedhand", "hand2"}) {
+			t.Errorf("candidates(\"grabbing\") = %v", got)
+		}
+	})
+
+	t.Run("core names pass through", func(t *testing.T) {
+		for _, shape := range []string{"hand1", "xterm", "left_ptr", "alias", "copy"} {
 			if got := cursorCandidates(shape); len(got) != 1 || got[0] != shape {
 				t.Errorf("candidates(%q) = %v, want pass-through", shape, got)
 			}

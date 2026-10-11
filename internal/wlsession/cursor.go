@@ -114,8 +114,6 @@ var cursorAliases = map[string][]string{
 	"help":          {"question_arrow", "help"},
 	"cell":          {"plus", "cell"},
 	"vertical-text": {"vertical-text", "xterm"},
-	"alias":         {"alias"},
-	"copy":          {"copy"},
 	"no-drop":       {"no-drop", "no_drop"},
 	"not-allowed":   {"not-allowed", "forbidden", "crossed_circle"},
 	"zoom-in":       {"zoom-in", "zoom_in"},
