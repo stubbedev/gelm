@@ -364,21 +364,23 @@ func (n *Notebook) arrowRects() [2]render.Rect {
 func (n *Notebook) Paint(cv *render.Canvas) {
 	th := Current()
 	v := n.style(n)
-	fx := pushEffects(cv, v)
 	radii := radiusOr(v, th.Radius)
+	fx := pushEffects(cv, &n.node, v, n.bounds, radii)
+	cv = fx.cv
 	paintBoxBehind(cv, v, n.bounds, radii, borderOf(v), pickc(0, v, style.PropBackgroundColor, th.Surface))
 	paintOutline(cv, v, n.bounds, radii)
-	fx.pop(cv)
+	fx.pop()
 
 	header := render.Rect{X: n.bounds.X, Y: n.bounds.Y, W: n.bounds.W, H: tabBarHeight}
 	hv := n.header.style(&n.header)
-	hfx := pushEffects(cv, hv)
 	n.header.Arrange(header)
 	n.header.tabs.Arrange(header)
 	hradii := radiusOr(hv, 0)
+	hfx := pushEffects(cv, &n.header.node, hv, header, hradii)
+	cv = fx.cv
 	paintBoxBehind(cv, hv, header, hradii, borderOf(hv), pickc(0, hv, style.PropBackgroundColor, 0))
 	paintOutline(cv, hv, header, hradii)
-	hfx.pop(cv)
+	hfx.pop()
 
 	strip := cv.PushClip(n.tabViewport())
 	for i, t := range n.tabs {
@@ -390,13 +392,14 @@ func (n *Notebook) Paint(cv *render.Canvas) {
 		if i == n.selected {
 			fill, underline = th.SurfaceHover, th.Accent
 		}
-		tfx := pushEffects(cv, tv)
 		tradii := radiusOr(tv, 0)
+		tfx := pushEffects(cv, &tp.node, tv, rect, tradii)
+		cv = fx.cv
 		paintBoxBehind(cv, tv, rect, tradii, borderOf(tv), pickc(0, tv, style.PropBackgroundColor, fill))
 		if i == n.selected && !tv.Has(style.PropBoxShadow) {
 			cv.FillRect(render.Rect{X: rect.X, Y: rect.Y + tabBarHeight - 3, W: rect.W, H: 3}, underline)
 		}
-		tfx.pop(cv)
+		tfx.pop()
 		if n.face != nil {
 			color := th.TextMuted
 			if i == n.selected {

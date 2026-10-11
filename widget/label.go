@@ -592,9 +592,10 @@ func (l *Label) Arrange(r render.Rect) {
 // wrapping is on, the single line ellipsized as configured otherwise.
 func (l *Label) Paint(cv *render.Canvas) {
 	v := l.style(l)
-	fx := pushEffects(cv, v)
 	b := boxOf(v, render.Insets{})
 	radii := radiusOr(v, 0)
+	fx := pushEffects(cv, &l.node, v, l.bounds, radii)
+	cv = fx.cv
 	if bg := pickc(0, v, style.PropBackgroundColor, 0); bg != 0 || hasBoxLayers(v) {
 		paintBoxBehind(cv, v, l.bounds, radii, b.border, bg)
 	}
@@ -625,7 +626,7 @@ func (l *Label) Paint(cv *render.Canvas) {
 		l.drawLine(cv, face, px, text, line, col, cssDecoration(v), l.alignOf(v), l.effDirection(v), 0)
 	}
 	paintOutline(cv, v, l.bounds, radii)
-	fx.pop(cv)
+	fx.pop()
 }
 
 // drawLine draws one aligned line of text and its decoration.

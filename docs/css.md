@@ -282,8 +282,11 @@ Each longhand is listed with its shorthand.
   - `box-shadow` (lists, inset, spread and blur)
   - `outline[-width|-style|-color|-offset]`
   - `border-spacing` (the Box gap)
-- **Effects.** `opacity`, `filter: brightness()`, `transform` and
-  `transform-origin`.
+- **Effects.** `opacity`, `filter`, `backdrop-filter`,
+  `mix-blend-mode`, `isolation`, `clip-path`, `mask` (and the
+  `mask-image`/`-position`/`-size`/`-repeat`/`-mode` longhands),
+  `transform`, `transform-origin`, `perspective`, `transform-style`
+  and `backface-visibility`.
 - **Motion.**
   - `transition`, `transition-property`, `-duration`, `-delay` and
     `-timing-function`, tweened on the animation clock
@@ -342,6 +345,77 @@ subtree, and ink outside the border box joins the damage rect.
   `pinch-zoom`) are deferred: the gesture layer exposes pinch only as
   a claimed GesturePinch a widget opts into, not an axis the scroll
 gates can mask; `manipulation` computes to both pan axes meanwhile.
+
+## Rendering effects
+
+The effect properties apply to a widget's painted result, per frame.
+A stylesheet that declares none of them keeps the exact old paint
+path — opacity through the canvas's alpha stack, brightness through
+its brightness stack — with no offscreen buffer and no allocation
+(the budget tests pin both).
+
+- **`filter`**: `blur()`, `brightness()`, `contrast()`, `grayscale()`,
+  `hue-rotate()`, `invert()`, `opacity()`, `saturate()`, `sepia()` and
+  `drop-shadow()`, in list order. The color functions apply the
+  filter-effects matrices (each function's output clamps before the
+  next, as the spec defines); `blur()` is a three-pass box
+  approximation of the Gaussian (within a couple of counts of it);
+  `drop-shadow()` blurs and tints the painted silhouette and composites
+  it under the element. A `brightness()`-only list keeps the inline
+  fast path (no layer). Deferred: `url()` filters — they name SVG
+  filter graphs, which need a document loader the engine does not
+  have; a declaration carrying one is skipped with a warning.
+- **`backdrop-filter`**: the same function list, applied to what has
+  been painted behind the widget this frame — the canvas region under
+  the border box is snapshotted, filtered, clipped to the rounded
+  border box, and composited back over the original backdrop. Deferred:
+  `url()` filters, for the same reason as `filter`.
+- **`mix-blend-mode`**: all sixteen modes — the separable set
+  (`multiply`, `screen`, `overlay`, `darken`, `lighten`, `color-dodge`,
+  `color-burn`, `hard-light`, `soft-light`, `difference`, `exclusion`)
+  and the non-separable set (`hue`, `saturation`, `color`,
+  `luminosity`) — blended per the compositing spec, then composited
+  source-over. **`isolation`**: `isolate` makes the subtree its own
+  compositing group (an offscreen layer), so descendants' blend modes
+  blend against the group instead of everything below; `auto` blends
+  against the canvas. A blending element that also carries a transform
+  composites through the transform first (the projective composite is
+  source-over only).
+- **`clip-path`**: `inset()` (with `round` corners), `circle()`,
+  `ellipse()` (keywords and percentages resolve against the border
+  box), `polygon()` (the fill-rule keyword is accepted; every path
+  fills nonzero) and `path()` — the SVG `d` grammar with arcs
+  subdivided into cubics. The shape's coverage multiplies the
+  element's painted result.
+- **`mask`**: `mask-image` as a gradient or a `url()` image file, with
+  `mask-position`, `mask-size` (`auto`, `cover`, `contain`, or
+  lengths/percentages), `mask-repeat` (`repeat`/`no-repeat`; `round`
+  and `space` read as `repeat`) and `mask-mode` (`alpha`, `luminance`,
+  `match-source`). Alpha masks read the mask's alpha, luminance masks
+  its WCAG luminance. Deferred: multiple mask layers (a comma list
+  rejects the declaration — the engine composites one mask layer), and
+  mask-border.
+- **3-D transforms**: `perspective()` (as a transform function),
+  `rotateX()`, `rotateY()` and `translateZ()` compose as true 4x4
+  matrices restricted to the element's plane — a homography — so a
+  tilt foreshortens under perspective and a `translateZ` zooms. The
+  `perspective` property takes the same distance and composes outside
+  the transform (the engine applies every transform to the node
+  itself, GTK's model, so `perspective` affects the element's own
+  composed map rather than only its children). A perspective with a
+  purely 2-D transform is a no-op — a flat plane at z=0 projects onto
+  itself, which is CSS's own math. **`backface-visibility`**: `hidden`
+  hides the element when its composed map flips the plane (the
+  flat-pipeline reading: a negative determinant of the plane map,
+  which is what `rotateY(180deg)` and `scaleX(-1)` produce).
+  **Deferred**: `transform-style: preserve-3d` parses and computes but
+  paints as `flat` — the engine composites each subtree as one
+  offscreen layer with no z-interaction between siblings, so a shared
+  3-D rendering context (interpenetrating children, per-fragment
+  sorting) has no compositor to run on; `matrix3d()`, `rotate3d()`,
+  `scale3d()` and `translate3d()` are rejected for the same reason
+  (only the plane-restricted functions above are honest on this
+  pipeline).
 
 ## Cascade
 
@@ -405,7 +479,11 @@ Style is cached per widget and invalidated, never re-matched per paint:
   selector tests that fact on an ancestor, and siblings only when
   sibling selectors are loaded.
 - The steady-state frame reads the computed struct and makes no style
-  calls.
+  calls. Rendering effects (a filter, a blend mode, a clip path, a
+  mask, a backdrop filter) paint the widget into an offscreen layer
+  cached on the widget across frames — allocated once per size — and
+  composite it back through the effect chain; the no-effect frame
+  never allocates (the budget tests pin it).
 
 `BenchmarkStyleGallery` (73 widgets, 25 rules, i5-10400F):
 

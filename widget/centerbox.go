@@ -95,8 +95,9 @@ func (b *CenterBox) HitTest(p Point) Widget {
 // Paint draws the box's CSS layers, then the slots.
 func (b *CenterBox) Paint(cv *render.Canvas) {
 	v := b.style(b)
-	fx := pushEffects(cv, v)
 	radii := radiusOr(v, 0)
+	fx := pushEffects(cv, &b.node, v, b.bounds, radii)
+	cv = fx.cv
 	bg := pickc(0, v, style.PropBackgroundColor, 0)
 	if bg != 0 || hasBoxLayers(v) {
 		paintBoxBehind(cv, v, b.bounds, radii, borderOf(v), bg)
@@ -107,5 +108,5 @@ func (b *CenterBox) Paint(cv *render.Canvas) {
 		}
 	}
 	paintOutline(cv, v, b.bounds, radii)
-	fx.pop(cv)
+	fx.pop()
 }

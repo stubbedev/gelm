@@ -89,9 +89,10 @@ func (s *Switch) Paint(cv *render.Canvas) {
 			track = accentOf(v, t.DisabledAccent())
 		}
 	}
-	fx := pushEffects(cv, v)
-	defer fx.pop(cv)
 	radii := radiusOr(v, s.bounds.H/2)
+	fx := pushEffects(cv, &s.node, v, s.bounds, radii)
+	cv = fx.cv
+	defer fx.pop()
 	bw := borderOf(v)
 	paintBoxBehind(cv, v, s.bounds, radii, bw, pickc(0, v, style.PropBackgroundColor, track))
 	defer paintOutline(cv, v, s.bounds, radii)
@@ -250,8 +251,9 @@ const checkRing = 2
 func (c *CheckButton) Paint(cv *render.Canvas) {
 	t := Current()
 	kv := c.check.style(&c.check)
-	fx := pushEffects(cv, kv)
-	defer fx.pop(cv)
+	fx := pushEffects(cv, &c.node, kv, c.bounds, radiusOr(kv, min(c.bounds.W, c.bounds.H)/2))
+	cv = fx.cv
+	defer fx.pop()
 	box := c.bounds
 	if box.W > box.H {
 		box.W = box.H

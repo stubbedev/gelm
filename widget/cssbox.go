@@ -165,39 +165,6 @@ func toRenderShadow(sh style.Shadow) render.BoxShadow {
 	return render.BoxShadow{X: sh.X, Y: sh.Y, Blur: sh.Blur, Spread: sh.Spread, Color: sh.Color, Inset: sh.Inset}
 }
 
-// effects is a pushed opacity/brightness pair, restored by pop.
-type effects struct {
-	pa, pb float64
-	op, br bool
-}
-
-// pushEffects applies the subtree effects — opacity and the brightness
-// filter — for the matching pop. Both are no-ops unless the stylesheet
-// set them.
-func pushEffects(cv *render.Canvas, v *style.Values) effects {
-	e := effects{
-		op: v.Has(style.PropOpacity) && v.Opacity != 1,
-		br: v.Has(style.PropFilter) && v.Brightness != 1,
-	}
-	if e.op {
-		e.pa = cv.PushAlpha(v.Opacity)
-	}
-	if e.br {
-		e.pb = cv.PushBrightness(v.Brightness)
-	}
-	return e
-}
-
-// pop restores what pushEffects pushed.
-func (e effects) pop(cv *render.Canvas) {
-	if e.br {
-		cv.PopBrightness(e.pb)
-	}
-	if e.op {
-		cv.PopAlpha(e.pa)
-	}
-}
-
 // hasBoxLayers reports whether the cascade paints anything behind the
 // content beyond a background color: an image, shadows, a border, or
 // an outline.

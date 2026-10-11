@@ -841,11 +841,12 @@ func (r *listRow) Paint(cv *render.Canvas) {
 	v := r.style(r)
 	fill := pickc(0, v, style.PropBackgroundColor, r.list.rowFill(r.idx))
 	radii := radiusOr(v, 0)
-	fx := pushEffects(cv, v)
+	fx := pushEffects(cv, &r.node, v, r.bounds, radii)
+	cv = fx.cv
 	paintBoxBehind(cv, v, r.bounds, radii, borderOf(v), fill)
 	PaintChild(cv, r.row)
 	paintOutline(cv, v, r.bounds, radii)
-	fx.pop(cv)
+	fx.pop()
 }
 
 // HitTest returns the proxy while p is inside its band.

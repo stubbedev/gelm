@@ -85,8 +85,9 @@ func (m *meter) Arrange(r render.Rect) {
 func (m *meter) paintMeter(cv *render.Canvas, from, to float64) {
 	t := Current()
 	tv := m.trough.style(&m.trough)
-	fx := pushEffects(cv, tv)
-	defer fx.pop(cv)
+	fx := pushEffects(cv, &m.node, tv, m.bounds, render.Corners{})
+	cv = fx.cv
+	defer fx.pop()
 	tr := 0
 	if m.roundTrough {
 		tr = m.bounds.H / 2
@@ -104,9 +105,10 @@ func (m *meter) paintMeter(cv *render.Canvas, from, to float64) {
 	if m.self != nil {
 		fill = accentOf(m.style(m.self), fill)
 	}
-	fxp := pushEffects(cv, fv)
+	fxp := pushEffects(cv, &m.node, fv, fr, radiusOr(fv, inner.H/2))
+	cv = fxp.cv
 	paintBoxBehind(cv, fv, fr, radiusOr(fv, inner.H/2), borderOf(fv), pickc(0, fv, style.PropBackgroundColor, fill))
-	fxp.pop(cv)
+	fxp.pop()
 }
 
 // fallback resolves an optional themed color.

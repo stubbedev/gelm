@@ -98,6 +98,10 @@ type node struct {
 	bounds  render.Rect
 	parent  Widget
 	tooltip string
+	// fx, fxb, fxf and fxmask cache the effect pipeline's offscreen
+	// layers across frames: the widget's own filtered layer, the
+	// backdrop snapshot, the filtered backdrop, and the mask-image.
+	fx, fxb, fxf, fxmask *render.Layer
 	// tooltipMarkup holds the markup when the tooltip was set as
 	// markup; tooltip then holds its plain text.
 	tooltipMarkup string

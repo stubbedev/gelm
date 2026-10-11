@@ -25,27 +25,44 @@ const (
 	XformTranslate
 	XformSkew
 	XformMatrix
+	XformPerspective
+	XformRotateX
+	XformRotateY
+	XformTranslateZ
 )
 
 // XformPart is one parsed transform function: its op and the numbers
 // that rebuild it (rotate's degrees; scale's sx, sy; translate's dx,
-// dy; skew's two angles; matrix's six entries).
+// dy; skew's two angles; matrix's six entries; perspective's distance;
+// rotateX/rotateY's degrees; translateZ's dz).
 type XformPart struct {
 	Op XformOp
 	N  [6]float64
 }
 
-// Xform is one computed transform: the composed affine and the
-// primitives that built it.
+// Xform is one computed transform: the composed affine, the projective
+// composition (which carries the 3-D functions), whether the composed
+// map shows the element's back, and the primitives that built it.
 type Xform struct {
-	M     render.Affine
-	Parts []XformPart
+	M render.Affine
+	P render.M3
+	// m4 is the full 4x4 composition the plane map derives from: the
+	// z the 3-D functions leave matters to the next function, so the
+	// homography cannot be composed per-part.
+	m4 render.Mat4
+	// Backface reports the composed projective map with a negative
+	// determinant - the flat-pipeline reading of the element's back
+	// facing the viewer.
+	Backface bool
+	Parts    []XformPart
 }
 
 // XformIdentity moves nothing.
-var XformIdentity = Xform{M: render.Identity}
+var XformIdentity = Xform{M: render.Identity, P: render.Identity3, m4: render.Identity4}
 
-// partAffine rebuilds one primitive's affine from its numbers.
+// partAffine rebuilds one primitive's affine from its numbers; the
+// 3-D primitives have no affine of their own (their action lives in
+// the projective composition), so they fall back to the identity.
 func partAffine(p XformPart) render.Affine {
 	switch p.Op {
 	case XformRotate:
@@ -62,24 +79,53 @@ func partAffine(p XformPart) render.Affine {
 	return render.Identity
 }
 
+// partM4 rebuilds one primitive's 4x4 map: the affines embedded, the
+// 3-D functions as themselves.
+func partM4(p XformPart) render.Mat4 {
+	switch p.Op {
+	case XformPerspective:
+		return render.Perspective4(p.N[0])
+	case XformRotateX:
+		return render.RotateX4(p.N[0])
+	case XformRotateY:
+		return render.RotateY4(p.N[0])
+	case XformTranslateZ:
+		return render.TranslateZ4(p.N[0])
+	}
+	return render.PlaneRotZ(partAffine(p))
+}
+
+// compose folds one more primitive into x: the affine chain for the
+// 2-D fast path, the 4x4 chain (whose plane restriction is the
+// projective map), and the backface flag off the plane determinant.
+func (x *Xform) compose(p XformPart) {
+	x.M = x.M.Mul(partAffine(p))
+	x.m4 = x.m4.Mul(partM4(p))
+	x.P = x.m4.Plane3()
+	x.Backface = x.P[0]*x.P[4]-x.P[1]*x.P[3] < 0
+	x.Parts = append(x.Parts, p)
+}
+
 // lerpParts walks two matching primitive lists function by function.
-func lerpParts(a, b []XformPart, t float64) (render.Affine, bool) {
+func lerpParts(a, b []XformPart, t float64) (render.Affine, render.M3, bool) {
 	if len(a) != len(b) || len(a) == 0 {
-		return render.Identity, false
+		return render.Identity, render.Identity3, false
 	}
 	m := render.Identity
+	m4 := render.Identity4
 	for i := range a {
 		if a[i].Op != b[i].Op {
-			return render.Identity, false
+			return render.Identity, render.Identity3, false
 		}
-		var p XformPart
-		p.Op = a[i].Op
+		var part XformPart
+		part.Op = a[i].Op
 		for j := range a[i].N {
-			p.N[j] = a[i].N[j] + (b[i].N[j]-a[i].N[j])*t
+			part.N[j] = a[i].N[j] + (b[i].N[j]-a[i].N[j])*t
 		}
-		m = m.Mul(partAffine(p))
+		m = m.Mul(partAffine(part))
+		m4 = m4.Mul(partM4(part))
 	}
-	return m, true
+	return m, m4.Plane3(), true
 }
 
 // xformParts is one affine's decomposition: the translation, the
@@ -145,16 +191,17 @@ func shortestTurn(a, b float64) float64 {
 // LerpXform walks two transforms: the primitive lists when they match
 // (a spin turns), the affines' decompositions otherwise.
 func LerpXform(a, b Xform, t float64) Xform {
-	if m, ok := lerpParts(a.Parts, b.Parts, t); ok {
-		return Xform{M: m}
+	if m, p, ok := lerpParts(a.Parts, b.Parts, t); ok {
+		return Xform{M: m, P: p, Backface: p[0]*p[4]-p[1]*p[3] < 0}
 	}
 	pa, pb := decomposeXform(a.M), decomposeXform(b.M)
-	return Xform{M: recomposeXform(xformParts{
+	m := recomposeXform(xformParts{
 		tx:  pa.tx + (pb.tx-pa.tx)*t,
 		ty:  pa.ty + (pb.ty-pa.ty)*t,
 		rot: pa.rot + shortestTurn(pa.rot, pb.rot)*t,
 		sx:  pa.sx + (pb.sx-pa.sx)*t,
 		sy:  pa.sy + (pb.sy-pa.sy)*t,
 		kx:  pa.kx + (pb.kx-pa.kx)*t,
-	})}
+	})
+	return Xform{M: m, P: render.PlaneRotZ(m).Plane3()}
 }

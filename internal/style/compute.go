@@ -596,6 +596,7 @@ func copyProp(dst, src *Values, p Prop) {
 		dst.Opacity = src.Opacity
 	case PropFilter:
 		dst.Brightness = src.Brightness
+		dst.Filter = src.Filter
 	case PropPaddingTop:
 		dst.Padding.Top = src.Padding.Top
 	case PropPaddingRight:
@@ -772,6 +773,30 @@ func copyProp(dst, src *Values, p Prop) {
 		dst.UnicodeBidi = src.UnicodeBidi
 	case PropWritingMode:
 		dst.WritingMode = src.WritingMode
+	case PropBackdropFilter:
+		dst.Backdrop = src.Backdrop
+	case PropMixBlendMode:
+		dst.Blend = src.Blend
+	case PropIsolation:
+		dst.Isolate = src.Isolate
+	case PropClipPath:
+		dst.Clip = src.Clip
+	case PropMaskImage:
+		dst.Mask.Kind, dst.Mask.Image, dst.Mask.URL = src.Mask.Kind, src.Mask.Image, src.Mask.URL
+	case PropMaskPosition:
+		dst.Mask.PosX, dst.Mask.PosY = src.Mask.PosX, src.Mask.PosY
+	case PropMaskSize:
+		dst.Mask.SizeKind, dst.Mask.SizeW, dst.Mask.SizeH = src.Mask.SizeKind, src.Mask.SizeW, src.Mask.SizeH
+	case PropMaskRepeat:
+		dst.Mask.Repeat = src.Mask.Repeat
+	case PropMaskMode:
+		dst.Mask.Luminance = src.Mask.Luminance
+	case PropPerspective:
+		dst.Perspective = src.Perspective
+	case PropTransformStyle:
+		dst.Preserve3D = src.Preserve3D
+	case PropBackfaceVisibility:
+		dst.BackfaceHidden = src.BackfaceHidden
 	}
 }
 

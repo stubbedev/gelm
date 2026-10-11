@@ -30,6 +30,24 @@
 - `appearance: none/auto` parses and computes; painting is deferred
   (below).
 
+### CSS rendering effects (#159)
+
+- `filter` beyond `brightness()`: `blur()`, `contrast()`,
+  `grayscale()`, `hue-rotate()`, `invert()`, `opacity()`,
+  `saturate()`, `sepia()` and `drop-shadow()`, and
+  `backdrop-filter` over the same function set.
+- `mix-blend-mode` (all sixteen modes) and `isolation`.
+- `clip-path` (`inset()`, `circle()`, `ellipse()`, `polygon()`,
+  `path()`) and `mask`/`mask-image` with position, size, repeat and
+  mode (alpha and luminance).
+- 3-D-lite transforms: `perspective()`, `rotateX()`, `rotateY()`,
+  `translateZ()` as true plane homographies, the `perspective`
+  property, and `backface-visibility`. `transform-style:
+  preserve-3d` parses but paints flat (see docs/css.md).
+- The no-effect paint path is unchanged and still allocation-free;
+  effectful widgets paint through per-widget offscreen layers cached
+  across frames.
+
 ### Parity, sixth pass
 
 - relm4-components' `OpenButton`: `app.NewOpenButton` composes the open
