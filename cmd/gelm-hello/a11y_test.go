@@ -67,31 +67,42 @@ func TestShowcaseTabTraversal(t *testing.T) {
 		}
 	})
 
-	t.Run("the cycle is complete: six focusable controls, one lap each", func(t *testing.T) {
+	t.Run("the cycle is complete: every focusable control, one lap each", func(t *testing.T) {
 		var focusable []widget.A11yState
 		for _, st := range widget.DescribeTree(show.root) {
 			if st.Focusable {
 				focusable = append(focusable, st)
 			}
 		}
-		if len(focusable) != len(expect) {
-			t.Fatalf("%d focusable controls in the tree, want %d", len(focusable), len(expect))
+		// The sixth-pass section below the fold adds its own focusable
+		// controls after the text area (the showcase's scroll keeps the
+		// tree laid out to its natural height, so they are all in the
+		// cycle); the lap must cover exactly what the tree reports -
+		// the six above plus the section's - with no repeats.
+		if len(focusable) <= len(expect) {
+			t.Fatalf("%d focusable controls in the tree, want more than the %d core ones", len(focusable), len(expect))
 		}
 		seen := map[widget.Widget]bool{}
 		start := r.Focused()
-		for range expect {
+		for range len(focusable) + 2 {
 			w := r.Focused()
 			if w == nil {
 				t.Fatal("focus lost mid-cycle")
 			}
 			if seen[w] {
-				t.Errorf("%T visited twice in one lap", w)
+				t.Fatalf("%T visited twice in one lap", w)
 			}
 			seen[w] = true
 			tabStep(r, false, true) // ctrl+Tab rides the full cycle
+			if r.Focused() == start {
+				break
+			}
 		}
 		if r.Focused() != start {
 			t.Errorf("after a lap focus = %T, want wrapped back to %T", r.Focused(), start)
+		}
+		if len(seen) != len(focusable) {
+			t.Errorf("one lap visited %d controls, want every one of the %d focusable", len(seen), len(focusable))
 		}
 		for _, want := range expect {
 			if !seen[want] {
@@ -103,12 +114,13 @@ func TestShowcaseTabTraversal(t *testing.T) {
 	t.Run("shift+tab walks backwards", func(t *testing.T) {
 		focusOn(t, r, show.button)
 		tabStep(r, true, false)
-		if r.Focused() != show.area {
-			t.Errorf("shift+tab from the first control = %T, want the last", r.Focused())
+		if r.Focused() == widget.Widget(show.button) || r.Focused() == nil {
+			t.Fatalf("shift+tab from the first control = %T, want the last", r.Focused())
 		}
+		last := r.Focused()
 		tabStep(r, false, true)
-		if r.Focused() != show.button {
-			t.Errorf("ctrl+tab from the last control = %T, want wrapped to the first", r.Focused())
+		if r.Focused() != widget.Widget(show.button) {
+			t.Errorf("ctrl+tab from the last control (%T) = %T, want wrapped to the first", last, r.Focused())
 		}
 	})
 

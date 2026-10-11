@@ -54,6 +54,13 @@ var (
 // it is a real failure.
 const traceTimeout = 8 * time.Second
 
+// showcaseControls is how many "control ... center" traces the
+// showcase logs after mapping: the seven core controls plus the
+// sixth-pass section's (listbox, its three toggles, the fixed
+// button, the typed list, the draw surface, and the open button's two
+// parts).
+const showcaseControls = 16
+
 // dwellTime is how long the pointer rests on a widget in the tooltip
 // test: past app's 500ms tooltip delay, short of test patience.
 const dwellTime = 900 * time.Millisecond
@@ -95,7 +102,7 @@ func startShowcaseEnv(t *testing.T, env ...string) (*Client, *LogWatcher, map[st
 			showcaseW, showcaseH, err, strings.ReplaceAll(tailFile(testEnv.Dir+"/sway.log", 15), "\n", "\n\t"))
 	}
 	centers := make(map[string][2]int)
-	for range 7 {
+	for range showcaseControls {
 		tr, err := w.Wait("demo", "control ", traceTimeout)
 		if err != nil {
 			t.Fatalf("control center trace missing: %v", err)
@@ -1124,6 +1131,257 @@ func TestHeadlessNestedMenuPopover(t *testing.T) {
 		if _, err := w.Wait("demo", "menu depth 0", traceTimeout); err != nil {
 			t.Fatal(err)
 		}
+	}
+}
+
+// revealShowcase wheels the showcase's root scroll until every traced
+// control named in names is on screen at once, returning the vertical
+// offset to subtract from a traced center to get window coordinates
+// (centers are traced at map time, offset zero, in content coordinates).
+// The wheel rests over the left column, where nothing consumes the
+// axis before the root scroll. A lost tick is retried; each tick is one
+// wheel step, so the offset moves in small increments both ways.
+func revealShowcase(t *testing.T, w *LogWatcher, in *VirtualInput, centers map[string][2]int, names ...string) int {
+	t.Helper()
+	deep, shallow := 0, 1<<30
+	for _, name := range names {
+		c, ok := centers[name]
+		if !ok {
+			t.Fatalf("no traced center for %s", name)
+		}
+		deep, shallow = max(deep, c[1]), min(shallow, c[1])
+	}
+	off := 0
+	for range 40 {
+		if shallow-off >= 16 && deep-off <= showcaseH-16 {
+			return off
+		}
+		dy := 10.0
+		if shallow-off < 16 {
+			dy = -10
+		}
+		if err := in.ScrollAt(150, 200, dy); err != nil {
+			t.Fatalf("wheel the root scroll: %v", err)
+		}
+		tr, err := w.Wait("demo", "root scrolled to 0,", attemptTimeout)
+		if err != nil {
+			continue
+		}
+		var x, parsed int
+		if _, err := fmt.Sscanf(tr.Message, "root scrolled to %d,%d", &x, &parsed); err == nil {
+			off = parsed
+		}
+	}
+	t.Fatalf("the root scroll never brought %v on screen (offset %d):\n%s", names, off, tailTraces(w, 15))
+	return 0
+}
+
+// TestHeadlessSixthPassListBoxAndFixed drives the sixth-pass widgets
+// through the compositor: the ListBox selects and activates a row on a
+// plain click, its filter and sort toggles re-filter and re-sort the
+// rows, the keyboard moves the selection, and the Fixed's button moves
+// its positioned child. The stylesheet's @media rule and ::before/
+// ::after content are asserted from the client's own trace, so the CSS
+// at-rule and pseudo-element paths run on a live session too.
+func TestHeadlessSixthPassListBoxAndFixed(t *testing.T) {
+	requireEnv(t)
+	_, w, centers := startShowcase(t)
+	in := newInput(t)
+	waitKeyboard(t, w)
+
+	// The 640-wide window satisfied the min-width branch, and both
+	// pseudo-elements of the sixth-pass heading resolved their content.
+	if _, err := w.Wait("demo", "media viewport "+fmt.Sprintf("%dx%d", showcaseW, showcaseH), traceTimeout); err != nil {
+		t.Errorf("the window size never reached the stylesheet engine: %v", err)
+	}
+	if _, err := w.Wait("demo", `css before "sixth " after " pass"`, traceTimeout); err != nil {
+		t.Errorf("the @media ::before or the plain ::after never resolved content: %v", err)
+	}
+
+	off := revealShowcase(t, w, in, centers, "listbox", "listfilter", "listsort", "fixedbtn")
+	at := func(name string) (int, int) {
+		t.Helper()
+		c, ok := centers[name]
+		if !ok {
+			t.Fatalf("no traced center for %s", name)
+		}
+		return c[0], c[1] - off
+	}
+
+	// One click on a row selects it and - single-click activate is on
+	// by default - activates it too.
+	x, y := at("listbox")
+	if err := clickUntil(w, in, "demo", x, y, BTNLeft, "listbox select "); err != nil {
+		t.Errorf("a click never selected a listbox row: %v", err)
+	}
+	if _, err := w.Wait("demo", "listbox activate ", traceTimeout); err != nil {
+		t.Errorf("the clicked listbox row never activated: %v", err)
+	}
+
+	// The click left the row holding focus: Down moves the selection
+	// to the next row through the compositor's keyboard path. This must
+	// run before the toggles below, whose clicks take the focus back.
+	if err := in.Tap(KeyDown); err != nil {
+		t.Fatalf("down: %v", err)
+	}
+	if err := w.WaitAll("demo", traceTimeout, "listbox select "); err != nil {
+		t.Errorf("the arrow key never moved the listbox selection: %v", err)
+	}
+
+	// The filter toggle hides the long rows, the sort toggle orders the
+	// rest, and a second filter toggle brings them back.
+	x, y = at("listfilter")
+	if err := clickUntil(w, in, "demo", x, y, BTNLeft, "listbox filter true"); err != nil {
+		t.Errorf("the filter toggle never filtered the listbox: %v", err)
+	}
+	x, y = at("listsort")
+	if err := clickUntil(w, in, "demo", x, y, BTNLeft, "listbox sort true"); err != nil {
+		t.Errorf("the sort toggle never sorted the listbox: %v", err)
+	}
+	x, y = at("listfilter")
+	if err := clickUntil(w, in, "demo", x, y, BTNLeft, "listbox filter false"); err != nil {
+		t.Errorf("the filter toggle never lifted the filter: %v", err)
+	}
+
+	// The Fixed's button moves its positioned child 20px left, in
+	// place, without detaching it.
+	x, y = at("fixedbtn")
+	if err := clickUntil(w, in, "demo", x, y, BTNLeft, "fixed moved to (76,6)"); err != nil {
+		t.Errorf("the fixed child never moved: %v", err)
+	}
+}
+
+// typedSelect clicks the typed list until a selection trace lands and
+// returns the index the selected item's name carries, so a test can
+// tell recycled rows apart by what they were rebound to.
+func typedSelect(t *testing.T, w *LogWatcher, in *VirtualInput, x, y int) int {
+	t.Helper()
+	for attempt := range 3 {
+		mark := w.Mark()
+		if err := in.ClickAt(x, y, BTNLeft); err != nil {
+			t.Fatalf("click the typed list: %v", err)
+		}
+		tr, err := w.Wait("demo", "typed select item-", attemptTimeout)
+		if err != nil && w.SeenSince(mark, "input", "press at") {
+			tr, err = w.Wait("demo", "typed select item-", traceTimeout)
+		}
+		if err != nil {
+			if attempt == 2 {
+				t.Fatalf("a click on the typed list never selected a row: %v", err)
+			}
+			continue
+		}
+		var i int
+		if _, err := fmt.Sscanf(tr.Message, "typed select item-%d", &i); err != nil {
+			t.Fatalf("bad typed selection trace %q: %v", tr.Message, err)
+		}
+		return i
+	}
+	return -1
+}
+
+// TestHeadlessSixthPassTypedListSurfaceAndOpenButton covers the rest
+// of the sixth pass under the compositor: the DrawSurface keeps
+// painting incremental patches off its timer (a cadence floor, never
+// an absolute rate), the TypedList recycles rows as the wheel scrolls
+// its viewport (a row far past the first viewport still selects, and
+// reports an item the scroll brought in), the open button's recents
+// dropdown takes its press, the button opens the file dialog (a real
+// second toplevel), and after Escape answers it the parent's input
+// works again.
+func TestHeadlessSixthPassTypedListSurfaceAndOpenButton(t *testing.T) {
+	requireEnv(t)
+	c, w, centers := startShowcase(t)
+	in := newInput(t)
+	waitKeyboard(t, w)
+
+	off := revealShowcase(t, w, in, centers, "surface", "typedlist", "typedsort", "openfile", "openrecents")
+	at := func(name string) (int, int) {
+		t.Helper()
+		cc, ok := centers[name]
+		if !ok {
+			t.Fatalf("no traced center for %s", name)
+		}
+		return cc[0], cc[1] - off
+	}
+
+	// Hovering the draw surface routes to the surface leaf, and the
+	// timer keeps drawing: one more patch within a few ticks' budget is
+	// the floor, not a frame-rate assertion.
+	sx, sy := at("surface")
+	if err := hoverUntil(w, in, "input", sx, sy, "*widget.DrawSurface"); err != nil {
+		t.Errorf("hovering the draw surface never routed to it: %v", err)
+	}
+	if err := w.WaitAll("demo", 4*time.Second, "surface drew "); err != nil {
+		t.Errorf("the draw surface stopped painting on its timer: %v", err)
+	}
+
+	// Select a row, scroll the viewport a few wheel ticks, select again:
+	// the recycled row reports an item from deep in the model.
+	tx, ty := at("typedlist")
+	first := typedSelect(t, w, in, tx, ty)
+	second := first
+	for range 3 {
+		for range 4 {
+			if err := in.ScrollAt(tx, ty, 30); err != nil {
+				t.Fatalf("wheel the typed list: %v", err)
+			}
+		}
+		if second = typedSelect(t, w, in, tx, ty); second > first+4 {
+			break
+		}
+	}
+	if second <= first+4 {
+		t.Errorf("after scrolling, the clicked row still reported item %d, want one past the first viewport (first %d)", second, first)
+	}
+
+	// The typed list's own sort toggle orders the model.
+	x, y := at("typedsort")
+	if err := clickUntil(w, in, "demo", x, y, BTNLeft, "typed sort true"); err != nil {
+		t.Errorf("the typed sort toggle never sorted the list: %v", err)
+	}
+
+	// The recents dropdown half of the open button takes the press.
+	rx, ry := at("openrecents")
+	var dropdownErr error
+	for range 3 {
+		if err := in.ClickAt(rx, ry, BTNLeft); err != nil {
+			t.Fatalf("click the recents dropdown: %v", err)
+		}
+		dropdownErr = w.WaitAll("input", attemptTimeout, "over *widget.Dropdown")
+		if dropdownErr == nil {
+			break
+		}
+	}
+	if dropdownErr != nil {
+		t.Errorf("the recents dropdown never took its press: %v", dropdownErr)
+	}
+
+	// The button half opens the file picker: a second toplevel maps, so
+	// the compositor confirms a configure for it.
+	x, y = at("openfile")
+	if err := clickUntil(w, in, "shell", x, y, BTNLeft, "toplevel state"); err != nil {
+		t.Fatalf("the open button never opened the file dialog: %v", err)
+	}
+	for _, tr := range w.Tail(80) {
+		if strings.Contains(tr.Message, "compositor fatal") {
+			t.Fatalf("the compositor rejected the file dialog: %s", tr)
+		}
+	}
+	select {
+	case <-c.Exited():
+		t.Fatalf("the client died with its file dialog open; log tail:\n%s", tailTraces(w, 15))
+	default:
+	}
+
+	// Escape answers the dialog with cancel, closing it, and the modal
+	// block lifts with it: the typed list click that follows must land.
+	if err := in.Tap(KeyEscape); err != nil {
+		t.Fatalf("escape: %v", err)
+	}
+	tx, ty = at("typedlist")
+	if err := clickUntil(w, in, "demo", tx, ty, BTNLeft, "typed select item-"); err != nil {
+		t.Errorf("the parent never took input again after the dialog closed: %v", err)
 	}
 }
 
