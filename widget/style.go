@@ -1475,12 +1475,12 @@ func (n *node) restyle(w Widget) *style.Values {
 			h.styleRestyled(old, v)
 		}
 	}
-	if layoutKey(v) != layoutKey(old) {
+	if layoutKey(&v) != layoutKey(&old) {
 		if inv, ok := w.(interface{ InvalidateLayout() }); ok {
 			inv.InvalidateLayout()
 		}
 	}
-	if inheritedKey(v) != inheritedKey(old) {
+	if inheritedKey(&v) != inheritedKey(&old) {
 		restyleSubtree(w)
 	}
 	return &n.cs
@@ -1723,7 +1723,7 @@ func animsEqual(a, b []style.Animation) bool {
 // layoutKey projects the values that change what a widget wants to
 // measure or where its children go; a change requests a relayout
 // through InvalidateLayout.
-func layoutKey(v style.Values) layoutFacts {
+func layoutKey(v *style.Values) layoutFacts {
 	eff := v.EffBorder()
 	return layoutFacts{
 		padding: v.Padding, margin: v.Margin, border: eff,
@@ -1795,7 +1795,7 @@ type layoutFacts struct {
 
 // inheritedKey projects the values descendants inherit — the custom
 // property environment included; a change restyles the subtree.
-func inheritedKey(v style.Values) inheritedFacts {
+func inheritedKey(v *style.Values) inheritedFacts {
 	return inheritedFacts{
 		set: v.Set.And(inheritedKeyProps), color: v.Color, fontSize: v.FontSize, fontFamily: v.FontFamily,
 		fontWeight: v.FontWeight, italic: v.Italic, letter: v.LetterSpacing,

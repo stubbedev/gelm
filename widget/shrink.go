@@ -22,8 +22,12 @@ func shrinkableOf(w Widget) int {
 }
 
 // Shrinkable implements Shrinker: a column gives what its children
-// can; a row is as short as its least shrinkable child lets it be.
+// can; a row is as short as its least shrinkable child lets it be; a
+// grid down to its min-content height.
 func (b *Box) Shrinkable() int {
+	if layoutModeOf(b.style(b)) == modeGrid {
+		return b.gridShrinkable(Column)
+	}
 	if b.flowAxis() == Column {
 		total := 0
 		for _, c := range b.child {
@@ -67,8 +71,11 @@ func shrinkableWidthOf(w Widget) int {
 
 // ShrinkableWidth implements WidthShrinker: a row gives what its
 // children can; a column is as narrow as its least shrinkable child
-// lets it be.
+// lets it be; a grid down to its min-content width.
 func (b *Box) ShrinkableWidth() int {
+	if layoutModeOf(b.style(b)) == modeGrid {
+		return b.gridShrinkable(Row)
+	}
 	if b.flowAxis() == Row {
 		total := 0
 		for _, c := range b.child {

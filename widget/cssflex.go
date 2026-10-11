@@ -77,23 +77,30 @@ func (p *cssPass) flexAxesOf(size Size) flexAxes {
 	} else {
 		f.mainFlip, f.crossFlip = f.reverse, p.rtl != f.wrapReverse
 	}
-	gap := func(a Axis, prop style.Prop, l style.Length) int {
-		if !p.v.Has(prop) {
-			return p.b.spacingAlong(p.v, a)
-		}
-		basis := extent(size, a)
-		if !finite(basis) {
-			basis = 0
-		}
-		return l.Resolve(basis)
-	}
-	colGap := gap(Row, style.PropColumnGap, l.ColumnGap)
-	rowGap := gap(Column, style.PropRowGap, l.RowGap)
+	colGap, rowGap := p.gapAlong(Row, extent(size, Row)), p.gapAlong(Column, extent(size, Column))
 	f.gapMain, f.gapCross = colGap, rowGap
 	if f.main == Column {
 		f.gapMain, f.gapCross = rowGap, colGap
 	}
 	return f
+}
+
+// gapAlong is the gap between the items laid along a — column-gap
+// between the columns of a row, row-gap between the rows: the declared
+// gap, a percentage of the content box's basis extent (zero when that
+// is indefinite), else the box spacing.
+func (p *cssPass) gapAlong(a Axis, basis int) int {
+	prop, l := style.PropColumnGap, p.v.Layout.ColumnGap
+	if a == Column {
+		prop, l = style.PropRowGap, p.v.Layout.RowGap
+	}
+	if !p.v.Has(prop) {
+		return p.b.spacingAlong(p.v, a)
+	}
+	if !finite(basis) {
+		basis = 0
+	}
+	return l.Resolve(basis)
 }
 
 // flexDirection is the box's flex main axis and whether it runs
@@ -128,36 +135,57 @@ func boxAlignOf(a Align) (style.BoxAlign, bool) {
 	return style.BoxAlign{}, false
 }
 
-// alignSelfOf resolves an item's cross alignment: its align-self, the
-// container's align-items, then the programmatic placement
-// (AppendAligned, SetHAlign/SetVAlign across), stretch last; normal
-// stretches.
+// alignSelfOf resolves a flex item's cross alignment: selfAlignOf's
+// along the cross axis, AppendAligned placing it; normal stretches.
 func (p *cssPass) alignSelfOf(it *cssItem, cross Axis) style.BoxAlign {
-	a := style.BoxAlign{Kind: style.BoxStretch}
-	switch {
-	case it.v.Has(style.PropAlignSelf) && it.v.Layout.AlignSelf.Kind != style.BoxAuto:
-		a = it.v.Layout.AlignSelf
-	case p.v.Has(style.PropAlignItems):
-		a = p.v.Layout.AlignItems
-	default:
-		prog := AlignFill
-		if l := layoutOf(it.w); l != nil {
-			prog = l.valign
-			if cross == Row {
-				prog = l.halign
-			}
-		}
-		if it.entry.cross != AlignFill {
-			prog = it.entry.cross
-		}
-		if m, ok := boxAlignOf(prog); ok {
-			a = m
-		}
-	}
+	a := p.selfAlignOf(it, cross, true, style.PropAlignSelf, style.PropAlignItems)
 	if a.Kind == style.BoxNormal {
 		a.Kind = style.BoxStretch
 	}
 	return a
+}
+
+// selfAlignOf resolves an item's self alignment along a: its self
+// property (align-self or justify-self) where declared and not auto,
+// the container's items property (align-items or justify-items), then
+// the programmatic placement — SetHAlign/SetVAlign along a, and
+// AppendAligned's cross alignment where appended says it places along
+// a — and normal, the initial value, last.
+func (p *cssPass) selfAlignOf(it *cssItem, a Axis, appended bool, self, items style.Prop) style.BoxAlign {
+	switch own := boxAlignField(&it.v.Layout, self); {
+	case it.v.Has(self) && own.Kind != style.BoxAuto:
+		return own
+	case p.v.Has(items):
+		return boxAlignField(&p.v.Layout, items)
+	}
+	prog := AlignFill
+	if l := layoutOf(it.w); l != nil {
+		prog = l.valign
+		if a == Row {
+			prog = l.halign
+		}
+	}
+	if appended && it.entry.cross != AlignFill {
+		prog = it.entry.cross
+	}
+	if m, ok := boxAlignOf(prog); ok {
+		return m
+	}
+	return style.BoxAlign{Kind: style.BoxNormal}
+}
+
+// boxAlignField is the computed value of one self or items alignment
+// longhand.
+func boxAlignField(l *style.Layout, p style.Prop) style.BoxAlign {
+	switch p {
+	case style.PropAlignSelf:
+		return l.AlignSelf
+	case style.PropAlignItems:
+		return l.AlignItems
+	case style.PropJustifySelf:
+		return l.JustifySelf
+	}
+	return l.JustifyItems
 }
 
 // flexFactors are an item's grow and shrink factors: flex-grow where

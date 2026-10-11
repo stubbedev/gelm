@@ -225,6 +225,56 @@ func TestGoldenCSSLayout(t *testing.T) {
 	`, page, "css-layout", goldenFrame(w, h), goldenAfterArrange(func() { settle(t, page, w, h) }))
 }
 
+// TestGoldenCSSGrid pins the grid layout on one page: a named-area
+// template (header across, a fixed sidebar, an fr main split by a
+// nested auto-fill grid of tiles, one spanning two tracks, a footer),
+// gaps, self alignment (a centered badge, an end-aligned chip), dense
+// auto-placement, and an absolutely positioned marker on grid lines.
+func TestGoldenCSSGrid(t *testing.T) {
+	box := func(classes ...string) *Box {
+		b := NewBox(Row, 0, 0)
+		b.AddClass(classes...)
+		return b
+	}
+	with := func(parent *Box, kids ...*Box) *Box {
+		for _, k := range kids {
+			parent.Append(k, false)
+		}
+		return parent
+	}
+	tiles := box("tiles")
+	for i := range 7 {
+		if i == 1 {
+			tiles.Append(box("tile", "wide"), false)
+			continue
+		}
+		tiles.Append(box("tile"), false)
+	}
+	page := with(box("page"),
+		with(box("head"), box("badge")),
+		with(box("side"), box("chip")),
+		tiles,
+		box("foot"),
+		box("marker"))
+	const w, h = 320, 240
+	cssShot(t, `
+		.page { display: grid; position: relative; padding: 8px; gap: 6px; background-color: #1e1e2e;
+			grid-template: "head head" 36px "side main" 1fr "foot foot" 24px / 80px 1fr; }
+		.head { grid-area: head; display: grid; background-color: #313244; border-radius: 6px; }
+		.badge { width: 60px; height: 16px; place-self: center; background-color: #f9e2af; border-radius: 8px; }
+		.side { grid-area: side; display: grid; background-color: #45475a; border-radius: 6px; }
+		.chip { width: 40px; height: 20px; margin: 6px; justify-self: end; align-self: end;
+			background-color: #89b4fa; border-radius: 4px; }
+		.tiles { grid-area: main; display: grid; gap: 4px; grid-auto-flow: dense;
+			grid-template-columns: repeat(auto-fill, minmax(50px, 1fr)); grid-auto-rows: 30px; }
+		.tile { background-color: #fab387; border-radius: 3px; }
+		.wide { grid-column: span 3; background-color: #cba6f7; }
+		.foot { grid-area: foot; background-color: #313244; border-radius: 6px; }
+		.marker { position: absolute; grid-area: side; right: 4px; top: 4px; width: 10px; height: 10px;
+			background-color: #f38ba8; border-radius: 5px; }
+	`, page, "css-grid", goldenFrame(w, h), goldenAfterArrange(func() { settle(t, page, w, h) }))
+}
+
 func TestGoldenCSSDialogCard(t *testing.T) {
 	face := goldenFace(t)
 	// The app-level surfaces name their card; dialog styles the

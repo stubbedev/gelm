@@ -171,6 +171,18 @@ const (
 	PropVisibility
 	PropFloat
 	PropClear
+	PropGridTemplateColumns
+	PropGridTemplateRows
+	PropGridTemplateAreas
+	PropGridAutoColumns
+	PropGridAutoRows
+	PropGridAutoFlow
+	PropGridColumnStart
+	PropGridColumnEnd
+	PropGridRowStart
+	PropGridRowEnd
+	PropJustifyItems
+	PropJustifySelf
 	numProps
 )
 
@@ -740,7 +752,7 @@ type Values struct {
 	MarginAuto [4]bool
 
 	// Layout is the CSS layout group: display, the box sizes,
-	// positioning, flexbox, overflow, visibility and float.
+	// positioning, flexbox, grid, overflow, visibility and float.
 	Layout Layout
 	// BorderSpacing is GTK's border-spacing: the gap a box leaves between
 	// its children, horizontal and vertical.

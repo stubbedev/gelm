@@ -2,10 +2,11 @@ package style
 
 // The CSS layout properties (docs/css.md): display, the box sizes and
 // box-sizing, aspect-ratio, positioning and z-index, the flexbox group
-// with gap, overflow, visibility, and float/clear. They compute here;
-// the widget layer's layout engines read the Layout group. Lengths
-// that may carry a percentage keep it unresolved (Length), since only
-// the layout knows the containing block.
+// with gap, overflow, visibility, and float/clear, and the grid group
+// (grid.go). They compute here; the widget layer's layout engines read
+// the Layout group. Lengths that may carry a percentage keep it
+// unresolved (Length), since only the layout knows the containing
+// block.
 
 import (
 	"math"
@@ -226,7 +227,8 @@ const (
 )
 
 // Layout is the computed CSS layout group, comparable so a restyle
-// diffs it with ==. Each field's longhand Set bit says whether the
+// diffs it with == (the grid's interned lists compare by value that
+// way). Each field's longhand Set bit says whether the
 // stylesheet declared it: an undeclared display, flex-direction,
 // flex-grow, align-self or gap leaves the widget's programmatic layout
 // in charge (docs/css.md's interaction rule).
@@ -264,6 +266,20 @@ type Layout struct {
 	Visibility           Visibility
 	Float                Float
 	Clear                Clear
+
+	// The grid container's explicit grid (grid.go): its track lists and
+	// area map, nil for none, the implicit tracks' sizes, nil for auto,
+	// and the auto-placement flow.
+	GridTemplateColumns, GridTemplateRows *TrackList
+	GridTemplateAreas                     *GridAreas
+	GridAutoColumns, GridAutoRows         *AutoTracks
+	GridAutoFlow                          GridAutoFlow
+	// A grid item's placement lines and its inline-axis alignment;
+	// JustifyItems is the container's default for its items'
+	// justify-self: auto.
+	GridColumnStart, GridColumnEnd GridLine
+	GridRowStart, GridRowEnd       GridLine
+	JustifyItems, JustifySelf      BoxAlign
 }
 
 // LayoutProps are the longhands of the Layout group.
@@ -272,7 +288,8 @@ var LayoutProps = setOf(PropDisplay, PropPosition, PropTop, PropRight, PropBotto
 	PropBoxSizing, PropAspectRatio, PropFlexDirection, PropFlexWrap, PropJustifyContent,
 	PropAlignItems, PropAlignSelf, PropAlignContent, PropFlexGrow, PropFlexShrink, PropFlexBasis,
 	PropOrder, PropRowGap, PropColumnGap, PropOverflowX, PropOverflowY, PropVisibility, PropFloat,
-	PropClear)
+	PropClear).Or(gridContainerProps).Or(setOf(PropGridColumnStart, PropGridColumnEnd,
+	PropGridRowStart, PropGridRowEnd, PropJustifyItems, PropJustifySelf))
 
 // layoutWideProps are the layout longhands a CSS-wide keyword returns
 // to undeclared rather than to a CSS initial value: initial, unset and
@@ -346,6 +363,30 @@ func copyLayoutProp(dst, src *Layout, p Prop) {
 		dst.Float = src.Float
 	case PropClear:
 		dst.Clear = src.Clear
+	case PropGridTemplateColumns:
+		dst.GridTemplateColumns = src.GridTemplateColumns
+	case PropGridTemplateRows:
+		dst.GridTemplateRows = src.GridTemplateRows
+	case PropGridTemplateAreas:
+		dst.GridTemplateAreas = src.GridTemplateAreas
+	case PropGridAutoColumns:
+		dst.GridAutoColumns = src.GridAutoColumns
+	case PropGridAutoRows:
+		dst.GridAutoRows = src.GridAutoRows
+	case PropGridAutoFlow:
+		dst.GridAutoFlow = src.GridAutoFlow
+	case PropGridColumnStart:
+		dst.GridColumnStart = src.GridColumnStart
+	case PropGridColumnEnd:
+		dst.GridColumnEnd = src.GridColumnEnd
+	case PropGridRowStart:
+		dst.GridRowStart = src.GridRowStart
+	case PropGridRowEnd:
+		dst.GridRowEnd = src.GridRowEnd
+	case PropJustifyItems:
+		dst.JustifyItems = src.JustifyItems
+	case PropJustifySelf:
+		dst.JustifySelf = src.JustifySelf
 	}
 }
 
