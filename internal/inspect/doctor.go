@@ -75,7 +75,7 @@ func DoctorFrom(info wlsession.InspectInfo, opts DoctorOptions) string {
 		b.WriteString("cursor theme: unavailable (not resolved)\n")
 	default:
 		b.WriteString("cursor theme: " + info.CursorTheme + " " +
-			strconv.Itoa(info.CursorSize) + "px\n")
+			strconv.FormatUint(uint64(info.CursorSize), 10) + "px\n")
 	}
 
 	b.WriteString("fonts: " + describeFonts(opts) + "\n")

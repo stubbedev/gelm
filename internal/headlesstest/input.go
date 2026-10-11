@@ -2,6 +2,7 @@ package headlesstest
 
 import (
 	_ "embed"
+	"fmt"
 	"time"
 
 	"github.com/stubbedev/gelm/vinput"
@@ -97,6 +98,9 @@ func (v *VirtualInput) settle() {
 // MoveTo moves the pointer to compositor coordinates (x, y).
 func (v *VirtualInput) MoveTo(x, y int) error {
 	w, h := v.dev.OutputSize()
+	if x < 0 || y < 0 || x > int(w) || y > int(h) {
+		return fmt.Errorf("move to (%d,%d): outside the %dx%d output", x, y, w, h)
+	}
 	if err := v.dev.MotionAbsolute(uint32(x), uint32(y), uint32(w), uint32(h)); err != nil {
 		return err
 	}

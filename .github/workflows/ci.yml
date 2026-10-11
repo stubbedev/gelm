@@ -21,6 +21,11 @@ on:
   push:
   pull_request:
 
+# Every job only reads the repository: checkout, the Nix fetches the
+# token rate-limits, and artifact uploads (which use their own token).
+permissions:
+  contents: read
+
 jobs:
   lint:
     # PR evidence: formatting + golangci-lint in one quick pass. The full
