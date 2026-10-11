@@ -214,16 +214,45 @@ func readOffer(receive func(string, uintptr) error, flush func() error, mimes ma
 // never blocks) and a peer that stalls is cut off after the transfer
 // deadline - both surface here as errors, so paste callers react to a
 // rejected paste instead of an OOM or a hung window.
+//
+// While this client holds the selection, the payload comes from the
+// claim directly: the wire path would make the loop goroutine both the
+// pipe's reader and, in its send handler, its writer, which stalls
+// until the transfer deadline wherever the compositor delivers the
+// send after the flush roundtrip (Hyprland), and on any payload larger
+// than the pipe buffer.
 func (c *Clipboard) Read(prefs ...string) ([]byte, string, error) {
+	if c.source != nil {
+		return readClaim(c.content, prefs)
+	}
 	if c.selection == nil {
 		return nil, "", ErrUnavailable
 	}
 	return readOffer(c.selection.Receive, c.sess.Roundtrip, c.selectionMimes, prefs)
 }
 
+// readClaim serves a read from this client's own claim: the best of
+// prefs the content offers, written in process.
+func readClaim(content transfer.Content, prefs []string) ([]byte, string, error) {
+	mime := transfer.Pick(prefs, content.Has)
+	if mime == "" {
+		return nil, "", ErrUnavailable
+	}
+	data, err := content.Bytes(mime)
+	if err != nil {
+		return nil, "", fmt.Errorf("clipboard: read own %s claim: %w", mime, err)
+	}
+	return data, mime, nil
+}
+
 // Offers reports whether the selection offers mime - what a paste
 // target checks before choosing how to read.
-func (c *Clipboard) Offers(mime string) bool { return c.selection != nil && c.selectionMimes[mime] }
+func (c *Clipboard) Offers(mime string) bool {
+	if c.source != nil {
+		return c.content.Has(mime)
+	}
+	return c.selection != nil && c.selectionMimes[mime]
+}
 
 // ReadText returns the selection as text.
 func (c *Clipboard) ReadText() (string, error) {
@@ -255,8 +284,13 @@ func (c *Clipboard) ReadHTML() (string, error) {
 // ReadPrimary returns the current primary selection as text. Errors
 // with ErrUnavailable when the protocol is missing or there is nothing
 // to read; oversize and stalled peers surface as errors exactly as in
-// Read - the two selections share one hardened transfer.
+// Read - the two selections share one hardened transfer - and, as in
+// Read, this client's own claim is served in process.
 func (c *Clipboard) ReadPrimary() (string, error) {
+	if c.primarySource != nil {
+		data, _, err := readClaim(c.primaryContent, transfer.TextMimes)
+		return string(data), err
+	}
 	if c.primary == nil {
 		return "", ErrUnavailable
 	}
