@@ -619,9 +619,21 @@ func TestHeadlessClipboardRoundtrip(t *testing.T) {
 	}
 
 	// The copy->offer->paste pipeline crosses the compositor's
-	// clipboard and can land late under load; the trace match is a
-	// substring, so a retried paste that doubles twice still matches.
+	// clipboard and can land late under load. Each attempt starts from
+	// a fresh "abc" (select all, retype), so a late paste of an earlier
+	// attempt cannot leave text the doubled match never sees again.
 	for attempt := range 3 {
+		if attempt > 0 {
+			if err := in.Combo(KeyA); err != nil {
+				t.Fatalf("ctrl+a: %v", err)
+			}
+			if err := in.TypeText("abc"); err != nil {
+				t.Fatalf("retype abc: %v", err)
+			}
+			if _, err := w.Wait("demo", `entry: "abc"`, attemptTimeout); err != nil {
+				t.Fatalf("the entry never reset to abc: %v", err)
+			}
+		}
 		if err := in.Combo(KeyA); err != nil { // select all
 			t.Fatalf("ctrl+a: %v", err)
 		}
