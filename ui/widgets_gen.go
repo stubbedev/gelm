@@ -3720,6 +3720,18 @@ func (b *ListBoxBuilder) HeaderFunc(arg func(*widget.ListBoxRow) widget.Widget) 
 	return b
 }
 
+// MinHeight calls (*widget.ListBox).SetMinHeight.
+func (b *ListBoxBuilder) MinHeight(h int) *ListBoxBuilder {
+	b.do(func(s *Scope, w *widget.ListBox) { w.SetMinHeight(h) })
+	return b
+}
+
+// WatchMinHeight re-applies SetMinHeight with get's value after every update.
+func (b *ListBoxBuilder) WatchMinHeight(get func() int) *ListBoxBuilder {
+	b.watch(func(w *widget.ListBox) { w.SetMinHeight(get()) })
+	return b
+}
+
 // Placeholder calls (*widget.ListBox).SetPlaceholder.
 func (b *ListBoxBuilder) Placeholder(child Node) *ListBoxBuilder {
 	b.do(func(s *Scope, w *widget.ListBox) { w.SetPlaceholder(build(s, child)) })
