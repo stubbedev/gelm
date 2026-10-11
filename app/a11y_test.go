@@ -6,6 +6,7 @@ package app
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stubbedev/gelm/internal/wlsession"
 )
@@ -23,6 +24,17 @@ func TestServeAccessibilityTakesExportedOptions(t *testing.T) {
 	// wedged by a half-started bridge.
 	if err := app.ServeAccessibility(A11YOptions{Address: "unix:path=/nonexistent/gelm-a11y-test"}); err == nil {
 		t.Fatal("second ServeAccessibility on the same broken bus should also fail")
+	}
+}
+
+// An application cannot sample the bridge by hand, so the negative
+// interval that means "the embedder drives sampling" is refused instead
+// of starting a bridge that never samples.
+func TestServeAccessibilityRefusesNegativePoll(t *testing.T) {
+	app := NewApplication(&wlsession.Session{})
+	err := app.ServeAccessibility(A11YOptions{Address: "unix:path=/nonexistent/gelm-a11y-test", Poll: -time.Second})
+	if err == nil || !strings.Contains(err.Error(), "negative poll interval") {
+		t.Fatalf("ServeAccessibility with a negative poll = %v, want the refusal", err)
 	}
 }
 

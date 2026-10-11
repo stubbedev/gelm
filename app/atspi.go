@@ -6,6 +6,7 @@
 package app
 
 import (
+	"fmt"
 	"os"
 	"slices"
 
@@ -102,6 +103,11 @@ func (a *Application) stopAccessibility() {
 func (a *Application) ServeAccessibility(opts A11YOptions) error {
 	if a.stopA11y != nil {
 		return nil
+	}
+	// A negative interval means the embedder samples by hand, which an
+	// application cannot: the bridge would never sample.
+	if opts.Poll < 0 {
+		return fmt.Errorf("app: ServeAccessibility: negative poll interval %v", opts.Poll)
 	}
 	br, err := atspi.Serve(a, opts)
 	if err != nil {
