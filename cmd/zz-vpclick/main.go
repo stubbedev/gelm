@@ -91,7 +91,8 @@ func parse(args []string) (func(*headlesstest.VirtualInput) error, error) {
 		if err != nil {
 			return nil, err
 		}
-		code, err := strconv.ParseUint(op, 10, 32)
+		// evdev key codes fit in 16 bits (KEY_MAX is 0x2ff).
+		code, err := strconv.ParseUint(op, 10, 16)
 		if err != nil {
 			return nil, fmt.Errorf("key code %q: %w", op, err)
 		}
