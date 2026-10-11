@@ -235,7 +235,7 @@ func (t *TextArea) drawRow(cv *render.Canvas, r visualRow, line []rune, sh *rend
 		face := t.font()
 		if (st.Bold || st.Italic) && t.variants != nil {
 			if f := t.variants(st.Bold, st.Italic); f != nil {
-				face = t.faces.get(f, t.style(t), 0)
+				face = t.faces.get(f, t.style(t), 0, 0)
 			}
 		}
 		x := rowX + int(sh.CaretX(at-r.startCol)+0.5)

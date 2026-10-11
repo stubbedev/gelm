@@ -3,6 +3,7 @@ package widget
 import (
 	"math"
 
+	"github.com/stubbedev/gelm/internal/style"
 	"github.com/stubbedev/gelm/render"
 )
 
@@ -31,13 +32,31 @@ func lineBaseline(h int, sh *render.ShapedText) int {
 	return int(math.Round((float64(h)-float64(sh.LineHeight()))/2 + sh.Ascent()))
 }
 
-// Baseline implements Baseliner: the first line inside the CSS box.
+// Baseline implements Baseliner: the first line inside the CSS box,
+// raised or lowered by vertical-align (sub, super, a length, or a
+// percentage resolved against the line-height at compute time).
 func (l *Label) Baseline() (int, bool) {
 	if l.shaped == nil {
 		return 0, false
 	}
 	v := l.style(l)
-	return boxOf(v, render.Insets{}).outer().Top + lineBaseline(l.lineBox(v), l.shaped), true
+	lineBox := l.lineBox(v)
+	base := boxOf(v, render.Insets{}).outer().Top + lineBaseline(lineBox, l.shaped)
+	if v.Has(style.PropVerticalAlign) {
+		shift := v.VerticalAlignPx
+		if v.VerticalAlignPct {
+			shift *= float64(lineBox)
+		}
+		switch v.VerticalAlign {
+		case style.VerticalAlignSub:
+			base += int(math.Round(0.25 * fontPx(v, l.sizePx)))
+		case style.VerticalAlignSuper:
+			base -= int(math.Round(0.33 * fontPx(v, l.sizePx)))
+		case style.VerticalAlignLength:
+			base -= int(math.Round(shift))
+		}
+	}
+	return base, true
 }
 
 // Baseline implements Baseliner: the text line inside the field's

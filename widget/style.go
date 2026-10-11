@@ -1480,10 +1480,18 @@ func styleChanged(a, b *style.Values) bool {
 		a.IconSource != b.IconSource || a.IconXform.M != b.IconXform.M ||
 		a.PaletteTint != b.PaletteTint || a.CaretColor != b.CaretColor ||
 		a.Decoration != b.Decoration || a.Transition != b.Transition ||
-		a.Cursor != b.Cursor || a.PointerEvents != b.PointerEvents ||
-		a.UserSelect != b.UserSelect || a.CaretShape != b.CaretShape ||
-		a.AccentColor != b.AccentColor || a.AccentAuto != b.AccentAuto ||
 		a.Appearance != b.Appearance || a.TouchAction != b.TouchAction ||
+		a.TextAlign != b.TextAlign || a.TextIndent != b.TextIndent ||
+		a.WhiteSpace != b.WhiteSpace || a.WordBreak != b.WordBreak ||
+		a.LineBreak != b.LineBreak || a.Hyphens != b.Hyphens ||
+		a.WordSpacing != b.WordSpacing || a.VerticalAlign != b.VerticalAlign ||
+		a.VerticalAlignPx != b.VerticalAlignPx || a.VerticalAlignPct != b.VerticalAlignPct || a.LineClamp != b.LineClamp ||
+		a.Overflow != b.Overflow || a.VariantCaps != b.VariantCaps ||
+		a.VariantNumeric != b.VariantNumeric || a.VariantLig != b.VariantLig ||
+		a.VariantEA != b.VariantEA || a.VariantPos != b.VariantPos ||
+		a.VariantAlt != b.VariantAlt || a.OpticalSizing != b.OpticalSizing ||
+		a.Direction != b.Direction || a.UnicodeBidi != b.UnicodeBidi ||
+		a.WritingMode != b.WritingMode ||
 		!animsEqual(a.Animation, b.Animation)
 }
 
@@ -1512,9 +1520,40 @@ func layoutKey(v style.Values) layoutFacts {
 		setSpacing: v.Has(style.PropBorderSpacing),
 		fontSize:   v.FontSize, fontFamily: v.FontFamily, fontWeight: v.FontWeight, italic: v.Italic,
 		iconSize: v.IconSize, transform: v.TextTransform, letter: v.LetterSpacing,
+		text: textFacts{
+			indent: v.TextIndent, white: v.WhiteSpace, wordBreak: v.WordBreak, lineBreak: v.LineBreak,
+			hyphens: v.Hyphens, word: v.WordSpacing, clamp: v.LineClamp, overflow: v.Overflow,
+			optical: v.OpticalSizing, caps: v.VariantCaps, numeric: v.VariantNumeric,
+			lig: v.VariantLig, eastAsian: v.VariantEA, position: v.VariantPos, alternates: v.VariantAlt,
+		},
 		set: v.Set.And(style.SetOf(style.PropFontSize, style.PropFontFamily, style.PropFontWeight,
-			style.PropIconSize, style.PropMinWidth, style.PropMinHeight, style.PropTextTransform)),
+			style.PropIconSize, style.PropMinWidth, style.PropMinHeight, style.PropTextTransform,
+			style.PropTextIndent, style.PropWhiteSpace, style.PropWordBreak, style.PropLineBreak,
+			style.PropHyphens, style.PropWordSpacing, style.PropLineClamp, style.PropTextOverflow,
+			style.PropFontOpticalSizing, style.PropFontVariantCaps, style.PropFontVariantNumeric,
+			style.PropFontVariantLigatures, style.PropFontVariantEastAsian,
+			style.PropFontVariantPosition, style.PropFontVariantAlternates)),
 	}
+}
+
+// textFacts projects the CSS Text and font-variant properties that
+// change what a text widget measures, packed comparable.
+type textFacts struct {
+	indent     float64
+	white      style.WhiteSpace
+	wordBreak  style.WordBreak
+	lineBreak  style.LineBreakK
+	hyphens    style.HyphensK
+	word       float64
+	clamp      int
+	overflow   style.TextOverflowK
+	optical    bool
+	caps       style.FontVariantCaps
+	numeric    style.FontVariantNumeric
+	lig        style.FontVariantLigatures
+	eastAsian  style.FontVariantEastAsian
+	position   style.FontVariantPosition
+	alternates style.FontVariantAlternates
 }
 
 // layoutFacts is layoutKey's comparable projection.
@@ -1531,6 +1570,7 @@ type layoutFacts struct {
 	iconSize                int
 	transform               style.TextTransform
 	letter                  float64
+	text                    textFacts
 	set                     style.PropSet
 }
 
@@ -1539,11 +1579,23 @@ type layoutFacts struct {
 func inheritedKey(v style.Values) inheritedFacts {
 	keep := style.SetOf(style.PropColor, style.PropFontSize, style.PropFontFamily,
 		style.PropFontWeight, style.PropFontStyle, style.PropLetterSpacing,
-		style.PropTextTransform, style.PropIconSize, style.PropCursor)
+		style.PropTextTransform, style.PropIconSize, style.PropCursor,
+		style.PropTextAlign, style.PropTextIndent, style.PropWhiteSpace, style.PropWordBreak,
+		style.PropLineBreak, style.PropHyphens, style.PropWordSpacing,
+		style.PropFontVariantCaps, style.PropFontVariantNumeric, style.PropFontVariantLigatures,
+		style.PropFontVariantEastAsian, style.PropFontVariantPosition, style.PropFontVariantAlternates,
+		style.PropFontOpticalSizing, style.PropDirection, style.PropWritingMode)
 	return inheritedFacts{
 		set: v.Set.And(keep), color: v.Color, fontSize: v.FontSize, fontFamily: v.FontFamily,
 		fontWeight: v.FontWeight, italic: v.Italic, letter: v.LetterSpacing,
 		transform: v.TextTransform, iconSize: v.IconSize, vars: v.Vars, cursor: v.Cursor,
+		text: textFacts{
+			indent: v.TextIndent, white: v.WhiteSpace, wordBreak: v.WordBreak, lineBreak: v.LineBreak,
+			hyphens: v.Hyphens, word: v.WordSpacing, optical: v.OpticalSizing,
+			caps: v.VariantCaps, numeric: v.VariantNumeric, lig: v.VariantLig,
+			eastAsian: v.VariantEA, position: v.VariantPos, alternates: v.VariantAlt,
+		},
+		align: v.TextAlign, dir: v.Direction, writing: v.WritingMode,
 	}
 }
 
@@ -1559,6 +1611,10 @@ type inheritedFacts struct {
 	transform  style.TextTransform
 	iconSize   int
 	cursor     style.CursorSpec
+	text       textFacts
+	align      style.TextAlign
+	dir        uint8
+	writing    style.WritingMode
 	vars       *style.Vars
 }
 
@@ -1807,28 +1863,27 @@ func pickf(v *style.Values, p style.Prop, def float64) float64 {
 // styledFace applies the cascade's face-level settings to f: weight
 // (font-weight the resolver did not already serve) on a variable
 // face's wght axis, font-variation-settings over it (CSS lets the
-// explicit axis win), and the tabular twin when font-feature-settings
-// asks for tnum. Every derived face is memoized, so the shaping cache
-// keeps hitting.
-func styledFace(f render.Font, v *style.Values, weight int) render.Font {
-	vars := cascadeVariations(v, weight)
-	tnum := v.Has(style.PropFontFeatures) && strings.Contains(v.Features, "tnum")
-	letter := 0.0
+// explicit axis win), the optical size on the opsz axis while
+// font-optical-sizing is auto, the OpenType features of
+// font-feature-settings and the font-variant family (explicit
+// settings win per tag), and letter and word spacing. Every derived
+// face is memoized, so the shaping cache keeps hitting.
+func styledFace(f render.Font, v *style.Values, weight, px int) render.Font {
+	vars := cascadeVariations(v, weight, px)
+	feats := faceFeatureSpec(v)
+	letter, word := 0.0, 0.0
 	if v.Has(style.PropLetterSpacing) {
 		letter = v.LetterSpacing
 	}
+	if v.Has(style.PropWordSpacing) {
+		word = v.WordSpacing
+	}
 	switch t := f.(type) {
 	case *render.Typeface:
-		t = t.WithVariations(vars...).Spaced(letter)
-		if tnum {
-			t = t.Tabular()
-		}
+		t = t.WithVariations(vars...).WithFeatureSpec(feats).Spaced(letter).WordSpaced(word)
 		return t
 	case *render.Chain:
-		t = t.WithVariations(vars...).Spaced(letter)
-		if tnum {
-			t = t.Tabular()
-		}
+		t = t.WithVariations(vars...).WithFeatureSpec(feats).Spaced(letter).WordSpaced(word)
 		return t
 	}
 	return f
@@ -1838,7 +1893,8 @@ func styledFace(f render.Font, v *style.Values, weight int) render.Font {
 type faceKey struct {
 	base                 render.Font
 	weight               int
-	letter               float64
+	px                   int
+	letter, word         float64
 	features, variations string
 }
 
@@ -1849,13 +1905,18 @@ type faceCache struct{ faces map[faceKey]render.Font }
 
 // get is base styled by v (weight: a font-weight the caller did not
 // already serve, 0 for none).
-func (c *faceCache) get(base render.Font, v *style.Values, weight int) render.Font {
-	k := faceKey{base: base, weight: weight}
+func (c *faceCache) get(base render.Font, v *style.Values, weight, px int) render.Font {
+	k := faceKey{base: base, weight: weight, px: px}
 	if v.Has(style.PropLetterSpacing) {
 		k.letter = v.LetterSpacing
 	}
-	if v.Has(style.PropFontFeatures) {
-		k.features = v.Features
+	if v.Has(style.PropWordSpacing) {
+		k.word = v.WordSpacing
+	}
+	if v.HasAny(style.PropFontFeatures, style.PropFontVariantCaps, style.PropFontVariantNumeric,
+		style.PropFontVariantLigatures, style.PropFontVariantEastAsian,
+		style.PropFontVariantPosition, style.PropFontVariantAlternates) {
+		k.features = faceFeatureSpec(v)
 	}
 	if v.Has(style.PropFontVariations) {
 		k.variations = v.Variations
@@ -1866,7 +1927,7 @@ func (c *faceCache) get(base render.Font, v *style.Values, weight int) render.Fo
 	if c.faces == nil || len(c.faces) > 16 {
 		c.faces = map[faceKey]render.Font{}
 	}
-	f := styledFace(base, v, weight)
+	f := styledFace(base, v, weight, px)
 	c.faces[k] = f
 	return f
 }
@@ -1880,9 +1941,11 @@ func cssDecoration(v *style.Values) render.Decoration {
 }
 
 // cascadeVariations is the axis settings the cascade implies: wght
-// from weight (0 for none), then font-variation-settings, a later tag
+// from weight (0 for none), the optical size in points while
+// font-optical-sizing is auto (the CSS default - a face without an
+// opsz axis ignores it), then font-variation-settings, a later tag
 // replacing an earlier one.
-func cascadeVariations(v *style.Values, weight int) []render.Variation {
+func cascadeVariations(v *style.Values, weight, px int) []render.Variation {
 	var out []render.Variation
 	set := func(tag string, val float32) {
 		for i := range out {
@@ -1896,6 +1959,9 @@ func cascadeVariations(v *style.Values, weight int) []render.Variation {
 	if weight > 0 {
 		set("wght", float32(weight))
 	}
+	if px > 0 && (!v.Has(style.PropFontOpticalSizing) || v.OpticalSizing) {
+		set("opsz", float32(px)*72.0/96.0)
+	}
 	if v.Has(style.PropFontVariations) {
 		for kv := range strings.SplitSeq(v.Variations, ";") {
 			tag, num, ok := strings.Cut(kv, "=")
@@ -1905,6 +1971,139 @@ func cascadeVariations(v *style.Values, weight int) []render.Variation {
 		}
 	}
 	return out
+}
+
+// faceFeatureSpec is the OpenType feature list the cascade implies:
+// the font-variant properties' tags first, then font-feature-settings
+// (an explicit setting wins per tag), sorted into the canonical
+// `tag=value` form the shaper's WithFeatureSpec takes. Empty is no
+// features. The variant tags the font stack honors are the caps
+// (smcp, c2sc, pcap, c2pc, unic, titl), numeric (lnum, onum, pnum,
+// tnum, frac, afrc, ordn, zero), ligatures (liga, dlig, hlig, calt —
+// enabling only; the no-* forms are the font's default-off state),
+// east-asian (jp78, jp83, jp90, jp04, smpl, trad, fwid, pwid, ruby),
+// position (subs, sups), and alternates (hist).
+func faceFeatureSpec(v *style.Values) string {
+	tags := map[string]string{}
+	add := func(tag string) {
+		tags[tag] = "1"
+	}
+	if v.Has(style.PropFontVariantCaps) {
+		switch v.VariantCaps {
+		case style.CapsSmallCaps:
+			add("smcp")
+		case style.CapsAllSmallCaps:
+			add("smcp")
+			add("c2sc")
+		case style.CapsPetiteCaps:
+			add("pcap")
+		case style.CapsAllPetiteCaps:
+			add("pcap")
+			add("c2pc")
+		case style.CapsUnicase:
+			add("unic")
+		case style.CapsTitlingCaps:
+			add("titl")
+		}
+	}
+	if v.Has(style.PropFontVariantNumeric) {
+		n := v.VariantNumeric
+		if n&style.NumLining != 0 {
+			add("lnum")
+		}
+		if n&style.NumOldStyle != 0 {
+			add("onum")
+		}
+		if n&style.NumProportional != 0 {
+			add("pnum")
+		}
+		if n&style.NumTabular != 0 {
+			add("tnum")
+		}
+		if n&style.NumDiagonalFractions != 0 {
+			add("frac")
+		}
+		if n&style.NumStackedFractions != 0 {
+			add("afrc")
+		}
+		if n&style.NumOrdinal != 0 {
+			add("ordn")
+		}
+		if n&style.NumSlashedZero != 0 {
+			add("zero")
+		}
+	}
+	if v.Has(style.PropFontVariantLigatures) {
+		if v.VariantLig&style.LigCommon != 0 {
+			add("liga")
+		}
+		if v.VariantLig&style.LigDiscretionary != 0 {
+			add("dlig")
+		}
+		if v.VariantLig&style.LigHistorical != 0 {
+			add("hlig")
+		}
+		if v.VariantLig&style.LigContextual != 0 {
+			add("calt")
+		}
+	}
+	if v.Has(style.PropFontVariantEastAsian) {
+		ea := v.VariantEA
+		if ea&style.EAJis78 != 0 {
+			add("jp78")
+		}
+		if ea&style.EAJis83 != 0 {
+			add("jp83")
+		}
+		if ea&style.EAJis90 != 0 {
+			add("jp90")
+		}
+		if ea&style.EAJis2004 != 0 {
+			add("jp04")
+		}
+		if ea&style.EASimplified != 0 {
+			add("smpl")
+		}
+		if ea&style.EATraditional != 0 {
+			add("trad")
+		}
+		if ea&style.EAFullWidth != 0 {
+			add("fwid")
+		}
+		if ea&style.EAProportional != 0 {
+			add("pwid")
+		}
+		if ea&style.EARuby != 0 {
+			add("ruby")
+		}
+	}
+	if v.Has(style.PropFontVariantPosition) {
+		if v.VariantPos == style.PositionSub {
+			add("subs")
+		}
+		if v.VariantPos == style.PositionSuper {
+			add("sups")
+		}
+	}
+	if v.Has(style.PropFontVariantAlternates) && v.VariantAlt == style.AlternatesHistorical {
+		add("hist")
+	}
+	if v.Has(style.PropFontFeatures) {
+		for kv := range strings.SplitSeq(v.Features, ";") {
+			if kv != "" {
+				tags[strings.Split(kv, "=")[0]] = kv[strings.Index(kv, "=")+1:]
+			}
+		}
+	}
+	if len(tags) == 0 {
+		return ""
+	}
+	spec := make([]string, 0, len(tags))
+	for tag, val := range tags {
+		spec = append(spec, tag+"="+val)
+	}
+	slices.Sort(spec)
+	return strings.Join(spec, ";")
 }
 
 // radiusOr returns the stylesheet's corner radii when any corner is

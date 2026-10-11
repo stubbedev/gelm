@@ -85,6 +85,27 @@ const (
 	PropAccentColor
 	PropAppearance
 	PropTouchAction
+	PropTextAlign
+	PropTextIndent
+	PropWhiteSpace
+	PropWordBreak
+	PropLineBreak
+	PropHyphens
+	PropWordSpacing
+	PropVerticalAlign
+	PropLineClamp
+	PropTextOverflow
+	PropFontVariantCaps
+	PropFontVariantNumeric
+	PropFontVariantLigatures
+	PropFontVariantEastAsian
+	PropFontVariantPosition
+	PropFontVariantAlternates
+	PropFontSynthesis
+	PropFontOpticalSizing
+	PropDirection
+	PropUnicodeBidi
+	PropWritingMode
 	numProps
 )
 
@@ -137,6 +158,13 @@ func (s PropSet) And(o PropSet) PropSet {
 	return s
 }
 
+// AndNot is s minus o.
+func (s PropSet) AndNot(o PropSet) PropSet {
+	s.lo &^= o.lo
+	s.hi &^= o.hi
+	return s
+}
+
 // propWordBits is the props per set word.
 const propWordBits = 64
 
@@ -167,7 +195,12 @@ var allProps = func() (s PropSet) {
 // longhand table.
 var inheritedProps = setOf(PropColor, PropFontFamily, PropFontSize, PropFontWeight,
 	PropFontStyle, PropLetterSpacing, PropTextTransform, PropLineHeight,
-	PropFontFeatures, PropFontVariations, PropIconSize, PropCursor)
+	PropFontFeatures, PropFontVariations, PropIconSize, PropCursor,
+	PropTextAlign, PropTextIndent,
+	PropWhiteSpace, PropWordBreak, PropLineBreak, PropHyphens, PropWordSpacing,
+	PropFontVariantCaps, PropFontVariantNumeric, PropFontVariantLigatures,
+	PropFontVariantEastAsian, PropFontVariantPosition, PropFontVariantAlternates,
+	PropFontOpticalSizing, PropDirection, PropWritingMode)
 
 // Sides is a per-side length set, in logical pixels, in CSS's
 // top-right-bottom-left order.
@@ -314,6 +347,203 @@ const (
 	TransformCapitalize
 )
 
+// TextAlign is the text-align keyword.
+type TextAlign uint8
+
+// Text alignments. Start and End resolve against the resolved base
+// direction; Left and Right are absolute; Justify distributes a
+// wrapped row's leftover width across its spaces.
+const (
+	AlignStart TextAlign = iota
+	AlignEnd
+	AlignLeft
+	AlignRight
+	AlignCenter
+	AlignJustify
+)
+
+// WhiteSpace is the white-space keyword.
+type WhiteSpace uint8
+
+// White-space keywords.
+const (
+	WhiteSpaceNormal WhiteSpace = iota
+	WhiteSpacePre
+	WhiteSpaceNowrap
+	WhiteSpacePreWrap
+	WhiteSpacePreLine
+	WhiteSpaceBreakSpaces
+)
+
+// WordBreak is the word-break keyword.
+type WordBreak uint8
+
+// Word-break keywords.
+const (
+	WordBreakNormal WordBreak = iota
+	WordBreakBreakAll
+	WordBreakKeepAll
+)
+
+// LineBreakK is the line-break keyword (K for the line-break clash
+// with the render-side breaker).
+type LineBreakK uint8
+
+// Line-break keywords.
+const (
+	LineBreakAuto LineBreakK = iota
+	LineBreakLoose
+	LineBreakNormal
+	LineBreakStrict
+	LineBreakAnywhere
+)
+
+// HyphensK is the hyphens keyword.
+type HyphensK uint8
+
+// Hyphens keywords.
+const (
+	HyphensNone HyphensK = iota
+	HyphensManual
+	HyphensAuto
+)
+
+// TextOverflowK is the text-overflow keyword.
+type TextOverflowK uint8
+
+// Text-overflow keywords.
+const (
+	TextOverflowClip TextOverflowK = iota
+	TextOverflowEllipsis
+)
+
+// VerticalAlignK is the vertical-align alignment kind.
+type VerticalAlignK uint8
+
+// Vertical-align kinds. Length is VerticalAlignLength with the shift
+// in Values.VerticalAlignPx.
+const (
+	VerticalAlignBaseline VerticalAlignK = iota
+	VerticalAlignSub
+	VerticalAlignSuper
+	VerticalAlignTextTop
+	VerticalAlignTextBottom
+	VerticalAlignTop
+	VerticalAlignMiddle
+	VerticalAlignBottom
+	VerticalAlignLength
+)
+
+// FontVariantCaps is the font-variant-caps keyword.
+type FontVariantCaps uint8
+
+// font-variant-caps keywords.
+const (
+	CapsNormal FontVariantCaps = iota
+	CapsSmallCaps
+	CapsAllSmallCaps
+	CapsPetiteCaps
+	CapsAllPetiteCaps
+	CapsUnicase
+	CapsTitlingCaps
+)
+
+// FontVariantNumeric is font-variant-numeric's flag set.
+type FontVariantNumeric uint16
+
+// font-variant-numeric flags.
+const (
+	NumLining FontVariantNumeric = 1 << iota
+	NumOldStyle
+	NumProportional
+	NumTabular
+	NumDiagonalFractions
+	NumStackedFractions
+	NumOrdinal
+	NumSlashedZero
+)
+
+// FontVariantLigatures is font-variant-ligatures' flag set; a flag's
+// absence means its no-* counterpart.
+type FontVariantLigatures uint16
+
+// font-variant-ligatures flags.
+const (
+	LigCommon FontVariantLigatures = 1 << iota
+	LigDiscretionary
+	LigHistorical
+	LigContextual
+)
+
+// FontVariantEastAsian is font-variant-east-asian's flag set.
+type FontVariantEastAsian uint16
+
+// font-variant-east-asian flags.
+const (
+	EAJis78 FontVariantEastAsian = 1 << iota
+	EAJis83
+	EAJis90
+	EAJis2004
+	EASimplified
+	EATraditional
+	EAFullWidth
+	EAProportional
+	EARuby
+)
+
+// FontVariantPosition is the font-variant-position keyword.
+type FontVariantPosition uint8
+
+// font-variant-position keywords.
+const (
+	PositionNormal FontVariantPosition = iota
+	PositionSub
+	PositionSuper
+)
+
+// FontVariantAlternates is the font-variant-alternates keyword.
+type FontVariantAlternates uint8
+
+// font-variant-alternates keywords.
+const (
+	AlternatesNormal FontVariantAlternates = iota
+	AlternatesHistorical
+)
+
+// FontSynthesis is font-synthesis' flag set: which face qualities the
+// engine may synthesize when the chosen face lacks them.
+type FontSynthesis uint8
+
+// font-synthesis flags.
+const (
+	SynthWeight FontSynthesis = 1 << iota
+	SynthStyle
+	SynthSmallCaps
+)
+
+// UnicodeBidi is the unicode-bidi keyword.
+type UnicodeBidi uint8
+
+// unicode-bidi keywords.
+const (
+	BidiNormal UnicodeBidi = iota
+	BidiEmbed
+	BidiIsolate
+	BidiOverride
+	BidiIsolateOverride
+	BidiPlaintext
+)
+
+// WritingMode is the writing-mode keyword.
+type WritingMode uint8
+
+// writing-mode keywords.
+const (
+	WritingHorizontalTB WritingMode = iota
+	WritingVerticalRL
+	WritingVerticalLR
+)
+
 // Timing is a transition timing function, reduced to the named curves
 // and cubic-bezier control points.
 type Timing struct {
@@ -454,6 +684,38 @@ type Values struct {
 	// TouchAction is touch-action: the pan axes a touch scroll may
 	// move.
 	TouchAction TouchAction
+
+	// The CSS Text 3 properties. TextAlign, TextIndent, WhiteSpace,
+	// WordBreak, LineBreak, Hyphens, WordSpacing and the font-variant
+	// family inherit; VerticalAlign, LineClamp, TextOverflow,
+	// UnicodeBidi and FontSynthesis do not.
+	TextAlign       TextAlign
+	TextIndent      float64
+	WhiteSpace      WhiteSpace
+	WordBreak       WordBreak
+	LineBreak       LineBreakK
+	Hyphens         HyphensK
+	WordSpacing     float64
+	VerticalAlign   VerticalAlignK
+	VerticalAlignPx float64
+	// VerticalAlignPct marks VerticalAlignPx a fraction of the line
+	// box instead of pixels.
+	VerticalAlignPct bool
+	LineClamp        int
+	Overflow         TextOverflowK
+	VariantCaps      FontVariantCaps
+	VariantNumeric   FontVariantNumeric
+	VariantLig       FontVariantLigatures
+	VariantEA        FontVariantEastAsian
+	VariantPos       FontVariantPosition
+	VariantAlt       FontVariantAlternates
+	Synthesis        FontSynthesis
+	OpticalSizing    bool
+	// Direction is the CSS direction: 1 ltr, 2 rtl (0 cannot be set -
+	// direction takes no auto keyword).
+	Direction   uint8
+	UnicodeBidi UnicodeBidi
+	WritingMode WritingMode
 
 	// Content is a pseudo-element's resolved content (::before,
 	// ::after): the strings, attr() values, and counter readings joined;

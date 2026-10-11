@@ -364,17 +364,37 @@ func (e *Entry) SetDirection(d Direction) {
 // with.
 func (e *Entry) Direction() Direction { return e.dir }
 
+// effDir is the entry's effective base direction: the CSS direction
+// (and unicode-bidi's overrides, forcing the base the same way as the
+// label rule) over the programmatic one.
+func (e *Entry) effDir() Direction {
+	v := e.style(e)
+	if v.Has(style.PropDirection) {
+		if v.Direction == 2 {
+			return DirectionRTL
+		}
+		return DirectionLTR
+	}
+	if v.Has(style.PropUnicodeBidi) && (v.UnicodeBidi == style.BidiOverride || v.UnicodeBidi == style.BidiIsolateOverride) {
+		if text.RTL(e.displayText(), e.dir) {
+			return DirectionRTL
+		}
+		return DirectionLTR
+	}
+	return e.dir
+}
+
 // shape shapes display text under the entry's base direction - the
 // one text path the field's caret, selection, and paint share. The
 // size is the stylesheet's font-size when matched, else the
 // constructor's.
 func (e *Entry) shape(s string) *render.ShapedText {
-	return e.font().ShapeDir(s, e.fontPx(), e.dir)
+	return e.font().ShapeDir(s, e.fontPx(), e.effDir())
 }
 
 // font is the face the text shapes with: the constructor face styled
 // by the cascade (letter-spacing, font-variation-settings, tnum).
-func (e *Entry) font() render.Font { return e.faces.get(e.face, e.style(e), 0) }
+func (e *Entry) font() render.Font { return e.faces.get(e.face, e.style(e), 0, int(e.fontPx())) }
 
 // fontPx is the effective shaping size: the stylesheet's font-size
 // when matched, else the constructor's.
@@ -729,7 +749,7 @@ func (e *Entry) stepClusters(delta int) {
 func (e *Entry) stepVisually(delta int) {
 	disp := e.displayText()
 	rs := []rune(disp)
-	order := text.VisualOrder(rs, text.BidiRuns(disp, e.dir))
+	order := text.VisualOrder(rs, text.BidiRuns(disp, e.effDir()))
 	step := max(min(delta, 1), -1)
 	for range max(delta, -delta) {
 		e.cursor = text.VisualStep(rs, order, e.cursor, step)
@@ -826,7 +846,7 @@ func (e *Entry) wordTo(delta int, extend bool) {
 	}
 	disp := e.displayText()
 	rs := []rune(disp)
-	order := text.VisualOrder(rs, text.BidiRuns(disp, e.dir))
+	order := text.VisualOrder(rs, text.BidiRuns(disp, e.effDir()))
 	e.cursor = text.VisualWordStep(e.runes, order, e.cursor, delta)
 	if !extend {
 		e.anchor = e.cursor
@@ -888,7 +908,7 @@ func (e *Entry) panCaret() int {
 // the caret's distance from the right edge in the caret's role.
 func (e *Entry) lineX(sh *render.ShapedText) int {
 	left := e.contentRect().X
-	if !text.RTL(e.displayText(), e.dir) {
+	if !text.RTL(e.displayText(), e.effDir()) {
 		return left - e.scrollX
 	}
 	return left + e.innerRect().W - int(sh.Advance()+0.5) + e.scrollX
@@ -914,7 +934,7 @@ func (e *Entry) panToCaret() {
 	}
 	sh := e.shape(e.displayText())
 	cx := int(sh.CaretX(e.panCaret()) + 0.5)
-	if text.RTL(e.displayText(), e.dir) {
+	if text.RTL(e.displayText(), e.effDir()) {
 		cx = int(sh.Advance()+0.5) - cx // the caret's distance from the reading start edge
 	}
 	switch {
@@ -1121,9 +1141,9 @@ func (e *Entry) Paint(cv *render.Canvas) {
 			col = scaleAlpha(col, disabledFade)
 		}
 		// On the text's baseline at the reading's start edge, unpanned.
-		ph := e.font().ShapeDir(e.placeholder, e.fontPx(), e.dir)
+		ph := e.font().ShapeDir(e.placeholder, e.fontPx(), e.effDir())
 		x := c.X
-		if text.RTL(e.placeholder, e.dir) {
+		if text.RTL(e.placeholder, e.effDir()) {
 			x = c.X + c.W - int(ph.Advance()+0.5)
 		}
 		prev := cv.PushClip(e.innerRect())

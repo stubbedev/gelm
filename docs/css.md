@@ -207,7 +207,40 @@ Each longhand is listed with its shorthand.
   - `color`
   - `font`, `font-family`, `font-size`, `font-weight`, `font-style`
   - `font-feature-settings`, `font-variation-settings`
-  - `letter-spacing`, `line-height`, `text-transform`
+  - `letter-spacing`, `word-spacing`, `line-height`, `text-transform`
+  - `text-align` (start, end, left, right, center, justify — justify
+    spreads a wrapped row's leftover width across its spaces;
+    everything but the final row), `text-indent` (the first row's
+    start edge), `white-space` (normal, nowrap, pre, pre-wrap,
+    pre-line, break-spaces), `word-break` (normal, break-all,
+    keep-all — break-all and keep-all step by grapheme cluster and
+    the UAX #14 class rules), `line-break` (auto, loose, normal,
+    strict, anywhere — anywhere breaks at every cluster; the CJK
+    strictness profiles below), `hyphens` (none hides U+00AD, manual
+    breaks at it and renders the hyphen where the break landed, auto
+    reads as manual), `text-overflow` (clip, ellipsis), `line-clamp`
+    (and `-webkit-line-clamp`), `vertical-align` (baseline, sub,
+    super, a length, or a percentage of the line box, on every text
+    surface that reports a baseline — labels, buttons, rows)
+  - `font-variant` and its longhands — caps (`small-caps`,
+    `all-small-caps`, `petite-caps`, `all-petite-caps`, `unicase`,
+    `titling-caps`), numeric (`lining-nums`, `oldstyle-nums`,
+    `proportional-nums`, `tabular-nums`, `diagonal-fractions`,
+    `stacked-fractions`, `ordinal`, `slashed-zero`), ligatures
+    (`common-ligatures`, `discretionary-ligatures`,
+    `historical-ligatures`, `contextual` — enabling only, the `no-*`
+    forms are the fonts' default-off state), east-asian (`jis78` …
+    `jis2004`, `simplified`, `traditional`, `full-width`,
+    `proportional-width`, `ruby`), position (`sub`, `super`) and
+    alternates (`historical-forms`) — all mapping onto the OpenType
+    feature tags, with `font-feature-settings` winning per tag
+  - `font-synthesis` (none/weight/style/small-caps — the engine
+    never synthesizes a face quality, so this parses as the guard it
+    is; there is nothing to gate), `font-optical-sizing` (auto feeds
+    the pixel size to the `opsz` axis in points, none keeps it)
+  - `direction` (ltr/rtl — it forces a label's or entry's base
+    direction), `unicode-bidi` (the overrides force the base the same
+    way), `writing-mode` (parsed; see below)
   - `text-decoration` (underline, overline and line-through in solid,
     double, dotted, dashed or wavy, with a color), `caret-color`,
     `caret-shape` (auto, bar, block, underscore — the entry and text
@@ -217,6 +250,29 @@ Each longhand is listed with its shorthand.
     a drag from extending a selection; `all` selects everything on a
     press. Plain Label carries no selection machinery, so the value
     changes nothing there.
+- **Text-surface scope and deferrals.** The CSS Text properties
+  apply to the styled text surfaces: `Label` (and the buttons, rows,
+  and menus that hold one), `Entry` (direction), and the pseudo
+  content. Deferred, honestly: `text-align`/`justify` on `Entry` and
+  `TextArea` (editing widgets own their layout for caret and
+  selection correctness — they clip and scroll rather than justify);
+  `RichLabel` composes runs itself and takes the font group only;
+  CJK justify (rows without spaces stay start-aligned — inter-cluster
+  distribution is unbuilt); `hyphens: auto` (no hyphenation
+  dictionary ships; without one, auto would guess); the `line-break`
+  strictness profiles for CJK punctuation (the typesetting segmenter
+  computes one UAX #14 profile — auto/normal/strict read the same,
+  loose and anywhere differ as noted); `unicode-bidi`'s embed and
+  isolate embeddings (internal/text resolves one paragraph per
+  widget — there is no embedding level to open); `vertical-align`'s
+  top/middle/bottom/text-top/text-bottom (they need the inline
+  formatting context's box, which a lone widget baseline has not);
+  `writing-mode`'s vertical forms (vertical-rl/vertical-lr parse and
+  compute but paint horizontally — the whole paint stack, caret
+  math, wrapping, and ellipsizing is horizontal); `word-spacing` and
+  `text-indent` percentages (they need the containing block the
+  per-declaration parse cache cannot see; lengths and — for
+  vertical-align — line-box fractions resolve at paint).
 - **Box.**
   - `background`, `background-color`, `background-image` (the linear,
     radial and conic gradients and their `repeating-` forms)
@@ -308,8 +364,10 @@ revert-layer beneath a revert-layer behaves as `unset`), and as
 `unset` when no lower layer declares the property.
 
 Constructor metrics (a button's padding, a label's size) are
-defaults that a stylesheet overrides. `color`, the `font-*` group and
-`cursor` inherit. Box properties do not.
+defaults that a stylesheet overrides. `color`, the `font-*` group,
+`cursor`, and the CSS Text properties inherit. Box properties, and
+`vertical-align`, `line-clamp`, `text-overflow`, `unicode-bidi` and
+`font-synthesis`, do not.
 
 ## Media state
 
