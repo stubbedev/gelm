@@ -43,4 +43,5 @@ Buffer bare left its handler map nil, so `AddReleaseHandler` panicked
 
 Drop the copy (rewriting the imports back) once upstream carries the
 fix; gelm's headless suites (sway and the Hyprland VM gate) are the
-regression check.
+regression check. The fd fix is proposed upstream as
+neurlang/wayland#41; `NewServerBuffer` is not upstream yet.
