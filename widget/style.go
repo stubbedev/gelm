@@ -1283,7 +1283,7 @@ func (n *node) restyle(w Widget) *style.Values {
 			parent = pn.style(pw)
 		}
 	}
-	inherits := parent != nil && (parent.Set != 0 || parent.Vars != nil)
+	inherits := parent != nil && (!parent.Set.Empty() || parent.Vars != nil)
 	if layers := layersFor(n); len(layers) > 0 || n.inline != nil || inherits {
 		if n.element == "" && n.elemName == "" {
 			n.elemName = typeElementName(w)
@@ -1480,6 +1480,10 @@ func styleChanged(a, b *style.Values) bool {
 		a.IconSource != b.IconSource || a.IconXform.M != b.IconXform.M ||
 		a.PaletteTint != b.PaletteTint || a.CaretColor != b.CaretColor ||
 		a.Decoration != b.Decoration || a.Transition != b.Transition ||
+		a.Cursor != b.Cursor || a.PointerEvents != b.PointerEvents ||
+		a.UserSelect != b.UserSelect || a.CaretShape != b.CaretShape ||
+		a.AccentColor != b.AccentColor || a.AccentAuto != b.AccentAuto ||
+		a.Appearance != b.Appearance || a.TouchAction != b.TouchAction ||
 		!animsEqual(a.Animation, b.Animation)
 }
 
@@ -1508,8 +1512,8 @@ func layoutKey(v style.Values) layoutFacts {
 		setSpacing: v.Has(style.PropBorderSpacing),
 		fontSize:   v.FontSize, fontFamily: v.FontFamily, fontWeight: v.FontWeight, italic: v.Italic,
 		iconSize: v.IconSize, transform: v.TextTransform, letter: v.LetterSpacing,
-		set: v.Set & (1<<style.PropFontSize | 1<<style.PropFontFamily | 1<<style.PropFontWeight |
-			1<<style.PropIconSize | 1<<style.PropMinWidth | 1<<style.PropMinHeight | 1<<style.PropTextTransform),
+		set: v.Set.And(style.SetOf(style.PropFontSize, style.PropFontFamily, style.PropFontWeight,
+			style.PropIconSize, style.PropMinWidth, style.PropMinHeight, style.PropTextTransform)),
 	}
 }
 
@@ -1533,13 +1537,13 @@ type layoutFacts struct {
 // inheritedKey projects the values descendants inherit — the custom
 // property environment included; a change restyles the subtree.
 func inheritedKey(v style.Values) inheritedFacts {
-	const keep = 1<<style.PropColor | 1<<style.PropFontSize | 1<<style.PropFontFamily |
-		1<<style.PropFontWeight | 1<<style.PropFontStyle | 1<<style.PropLetterSpacing |
-		1<<style.PropTextTransform | 1<<style.PropIconSize
+	keep := style.SetOf(style.PropColor, style.PropFontSize, style.PropFontFamily,
+		style.PropFontWeight, style.PropFontStyle, style.PropLetterSpacing,
+		style.PropTextTransform, style.PropIconSize, style.PropCursor)
 	return inheritedFacts{
-		set: v.Set & keep, color: v.Color, fontSize: v.FontSize, fontFamily: v.FontFamily,
+		set: v.Set.And(keep), color: v.Color, fontSize: v.FontSize, fontFamily: v.FontFamily,
 		fontWeight: v.FontWeight, italic: v.Italic, letter: v.LetterSpacing,
-		transform: v.TextTransform, iconSize: v.IconSize, vars: v.Vars,
+		transform: v.TextTransform, iconSize: v.IconSize, vars: v.Vars, cursor: v.Cursor,
 	}
 }
 
@@ -1554,6 +1558,7 @@ type inheritedFacts struct {
 	letter     float64
 	transform  style.TextTransform
 	iconSize   int
+	cursor     style.CursorSpec
 	vars       *style.Vars
 }
 

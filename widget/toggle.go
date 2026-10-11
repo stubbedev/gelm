@@ -79,16 +79,16 @@ func (s *Switch) Arrange(r render.Rect) {
 func (s *Switch) Paint(cv *render.Canvas) {
 	t := Current()
 	track, knob := t.Surface, t.Text
+	v := s.style(s)
 	if s.on {
-		track = t.Accent
+		track = accentOf(v, t.Accent)
 	}
 	if !IsEnabled(s) {
 		track, knob = t.DisabledSurface(), t.DisabledText()
 		if s.on {
-			track = t.DisabledAccent()
+			track = accentOf(v, t.DisabledAccent())
 		}
 	}
-	v := s.style(s)
 	fx := pushEffects(cv, v)
 	defer fx.pop(cv)
 	radii := radiusOr(v, s.bounds.H/2)
@@ -260,10 +260,11 @@ func (c *CheckButton) Paint(cv *render.Canvas) {
 		box.H = box.W
 	}
 	var fill, tick render.Color
+	v := c.style(c)
 	if c.checked || c.Inconsistent() {
-		fill, tick = t.Accent, pickc(0, kv, style.PropColor, t.OnAccent)
+		fill, tick = accentOf(v, t.Accent), pickc(0, kv, style.PropColor, t.OnAccent)
 		if !IsEnabled(c) {
-			fill, tick = t.DisabledAccent(), scaleAlpha(tick, disabledFade)
+			fill, tick = accentOf(v, t.DisabledAccent()), scaleAlpha(tick, disabledFade)
 		}
 	} else {
 		fill = t.Bg

@@ -334,7 +334,7 @@ func TestLoadStylesheetFileRoundTrip(t *testing.T) {
 	}
 	LoadStylesheet("")
 	CollectDamage(b)
-	if v := b.style(b); v.Set != 0 {
+	if v := b.style(b); !v.Set.Empty() {
 		t.Errorf("empty stylesheet left %b set", v.Set)
 	}
 
@@ -608,7 +608,7 @@ func TestLoadStylesheetFileUsesTheFilePath(t *testing.T) {
 	}
 	LoadStylesheet("")
 	CollectDamage(b)
-	if v := b.style(b); v.Set != 0 {
+	if v := b.style(b); !v.Set.Empty() {
 		t.Errorf("empty stylesheet left %b set", v.Set)
 	}
 	watchMu.Lock()

@@ -2,6 +2,34 @@
 
 ## Unreleased
 
+### CSS interaction properties (#159)
+
+- `cursor`: every CSS keyword (default, pointer, crosshair, text, wait,
+  progress, help, move, the n-..ew-resize family, zoom-in/out,
+  grab/grabbing, none, context-menu, cell, vertical-text, alias, copy,
+  no-drop, not-allowed, col/row-resize, all-scroll) resolves onto the
+  cursor-shape-v1 vocabulary with the xcursor theme fallback, and
+  `cursor: url("file.cur") x y` loads the named xcursor file with the
+  declared hotspot. The property inherits and outranks a widget's
+  built-in shape.
+- `pointer-events: none` takes a widget - and, set on a container,
+  its subtree - out of hit testing, so presses fall through to what is
+  behind.
+- `user-select: none/text/all` gates the selection gestures of Entry,
+  TextArea, and RichLabel: none keeps a drag a caret move, all selects
+  everything on a press.
+- `caret-shape: auto/bar/block/underscore` paints the entry and text
+  area caret in its shape, beside the existing `caret-color` (which
+  now also reaches TextArea).
+- `accent-color` recolors the checked and accent surfaces - switch
+  track, checkbutton and radio fill, progressbar and levelbar fill,
+  slider highlight - over the theme accent; `auto` falls back to it.
+- `touch-action: pan-x/pan-y/none` gates the touch scroll path
+  (Router.AxisPixels, the two-finger pan and its kinetic glide); the
+  wheel path is never gated, and pinch semantics are deferred below.
+- `appearance: none/auto` parses and computes; painting is deferred
+  (below).
+
 ### Parity, sixth pass
 
 - relm4-components' `OpenButton`: `app.NewOpenButton` composes the open

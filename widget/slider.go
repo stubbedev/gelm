@@ -224,10 +224,11 @@ func (s *Slider) Measure(con Constraints) Size {
 func (s *Slider) Paint(cv *render.Canvas) {
 	t := Current()
 	troughCol, fillCol, knobCol := t.Border, t.Accent, t.Text
+	v := s.style(s)
 	if !IsEnabled(s) {
 		troughCol, fillCol, knobCol = t.DisabledText(), t.DisabledAccent(), t.DisabledText()
 	}
-	v := s.style(s)
+	fillCol = accentOf(v, fillCol)
 	fx := pushEffects(cv, v)
 	defer fx.pop(cv)
 	tr := s.troughRect()

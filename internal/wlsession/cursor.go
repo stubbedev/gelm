@@ -101,11 +101,25 @@ var cursorAliases = map[string][]string{
 	"wait":     {"watch"},
 	"progress": {"left_ptr_watch", "progress", "watch"},
 	// Hand shapes and friends under either spelling.
-	"pointer": {"hand1", "pointer"},
-	"text":    {"xterm", "text"},
-	"default": {defaultCursor},
-	"move":    {"move", "fleur"},
-	"grab":    {"grab", "hand1"},
+	"pointer":  {"hand1", "pointer"},
+	"text":     {"xterm", "text"},
+	"default":  {defaultCursor},
+	"move":     {"move", "fleur"},
+	"grab":     {"grab", "hand1"},
+	"grabbing": {"grabbing", "closedhand", "hand2"},
+	// The remaining CSS keywords under their own spellings, with the
+	// classic core names the themes ship as fallbacks.
+	"crosshair":     {"crosshair", "cross"},
+	"context-menu":  {"context-menu", "contextmenu"},
+	"help":          {"question_arrow", "help"},
+	"cell":          {"plus", "cell"},
+	"vertical-text": {"vertical-text", "xterm"},
+	"alias":         {"alias"},
+	"copy":          {"copy"},
+	"no-drop":       {"no-drop", "no_drop"},
+	"not-allowed":   {"not-allowed", "forbidden", "crossed_circle"},
+	"zoom-in":       {"zoom-in", "zoom_in"},
+	"zoom-out":      {"zoom-out", "zoom_out"},
 }
 
 // cursorCandidates lists the xcursor names a requested shape can
@@ -187,6 +201,10 @@ func (s *Session) applyCursor() error {
 		debug.Log("input", "cursor surface %d created", surf.Id())
 	}
 	c.gen++
+	if path, hx, hy, ok := parseFileCursor(c.desired); ok {
+		c.shown, c.cur = c.desired, nil
+		return s.pushFileCursorLocked(path, hx, hy)
+	}
 	if s.applyShapeLocked(c.desired) {
 		c.shown, c.cur = c.desired, nil
 		return nil

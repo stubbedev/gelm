@@ -285,27 +285,27 @@ func (n *node) applyFrame(a *style.Animation, phase float64) {
 	mask := a.Keyframes.Mask
 	if mask&uint32(style.ChOpacity) != 0 {
 		n.cs.Opacity = av.Opacity
-		n.cs.Set |= 1 << style.PropOpacity
+		n.cs.Set = n.cs.Set.With(style.PropOpacity)
 	}
 	if mask&uint32(style.ChColor) != 0 {
 		n.cs.Color = av.Color
-		n.cs.Set |= 1 << style.PropColor
+		n.cs.Set = n.cs.Set.With(style.PropColor)
 	}
 	if mask&uint32(style.ChBackground) != 0 {
 		n.cs.Background = av.Background
-		n.cs.Set |= 1 << style.PropBackgroundColor
+		n.cs.Set = n.cs.Set.With(style.PropBackgroundColor)
 	}
 	if mask&uint32(style.ChBrightness) != 0 {
 		n.cs.Brightness = av.Brightness
-		n.cs.Set |= 1 << style.PropFilter
+		n.cs.Set = n.cs.Set.With(style.PropFilter)
 	}
 	if mask&uint32(style.ChTransform) != 0 {
 		n.cs.Transform = av.Transform
-		n.cs.Set |= 1 << style.PropTransform
+		n.cs.Set = n.cs.Set.With(style.PropTransform)
 	}
 	if mask&uint32(style.ChIconXform) != 0 {
 		n.cs.IconXform = av.IconXform
-		n.cs.Set |= 1 << style.PropIconTransform
+		n.cs.Set = n.cs.Set.With(style.PropIconTransform)
 	}
 	n.Invalidate()
 }
@@ -320,34 +320,34 @@ func (n *node) revert(r *animRunner) {
 	}{
 		{style.ChOpacity, func() {
 			n.cs.Opacity = c.Opacity
-			n.cs.Set |= 1 << style.PropOpacity
+			n.cs.Set = n.cs.Set.With(style.PropOpacity)
 		}},
 		{style.ChColor, func() {
 			n.cs.Color = c.Color
-			n.cs.Set |= 1 << style.PropColor
+			n.cs.Set = n.cs.Set.With(style.PropColor)
 		}},
 		{style.ChBackground, func() {
 			n.cs.Background = c.Background
-			n.cs.Set |= 1 << style.PropBackgroundColor
+			n.cs.Set = n.cs.Set.With(style.PropBackgroundColor)
 		}},
 		{style.ChBrightness, func() {
 			n.cs.Brightness = c.Brightness
-			n.cs.Set |= 1 << style.PropFilter
+			n.cs.Set = n.cs.Set.With(style.PropFilter)
 		}},
 		{style.ChTransform, func() {
 			n.cs.Transform = c.Transform
-			n.cs.Set |= 1 << style.PropTransform
+			n.cs.Set = n.cs.Set.With(style.PropTransform)
 		}},
 		{style.ChIconXform, func() {
 			n.cs.IconXform = c.IconXform
-			n.cs.Set |= 1 << style.PropIconTransform
+			n.cs.Set = n.cs.Set.With(style.PropIconTransform)
 		}},
 	}
 	for _, s := range slots {
 		if mask&uint32(s.ch) != 0 {
 			s.write()
 		} else {
-			n.cs.Set &^= 1 << channelProp(s.ch)
+			n.cs.Set = n.cs.Set.Without(channelProp(s.ch))
 		}
 	}
 	n.Invalidate()
