@@ -123,7 +123,6 @@ type Window struct {
 	XdgSurface *xdg.Surface
 	Toplevel   *xdg.Toplevel
 
-	wmBase     *xdg.WmBase
 	decoration *xdeco.ZxdgToplevelDecorationV1
 	// dialog is this toplevel's xdg_dialog_v1 object, created on the
 	// first SetModal; dialogModalled tracks the live hint; closing the
@@ -171,7 +170,7 @@ func New(wmBase *xdg.WmBase, surf *wl.Surface, cfg Config) (*Window, error) {
 		return nil, fmt.Errorf("window: get_toplevel: %w", err)
 	}
 	w := &Window{
-		WLSurface: surf, XdgSurface: xdgSurf, Toplevel: tl, wmBase: wmBase,
+		WLSurface: surf, XdgSurface: xdgSurf, Toplevel: tl,
 		width: cfg.Width, height: cfg.Height,
 		minW: cfg.MinWidth, minH: cfg.MinHeight,
 		maxW: cfg.MaxWidth, maxH: cfg.MaxHeight,
@@ -199,15 +198,6 @@ func New(wmBase *xdg.WmBase, surf *wl.Surface, cfg Config) (*Window, error) {
 		}
 	}
 	return w, nil
-}
-
-// Pong answers the compositor's liveness ping with the pinged serial.
-// Wire Session.OnWmBasePing to this; a window that fails to pong is
-// killed.
-func (w *Window) Pong(serial uint32) {
-	if w.wmBase != nil {
-		_ = w.wmBase.Pong(serial)
-	}
 }
 
 // HandleSurfaceConfigure completes the configure round: it marks the

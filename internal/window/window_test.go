@@ -207,13 +207,6 @@ func TestEnsureUsable(t *testing.T) {
 	})
 }
 
-func TestPong(t *testing.T) {
-	t.Run("pong on a zero-value window does not panic", func(t *testing.T) {
-		w := &Window{}
-		w.Pong(3)
-	})
-}
-
 func TestDecorateNilManager(t *testing.T) {
 	t.Run("a nil decoration manager is a silent no-op", func(t *testing.T) {
 		if err := (&Window{}).Decorate(nil); err != nil {

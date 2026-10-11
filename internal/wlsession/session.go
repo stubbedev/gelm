@@ -254,9 +254,6 @@ type Session struct {
 	OnKey func(keycode uint32, mods Mods)
 	// OnKeyUp fires on key releases with the evdev keycode.
 	OnKeyUp func(keycode uint32)
-	// OnWmBasePing fires when the compositor pings liveness; reply
-	// through Window.Pong.
-	OnWmBasePing func(serial uint32)
 	// OnIME fires when the input method applies a batch of changes (a
 	// done event) — commit, preedit, and surrounding-text deletion in
 	// protocol order. Nil without the text-input protocol, or when no
@@ -928,10 +925,13 @@ func (s *Session) pointerTarget() SurfacePointerHandler {
 func (s *Session) HandleSeatName(wl.SeatNameEvent) {}
 
 // HandleWmBasePing implements xdg.WmBasePingHandler: the compositor is
-// asking whether the client is alive.
+// asking whether the client is alive, and a client that does not pong
+// is treated as hung (Hyprland raises its not-responding dialog over
+// it). The answer goes out from the dispatch itself, so it only fails
+// to arrive when the loop really is stuck.
 func (s *Session) HandleWmBasePing(ev xdg.WmBasePingEvent) {
-	if s.OnWmBasePing != nil {
-		s.OnWmBasePing(ev.Serial)
+	if err := s.wmBase.Pong(ev.Serial); err != nil {
+		logutil.L().Debug("wlsession: pong failed", slog.Any("serial", ev.Serial), slog.Any("err", err))
 	}
 }
 
