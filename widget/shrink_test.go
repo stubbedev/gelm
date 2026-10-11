@@ -115,3 +115,36 @@ func TestShrinkSplitsByCapacity(t *testing.T) {
 		t.Errorf("gave %d and %d, want 44 and 88, in proportion to 100 and 200", ga, gb)
 	}
 }
+
+// widthGiver is a stub that can be arranged narrower than its natural
+// width down to floor, an ellipsizing label's contract.
+type widthGiver struct {
+	stub
+	floor int
+}
+
+func (g *widthGiver) ShrinkableWidth() int { return g.nat.W - g.floor }
+
+// TestNestedShortRowsKeepTheirTakes pins the per-depth shrink buffers:
+// a row short of room narrows its child rows, which are short of room
+// themselves and split their own deficits while the outer row is still
+// reading its takes. Regression: the inner split ran in the outer
+// row's buffer and rewrote the outer takes mid-loop, so the second row
+// kept most of its width and the pair overflowed the outer row.
+func TestNestedShortRowsKeepTheirTakes(t *testing.T) {
+	inner := func() *Box {
+		r := NewBox(Row, 0, 0)
+		r.Append(&widthGiver{nat: Size{W: 80, H: 10}, floor: 10}, false)
+		r.Append(&widthGiver{nat: Size{W: 80, H: 10}, floor: 10}, false)
+		return r
+	}
+	a, b := inner(), inner()
+	outer := NewBox(Row, 0, 0)
+	outer.Append(a, false)
+	outer.Append(b, false)
+	outer.Measure(Constraints{Max: Size{W: 100, H: 10}})
+	outer.Arrange(render.Rect{W: 100, H: 10})
+	if wa, wb := a.Bounds().W, b.Bounds().W; wa != 50 || wb != 50 {
+		t.Errorf("inner rows = %d and %d wide, want 50 and 50: the 220px deficit split by equal capacity", wa, wb)
+	}
+}

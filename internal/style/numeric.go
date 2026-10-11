@@ -10,18 +10,55 @@ import (
 type numKind uint8
 
 const (
-	numNumber  numKind = iota + 1 // unitless
-	numLength                     // pixels
-	numPercent                    // percent (not resolved against anything)
-	numAngle                      // degrees
-	numTime                       // seconds
+	numNumber    numKind = iota + 1 // unitless
+	numLength                       // pixels
+	numPercent                      // percent (not resolved against anything)
+	numAngle                        // degrees
+	numTime                         // seconds
+	numLengthPct                    // px plus a percentage, calc()'s mix
 )
 
 // numeric is a typed number: lengths in px, angles in degrees, times in
-// seconds.
+// seconds. A numLengthPct is a calc() sum of a length and a
+// percentage: v pixels plus pct percent of a basis only the layout
+// knows.
 type numeric struct {
 	v    float64
+	pct  float64
 	kind numKind
+}
+
+// mixable reports whether a sum of kinds a and b is a length-percentage
+// mix: lengths and percentages add into one, which only the properties
+// resolving percentages at layout time accept.
+func mixable(a, b numKind) bool {
+	lp := func(k numKind) bool { return k == numLength || k == numPercent || k == numLengthPct }
+	return a != b && lp(a) && lp(b)
+}
+
+// asMix lifts a length or a percentage into the mixed kind.
+func asMix(n numeric) numeric {
+	switch n.kind {
+	case numLength:
+		return numeric{v: n.v, kind: numLengthPct}
+	case numPercent:
+		return numeric{pct: n.v, kind: numLengthPct}
+	}
+	return n
+}
+
+// settleMix folds a mix whose percentage or length cancelled back into
+// the plain kind, so calc(50% + 1px - 1px) is a percentage again.
+func settleMix(n numeric) numeric {
+	switch {
+	case n.kind != numLengthPct:
+		return n
+	case n.pct == 0:
+		return numeric{v: n.v, kind: numLength}
+	case n.v == 0:
+		return numeric{v: n.pct, kind: numPercent}
+	}
+	return n
 }
 
 // FontMetrics is a face's font-relative unit bases as ratios of the
@@ -286,7 +323,9 @@ func mathNums(args []token, cx *ctx, refs map[string]numeric, kinds ...numKind) 
 		sub.skipWS()
 		n, ok := sub.sum()
 		sub.skipWS()
-		if !ok || sub.pos != len(a) {
+		// A length-percentage mix compares only at layout time, which
+		// the compute-time comparison functions never see.
+		if !ok || sub.pos != len(a) || n.kind == numLengthPct {
 			return nil, false
 		}
 		if len(out) > 0 && out[0].kind != n.kind {
@@ -624,15 +663,20 @@ func (p *calcParser) sum() (numeric, bool) {
 		right, ok := p.product()
 		if !ok || right.kind != left.kind {
 			// A unitless zero adds to anything, as in `calc(0 + 1px)`.
-			if ok && right.v == 0 && right.kind == numNumber {
+			switch {
+			case ok && right.v == 0 && right.kind == numNumber:
 				right.kind = left.kind
-			} else if ok && left.v == 0 && left.kind == numNumber {
+			case ok && left.v == 0 && left.kind == numNumber:
 				left.kind = right.kind
-			} else {
+			case ok && mixable(left.kind, right.kind):
+				left, right = asMix(left), asMix(right)
+			default:
 				return numeric{}, false
 			}
 		}
 		left.v += sign * right.v
+		left.pct += sign * right.pct
+		left = settleMix(left)
 	}
 }
 
@@ -663,8 +707,9 @@ func (p *calcParser) product() (numeric, bool) {
 			switch {
 			case right.kind == numNumber:
 				left.v *= right.v
+				left.pct *= right.v
 			case left.kind == numNumber:
-				left = numeric{v: left.v * right.v, kind: right.kind}
+				left = numeric{v: left.v * right.v, pct: left.v * right.pct, kind: right.kind}
 			default:
 				return numeric{}, false
 			}
@@ -674,6 +719,7 @@ func (p *calcParser) product() (numeric, bool) {
 			return numeric{}, false
 		}
 		left.v /= right.v
+		left.pct /= right.v
 	}
 }
 

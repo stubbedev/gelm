@@ -62,6 +62,21 @@ func intChan(p style.Prop, from, to int, bothPresent bool, set func(*style.Value
 	}}
 }
 
+// sizingChan captures a sizing channel (width, height, min-*, max-*):
+// two lengths interpolate pixels and percentages apart, CSS's calc()
+// interpolation; a keyword at either end has no midpoint and snaps.
+func sizingChan(p style.Prop, from, to style.Sizing, bothPresent bool, get func(*style.Layout) *style.Sizing) *tweenChan {
+	if !bothPresent || from == to || from.Kind != style.SizingLength || to.Kind != style.SizingLength {
+		return nil
+	}
+	return &tweenChan{prop: p, layout: true, apply: func(cs *style.Values, e float64) {
+		*get(&cs.Layout) = style.Sizing{Kind: style.SizingLength, Len: style.Length{
+			Px:  int(math.Round(float64(from.Len.Px) + float64(to.Len.Px-from.Len.Px)*e)),
+			Pct: from.Len.Pct + (to.Len.Pct-from.Len.Pct)*e,
+		}}
+	}}
+}
+
 // xformChan captures a transform channel. An undeclared side reads as
 // the identity - Compute leaves unset longhands zero, and the paint
 // paths Has-guard them - and a declaration dropping eases back to that
@@ -147,8 +162,21 @@ func (n *node) transitionValues(old, v style.Values, firstStyle bool) {
 	for i, p := range [4]style.Prop{style.PropBorderTopWidth, style.PropBorderRightWidth, style.PropBorderBottomWidth, style.PropBorderLeftWidth} {
 		add(intChan(p, old.BorderWidth.At(i), v.BorderWidth.At(i), both(p), func(cs *style.Values, x int) { cs.BorderWidth.SetAt(i, x) }, true))
 	}
-	add(intChan(style.PropMinWidth, old.MinWidth, v.MinWidth, both(style.PropMinWidth), func(cs *style.Values, x int) { cs.MinWidth = x }, true))
-	add(intChan(style.PropMinHeight, old.MinHeight, v.MinHeight, both(style.PropMinHeight), func(cs *style.Values, x int) { cs.MinHeight = x }, true))
+	sizes := [...]struct {
+		p   style.Prop
+		get func(l *style.Layout) *style.Sizing
+	}{
+		{style.PropWidth, func(l *style.Layout) *style.Sizing { return &l.Width }},
+		{style.PropHeight, func(l *style.Layout) *style.Sizing { return &l.Height }},
+		{style.PropMinWidth, func(l *style.Layout) *style.Sizing { return &l.MinWidth }},
+		{style.PropMinHeight, func(l *style.Layout) *style.Sizing { return &l.MinHeight }},
+		{style.PropMaxWidth, func(l *style.Layout) *style.Sizing { return &l.MaxWidth }},
+		{style.PropMaxHeight, func(l *style.Layout) *style.Sizing { return &l.MaxHeight }},
+	}
+	from, to := old.Layout, v.Layout
+	for _, sz := range sizes {
+		add(sizingChan(sz.p, *sz.get(&from), *sz.get(&to), both(sz.p), sz.get))
+	}
 	add(intChan(style.PropOutlineWidth, old.OutlineWidth, v.OutlineWidth, both(style.PropOutlineWidth), func(cs *style.Values, x int) { cs.OutlineWidth = x }, false))
 	add(intChan(style.PropOutlineOffset, old.OutlineOffset, v.OutlineOffset, both(style.PropOutlineOffset), func(cs *style.Values, x int) { cs.OutlineOffset = x }, false))
 	for i, p := range [4]style.Prop{style.PropBorderTopLeftRadius, style.PropBorderTopRightRadius, style.PropBorderBottomRightRadius, style.PropBorderBottomLeftRadius} {

@@ -181,6 +181,9 @@ type Scratch struct {
 	// declaration per longhand — the entry transition's values.
 	bestStart [numProps]uint64
 	winStart  [numProps]*decl
+	// offered and offeredStart are the longhands holding a winner in
+	// win and winStart: the compute visits those alone.
+	offered, offeredStart PropSet
 
 	customs []customWin
 	byName  map[string]int
@@ -235,6 +238,7 @@ func (sc *Scratch) collect(layers []Layer, n Node) {
 	clear(sc.bestLayer[:])
 	clear(sc.bestStart[:])
 	clear(sc.winStart[:])
+	sc.offered, sc.offeredStart = PropSet{}, PropSet{}
 	sc.customs = sc.customs[:0]
 	sc.metas = sc.metas[:0]
 	sc.chain = sc.chain[:0]
@@ -358,6 +362,7 @@ func (sc *Scratch) offer(d *decl, rk uint64, layer uint8) {
 		return
 	}
 	cov := d.covers
+	sc.offered = sc.offered.Or(cov)
 	offers := func(p Prop) {
 		if sc.revertChain {
 			sc.chain = append(sc.chain, chainEntry{p: p, d: d, rk: rk, layer: layer})
@@ -366,16 +371,7 @@ func (sc *Scratch) offer(d *decl, rk uint64, layer uint8) {
 			sc.best[p], sc.win[p], sc.bestLayer[p] = rk, d, layer
 		}
 	}
-	for p := Prop(0); p < propWordBits && (cov.lo>>p) != 0; p++ {
-		if cov.lo&(1<<p) != 0 {
-			offers(p)
-		}
-	}
-	for i := Prop(0); i < numProps-propWordBits && (cov.hi>>i) != 0; i++ {
-		if cov.hi&(1<<i) != 0 {
-			offers(i + propWordBits)
-		}
-	}
+	cov.Each(offers)
 }
 
 // offerStart records one @starting-style declaration for every
@@ -386,21 +382,13 @@ func (sc *Scratch) offerStart(d *decl, rk uint64) {
 		return
 	}
 	cov := d.covers
+	sc.offeredStart = sc.offeredStart.Or(cov)
 	offers := func(p Prop) {
 		if rk >= sc.bestStart[p] {
 			sc.bestStart[p], sc.winStart[p] = rk, d
 		}
 	}
-	for p := Prop(0); p < propWordBits && (cov.lo>>p) != 0; p++ {
-		if cov.lo&(1<<p) != 0 {
-			offers(p)
-		}
-	}
-	for i := Prop(0); i < numProps-propWordBits && (cov.hi>>i) != 0; i++ {
-		if cov.hi&(1<<i) != 0 {
-			offers(i + propWordBits)
-		}
-	}
+	cov.Each(offers)
 }
 
 // selectorMatches evaluates sel against n: the rightmost compound

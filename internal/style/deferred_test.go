@@ -59,7 +59,7 @@ func TestImportSupportsQualifier(t *testing.T) {
 		t.Errorf("a true supports() import applies: %08x", uint32(v.Color))
 	}
 	files = map[string]string{
-		"/t/main.css": "@import \"a.css\" supports(display: grid);\na { color: #010101; }",
+		"/t/main.css": "@import \"a.css\" supports(display: run-in);\na { color: #010101; }",
 		"/t/a.css":    "a { color: #020202; }",
 	}
 	s, warns = importFiles(t, files, "/t/main.css")

@@ -46,12 +46,8 @@ func (b *CenterBox) Measure(con Constraints) Size {
 		h = max(h, sz.H)
 	}
 	v := b.style(b)
-	if v.Has(style.PropMinWidth) {
-		w = max(w, v.MinWidth)
-	}
-	if v.Has(style.PropMinHeight) {
-		h = max(h, v.MinHeight)
-	}
+	w = max(w, picki(v, style.PropMinWidth, 0))
+	h = max(h, picki(v, style.PropMinHeight, 0))
 	return b.measureStore(con, Size{W: min(w, con.Max.W), H: min(h, con.Max.H)})
 }
 

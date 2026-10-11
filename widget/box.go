@@ -44,6 +44,10 @@ type childEntry struct {
 // A row's start/end semantics mirror with the box's direction: an RTL
 // row flows from the right edge, so the first child sits rightmost,
 // where an RTL reader starts. Columns are unaffected.
+//
+// A stylesheet display declaration lays the children out by CSS
+// instead — normal flow or flexbox (docs/css.md's Layout) — with the
+// settings above standing in wherever the stylesheet is silent.
 type Box struct {
 	node
 	axis    Axis
@@ -58,6 +62,15 @@ type Box struct {
 	// layer memoizes the offscreen the transform paints through, so a
 	// hovering swatch reuses its buffer instead of allocating per frame.
 	layer *render.Layer
+	// stack is the children's paint order by their CSS stacking keys
+	// (z-index, position, floats, order), indexes into child; empty
+	// means tree order. Arrange computes it, so paint and hit testing
+	// agree.
+	stack []int
+	// cssBase is the first baseline the last CSS layout pass found,
+	// relative to the content box, when cssHasBase.
+	cssBase    int
+	cssHasBase bool
 }
 
 // Children exposes the box's children in append order for focus
@@ -271,13 +284,21 @@ func (b *Box) Measure(con Constraints) Size {
 		return sz
 	}
 	v := b.style(b)
+	if mode := layoutModeOf(v); mode != modeBox {
+		return b.measureStore(con, measureBox(v, b.box(v), con, func(inner Constraints) Size {
+			return b.cssMeasure(v, mode, inner)
+		}))
+	}
 	spacing := b.gap(v)
 	return b.measureStore(con, measureBox(v, b.box(v), con, func(inner Constraints) Size {
 		innerCross := b.crossMax(inner)
 		availMain := b.main(inner.Max)
 		count := 0
 		for _, c := range b.child {
-			if IsVisible(c.w) {
+			// Parented first: whether a child flows is its cascade's
+			// call, which resolves only under its ancestors.
+			setParents(b, c.w)
+			if flows(c.w) {
 				count++
 			}
 		}
@@ -287,7 +308,7 @@ func (b *Box) Measure(con Constraints) Size {
 		availMain = max(0, availMain)
 		total, cross, shown := 0, 0, 0
 		for i, c := range b.child {
-			if !IsVisible(c.w) {
+			if !flows(c.w) {
 				b.child[i].nat = Size{}
 				setParents(b, c.w)
 				continue
@@ -307,12 +328,12 @@ func (b *Box) Measure(con Constraints) Size {
 		if b.homogeneous {
 			biggest := 0
 			for _, c := range b.child {
-				if IsVisible(c.w) {
+				if flows(c.w) {
 					biggest = max(biggest, b.main(c.nat))
 				}
 			}
 			for i, c := range b.child {
-				if IsVisible(c.w) {
+				if flows(c.w) {
 					b.child[i].nat = b.withMain(c.nat, biggest)
 				}
 			}
@@ -322,10 +343,12 @@ func (b *Box) Measure(con Constraints) Size {
 		// those that can give, and measures them again at the width
 		// they get, a wrapping child growing taller.
 		if b.axis == Row && total-spacing*max(shown-1, 0) > availMain {
-			if takes := b.shrinkTakes(total - spacing*max(shown-1, 0) - availMain); takes != nil {
+			buf := shrinkBufs.push(2 * len(b.child))
+			defer shrinkBufs.pop()
+			if takes := b.shrinkTakes(buf, total-spacing*max(shown-1, 0)-availMain); takes != nil {
 				total, cross = 0, 0
 				for i, c := range b.child {
-					if !IsVisible(c.w) {
+					if !flows(c.w) {
 						continue
 					}
 					if takes[i] > 0 {
@@ -351,7 +374,7 @@ func (b *Box) baselineGroup() (above, below int, ok bool) {
 		return 0, 0, false
 	}
 	for _, c := range b.child {
-		if c.cross != AlignBaseline || !IsVisible(c.w) {
+		if c.cross != AlignBaseline || !flows(c.w) {
 			continue
 		}
 		if base, has := baselineOf(c.w); has {
@@ -366,10 +389,14 @@ func (b *Box) baselineGroup() (above, below int, ok bool) {
 // with a baseline where its alignment puts it; a column's is its first
 // child's.
 func (b *Box) Baseline() (int, bool) {
-	top := b.box(b.style(b)).outer().Top
+	v := b.style(b)
+	top := b.box(v).outer().Top
+	if layoutModeOf(v) != modeBox {
+		return top + b.cssBase, b.cssHasBase
+	}
 	cross := 0
 	for _, c := range b.child {
-		if IsVisible(c.w) {
+		if flows(c.w) {
 			cross = max(cross, b.crossOf(c.nat))
 		}
 	}
@@ -378,7 +405,7 @@ func (b *Box) Baseline() (int, bool) {
 		return top + (cross-above-below)/2 + above, true
 	}
 	for _, c := range b.child {
-		if !IsVisible(c.w) {
+		if !flows(c.w) {
 			continue
 		}
 		base, ok := baselineOf(c.w)
@@ -409,11 +436,16 @@ func (b *Box) box(v *style.Values) cssInsets { return boxOf(v, b.padding) }
 // GtkBoxLayout adds the CSS spacing to its spacing property
 // (gtkboxlayout.c get_spacing). A stylesheet's blanket
 // `* { border-spacing: 0 }` therefore keeps a box's own spacing.
-func (b *Box) gap(v *style.Values) int {
+func (b *Box) gap(v *style.Values) int { return b.spacingAlong(v, b.axis) }
+
+// spacingAlong is the box spacing between children laid along a: the
+// constructor spacing plus the stylesheet's border-spacing on that
+// axis.
+func (b *Box) spacingAlong(v *style.Values, a Axis) int {
 	if !v.Has(style.PropBorderSpacing) {
 		return b.spacing
 	}
-	if b.axis == Row {
+	if a == Row {
 		return b.spacing + v.BorderSpacingH
 	}
 	return b.spacing + v.BorderSpacingV
@@ -445,27 +477,46 @@ func (b *Box) SetSpacing(spacing int) {
 // Spacing returns the programmatic gap between children.
 func (b *Box) Spacing() int { return b.spacing }
 
-// Arrange positions the children inside the content box: expanding
-// children share the leftover main-axis space, every child stretches
-// across the cross axis. r is the margin box; Bounds records the border
-// box.
+// Arrange positions the children inside the content box — by the CSS
+// layout its display declares, or the programmatic box layout — and
+// orders them for paint and hit testing by their stacking keys. r is
+// the margin box; Bounds records the border box.
 func (b *Box) Arrange(r render.Rect) {
 	v := b.style(b)
 	border, inner := boxRects(b.box(v), r)
 	b.ArrangeRoot(border)
-	spacing := b.gap(v)
-	if inner.Empty() {
+	mode := layoutModeOf(v)
+	switch {
+	case inner.Empty():
+		// Nothing flows in an empty box, but an out-of-flow child still
+		// takes its place against its containing block.
 		for _, c := range b.child {
-			c.w.Arrange(render.Rect{})
+			if ownVisible(c.w) && !flows(c.w) {
+				arrangeChild(c.w, render.Rect{X: inner.X, Y: inner.Y})
+			} else {
+				c.w.Arrange(render.Rect{})
+			}
 			setParents(b, c.w)
 		}
-		return
+	case mode != modeBox:
+		b.cssArrange(v, mode, inner)
+	default:
+		b.arrangeBox(v, inner)
 	}
+	b.restack(mode)
+}
+
+// arrangeBox is the programmatic box layout: expanding children share
+// the leftover main-axis space, every child stretches across the cross
+// axis. Out-of-flow children take no space; they are placed from where
+// the flow reached.
+func (b *Box) arrangeBox(v *style.Values, inner render.Rect) {
+	spacing := b.gap(v)
 
 	sum := 0
 	shown := 0
 	for _, c := range b.child {
-		if !IsVisible(c.w) {
+		if !flows(c.w) {
 			continue
 		}
 		sum += b.main(c.nat)
@@ -478,20 +529,35 @@ func (b *Box) Arrange(r render.Rect) {
 	free := avail - spacing*(shown-1) - sum
 	expanders := 0
 	for _, c := range b.child {
-		if b.expands(c) && IsVisible(c.w) {
+		if b.expands(c) && flows(c.w) {
 			expanders++
 		}
 	}
 	extra := max(0, free) / max(1, expanders)
-	takes := b.shrinkTakes(-free)
+	var takes []int
+	if free < 0 {
+		buf := shrinkBufs.push(2 * len(b.child))
+		defer shrinkBufs.pop()
+		takes = b.shrinkTakes(buf, -free)
+	}
 
 	pos := 0
 	rtl := b.axis == Row && b.dir == DirectionRTL
 	above, below, grouped := b.baselineGroup()
 	groupTop := inner.Y + (inner.H-above-below)/2
 	for i, c := range b.child {
-		if !IsVisible(c.w) {
-			c.w.Arrange(render.Rect{})
+		if !flows(c.w) {
+			if ownVisible(c.w) {
+				at := Point{X: inner.X + pos, Y: inner.Y}
+				if b.axis == Column {
+					at = Point{X: inner.X, Y: inner.Y + pos}
+				} else if rtl {
+					at.X = inner.X + inner.W - pos
+				}
+				arrangeChild(c.w, render.Rect{X: at.X, Y: at.Y})
+			} else {
+				c.w.Arrange(render.Rect{})
+			}
 			setParents(b, c.w)
 			continue
 		}
@@ -540,10 +606,10 @@ func (b *Box) ArrangeRoot(r render.Rect) {
 
 // Paint draws the box's CSS layers when the stylesheet gives it any (a
 // bare box paints nothing — theme-only boxes are transparent), then the
-// children in order, then the outline; opacity and filter wrap it all.
-// A transform declaration paints the whole subtree into an offscreen
-// layer and composites it back through the affine, so the transform
-// applies to the children as one.
+// children in stacking order, then the outline; opacity and filter wrap
+// it all. A transform declaration paints the whole subtree into an
+// offscreen layer and composites it back through the affine, so the
+// transform applies to the children as one.
 func (b *Box) Paint(cv *render.Canvas) {
 	v := b.style(b)
 	if v.Has(style.PropTransform) && (v.Transform.M != render.Identity || !v.Transform.P.Flat()) {
@@ -552,19 +618,85 @@ func (b *Box) Paint(cv *render.Canvas) {
 	}
 	radii := radiusOr(v, 0)
 	fx := pushEffects(cv, &b.node, v, b.bounds, radii)
-	cv = fx.cv
-	bg := pickc(0, v, style.PropBackgroundColor, 0)
-	if bg != 0 || hasBoxLayers(v) {
+	b.paintBox(fx.cv, v, radii)
+	fx.pop()
+}
+
+// paintBox paints the box's own layers, its children, and its outline.
+// The layers and the outline need a box that generates one (not under
+// display: contents) and shows it (visibility: visible); the children
+// paint by their own visibility either way, inside the overflow clip.
+func (b *Box) paintBox(cv *render.Canvas, v *style.Values, radii render.Corners) {
+	own := !displayContents(v) && v.Layout.Visibility == style.VisibilityVisible
+	if bg := pickc(0, v, style.PropBackgroundColor, 0); own && (bg != 0 || hasBoxLayers(v)) {
 		paintBoxBehind(cv, v, b.bounds, radii, borderOf(v), bg)
 	}
-	for _, c := range b.child {
-		if !IsVisible(c.w) {
-			continue
-		}
-		PaintChild(cv, c.w)
+	if clip, ok := b.overflowClip(v); ok {
+		prev := cv.PushClip(clip)
+		b.paintChildren(cv)
+		cv.PopClip(prev)
+	} else {
+		b.paintChildren(cv)
 	}
-	paintOutline(cv, v, b.bounds, radii)
-	fx.pop()
+	if own {
+		paintOutline(cv, v, b.bounds, radii)
+	}
+}
+
+// paintChildren paints the visible children in stacking order.
+func (b *Box) paintChildren(cv *render.Canvas) {
+	for k := range b.child {
+		if c := b.child[b.stackAt(k)]; ownVisible(c.w) {
+			PaintChild(cv, c.w)
+		}
+	}
+}
+
+// stackAt is the child index painted k-th.
+func (b *Box) stackAt(k int) int {
+	if len(b.stack) == len(b.child) {
+		return b.stack[k]
+	}
+	return k
+}
+
+// restack orders the children by their CSS stacking keys; with every
+// key zero the order is the tree's and the buffer stays empty.
+func (b *Box) restack(mode layoutMode) {
+	b.stack = b.stack[:0]
+	if !slices.ContainsFunc(b.child, func(c *childEntry) bool { return stackKeyOf(c.w, mode) != stackKey{} }) {
+		return
+	}
+	for i := range b.child {
+		b.stack = append(b.stack, i)
+	}
+	slices.SortStableFunc(b.stack, func(i, j int) int {
+		return compareStack(stackKeyOf(b.child[i].w, mode), stackKeyOf(b.child[j].w, mode))
+	})
+}
+
+// overflowReach is how far an unclipped axis of an overflow clip
+// extends: further than any tree reaches.
+const overflowReach = 1 << 24
+
+// overflowClip is the clip a clipping overflow (hidden, clip, and
+// scroll and auto, which add no scrollbars outside a Scroll) puts on
+// the children: the padding box on each clipping axis, unbounded on a
+// visible one.
+func (b *Box) overflowClip(v *style.Values) (render.Rect, bool) {
+	cx := v.Has(style.PropOverflowX) && v.Layout.OverflowX.Clips()
+	cy := v.Has(style.PropOverflowY) && v.Layout.OverflowY.Clips()
+	if !cx && !cy {
+		return render.Rect{}, false
+	}
+	r := borderOf(v).Shrink(b.bounds)
+	if !cx {
+		r.X, r.W = r.X-overflowReach, r.W+2*overflowReach
+	}
+	if !cy {
+		r.Y, r.H = r.Y-overflowReach, r.H+2*overflowReach
+	}
+	return r, true
 }
 
 // paintTransformed paints the box's subtree offscreen and composites
@@ -589,20 +721,9 @@ func (b *Box) paintTransformed(cv *render.Canvas, v *style.Values) {
 	l := cv.Layer(b.layer, region)
 	b.layer = l
 	lc := l.Canvas()
-	radii := radiusOr(v, 0)
 	var fx effects
 	fx.pushFast(lc, v)
-	bg := pickc(0, v, style.PropBackgroundColor, 0)
-	if bg != 0 || hasBoxLayers(v) {
-		paintBoxBehind(lc, v, b.bounds, radii, borderOf(v), bg)
-	}
-	for _, c := range b.child {
-		if !IsVisible(c.w) {
-			continue
-		}
-		PaintChild(lc, c.w)
-	}
-	paintOutline(lc, v, b.bounds, radii)
+	b.paintBox(lc, v, radiusOr(v, 0))
 	fx.popFast()
 	if v.BackfaceHidden && v.Transform.Backface {
 		return
@@ -614,16 +735,25 @@ func (b *Box) paintTransformed(cv *render.Canvas, v *style.Values) {
 	cv.Composite(l, l.Canvas().Rect(), m, 1)
 }
 
-// HitTest returns the deepest child under p, or the box itself when p is
-// inside its bounds but over no child (padding, spacing, leftover space).
+// HitTest returns the deepest child under p, topmost in stacking order
+// first and only inside the overflow clip, or the box itself when p is
+// inside its bounds but over no child (padding, spacing, leftover
+// space) — never a display:contents box, which has no area of its own.
 func (b *Box) HitTest(p Point) Widget {
-	for _, c := range b.child {
-		if !IsVisible(c.w) {
-			continue
+	v := b.style(b)
+	if clip, ok := b.overflowClip(v); !ok || clip.Contains(p.X, p.Y) {
+		for k := range slices.Backward(b.child) {
+			c := b.child[b.stackAt(k)]
+			if !ownVisible(c.w) {
+				continue
+			}
+			if hit := c.w.HitTest(p); hit != nil {
+				return hit
+			}
 		}
-		if hit := c.w.HitTest(p); hit != nil {
-			return hit
-		}
+	}
+	if displayContents(v) {
+		return nil
 	}
 	return b.HitLeaf(b, p)
 }

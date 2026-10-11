@@ -38,8 +38,8 @@ func (b cssInsets) outer() render.Insets {
 
 // measureBox measures a CSS box: the content measures under the
 // constraints less the insets, min-width/min-height floor the content
-// box (GTK's rule), and the insets add back. The result lies within
-// con.
+// box (GTK's rule; under box-sizing: border-box they floor the border
+// box instead), and the insets add back. The result lies within con.
 func measureBox(v *style.Values, b cssInsets, con Constraints, content func(Constraints) Size) Size {
 	o := b.outer()
 	h, vv := o.Left+o.Right, o.Top+o.Bottom
@@ -48,8 +48,13 @@ func measureBox(v *style.Values, b cssInsets, con Constraints, content func(Cons
 		Max: Size{W: max(0, con.Max.W-h), H: max(0, con.Max.H-vv)},
 	}
 	sz := content(inner)
-	sz.W = max(sz.W, picki(v, style.PropMinWidth, 0))
-	sz.H = max(sz.H, picki(v, style.PropMinHeight, 0))
+	minW, minH := picki(v, style.PropMinWidth, 0), picki(v, style.PropMinHeight, 0)
+	if v.Layout.BoxSizing == style.BoxSizingBorder {
+		minW -= b.border.Left + b.border.Right + b.padding.Left + b.padding.Right
+		minH -= b.border.Top + b.border.Bottom + b.padding.Top + b.padding.Bottom
+	}
+	sz.W = max(sz.W, minW)
+	sz.H = max(sz.H, minH)
 	return clampSize(Size{W: sz.W + h, H: sz.H + vv}, con)
 }
 

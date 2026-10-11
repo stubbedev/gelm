@@ -1,6 +1,7 @@
 package style
 
 import (
+	"math/bits"
 	"slices"
 
 	"github.com/stubbedev/gelm/anim"
@@ -140,19 +141,63 @@ const (
 	PropAnimComposition
 	PropContainerType
 	PropContainerName
+	PropDisplay
+	PropPosition
+	PropTop
+	PropRight
+	PropBottom
+	PropLeft
+	PropZIndex
+	PropWidth
+	PropHeight
+	PropMaxWidth
+	PropMaxHeight
+	PropBoxSizing
+	PropAspectRatio
+	PropFlexDirection
+	PropFlexWrap
+	PropJustifyContent
+	PropAlignItems
+	PropAlignSelf
+	PropAlignContent
+	PropFlexGrow
+	PropFlexShrink
+	PropFlexBasis
+	PropOrder
+	PropRowGap
+	PropColumnGap
+	PropOverflowX
+	PropOverflowY
+	PropVisibility
+	PropFloat
+	PropClear
 	numProps
 )
 
-// PropSet is a set of longhands, two words wide (the longhand table
-// passed sixty-four).
-type PropSet struct{ lo, hi uint64 }
+// PropSet is a set of longhands, one bit per Prop over three words:
+// separate fields rather than an array, so a set stays in registers
+// through the cascade's per-longhand loops.
+type PropSet struct{ lo, mid, hi uint64 }
+
+// propWordBits is the props per set word.
+const propWordBits = 64
+
+// The longhand table must fit the three words; a table that outgrows
+// them fails to compile here (a negative constant has no uint).
+const _ = uint(3*propWordBits - int(numProps))
+
+// bit returns p's bit within its word.
+func (p Prop) bit() uint64 { return 1 << (p % propWordBits) }
 
 // Has reports whether p is in the set.
 func (s PropSet) Has(p Prop) bool {
-	if p < propWordBits {
-		return s.lo&(1<<p) != 0
+	switch p / propWordBits {
+	case 0:
+		return s.lo&p.bit() != 0
+	case 1:
+		return s.mid&p.bit() != 0
 	}
-	return s.hi&(1<<(p-propWordBits)) != 0
+	return s.hi&p.bit() != 0
 }
 
 // Empty reports whether the set has no member.
@@ -160,47 +205,50 @@ func (s PropSet) Empty() bool { return s == PropSet{} }
 
 // With returns the set plus p.
 func (s PropSet) With(p Prop) PropSet {
-	if p < propWordBits {
-		s.lo |= 1 << p
-	} else {
-		s.hi |= 1 << (p - propWordBits)
+	switch p / propWordBits {
+	case 0:
+		s.lo |= p.bit()
+	case 1:
+		s.mid |= p.bit()
+	default:
+		s.hi |= p.bit()
 	}
 	return s
 }
 
 // Without returns the set minus p.
 func (s PropSet) Without(p Prop) PropSet {
-	if p < propWordBits {
-		s.lo &^= 1 << p
-	} else {
-		s.hi &^= 1 << (p - propWordBits)
+	switch p / propWordBits {
+	case 0:
+		s.lo &^= p.bit()
+	case 1:
+		s.mid &^= p.bit()
+	default:
+		s.hi &^= p.bit()
 	}
 	return s
 }
 
 // Or returns the union of the sets.
-func (s PropSet) Or(o PropSet) PropSet {
-	s.lo |= o.lo
-	s.hi |= o.hi
-	return s
-}
+func (s PropSet) Or(o PropSet) PropSet { return PropSet{s.lo | o.lo, s.mid | o.mid, s.hi | o.hi} }
 
 // And returns the intersection of the sets.
-func (s PropSet) And(o PropSet) PropSet {
-	s.lo &= o.lo
-	s.hi &= o.hi
-	return s
-}
+func (s PropSet) And(o PropSet) PropSet { return PropSet{s.lo & o.lo, s.mid & o.mid, s.hi & o.hi} }
 
 // AndNot is s minus o.
 func (s PropSet) AndNot(o PropSet) PropSet {
-	s.lo &^= o.lo
-	s.hi &^= o.hi
-	return s
+	return PropSet{s.lo &^ o.lo, s.mid &^ o.mid, s.hi &^ o.hi}
 }
 
-// propWordBits is the props per set word.
-const propWordBits = 64
+// Each calls fn for every member, in Prop order.
+func (s PropSet) Each(fn func(Prop)) {
+	for i, word := range [3]uint64{s.lo, s.mid, s.hi} {
+		for word != 0 {
+			fn(Prop(i*propWordBits + bits.TrailingZeros64(word)))
+			word &= word - 1
+		}
+	}
+}
 
 // setOf builds a PropSet from its members.
 func setOf(ps ...Prop) PropSet {
@@ -224,9 +272,10 @@ var allProps = func() (s PropSet) {
 }()
 
 // inheritedProps is the CSS (and GTK) inherited set: color, the font
-// group, letter-spacing, text-transform, line-height, and
-// -gtk-icon-size. Custom properties inherit too; they live outside the
-// longhand table.
+// group, letter-spacing, text-transform, line-height, -gtk-icon-size,
+// the CSS Text group, direction, the scrollbar pair, and visibility.
+// Custom properties inherit too; they live outside the longhand
+// table.
 var inheritedProps = setOf(PropColor, PropFontFamily, PropFontSize, PropFontWeight,
 	PropFontStyle, PropLetterSpacing, PropTextTransform, PropLineHeight,
 	PropFontFeatures, PropFontVariations, PropIconSize, PropCursor,
@@ -235,7 +284,7 @@ var inheritedProps = setOf(PropColor, PropFontFamily, PropFontSize, PropFontWeig
 	PropFontVariantCaps, PropFontVariantNumeric, PropFontVariantLigatures,
 	PropFontVariantEastAsian, PropFontVariantPosition, PropFontVariantAlternates,
 	PropFontOpticalSizing, PropDirection, PropWritingMode,
-	PropScrollbarColor, PropScrollbarWidth)
+	PropScrollbarColor, PropScrollbarWidth, PropVisibility)
 
 // Sides is a per-side length set, in logical pixels, in CSS's
 // top-right-bottom-left order.
@@ -685,7 +734,14 @@ type Values struct {
 	OutlineColor  render.Color
 	OutlineOffset int
 
-	MinWidth, MinHeight int
+	// MarginAuto marks the margin sides declared auto (top, right,
+	// bottom, left): Margin holds zero there, and the CSS layout
+	// engines hand those sides the free space.
+	MarginAuto [4]bool
+
+	// Layout is the CSS layout group: display, the box sizes,
+	// positioning, flexbox, overflow, visibility and float.
+	Layout Layout
 	// BorderSpacing is GTK's border-spacing: the gap a box leaves between
 	// its children, horizontal and vertical.
 	BorderSpacingH, BorderSpacingV int

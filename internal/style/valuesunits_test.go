@@ -31,8 +31,8 @@ func TestViewportUnits(t *testing.T) {
 	`)
 	env := Env{Rem: 16, Media: Media{Width: 500, Height: 300, DPI: 96}}
 	v := computeEnv(s, el("a"), env)
-	if v.Padding.Top != 50 || v.Margin.Top != 30 || v.MinWidth != 150 || v.MinHeight != 250 {
-		t.Errorf("vw/vh/vmin/vmax: %+v %d %d %d", v.Padding, v.Margin.Top, v.MinWidth, v.MinHeight)
+	if v.Padding.Top != 50 || v.Margin.Top != 30 || v.Layout.MinWidth.Px() != 150 || v.Layout.MinHeight.Px() != 250 {
+		t.Errorf("vw/vh/vmin/vmax: %+v %d %d %d", v.Padding, v.Margin.Top, v.Layout.MinWidth.Px(), v.Layout.MinHeight.Px())
 	}
 	v = computeEnv(s, el("b"), env)
 	if v.Padding.Top != 30 {
@@ -51,8 +51,8 @@ func TestFontRelativeUnits(t *testing.T) {
 	`)
 	env := Env{Rem: 16, Font: FontMetrics{Ch: 0.6, Ex: 0.25, Cap: 0.7, Ic: 1.25, LineHeight: 1.5}, RootLineHeight: 20}
 	v := computeEnv(s, el("a"), env)
-	if v.Padding.Top != 120 || v.Margin.Top != 50 || v.MinWidth != 140 || v.MinHeight != 250 || v.LetterSpacing != 30 {
-		t.Errorf("ch/ex/cap/ic/lh: %+v %+v %d %d %v", v.Padding, v.Margin, v.MinWidth, v.MinHeight, v.LetterSpacing)
+	if v.Padding.Top != 120 || v.Margin.Top != 50 || v.Layout.MinWidth.Px() != 140 || v.Layout.MinHeight.Px() != 250 || v.LetterSpacing != 30 {
+		t.Errorf("ch/ex/cap/ic/lh: %+v %+v %d %d %v", v.Padding, v.Margin, v.Layout.MinWidth.Px(), v.Layout.MinHeight.Px(), v.LetterSpacing)
 	}
 	v = computeEnv(s, el("b"), env)
 	if v.Padding.Top != 120 || v.Margin.Top != 60 {
@@ -67,8 +67,8 @@ func TestFontRelativeUnits(t *testing.T) {
 func TestFontRelativeUnitFallbacks(t *testing.T) {
 	s := parseOne(t, `a { font-size: 20px; padding: 10ch; margin: 10ex; min-width: 10cap; min-height: 10ic; }`)
 	v := computeEnv(s, el("a"), Env{Rem: 16})
-	if v.Padding.Top != 100 || v.Margin.Top != 100 || v.MinWidth != 100 || v.MinHeight != 200 {
-		t.Errorf("CSS fallback ratios: %+v %+v %d %d", v.Padding, v.Margin, v.MinWidth, v.MinHeight)
+	if v.Padding.Top != 100 || v.Margin.Top != 100 || v.Layout.MinWidth.Px() != 100 || v.Layout.MinHeight.Px() != 200 {
+		t.Errorf("CSS fallback ratios: %+v %+v %d %d", v.Padding, v.Margin, v.Layout.MinWidth.Px(), v.Layout.MinHeight.Px())
 	}
 }
 
@@ -109,24 +109,24 @@ func TestMathFunctions(t *testing.T) {
 		g { opacity: calc(max(0.5, min(0.7, 0.9)) * cos(0deg)); }
 	`)
 	v := computeTree(s, el("a"))
-	if v.Padding.Top != 5 || v.Margin.Top != 10 || v.MinWidth != 12 || v.MinHeight != 0 || v.BorderSpacingH != 0 {
-		t.Errorf("round: %d %d %d %d %d", v.Padding.Top, v.Margin.Top, v.MinWidth, v.MinHeight, v.BorderSpacingH)
+	if v.Padding.Top != 5 || v.Margin.Top != 10 || v.Layout.MinWidth.Px() != 12 || v.Layout.MinHeight.Px() != 0 || v.BorderSpacingH != 0 {
+		t.Errorf("round: %d %d %d %d %d", v.Padding.Top, v.Margin.Top, v.Layout.MinWidth.Px(), v.Layout.MinHeight.Px(), v.BorderSpacingH)
 	}
 	v = computeTree(s, el("b"))
-	if v.Padding.Top != 4 || v.Margin.Top != 4 || v.MinWidth != 1 || v.Margin.Bottom != 4 {
-		t.Errorf("mod/rem: %d %d %d %d", v.Padding.Top, v.Margin.Top, v.MinWidth, v.Margin.Bottom)
+	if v.Padding.Top != 4 || v.Margin.Top != 4 || v.Layout.MinWidth.Px() != 1 || v.Margin.Bottom != 4 {
+		t.Errorf("mod/rem: %d %d %d %d", v.Padding.Top, v.Margin.Top, v.Layout.MinWidth.Px(), v.Margin.Bottom)
 	}
 	v = computeTree(s, el("c"))
 	if v.Opacity != 0.25 || v.LetterSpacing != -1 {
 		t.Errorf("abs/sign: %v %v", v.Opacity, v.LetterSpacing)
 	}
 	v = computeTree(s, el("d"))
-	if v.Padding.Top != 0 || v.Margin.Top != 5 || v.MinWidth != 9 {
-		t.Errorf("sin/hypot/sqrt: %d %d %d", v.Padding.Top, v.Margin.Top, v.MinWidth)
+	if v.Padding.Top != 0 || v.Margin.Top != 5 || v.Layout.MinWidth.Px() != 9 {
+		t.Errorf("sin/hypot/sqrt: %d %d %d", v.Padding.Top, v.Margin.Top, v.Layout.MinWidth.Px())
 	}
 	v = computeTree(s, el("e"))
-	if v.MinHeight != 8 {
-		t.Errorf("pow/log/exp: %d, want 8", v.MinHeight)
+	if v.Layout.MinHeight.Px() != 8 {
+		t.Errorf("pow/log/exp: %d, want 8", v.Layout.MinHeight.Px())
 	}
 	v = computeTree(s, el("f"))
 	ang := math.Atan2(v.Transform.M.B, v.Transform.M.A) * 180 / math.Pi
@@ -157,8 +157,8 @@ func TestEnvFunction(t *testing.T) {
 		a { padding: env(safe-area-inset-top); margin: calc(4px + env(safe-area-inset-left)); min-height: env(keyboard-inset-height); }
 	`)
 	v := computeTree(s, el("a"))
-	if v.Padding.Top != 0 || v.Margin.Left != 4 || v.MinHeight != 0 {
-		t.Errorf("env insets zero on desktop: %+v %+v %d", v.Padding, v.Margin, v.MinHeight)
+	if v.Padding.Top != 0 || v.Margin.Left != 4 || v.Layout.MinHeight.Px() != 0 {
+		t.Errorf("env insets zero on desktop: %+v %+v %d", v.Padding, v.Margin, v.Layout.MinHeight.Px())
 	}
 	warns := capture(t)
 	Parse(`a { padding: env(nonsense); }`)
@@ -178,12 +178,12 @@ func TestAttrFunction(t *testing.T) {
 	}}
 	n.target = Target{Element: "a"}
 	v := computeEnv(s, n, Env{Rem: 16})
-	if v.MinWidth != 7 || v.Color != 0xffff0000 || v.Padding.Top != 3 {
-		t.Errorf("typed attr(): %d %08x %+v", v.MinWidth, uint32(v.Color), v.Padding)
+	if v.Layout.MinWidth.Px() != 7 || v.Color != 0xffff0000 || v.Padding.Top != 3 {
+		t.Errorf("typed attr(): %d %08x %+v", v.Layout.MinWidth.Px(), uint32(v.Color), v.Padding)
 	}
 	plain := el("a")
-	if v := computeTree(s, plain); v.Has(PropColor) || v.Padding.Top != 0 || v.MinWidth != 0 {
-		t.Errorf("missing attributes act as unset: color set %v padding %d min-width %d", v.Has(PropColor), v.Padding.Top, v.MinWidth)
+	if v := computeTree(s, plain); v.Has(PropColor) || v.Padding.Top != 0 || v.Layout.MinWidth.Px() != 0 {
+		t.Errorf("missing attributes act as unset: color set %v padding %d min-width %d", v.Has(PropColor), v.Padding.Top, v.Layout.MinWidth.Px())
 	}
 }
 

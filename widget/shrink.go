@@ -24,10 +24,10 @@ func shrinkableOf(w Widget) int {
 // Shrinkable implements Shrinker: a column gives what its children
 // can; a row is as short as its least shrinkable child lets it be.
 func (b *Box) Shrinkable() int {
-	if b.axis == Column {
+	if b.flowAxis() == Column {
 		total := 0
 		for _, c := range b.child {
-			if IsVisible(c.w) {
+			if flows(c.w) {
 				total += shrinkableOf(c.w)
 			}
 		}
@@ -35,7 +35,7 @@ func (b *Box) Shrinkable() int {
 	}
 	tallest, floor := 0, 0
 	for _, c := range b.child {
-		if !IsVisible(c.w) {
+		if !flows(c.w) {
 			continue
 		}
 		tallest = max(tallest, c.nat.H)
@@ -69,10 +69,10 @@ func shrinkableWidthOf(w Widget) int {
 // children can; a column is as narrow as its least shrinkable child
 // lets it be.
 func (b *Box) ShrinkableWidth() int {
-	if b.axis == Row {
+	if b.flowAxis() == Row {
 		total := 0
 		for _, c := range b.child {
-			if IsVisible(c.w) {
+			if flows(c.w) {
 				total += shrinkableWidthOf(c.w)
 			}
 		}
@@ -80,7 +80,7 @@ func (b *Box) ShrinkableWidth() int {
 	}
 	widest, floor := 0, 0
 	for _, c := range b.child {
-		if !IsVisible(c.w) {
+		if !flows(c.w) {
 			continue
 		}
 		widest = max(widest, c.nat.W)
@@ -89,21 +89,18 @@ func (b *Box) ShrinkableWidth() int {
 	return widest - floor
 }
 
-// shrinkStack is shrinkTakes' per-depth buffers, the walkStack
-// pattern: a box's takes stay live only across its own Measure/Arrange
-// loop, and everything that runs inside that loop (the children's own
-// measures and arranges) sits one depth deeper, so a level's buffer is
-// never rewritten while it is still being read.
-var (
-	shrinkStack [][]int
-	shrinkDepth int
-)
+// shrinkBufs holds shrinkTakes' caps and takes per layout depth. The
+// caller pushes a level, keeps it while its loop reads the takes, and
+// pops it after: the loop measures and arranges the children, whose
+// own shrinks run one level deeper.
+var shrinkBufs depthStack[int]
 
 // shrinkTakes splits a main-axis deficit across the children that can
 // give in proportion to what each can give, never more than that:
-// takes[i] is what child i gives up. GTK's distribution: every child
-// that can give participates, on either axis.
-func (b *Box) shrinkTakes(deficit int) (takes []int) {
+// takes[i] is what child i gives up, nil when nobody can give. GTK's
+// distribution: every child that can give participates, on either
+// axis. buf is the caller's shrinkBufs level, two per child long.
+func (b *Box) shrinkTakes(buf []int, deficit int) (takes []int) {
 	if deficit <= 0 {
 		return nil
 	}
@@ -112,21 +109,11 @@ func (b *Box) shrinkTakes(deficit int) (takes []int) {
 		give = shrinkableWidthOf
 	}
 	n := len(b.child)
-	for len(shrinkStack) <= shrinkDepth {
-		shrinkStack = append(shrinkStack, nil)
-	}
-	buf := shrinkStack[shrinkDepth][:0]
-	for len(buf) < 2*n {
-		buf = append(buf, 0)
-	}
-	shrinkStack[shrinkDepth] = buf
-	shrinkDepth++
-	defer func() { shrinkDepth-- }()
 	caps, takes := buf[:n], buf[n:2*n]
 	total := 0
 	for i, c := range b.child {
 		caps[i] = 0
-		if IsVisible(c.w) {
+		if flows(c.w) {
 			caps[i] = give(c.w)
 			total += caps[i]
 		}

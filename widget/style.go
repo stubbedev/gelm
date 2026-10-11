@@ -1654,7 +1654,7 @@ func styleChanged(a, b *style.Values) bool {
 		a.BorderColor != b.BorderColor || a.Radius != b.Radius || a.Shadow != b.Shadow ||
 		a.OutlineWidth != b.OutlineWidth || a.OutlineStyle != b.OutlineStyle ||
 		a.OutlineColor != b.OutlineColor || a.OutlineOffset != b.OutlineOffset ||
-		a.MinWidth != b.MinWidth || a.MinHeight != b.MinHeight ||
+		a.MarginAuto != b.MarginAuto || a.Layout != b.Layout ||
 		a.BorderSpacingH != b.BorderSpacingH || a.BorderSpacingV != b.BorderSpacingV ||
 		a.FontFamily != b.FontFamily || a.FontSize != b.FontSize ||
 		a.FontWeight != b.FontWeight || a.Italic != b.Italic ||
@@ -1729,7 +1729,7 @@ func layoutKey(v style.Values) layoutFacts {
 		padding: v.Padding, margin: v.Margin, border: eff,
 		gutter: v.BarGutter,
 		setPad: v.HasAny(style.PropPaddingTop, style.PropPaddingRight, style.PropPaddingBottom, style.PropPaddingLeft),
-		minW:   v.MinWidth, minH: v.MinHeight, spacingH: v.BorderSpacingH, spacingV: v.BorderSpacingV,
+		lay:    v.Layout, marginAuto: v.MarginAuto, spacingH: v.BorderSpacingH, spacingV: v.BorderSpacingV,
 		setSpacing: v.Has(style.PropBorderSpacing),
 		fontSize:   v.FontSize, fontFamily: v.FontFamily, fontWeight: v.FontWeight, italic: v.Italic,
 		iconSize: v.IconSize, transform: v.TextTransform, letter: v.LetterSpacing,
@@ -1739,15 +1739,19 @@ func layoutKey(v style.Values) layoutFacts {
 			optical: v.OpticalSizing, caps: v.VariantCaps, numeric: v.VariantNumeric,
 			lig: v.VariantLig, eastAsian: v.VariantEA, position: v.VariantPos, alternates: v.VariantAlt,
 		},
-		set: v.Set.And(style.SetOf(style.PropFontSize, style.PropFontFamily, style.PropFontWeight,
-			style.PropIconSize, style.PropMinWidth, style.PropMinHeight, style.PropTextTransform,
-			style.PropTextIndent, style.PropWhiteSpace, style.PropWordBreak, style.PropLineBreak,
-			style.PropHyphens, style.PropWordSpacing, style.PropLineClamp, style.PropTextOverflow,
-			style.PropFontOpticalSizing, style.PropFontVariantCaps, style.PropFontVariantNumeric,
-			style.PropFontVariantLigatures, style.PropFontVariantEastAsian,
-			style.PropFontVariantPosition, style.PropFontVariantAlternates)),
+		set: v.Set.And(layoutKeyProps),
 	}
 }
+
+// layoutKeyProps are the longhands whose presence alone changes what a
+// widget measures: the layout group and the text metrics.
+var layoutKeyProps = style.LayoutProps.Or(style.SetOf(style.PropFontSize, style.PropFontFamily,
+	style.PropFontWeight, style.PropIconSize, style.PropTextTransform,
+	style.PropTextIndent, style.PropWhiteSpace, style.PropWordBreak, style.PropLineBreak,
+	style.PropHyphens, style.PropWordSpacing, style.PropLineClamp, style.PropTextOverflow,
+	style.PropFontOpticalSizing, style.PropFontVariantCaps, style.PropFontVariantNumeric,
+	style.PropFontVariantLigatures, style.PropFontVariantEastAsian,
+	style.PropFontVariantPosition, style.PropFontVariantAlternates))
 
 // textFacts projects the CSS Text and font-variant properties that
 // change what a text widget measures, packed comparable.
@@ -1774,7 +1778,8 @@ type layoutFacts struct {
 	padding, margin, border style.Sides
 	setPad                  bool
 	gutter                  uint8
-	minW, minH              int
+	lay                     style.Layout
+	marginAuto              [4]bool
 	spacingH, spacingV      int
 	setSpacing              bool
 	fontSize                float64
@@ -1791,16 +1796,8 @@ type layoutFacts struct {
 // inheritedKey projects the values descendants inherit — the custom
 // property environment included; a change restyles the subtree.
 func inheritedKey(v style.Values) inheritedFacts {
-	keep := style.SetOf(style.PropColor, style.PropFontSize, style.PropFontFamily,
-		style.PropFontWeight, style.PropFontStyle, style.PropLetterSpacing,
-		style.PropTextAlign, style.PropTextIndent, style.PropWhiteSpace, style.PropWordBreak,
-		style.PropLineBreak, style.PropHyphens, style.PropWordSpacing,
-		style.PropFontVariantCaps, style.PropFontVariantNumeric, style.PropFontVariantLigatures,
-		style.PropFontVariantEastAsian, style.PropFontVariantPosition, style.PropFontVariantAlternates,
-		style.PropFontOpticalSizing, style.PropDirection, style.PropWritingMode,
-		style.PropScrollbarColor, style.PropScrollbarWidth)
 	return inheritedFacts{
-		set: v.Set.And(keep), color: v.Color, fontSize: v.FontSize, fontFamily: v.FontFamily,
+		set: v.Set.And(inheritedKeyProps), color: v.Color, fontSize: v.FontSize, fontFamily: v.FontFamily,
 		fontWeight: v.FontWeight, italic: v.Italic, letter: v.LetterSpacing,
 		transform: v.TextTransform, iconSize: v.IconSize, vars: v.Vars, cursor: v.Cursor,
 		barThumb: v.BarThumb, barTrack: v.BarTrack, barAuto: v.BarColorAuto, barWidth: v.BarWidth,
@@ -1810,9 +1807,20 @@ func inheritedKey(v style.Values) inheritedFacts {
 			caps: v.VariantCaps, numeric: v.VariantNumeric, lig: v.VariantLig,
 			eastAsian: v.VariantEA, position: v.VariantPos, alternates: v.VariantAlt,
 		},
-		align: v.TextAlign, dir: v.Direction, writing: v.WritingMode,
+		align: v.TextAlign, dir: v.Direction, writing: v.WritingMode, visibility: v.Layout.Visibility,
 	}
 }
+
+// inheritedKeyProps are the inherited longhands whose presence alone
+// changes what descendants compute.
+var inheritedKeyProps = style.SetOf(style.PropColor, style.PropFontSize, style.PropFontFamily,
+	style.PropFontWeight, style.PropFontStyle, style.PropLetterSpacing,
+	style.PropTextAlign, style.PropTextIndent, style.PropWhiteSpace, style.PropWordBreak,
+	style.PropLineBreak, style.PropHyphens, style.PropWordSpacing,
+	style.PropFontVariantCaps, style.PropFontVariantNumeric, style.PropFontVariantLigatures,
+	style.PropFontVariantEastAsian, style.PropFontVariantPosition, style.PropFontVariantAlternates,
+	style.PropFontOpticalSizing, style.PropDirection, style.PropWritingMode,
+	style.PropScrollbarColor, style.PropScrollbarWidth, style.PropVisibility)
 
 // inheritedFacts is inheritedKey's comparable projection.
 type inheritedFacts struct {
@@ -1834,6 +1842,7 @@ type inheritedFacts struct {
 	align      style.TextAlign
 	dir        uint8
 	writing    style.WritingMode
+	visibility style.Visibility
 	vars       *style.Vars
 }
 
@@ -2061,9 +2070,9 @@ func picki(v *style.Values, p style.Prop, def int) int {
 	if v.Has(p) {
 		switch p {
 		case style.PropMinWidth:
-			return v.MinWidth
+			return v.Layout.MinWidth.Px()
 		case style.PropMinHeight:
-			return v.MinHeight
+			return v.Layout.MinHeight.Px()
 		case style.PropBorderTopLeftRadius:
 			return v.Radius.TopLeft
 		case style.PropIconSize:

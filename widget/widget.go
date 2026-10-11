@@ -247,6 +247,11 @@ type node struct {
 	// in Measure, Arrange, Paint, and HitTest, so the space reflows to
 	// the siblings; widget.IsVisible folds the ancestors in.
 	hidden bool
+
+	// cssMin and cssMax are the margin-box bounds the last CSS-sized
+	// measure resolved (csssize.go), equal on an axis with a definite
+	// size: arrangeChild holds a container's slot to them.
+	cssMin, cssMax Size
 }
 
 // SetOnHoverWithin registers fn to hear the pointer enter or leave the
@@ -390,16 +395,46 @@ func (n *node) SetVisible(visible bool) {
 func (n *node) Visible() bool { return !n.hidden }
 
 // IsVisible folds the visibility of every ancestor: false when the
-// widget or any container above it is hidden.
+// widget or any container above it is hidden, by SetVisible or by a
+// computed display: none — either way the widget is not laid out,
+// painted, or hit. CSS visibility: hidden keeps the widget laid out
+// and is not folded here (shown).
 func IsVisible(w Widget) bool {
 	for node := w; node != nil; node = parentOf(node) {
-		if n, ok := node.(interface {
-			Visible() bool
-		}); ok && !n.Visible() {
+		if !ownVisible(node) {
 			return false
 		}
 	}
 	return true
+}
+
+// ownVisible is IsVisible's per-widget half: w's own SetVisible flag
+// and computed display, its ancestors aside. A container testing its
+// children reads it alone — its own visibility is settled by its being
+// laid out, painted, or hit at all.
+func ownVisible(w Widget) bool {
+	if n, ok := w.(interface{ Visible() bool }); ok && !n.Visible() {
+		return false
+	}
+	n := nodeOf(w)
+	if n == nil {
+		return true
+	}
+	// An unparented widget's cascade cannot resolve yet; its last one
+	// stands until a container parents it, whose relayout then reads
+	// the fresh value.
+	v := &n.cs
+	if n.parent != nil || n.styleRoot {
+		v = n.style(w)
+	}
+	return !v.Has(style.PropDisplay) || v.Layout.Display != style.DisplayNone
+}
+
+// shown reports whether w's computed visibility shows it: hidden and
+// collapse keep the widget's space but paint nothing and take no hits.
+func shown(w Widget) bool {
+	n := nodeOf(w)
+	return n == nil || n.style(w).Layout.Visibility == style.VisibilityVisible
 }
 
 // invalidateTree marks self and every descendant for repaint.
@@ -736,7 +771,7 @@ func notifyRemoved(ws ...Widget) {
 // through: the widget itself inside its bounds, unless the pointer
 // passes through it (pointer-events: none on it or an ancestor).
 func (n *node) HitLeaf(self Widget, p Point) Widget {
-	if n.bounds.Contains(p.X, p.Y) && !pointerEventsNoneWithin(self) {
+	if n.bounds.Contains(p.X, p.Y) && !pointerEventsNoneWithin(self) && shown(self) {
 		return self
 	}
 	return nil
@@ -763,8 +798,15 @@ func clampSize(s Size, con Constraints) Size {
 // it for that child, the keyboard focus ring (render.Canvas.MarkFocus),
 // so later siblings cover the ring. Containers defined outside the kit
 // call it for their children too; one that does not still gets the ring,
-// drawn over the whole frame at its end.
+// drawn over the whole frame at its end. A child its computed
+// visibility hides paints nothing — a Box still paints its children,
+// which may show themselves (visibility: visible inside a hidden box).
 func PaintChild(cv *render.Canvas, w Widget) {
+	if !shown(w) {
+		if _, ok := w.(contentsHost); !ok {
+			return
+		}
+	}
 	w.Paint(cv)
 	cv.Painted(w)
 }

@@ -225,21 +225,31 @@ func (t *ToggleButton) a11yPressed() bool { return t.active }
 // A combo box's accessible name is its current selection.
 func (d *Dropdown) a11yName() string { return d.Selection() }
 
-// isFocusable reports whether Tab traversal can land on w: it handles
-// key actions and is enabled — a disabled widget is skipped by
-// FocusNext and so is reported unfocusable here.
+// isFocusable reports whether focus can land on w, by Tab traversal or
+// SetFocus: it handles key actions, is enabled, and is rendered — a
+// widget hidden by SetVisible, display: none or visibility: hidden
+// takes no focus, the same as a disabled one.
 func isFocusable(w Widget) bool {
 	if _, ok := w.(KeyActionHandler); !ok {
 		return false
 	}
-	return IsEnabled(w)
+	return IsEnabled(w) && rendered(w)
 }
 
-// DescribeTree snapshots root and every descendant in paint order, the
-// same pre-order focus traversal uses.
+// rendered reports whether w is on screen for the user: laid out
+// (IsVisible) and shown by its computed visibility.
+func rendered(w Widget) bool { return IsVisible(w) && shown(w) }
+
+// DescribeTree snapshots root and every rendered descendant in paint
+// order, the same pre-order focus traversal uses: a widget hidden from
+// the screen is hidden from assistive technology too.
 func DescribeTree(root Widget) []A11yState {
 	var out []A11yState
-	focusWalker(root, func(w Widget) { out = append(out, Describe(w)) })
+	focusWalker(root, func(w Widget) {
+		if rendered(w) {
+			out = append(out, Describe(w))
+		}
+	})
 	return out
 }
 
