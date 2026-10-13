@@ -48,8 +48,9 @@ instruction differs from upstream.
 
 ## Upstream status
 
-The fd fix is proposed upstream as neurlang/wayland#41.
-`NewServerBuffer` is not upstream. The copy goes away, with the imports
+The fd fix is merged upstream (neurlang/wayland#41, e9df493) but not
+yet in a tagged release. `NewServerBuffer` is proposed upstream as
+neurlang/wayland#42. The copy goes away, with the imports
 rewritten back to github.com/neurlang/wayland, once upstream carries
 both; gelm's compositor-in-the-loop suites on sway and Hyprland are
 the regression check.
