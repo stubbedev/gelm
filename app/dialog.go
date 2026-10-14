@@ -160,12 +160,9 @@ func (a *Application) NewDialog(parent DialogParent, cfg DialogConfig) (*Dialog,
 	if err != nil {
 		return nil, fmt.Errorf("app: dialog window: %w", err)
 	}
-	// Dialog windows are exempt from their own blocking.
-	for _, hw := range a.windows {
-		if hw.win == w {
-			hw.isDialog = true
-			hw.blocked = false
-		}
+	if hw := a.hostWindowOf(w); hw != nil {
+		hw.isDialog = true
+		hw.blocked = false
 	}
 	d = &Dialog{app: a, win: w, cfg: cfg}
 	a.dialogs = append(a.dialogs, d)

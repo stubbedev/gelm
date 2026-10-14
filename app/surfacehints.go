@@ -54,7 +54,7 @@ func (w *Window) Capabilities() WMCapabilities { return w.win.Capabilities() }
 // requestFrame marks the window for a frame (the commit that applies
 // surface state).
 func (w *Window) requestFrame() {
-	if hw := w.app.hostOf(w); hw != nil {
+	if hw := w.app.hostWindowOf(w); hw != nil {
 		hw.dirty = true
 	}
 }
@@ -78,7 +78,7 @@ func (l *LayerWindow) SetOpacity(alpha float64) error {
 
 // requestFrame marks the layer surface for a frame.
 func (l *LayerWindow) requestFrame() {
-	if hw := l.app.hostOfLayer(l); hw != nil {
+	if hw := l.app.hostWindowOf(l); hw != nil {
 		hw.dirty = true
 	}
 }

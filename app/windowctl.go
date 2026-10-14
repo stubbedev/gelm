@@ -31,7 +31,7 @@ const (
 // the serial of the latest input event, which the session supplies;
 // without one the compositor ignores the request.
 func (w *Window) BeginMove() {
-	if hw := w.app.hostOf(w); hw != nil && hw.startMove != nil {
+	if hw := w.app.hostWindowOf(w); hw != nil && hw.startMove != nil {
 		hw.startMove(w.app.sess.InputSerial())
 	}
 }
@@ -40,7 +40,7 @@ func (w *Window) BeginMove() {
 // (gtk_window_begin_resize_drag) - for app-drawn resize handles; the
 // window's own edges already resize.
 func (w *Window) BeginResize(edge ResizeEdge) {
-	if hw := w.app.hostOf(w); hw != nil && hw.startResize != nil {
+	if hw := w.app.hostWindowOf(w); hw != nil && hw.startResize != nil {
 		hw.startResize(uint32(edge), w.app.sess.InputSerial())
 	}
 }

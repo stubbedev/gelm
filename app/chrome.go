@@ -112,7 +112,7 @@ func (a *Application) openMenuAt(host Host, anchor widget.Boundser, items []widg
 // stateMaximized reports the confirmed maximized state for the
 // double-click toggle (tests).
 func (w *Window) stateMaximized() bool {
-	hw := w.app.hostOf(w)
+	hw := w.app.hostWindowOf(w)
 	if hw == nil || hw.state == nil {
 		return false
 	}

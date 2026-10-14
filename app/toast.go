@@ -178,17 +178,6 @@ func (a *Application) windowForToast(h Host) *hostWindow {
 	return a.focused()
 }
 
-// hostWindowOf is the loop state of an open host, nil when it is not
-// one of the application's windows.
-func (a *Application) hostWindowOf(h Host) *hostWindow {
-	for _, w := range a.windows {
-		if w.host == h {
-			return w
-		}
-	}
-	return nil
-}
-
 // toastRegistry tracks each host's toast layer.
 type toastRegistry struct {
 	mu   sync.Mutex
