@@ -1302,26 +1302,31 @@ func (s *Session) DecorationManager() *deco.ZxdgDecorationManagerV1 {
 }
 
 // Roundtrip issues a display sync and dispatches until it completes.
-// Proxies destroyed mid-queue (a done frame callback, a dismissed
-// popup) abort a dispatch pass with ErrContextRunProxyNil; retrying is
-// safe and finishes the roundtrip. The retry is bounded
-// (runThroughProxyNil), and a dead connection classifies as a
-// DisconnectError instead of looping: a sync to a dead socket fails on
-// the read, never spins.
+// It waits on its own callback's done handler, so a handler it
+// dispatches may roundtrip too (a popup opened from a press that
+// arrived while another popup awaited its configure): the nested
+// roundtrip dispatching this one's done still ends this wait. Each
+// dispatch is a Step, so destroyed proxies and dead connections are
+// handled as Step handles them.
 func (s *Session) Roundtrip() error {
 	cb, err := s.Display.Sync()
 	if err != nil {
 		return s.asDisconnect(err)
 	}
-	// done is a destructor event: once it lands (or the wait fails) the
-	// callback is dead on both sides, so its id must rejoin the
-	// client's pool. Skipping this leaks a proxy per roundtrip - and
-	// some loops roundtrip per frame.
 	defer cb.Unregister()
-	return s.asDisconnect(runThroughProxyNil(func() error {
-		return s.Display.Context().RunTill(cb)
-	}))
+	var synced syncDone
+	cb.AddDoneHandler(&synced)
+	for !synced {
+		if err := s.Step(); err != nil {
+			return err
+		}
+	}
+	return nil
 }
+
+type syncDone bool
+
+func (d *syncDone) HandleCallbackDone(wl.CallbackDoneEvent) { *d = true }
 
 // Step dispatches exactly one event, blocking until one arrives. It is
 // the park point of an event-driven loop: with nothing to do, a loop
