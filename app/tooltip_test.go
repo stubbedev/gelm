@@ -280,3 +280,66 @@ func TestAnchorsAndPopoverCeiling(t *testing.T) {
 		t.Errorf("set ceiling %+v", got)
 	}
 }
+
+func TestTooltipStaysHiddenAfterAPressUntilTheHoverChanges(t *testing.T) {
+	target := newTipTarget("hover text")
+	target.Arrange(render.Rect{W: 100, H: 20})
+	router := &widget.Router{Root: target}
+	var opened []*stub
+	opener := func(widget.Widget, string) (tooltipWindow, tooltipPainter) {
+		s := &stub{}
+		opened = append(opened, s)
+		return s, nil
+	}
+	ctl := &tooltipCtl{}
+	at := time.Now()
+	router.Move(widget.Point{X: 10, Y: 10})
+	ctl.update(router, at, opener)
+	at = at.Add(tooltipDelay)
+	ctl.update(router, at, opener)
+	if len(opened) != 1 {
+		t.Fatalf("dwell opened %d tooltips, want 1", len(opened))
+	}
+
+	ctl.press()
+	if opened[0].closed != 1 {
+		t.Errorf("the press closed the open tooltip %d times, want 1", opened[0].closed)
+	}
+	at = at.Add(10 * tooltipDelay)
+	ctl.update(router, at, opener)
+	if len(opened) != 1 {
+		t.Errorf("the tooltip reopened over the pressed widget: %d opens", len(opened))
+	}
+	if _, pending := ctl.next(); pending {
+		t.Error("a suppressed tooltip still schedules a wake")
+	}
+
+	router.Move(widget.Point{X: 10, Y: 200})
+	ctl.update(router, at, opener)
+	router.Move(widget.Point{X: 10, Y: 10})
+	ctl.update(router, at, opener)
+	ctl.update(router, at.Add(tooltipDelay), opener)
+	if len(opened) != 2 {
+		t.Errorf("a new dwell after the pointer left and came back opened %d tooltips in all, want 2", len(opened))
+	}
+}
+
+func TestTooltipOpenedAcrossAPressIsDismissed(t *testing.T) {
+	target := newTipTarget("hover text")
+	target.Arrange(render.Rect{W: 100, H: 20})
+	router := &widget.Router{Root: target}
+	ctl := &tooltipCtl{}
+	var opened *stub
+	opener := func(widget.Widget, string) (tooltipWindow, tooltipPainter) {
+		opened = &stub{}
+		ctl.press()
+		return opened, nil
+	}
+	at := time.Now()
+	router.Move(widget.Point{X: 10, Y: 10})
+	ctl.update(router, at, opener)
+	ctl.update(router, at.Add(tooltipDelay), opener)
+	if opened == nil || opened.closed != 1 || ctl.open != nil {
+		t.Errorf("a tooltip whose open saw a press stayed up: opened %v, open %v", opened, ctl.open)
+	}
+}

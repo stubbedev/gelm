@@ -107,7 +107,16 @@ type tooltipCtl struct {
 	// without a hover change, and the change restarts the dwell.
 	text string
 	// delay is the dwell (TooltipOptions); zero is the default.
-	delay time.Duration
+	delay   time.Duration
+	pressed bool
+}
+
+func (t *tooltipCtl) press() {
+	t.pressed = true
+	if t.open != nil {
+		t.open.Dismiss()
+		t.open, t.painter = nil, nil
+	}
 }
 
 // dwell is the configured delay, the default when unset.
@@ -117,7 +126,7 @@ func (t *tooltipCtl) dwell() time.Duration { return orDefault(t.delay, tooltipDe
 // with text, not yet open, one delay away. False when nothing is
 // pending, so the loop need not wake for tooltips.
 func (t *tooltipCtl) next() (time.Time, bool) {
-	if t.open != nil || t.hover == nil {
+	if t.open != nil || t.hover == nil || t.pressed {
 		return time.Time{}, false
 	}
 	if text := hoverTooltipText(t.hover); text != "" {
@@ -146,7 +155,7 @@ func (t *tooltipCtl) update(router *widget.Router, now time.Time, opener func(wi
 	text := hoverTooltipText(h)
 	changed := h != t.hover || text != t.text
 	if changed {
-		t.hover, t.text, t.since = h, text, now
+		t.hover, t.text, t.since, t.pressed = h, text, now, false
 	}
 	if tooltipShouldClose(t.open != nil, changed, text != "") {
 		// Traced as "tooltip closed": the headless harness waits on it.
@@ -154,8 +163,13 @@ func (t *tooltipCtl) update(router *widget.Router, now time.Time, opener func(wi
 		t.open.Dismiss()
 		t.open, t.painter = nil, nil
 	}
-	if tooltipShouldOpen(t.open != nil, h, text, t.since, now, t.dwell()) {
-		if p, pc := opener(h, text); p != nil {
+	if !t.pressed && tooltipShouldOpen(t.open != nil, h, text, t.since, now, t.dwell()) {
+		p, pc := opener(h, text)
+		switch {
+		case p == nil:
+		case t.pressed:
+			p.Dismiss()
+		default:
 			t.open, t.painter = p, pc
 		}
 		// Advance the dwell clock even when the open failed, so a
