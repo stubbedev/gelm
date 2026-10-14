@@ -158,7 +158,7 @@ type Session struct {
 	dataDeviceManager   *wl.DataDeviceManager
 	dataDeviceVersion   uint32
 	dataDevice          *wl.DataDevice
-	keyboardSerial      uint32
+	inputSerial         uint32
 	decorationManager   *deco.ZxdgDecorationManagerV1
 	textInputMgr        *text.ZwpInputManagerV3
 	textInput           *text.ZwpInputV3
@@ -992,6 +992,9 @@ func (s *Session) HandlePointerMotion(ev wl.PointerMotionEvent) {
 // release ends the grab.
 func (s *Session) HandlePointerButton(ev wl.PointerButtonEvent) {
 	debug.Log("input", "wire button %d state=%d serial=%d", ev.Button, ev.State, ev.Serial)
+	if ev.State == 1 {
+		s.inputSerial = ev.Serial
+	}
 	if h := s.pointerTarget(); h != nil {
 		h.HandlePointerButton(ev.Button, ev.State, ev.Serial)
 	}
@@ -1140,7 +1143,6 @@ func (s *Session) HandleKeyboardKeymap(ev wl.KeyboardKeymapEvent) {
 func (s *Session) HandleKeyboardEnter(ev wl.KeyboardEnterEvent) {
 	debug.Log("input", "keyboard enter")
 	s.keyboardFocus = ev.Surface
-	s.keyboardSerial = ev.Serial
 }
 
 // HandleKeyboardLeave implements wl.KeyboardLeaveHandler.
@@ -1157,10 +1159,10 @@ func (s *Session) KeyboardFocus() *wl.Surface { return s.keyboardFocus }
 
 // HandleKeyboardKey implements wl.KeyboardKeyHandler.
 func (s *Session) HandleKeyboardKey(ev wl.KeyboardKeyEvent) {
-	debug.Log("input", "wire key code=%d state=%d mods=%#x", ev.Key, ev.State, s.mods)
-	s.keyboardSerial = ev.Serial
+	debug.Log("input", "wire key code=%d state=%d serial=%d mods=%#x", ev.Key, ev.State, ev.Serial, s.mods)
 	switch ev.State {
 	case 1:
+		s.inputSerial = ev.Serial
 		if s.OnKey != nil {
 			s.OnKey(ev.Key, s.Mods())
 		}
@@ -1173,7 +1175,6 @@ func (s *Session) HandleKeyboardKey(ev wl.KeyboardKeyEvent) {
 
 // HandleKeyboardModifiers implements wl.KeyboardModifiersHandler.
 func (s *Session) HandleKeyboardModifiers(ev wl.KeyboardModifiersEvent) {
-	s.keyboardSerial = ev.Serial
 	debug.Log("input", "wire modifiers depressed=%#x latched=%#x locked=%#x group=%d", ev.ModsDepressed, ev.ModsLatched, ev.ModsLocked, ev.Group)
 	s.mods = ev.ModsDepressed
 	if s.xkbState != nil {
@@ -1280,9 +1281,18 @@ func (s *Session) PrimarySelectionManager() *wlr.ZwpPrimarySelectionDeviceManage
 	return s.primarySelectionMgr
 }
 
-// KeyboardSerial returns the serial of the most recent keyboard event
-// (enter, key or modifiers), needed by selection requests.
-func (s *Session) KeyboardSerial() uint32 { return s.keyboardSerial }
+// InputSerial returns the serial of the latest user input event the
+// seat delivered to this client: a pointer button press, key press,
+// touch down, or tablet tool down or button press, on any surface. It
+// is the serial requests anchored to a user action carry (popup
+// grabs, interactive move and resize, set_selection, activation
+// tokens), and 0 before any such event.
+func (s *Session) InputSerial() uint32 { return s.inputSerial }
+
+// ErrNoInputEvent reports a request the protocol anchors to a user
+// action made before the seat delivered any input event: there is no
+// serial for it to carry, and compositors refuse it without one.
+var ErrNoInputEvent = errors.New("wlsession: no user input event has arrived to anchor the request")
 
 // DecorationManager returns the bound xdg-decoration manager, or nil
 // when the compositor does not provide it; server-side window

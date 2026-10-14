@@ -83,18 +83,11 @@ type Popup struct {
 	// painter is the frame pipeline whoever paints this surface built
 	// (Run internally, or the application loop for tooltips).
 	painter *Painter
-	// pressSerial is the serial of the last button press on the popup,
-	// the grab serial a popup nested under it opens with.
-	pressSerial atomic.Uint32
 	// cfg is the placement the popup opened with, for a reposition at
 	// a new size; repositions counts the requests (their tokens).
 	cfg         Config
 	repositions uint32
 }
-
-// LastPressSerial is the serial of the last button press inside the
-// popup, 0 before any.
-func (p *Popup) LastPressSerial() uint32 { return p.pressSerial.Load() }
 
 // Config describes where the popup goes and how big it is.
 type Config struct {
@@ -117,11 +110,9 @@ type Config struct {
 	// Gravity picks which side of the anchor the popup opens on; zero
 	// is below.
 	Gravity Gravity
-	// Serial is the pointer or keyboard serial of the event that opens
-	// the popup, used for the grab.
-	Serial uint32
 	// NoGrab skips the seat grab: the popup tracks hover without
-	// taking input, which tooltips need.
+	// taking input, which tooltips need. A grabbing popup anchors its
+	// grab to the session's latest input event (Session.InputSerial).
 	NoGrab bool
 	// Gutter reserves that many logical pixels on every side for the
 	// theme's box shadow: Width and Height cover content plus two
@@ -140,6 +131,10 @@ type Config struct {
 // dismiss it. The configure handshake completes inside New: callers can
 // draw immediately.
 func New(sess *wlsession.Session, cfg Config) (*Popup, error) {
+	serial := sess.InputSerial()
+	if !cfg.NoGrab && serial == 0 {
+		return nil, fmt.Errorf("popup: grab: %w", wlsession.ErrNoInputEvent)
+	}
 	wmBase := sess.WmBase()
 	if wmBase == nil {
 		return nil, errors.New("popup: compositor has no xdg_wm_base")
@@ -202,7 +197,8 @@ func New(sess *wlsession.Session, cfg Config) (*Popup, error) {
 	// the initial commit stays the one and only mapping commit and
 	// keeps its place after the grab.
 	if !cfg.NoGrab {
-		if err := pop.Grab(sess.Seat(), cfg.Serial); err != nil {
+		debug.Log("input", "popup grab serial=%d", serial)
+		if err := pop.Grab(sess.Seat(), serial); err != nil {
 			return nil, fmt.Errorf("popup: grab: %w", err)
 		}
 	}
@@ -530,7 +526,6 @@ func (p *Popup) AttachInput(sess *wlsession.Session, router *widget.Router) (det
 		router:    router,
 		pointer:   &pointer,
 		markDirty: func() { p.dirty.Store(true) },
-		pressed:   p.pressSerial.Store,
 	}
 	input.Input = touchinput.Input{
 		Tracker: widget.TouchTracker{Router: router},
@@ -554,8 +549,6 @@ type popupInput struct {
 	router    *widget.Router
 	pointer   *struct{ x, y float64 }
 	markDirty func()
-	// pressed records a press's serial (nil: not recorded).
-	pressed func(serial uint32)
 }
 
 // HandlePointerEnter implements wlsession.SurfacePointerHandler.
@@ -574,16 +567,13 @@ func (in *popupInput) move(x, y float64) {
 }
 
 // HandlePointerButton implements wlsession.SurfacePointerHandler.
-func (in *popupInput) HandlePointerButton(button, state, serial uint32) {
+func (in *popupInput) HandlePointerButton(button, state, _ uint32) {
 	if in.dismissed() {
 		return
 	}
 	pt := widget.Point{X: int(in.pointer.x), Y: int(in.pointer.y)}
 	debug.Log("input", "popup route button %d state=%d at (%d,%d)", button, state, pt.X, pt.Y)
 	if state == 1 {
-		if in.pressed != nil {
-			in.pressed(serial)
-		}
 		in.router.Press(button, pt)
 	} else {
 		in.router.Release(button, pt)

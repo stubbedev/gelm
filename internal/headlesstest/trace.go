@@ -158,6 +158,15 @@ func (w *LogWatcher) CountSince(mark int, category, substr string) int {
 	return n
 }
 
+// Since returns the traces that arrived after mark, oldest first,
+// without consuming anything.
+func (w *LogWatcher) Since(mark int) []Trace {
+	w.readNew()
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return append([]Trace(nil), w.seen[min(mark, len(w.seen)):]...)
+}
+
 // MaxGapSince returns the largest pause in seconds between consecutive
 // traces in category containing substr after mark, counting the wait
 // for the first such trace from mark itself. Software renderers under

@@ -105,7 +105,6 @@ func run() error {
 			Anchor:   button,
 			Content:  content,
 			Focus:    entry,
-			Serial:   application.LastPressSerial(w),
 			OnClosed: func() { tick = nil; app.Trace("demo", "popover closed") },
 		})
 		if err != nil {
@@ -123,7 +122,6 @@ func run() error {
 			Anchor: menuButton,
 			Face:   tf,
 			SizePx: 13,
-			Serial: application.LastPressSerial(w),
 			Items: []widget.MenuItem{
 				{Label: "Recent", Items: []widget.MenuItem{
 					{Label: "a.txt", OnClick: func() { app.Trace("demo", "menu leaf a") }},

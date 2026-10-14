@@ -57,7 +57,7 @@ func (a *Application) OpenPath(path string) {
 
 // launch routes one URI: with activation support the open waits for
 // its own token (requested on the loop, anchored to the focused
-// surface and the latest press, so it vouches for a real
+// surface and the latest input event, so it vouches for a real
 // interaction), else it opens now.
 func (a *Application) launch(uri string) {
 	if uri == "" {
@@ -68,7 +68,7 @@ func (a *Application) launch(uri string) {
 		return
 	}
 	a.Invoke(func() {
-		a.sess.RequestActivationToken(a.focusSurface(), a.LastPressSerial(nil), func(token string) {
+		a.sess.RequestActivationToken(a.focusSurface(), a.sess.InputSerial(), func(token string) {
 			a.launchNow(uri, token)
 		})
 	})

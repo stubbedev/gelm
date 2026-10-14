@@ -253,8 +253,8 @@ cannot do, hidden for that.
 
 **Window requests from code.** `Window.BeginMove` and
 `BeginResize(edge)` start the compositor's grabs from the press under
-way (custom title areas, drag handles - the window supplies the press
-serial the protocol wants); `FullscreenOn(output)` names the monitor;
+way (custom title areas, drag handles - the session supplies the
+serial of the latest input event the protocol wants); `FullscreenOn(output)` names the monitor;
 `SetTransientFor(parent)` (or `WindowConfig.Parent`) keeps a toolbox
 above its owner, the relation dialogs get by construction; and
 `RequestAttention` is the urgency hint: Wayland has none, so it is an

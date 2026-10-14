@@ -173,20 +173,6 @@ func (a *Application) InhibitIdle(host Host) (func(), error) {
 	return inhibitor.Destroy, nil
 }
 
-// LastPressSerial returns the wl pointer serial of the most recent
-// button press on the host, for xdg_popup.grab. Zero when the host is
-// unknown or nothing was pressed yet — callers opening popovers from
-// a click always run after a press, so the zero case is headless only.
-func (a *Application) LastPressSerial(host Host) uint32 {
-	for _, win := range a.windows {
-		if win.host != host || win.input == nil {
-			continue
-		}
-		return win.input.pressSerial
-	}
-	return 0
-}
-
 // NewApplication binds an application to a connected session.
 func NewApplication(sess *wlsession.Session) *Application {
 	a := &Application{
@@ -366,7 +352,7 @@ type WindowConfig struct {
 	Parent *Window
 	// OnPress fires after the router recorded a press (chrome drag,
 	// context menus).
-	OnPress func(button uint32, serial uint32, over widget.Widget)
+	OnPress func(button uint32, over widget.Widget)
 	// OnPointerMove receives raw pointer positions in surface pixels.
 	OnPointerMove func(x, y float64)
 	// OnResize runs on the loop goroutine whenever the window's logical
@@ -434,7 +420,7 @@ type LayerConfig struct {
 	ContentType ContentType
 	// OnPress, OnPointerMove, OnResize, OnKey, KeyCapture mirror
 	// WindowConfig.
-	OnPress       func(button uint32, serial uint32, over widget.Widget)
+	OnPress       func(button uint32, over widget.Widget)
 	OnPointerMove func(x, y float64)
 	OnResize      func(width, height int)
 	OnKey         func(r *widget.Router, keycode uint32, mods wlsession.Mods)

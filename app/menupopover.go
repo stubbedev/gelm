@@ -27,8 +27,6 @@ type MenuPopoverConfig struct {
 	SizePx float64
 	// Items is the root level; a row with Items opens a submenu.
 	Items []widget.MenuItem
-	// Serial is the opening event's serial, for the root's grab.
-	Serial uint32
 	// OnClosed runs once when the whole menu goes away.
 	OnClosed func()
 }
@@ -82,7 +80,7 @@ func (a *Application) OpenMenuPopover(host Host, cfg MenuPopoverConfig) (*MenuPo
 	return openMenuPopover(cfg, func(parent *Popover, anchor widget.Boundser, content widget.Widget, onClosed func()) (*Popover, error) {
 		pc := PopoverConfig{Anchor: anchor, Content: content, OnClosed: onClosed, Parent: parent}
 		if parent == nil {
-			pc.Gravity, pc.Serial = cfg.Gravity, cfg.Serial
+			pc.Gravity = cfg.Gravity
 		} else {
 			dir := widget.DirectionAuto
 			if m, ok := content.(*widget.Menu); ok {

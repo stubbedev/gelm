@@ -302,6 +302,9 @@ func (c *Clipboard) ReadPrimary() (string, error) {
 // that asks until another client or app replaces the selection. The
 // transfer builders (transfer.Text, Image, Files, HTML, Merge) encode
 // up front, so serving never encodes under a peer's deadline.
+// The claim carries the serial of the latest input event (the key or
+// click that copied); before any it fails with
+// wlsession.ErrNoInputEvent.
 func (c *Clipboard) Write(content transfer.Content) error {
 	if content.Empty() {
 		return errors.New("clipboard: empty content")
@@ -313,6 +316,10 @@ func (c *Clipboard) Write(content transfer.Content) error {
 	dev := c.sess.DataDevice()
 	if mgr == nil || dev == nil {
 		return ErrUnavailable
+	}
+	serial := c.sess.InputSerial()
+	if serial == 0 {
+		return fmt.Errorf("clipboard: set selection: %w", wlsession.ErrNoInputEvent)
 	}
 	source, err := mgr.CreateDataSource()
 	if err != nil {
@@ -327,7 +334,7 @@ func (c *Clipboard) Write(content transfer.Content) error {
 	c.source, c.content = source, content
 	source.AddSendHandler(c)
 	source.AddCancelledHandler(c)
-	if err := dev.SetSelection(source, c.sess.KeyboardSerial()); err != nil {
+	if err := dev.SetSelection(source, serial); err != nil {
 		return fmt.Errorf("clipboard: set selection: %w", err)
 	}
 	return nil

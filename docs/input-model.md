@@ -119,8 +119,12 @@ touches the selection and vice versa.
   changes).
 - **Serials.** `start_drag` carries the press serial;
   `data_offer.accept` carries the enter serial on every enter and
-  whenever the accepted mime changes. The keyboard enter serial stays
-  reserved for `set_selection`.
+  whenever the accepted mime changes. Every other request the
+  protocols anchor to a user action - popup grabs, interactive move
+  and resize, `set_selection`, activation tokens - carries the
+  session's latest input serial (`Session.InputSerial`): the last
+  pointer button press, key press, touch down, or tablet tool press
+  on any of the client's surfaces. Apps never pass serials.
 - **Payload.** On drop the app fetches the bytes for the accepted
   mime. A drag that originated in the same process short-circuits the
   wire: the provider hands over the bytes directly and the source
