@@ -63,7 +63,7 @@ type LockSurface struct {
 	// opaque (alpha 255): the lock surface is what hides the session.
 	Background render.Color
 	// OnPress, OnPointerMove, and OnKey mirror LayerConfig.
-	OnPress       func(button uint32, serial uint32, over widget.Widget)
+	OnPress       func(button uint32, over widget.Widget)
 	OnPointerMove func(x, y float64)
 	OnKey         func(r *widget.Router, keycode uint32, mods wlsession.Mods)
 	// OnClosed runs when this surface went away: the lock ended, or

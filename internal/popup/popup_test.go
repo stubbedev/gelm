@@ -5,6 +5,7 @@
 package popup
 
 import (
+	"errors"
 	"testing"
 	"time"
 
@@ -271,5 +272,15 @@ func TestPopupWheelScrolls(t *testing.T) {
 	input.HandlePointerAxis(0, 40)
 	if probe.dy != 1 || dirties != 3 {
 		t.Errorf("a dismissed popup scrolled: %d", probe.dy)
+	}
+}
+
+func TestGrabWithoutAnInputEventIsRefused(t *testing.T) {
+	sess := &wlsession.Session{}
+	if _, err := New(sess, Config{Width: 10, Height: 10}); !errors.Is(err, wlsession.ErrNoInputEvent) {
+		t.Errorf("grabbing popup before any input: err = %v, want ErrNoInputEvent", err)
+	}
+	if _, err := New(sess, Config{Width: 10, Height: 10, NoGrab: true}); errors.Is(err, wlsession.ErrNoInputEvent) {
+		t.Errorf("a popup without a grab needs no input event: %v", err)
 	}
 }

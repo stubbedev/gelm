@@ -134,6 +134,7 @@ func (s *Session) HandleTouchDown(ev wl.TouchDownEvent) {
 		s.touchFocus = map[int32]*wl.Surface{}
 	}
 	s.touchFocus[ev.Id] = ev.Surface
+	s.inputSerial = ev.Serial
 	if h := s.touchHandler(ev.Surface); h != nil {
 		h.HandleTouchDown(ev.Id, float64(ev.X), float64(ev.Y), ev.Serial)
 	}

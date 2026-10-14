@@ -70,9 +70,8 @@ type Config struct {
 	// surface. Leave false and let the background alpha decide.
 	Opaque bool
 	// OnPress, when set, fires after the router recorded a press with
-	// the button, its serial (for interactive move), and the widget
-	// under the pointer.
-	OnPress func(button uint32, serial uint32, over widget.Widget)
+	// the button and the widget under the pointer.
+	OnPress func(button uint32, over widget.Widget)
 	// OnPointerMove, when set, receives raw pointer positions in
 	// surface (logical) coordinates, for anchoring context menus.
 	OnPointerMove func(x, y float64)
@@ -120,7 +119,7 @@ type surfaceInput struct {
 	surf    *wl.Surface
 	router  *widget.Router
 	tip     *tooltipCtl
-	onPress func(button uint32, serial uint32, over widget.Widget)
+	onPress func(button uint32, over widget.Widget)
 	// dismissPopover closes the autohide popover open over this
 	// surface's window and reports whether it did.
 	dismissPopover func() bool
@@ -333,7 +332,7 @@ func (in *surfaceInput) HandlePointerButton(button, state, serial uint32) {
 		in.pressSerial = serial
 		in.dragStarted = false
 		if in.onPress != nil {
-			in.onPress(button, serial, in.router.Hovered())
+			in.onPress(button, in.router.Hovered())
 		}
 	} else {
 		in.router.Release(button, p)

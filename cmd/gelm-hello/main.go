@@ -107,7 +107,7 @@ func run() error {
 		Background:    widget.Current().Bg,
 		OnPointerMove: func(x, y float64) { pointer.X, pointer.Y = int(x), int(y) },
 		OnResize:      func(w, h int) { show.mapped(w, h) },
-		OnPress: func(button, serial uint32, over widget.Widget) {
+		OnPress: func(button uint32, over widget.Widget) {
 			switch button {
 			case widget.BTNLeft:
 				if show.chromeDrag(over) {
@@ -117,7 +117,7 @@ func run() error {
 				app.Trace("demo", "menu open at (%d,%d)", pointer.X, pointer.Y)
 				if _, err := application.OpenMenuPopover(win, app.MenuPopoverConfig{
 					Anchor: anchor(pointer), Face: show.env.Face, SizePx: 13,
-					Items: menu(), Serial: serial,
+					Items: menu(),
 				}); err != nil {
 					log.Printf("gelm-hello: menu: %v", err)
 				}

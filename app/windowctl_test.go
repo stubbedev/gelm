@@ -4,18 +4,21 @@ import (
 	"testing"
 
 	"github.com/stubbedev/gelm/internal/window"
+	"github.com/stubbedev/gelm/internal/wlsession"
+	"github.com/stubbedev/gelm/third_party/neurlang-wayland/wl"
 )
 
-// BeginMove and BeginResize anchor the grab to the press under way;
-// the requests without a wire are harmless.
-func TestBeginMoveUsesThePressSerial(t *testing.T) {
+func TestBeginMoveUsesTheLatestInputSerial(t *testing.T) {
 	a := accelApp()
+	a.sess = &wlsession.Session{}
+	a.sess.HandlePointerButton(wl.PointerButtonEvent{Button: 272, State: 1, Serial: 70})
+	a.sess.HandleKeyboardKey(wl.KeyboardKeyEvent{Key: 30, State: 1, Serial: 77})
+	a.sess.HandleKeyboardKey(wl.KeyboardKeyEvent{Key: 30, State: 0, Serial: 78})
 	w := &Window{app: a, win: &window.Window{}}
 	var moved []uint32
 	var resized [][2]uint32
 	hw := &hostWindow{
 		win:         w,
-		input:       &surfaceInput{pressSerial: 77},
 		startMove:   func(serial uint32) { moved = append(moved, serial) },
 		startResize: func(edges, serial uint32) { resized = append(resized, [2]uint32{edges, serial}) },
 	}

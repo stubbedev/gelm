@@ -134,6 +134,7 @@ func (t *toolState) HandleZwpTabletToolV2ProximityOut(wlr.ZwpTabletToolV2Proximi
 // HandleZwpTabletToolV2Down marks the tip touching.
 func (t *toolState) HandleZwpTabletToolV2Down(ev wlr.ZwpTabletToolV2DownEvent) {
 	t.sample.Down, t.sample.Serial = true, ev.Serial
+	t.s.inputSerial = ev.Serial
 }
 
 // HandleZwpTabletToolV2Up marks the tip lifting.
@@ -167,6 +168,9 @@ func (t *toolState) HandleZwpTabletToolV2Rotation(ev wlr.ZwpTabletToolV2Rotation
 // HandleZwpTabletToolV2Button records a stylus button change.
 func (t *toolState) HandleZwpTabletToolV2Button(ev wlr.ZwpTabletToolV2ButtonEvent) {
 	t.sample.Button, t.sample.Pressed, t.sample.Serial = ev.Button, ev.State == 1, ev.Serial
+	if t.sample.Pressed {
+		t.s.inputSerial = ev.Serial
+	}
 }
 
 // HandleZwpTabletToolV2Frame delivers the frame to the tool's surface

@@ -28,11 +28,11 @@ const (
 // that is under way (gtk_window_begin_move_drag): call it from a press
 // handler - a custom title area, a drag handle - and the window
 // follows the pointer until release. The protocol anchors the grab to
-// that press's serial, which the window supplies; without a press the
-// compositor ignores the request.
+// the serial of the latest input event, which the session supplies;
+// without one the compositor ignores the request.
 func (w *Window) BeginMove() {
-	if hw := w.app.hostOf(w); hw != nil && hw.startMove != nil && hw.input != nil {
-		hw.startMove(hw.input.pressSerial)
+	if hw := w.app.hostOf(w); hw != nil && hw.startMove != nil {
+		hw.startMove(w.app.sess.InputSerial())
 	}
 }
 
@@ -40,8 +40,8 @@ func (w *Window) BeginMove() {
 // (gtk_window_begin_resize_drag) - for app-drawn resize handles; the
 // window's own edges already resize.
 func (w *Window) BeginResize(edge ResizeEdge) {
-	if hw := w.app.hostOf(w); hw != nil && hw.startResize != nil && hw.input != nil {
-		hw.startResize(uint32(edge), hw.input.pressSerial)
+	if hw := w.app.hostOf(w); hw != nil && hw.startResize != nil {
+		hw.startResize(uint32(edge), w.app.sess.InputSerial())
 	}
 }
 

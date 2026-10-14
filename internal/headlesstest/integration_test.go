@@ -345,6 +345,7 @@ func TestHeadlessClicksOnShowcaseControls(t *testing.T) {
 func TestHeadlessPopupGrabOpenAndDismiss(t *testing.T) {
 	requireEnv(t)
 	_, w, centers := startShowcase(t)
+	mark := w.Mark()
 	in := newInput(t)
 	btn := centers["button"]
 
@@ -407,6 +408,7 @@ func TestHeadlessPopupGrabOpenAndDismiss(t *testing.T) {
 	if _, err := w.Wait("demo", "theme light", traceTimeout); err != nil {
 		t.Errorf("menu item never activated through the grab: %v", err)
 	}
+	requireGrabsCarryTheTriggeringSerial(t, w, mark, 3)
 }
 
 // TestHeadlessTooltipLifecycle: dwell opens the tooltip, moving on
@@ -1027,6 +1029,7 @@ func TestHeadlessPopoverTakesTypingAndRepaints(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	mark := w.Mark()
 	if _, err := w.Wait("demo", fmt.Sprintf("mapped %dx%d", popoverW, popoverH), traceTimeout); err != nil {
 		t.Fatalf("popover client never mapped: %v", err)
 	}
@@ -1042,6 +1045,7 @@ func TestHeadlessPopoverTakesTypingAndRepaints(t *testing.T) {
 	if err := clickUntil(w, in, "demo", x, y, BTNLeft, "popover open"); err != nil {
 		t.Fatalf("popover never opened: %v", err)
 	}
+	requireGrabsCarryTheTriggeringSerial(t, w, mark, 1)
 	// The layer takes the keyboard as the popover opens.
 	waitKeyboard(t, w)
 	// The open popover's first frame is the size to grow past.
@@ -1115,6 +1119,7 @@ func TestHeadlessNestedMenuPopover(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	mark := w.Mark()
 	tr, err := w.Wait("demo", "control menu center ", traceTimeout)
 	if err != nil {
 		t.Fatal(err)
@@ -1156,6 +1161,7 @@ func TestHeadlessNestedMenuPopover(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	requireGrabsCarryTheTriggeringSerial(t, w, mark, 4)
 }
 
 // revealShowcase wheels the showcase's root scroll until every traced

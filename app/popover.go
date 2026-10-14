@@ -45,8 +45,6 @@ type PopoverConfig struct {
 	// OnClosed runs exactly once when the popover goes away, whatever
 	// the cause.
 	OnClosed func()
-	// Serial is the pointer serial of the opening event, for the grab.
-	Serial uint32
 	// Focus, when set, is the widget inside Content that takes keyboard
 	// focus as the popover opens (a form's first Entry, as GTK focuses
 	// a popover's first input): typing then reaches it without a click.
@@ -169,18 +167,6 @@ func (p *Popover) settle() bool {
 // dropChild forgets a child that closed on its own.
 func (p *Popover) dropChild(child *Popover) {
 	p.children = slices.DeleteFunc(p.children, func(c *Popover) bool { return c == child })
-}
-
-// chainPressSerial is the newest press serial over the chain's
-// surfaces: the grab serial a popover nested under p opens with.
-func (p *Popover) chainPressSerial() uint32 {
-	var serial uint32
-	for at := p; at != nil; at = at.parent {
-		if at.pop != nil {
-			serial = max(serial, at.pop.LastPressSerial())
-		}
-	}
-	return serial
 }
 
 // SetFocus moves keyboard focus to w inside the open popover - a form
@@ -337,7 +323,9 @@ type LayerSurfacer interface {
 // side gravity asks for, flipping inside the host when the anchor sits
 // near an edge. Opening a second popover on the same host re-anchors:
 // the previous popover closes first. The popover's own key router
-// dismisses on Esc and forwards everything else to the content.
+// dismisses on Esc and forwards everything else to the content. A
+// grabbing popover anchors its grab to the latest input event, the
+// click or key that opened it; opened before any input event it fails.
 func (a *Application) OpenPopover(host Host, cfg PopoverConfig) (*Popover, error) {
 	if cfg.Anchor == nil || cfg.Content == nil {
 		return nil, errors.New("app: popover needs an anchor and content")
@@ -388,17 +376,11 @@ func (a *Application) OpenPopover(host Host, cfg PopoverConfig) (*Popover, error
 		Width:      size.W + 2*gutter, Height: size.H + 2*gutter,
 		Gutter:  gutter,
 		Gravity: cfg.Gravity,
-		Serial:  cfg.Serial,
 		NoGrab:  cfg.NoAutohide && parent == nil,
 	}
 	switch {
 	case parent != nil:
-		// A nested popup grabs with the newest press anywhere on the
-		// chain: the click that opened it may have landed in the parent.
 		pcfg.Parent = parent.pop.XdgSurface
-		if pcfg.Serial == 0 {
-			pcfg.Serial = max(parent.chainPressSerial(), a.LastPressSerial(host))
-		}
 	default:
 		var ok bool
 		if pcfg.Parent, pcfg.LayerParent, ok = popupParentOf(host); !ok {
