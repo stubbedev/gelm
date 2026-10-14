@@ -76,7 +76,7 @@ func (a *Application) AdaptiveDialog(parent *Window, cfg AdaptiveDialogConfig) (
 		d.floating = f
 		return d, nil
 	}
-	hw := a.hostOf(parent)
+	hw := a.hostWindowOf(parent)
 	if hw == nil {
 		return nil, errors.New("app: the dialog's parent window is not open")
 	}

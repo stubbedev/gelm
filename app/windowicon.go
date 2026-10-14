@@ -85,7 +85,7 @@ func (a *Application) SetWindowIcon(w *Window, img image.Image) {
 	a.windowIconSrc[w] = img
 	icon := a.buildIcon(img)
 	a.windowIcons[w] = icon
-	if hw := a.hostOf(w); hw != nil {
+	if hw := a.hostWindowOf(w); hw != nil {
 		if a.appliedIcons == nil {
 			a.appliedIcons = make(map[*hostWindow]*postedIcon)
 		}

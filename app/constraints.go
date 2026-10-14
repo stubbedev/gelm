@@ -71,9 +71,7 @@ func (a *Application) ConfinePointer(host Host, region []render.Rect, persistent
 // and the raw ones before acceleration - what a remote desktop client
 // forwards. Nil unregisters.
 func (a *Application) OnRelativeMotion(host Host, fn func(dx, dy, rawDX, rawDY float64)) {
-	for _, win := range a.windows {
-		if win.host == host && win.input != nil {
-			win.input.onRelative = fn
-		}
+	if hw := a.hostWindowOf(host); hw != nil && hw.input != nil {
+		hw.input.onRelative = fn
 	}
 }

@@ -1017,24 +1017,23 @@ func (a *Application) windowOf(w widget.Widget) *hostWindow {
 	return nil
 }
 
-// hostOf returns the loop state for a toplevel handle.
-func (a *Application) hostOf(w *Window) *hostWindow {
-	for _, hw := range a.windows {
-		if hw.win == w {
-			return hw
+func (a *Application) hostWindowOf(h Host) *hostWindow {
+	for _, w := range a.windows {
+		if w.hosts(h) {
+			return w
 		}
 	}
 	return nil
 }
 
-// hostOfLayer returns the loop state for a layer handle.
-func (a *Application) hostOfLayer(l *LayerWindow) *hostWindow {
-	for _, hw := range a.windows {
-		if hw.layer == l {
-			return hw
-		}
+func (w *hostWindow) hosts(h Host) bool {
+	switch handle := h.(type) {
+	case *Window:
+		return handle != nil && w.win == handle
+	case *LayerWindow:
+		return handle != nil && w.layer == handle
 	}
-	return nil
+	return w.host == h
 }
 
 // Window is the application's handle on one toplevel window.
@@ -1059,7 +1058,7 @@ func (w *Window) Close() {
 	if w.closed {
 		return
 	}
-	if hw := w.app.hostOf(w); hw != nil && hw.beginExit() {
+	if hw := w.app.hostWindowOf(w); hw != nil && hw.beginExit() {
 		w.closed = true
 		return
 	}
@@ -1156,7 +1155,7 @@ func (w *Window) State() WindowState {
 // SetFocus moves the window's keyboard focus to target, a widget of its
 // tree; see widget.Router.SetFocus for what is ignored.
 func (w *Window) SetFocus(target widget.Widget) {
-	if hw := w.app.hostOf(w); hw != nil {
+	if hw := w.app.hostWindowOf(w); hw != nil {
 		hw.router.SetFocus(target)
 		hw.dirty = true
 	}
@@ -1176,7 +1175,7 @@ type LayerWindow struct {
 // runs first — the launcher/panel-reveal fade-out — with the loop kept
 // alive and event-driven until it lands, then the real destroy.
 func (l *LayerWindow) Close() {
-	if hw := l.app.hostOfLayer(l); hw != nil && hw.beginExit() {
+	if hw := l.app.hostWindowOf(l); hw != nil && hw.beginExit() {
 		return
 	}
 	l.ls.Close()
@@ -1186,7 +1185,7 @@ func (l *LayerWindow) Close() {
 // tree; see widget.Router.SetFocus for what is ignored. The compositor
 // still decides whether the surface itself holds the keyboard.
 func (l *LayerWindow) SetFocus(w widget.Widget) {
-	if hw := l.app.hostOfLayer(l); hw != nil {
+	if hw := l.app.hostWindowOf(l); hw != nil {
 		hw.router.SetFocus(w)
 		hw.dirty = true
 	}
@@ -1250,7 +1249,7 @@ func (l *LayerWindow) holdKeyboard(mode KeyboardMode) error { return l.ls.SetKey
 // A surface running its exit tween reads closed here (the logical
 // state flipped at Close) while its last frames still paint.
 func (l *LayerWindow) Closed() bool {
-	if hw := l.app.hostOfLayer(l); hw != nil && hw.exiting {
+	if hw := l.app.hostWindowOf(l); hw != nil && hw.exiting {
 		return true
 	}
 	return l.ls.Closed()
