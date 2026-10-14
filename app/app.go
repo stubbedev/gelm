@@ -275,12 +275,8 @@ func (in *surfaceInput) HandlePointerButton(button, state, serial uint32) {
 	debug.Log("input", "route button %d %s at (%.1f,%.1f) over %T",
 		button, buttonStateName(state), in.x, in.y, in.router.Hovered())
 	if state == 1 {
-		// Any press dismisses a tooltip, like every toolkit. The
-		// reference drops immediately (Dismissed), so the next dwell can
-		// open a fresh one while this surface fades.
-		if in.tip != nil && in.tip.open != nil {
-			in.tip.open.Dismiss()
-			in.tip.open = nil
+		if in.tip != nil {
+			in.tip.press()
 		}
 		if in.dismissPopover != nil && in.dismissPopover() {
 			debug.Log("input", "press dismissed the open popover")

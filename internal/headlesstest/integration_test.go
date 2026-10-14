@@ -468,12 +468,17 @@ func TestHeadlessTooltipLifecycle(t *testing.T) {
 
 	// Input still flows after the tooltip lifecycle: clicking the
 	// button through the closing tooltip must activate it.
+	mark := w.Mark()
 	in.ClickAt(btn[0], btn[1], BTNLeft)
 	if _, err := w.Wait("demo", "button clicked 1 times", traceTimeout); err != nil {
 		t.Errorf("click after the tooltip lifecycle never reached the button: %v", err)
 	}
 	alive("after the post-tooltip click")
 	assertNoFatal("after the post-tooltip click")
+	time.Sleep(2 * dwellTime)
+	if n := w.CountSince(mark, "input", "tooltip open"); n != 0 {
+		t.Errorf("the pressed button's tooltip came back %d times while the pointer rested on it\n%s", n, tailTraces(w, 25))
+	}
 }
 
 // tailTraces renders up to n recent traces for failure messages.
