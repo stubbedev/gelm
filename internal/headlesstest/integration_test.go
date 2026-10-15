@@ -776,14 +776,13 @@ func TestHeadlessWindowStates(t *testing.T) {
 	}
 
 	// Unfullscreen: the size the window comes back to is compositor
-	// policy (sway restores the pinned float; Hyprland its float
-	// geometry, keeping a confirmed maximize flag) - what the client
-	// owes is laying out and drawing at whatever is confirmed.
+	// policy (sway keeps the floating container at the size the
+	// fullscreen surface committed and configures it explicitly;
+	// Hyprland restores its float geometry, keeping a confirmed
+	// maximize flag) - what the client owes is laying out and drawing
+	// at whatever is confirmed.
 	tapUntil('g', "fullscreen=false")
 	size := pollSize(t, tap, w)
-	if testEnv.Compositor().Name() == "sway" && size != fmt.Sprintf("%dx%d", statesW, statesH) {
-		t.Errorf("unfullscreen confirmed %s, want sway's pinned %dx%d", size, statesW, statesH)
-	}
 	if err := w.WaitEver("frame", "draw "+size, traceTimeout); err != nil {
 		t.Errorf("never drew at the confirmed %s after unfullscreen: %v", size, err)
 	}

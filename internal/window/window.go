@@ -61,6 +61,12 @@ type State struct {
 	TiledLeft, TiledRight, TiledTop, TiledBottom bool
 }
 
+// dictatesSize reports a state whose size the compositor sets: the
+// window then has no size of its own to keep.
+func (s State) dictatesSize() bool {
+	return s.Maximized || s.Fullscreen || s.TiledLeft || s.TiledRight || s.TiledTop || s.TiledBottom
+}
+
 // String renders the confirmed state set ("activated+maximized"),
 // "normal" when it is empty. The order is fixed so traces and dumps
 // are comparable.
@@ -148,6 +154,10 @@ type Window struct {
 	height     uint32
 	minW, minH uint32
 	maxW, maxH uint32
+	// floatW and floatH are the size the window last had while nothing
+	// dictated it (no fullscreen, maximize, or tiling): what a zero axis
+	// returns to once such a state ends, GTK's unconstrained size.
+	floatW, floatH uint32
 	// state is the compositor-confirmed set from the last configure;
 	// requests never write it.
 	state State
@@ -172,6 +182,7 @@ func New(wmBase *xdg.WmBase, surf *wl.Surface, cfg Config) (*Window, error) {
 	w := &Window{
 		WLSurface: surf, XdgSurface: xdgSurf, Toplevel: tl,
 		width: cfg.Width, height: cfg.Height,
+		floatW: cfg.Width, floatH: cfg.Height,
 		minW: cfg.MinWidth, minH: cfg.MinHeight,
 		maxW: cfg.MaxWidth, maxH: cfg.MaxHeight,
 		title: cfg.Title,
@@ -210,19 +221,32 @@ func (w *Window) HandleSurfaceConfigure(ev xdg.SurfaceConfigureEvent) {
 	}
 }
 
-// HandleToplevelConfigure records the new size; a zero axis keeps the
-// previous choice, per the protocol. The state array is authoritative:
-// it replaces the confirmed set wholesale, so a configure without a
-// state the client asked for reports the request as refused (or
-// withdrawn).
+// HandleToplevelConfigure records the new size. A zero axis leaves the
+// size to the client, per the protocol: the window keeps its size, or
+// returns to its unconstrained size when the configure ends a
+// fullscreen, maximize, or tiling that dictated it. The state array is
+// authoritative: it replaces the confirmed set wholesale, so a
+// configure without a state the client asked for reports the request
+// as refused (or withdrawn).
 func (w *Window) HandleToplevelConfigure(ev xdg.ToplevelConfigureEvent) {
-	if ev.Width != 0 {
-		w.width = uint32(ev.Width)
-	}
-	if ev.Height != 0 {
-		w.height = uint32(ev.Height)
-	}
 	state := parseStates(ev.States)
+	free := !state.dictatesSize()
+	released := free && w.state.dictatesSize()
+	switch {
+	case ev.Width != 0:
+		w.width = uint32(ev.Width)
+	case released && w.floatW != 0:
+		w.width = w.floatW
+	}
+	switch {
+	case ev.Height != 0:
+		w.height = uint32(ev.Height)
+	case released && w.floatH != 0:
+		w.height = w.floatH
+	}
+	if free {
+		w.floatW, w.floatH = w.width, w.height
+	}
 	if state != w.state {
 		w.state = state
 		debug.Log("shell", "toplevel state %s, %dx%d", state, w.width, w.height)

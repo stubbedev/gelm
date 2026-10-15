@@ -38,6 +38,39 @@ func TestConfigureHandshake(t *testing.T) {
 		}
 	})
 
+	t.Run("leaving fullscreen returns a zero configure to the unconstrained size", func(t *testing.T) {
+		w := &Window{}
+		w.HandleToplevelConfigure(xdg.ToplevelConfigureEvent{Width: 420, Height: 280})
+		w.HandleToplevelConfigure(xdg.ToplevelConfigureEvent{Width: 1280, Height: 800, States: []int32{xdg.ToplevelStateFullscreen}})
+		if gotW, gotH := w.Size(); gotW != 1280 || gotH != 800 {
+			t.Fatalf("fullscreen size = %dx%d", gotW, gotH)
+		}
+		w.HandleToplevelConfigure(xdg.ToplevelConfigureEvent{})
+		if gotW, gotH := w.Size(); gotW != 420 || gotH != 280 {
+			t.Errorf("after fullscreen = %dx%d, want the floating 420x280", gotW, gotH)
+		}
+	})
+
+	t.Run("a zero configure inside a dictated state keeps the size", func(t *testing.T) {
+		w := &Window{}
+		w.HandleToplevelConfigure(xdg.ToplevelConfigureEvent{Width: 420, Height: 280})
+		w.HandleToplevelConfigure(xdg.ToplevelConfigureEvent{Width: 1280, Height: 800, States: []int32{xdg.ToplevelStateMaximized}})
+		w.HandleToplevelConfigure(xdg.ToplevelConfigureEvent{States: []int32{xdg.ToplevelStateMaximized, xdg.ToplevelStateActivated}})
+		if gotW, gotH := w.Size(); gotW != 1280 || gotH != 800 {
+			t.Errorf("still maximized = %dx%d, want 1280x800", gotW, gotH)
+		}
+	})
+
+	t.Run("a concrete size after a dictated state wins", func(t *testing.T) {
+		w := &Window{}
+		w.HandleToplevelConfigure(xdg.ToplevelConfigureEvent{Width: 420, Height: 280})
+		w.HandleToplevelConfigure(xdg.ToplevelConfigureEvent{Width: 1280, Height: 800, States: []int32{xdg.ToplevelStateFullscreen}})
+		w.HandleToplevelConfigure(xdg.ToplevelConfigureEvent{Width: 500, Height: 300})
+		if gotW, gotH := w.Size(); gotW != 500 || gotH != 300 {
+			t.Errorf("size = %dx%d, want the configured 500x300", gotW, gotH)
+		}
+	})
+
 	t.Run("a second configure resizes", func(t *testing.T) {
 		w := &Window{}
 		w.HandleToplevelConfigure(xdg.ToplevelConfigureEvent{Width: 320, Height: 200})
