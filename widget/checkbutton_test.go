@@ -58,3 +58,49 @@ func TestCheckButtonCheckMarkColor(t *testing.T) {
 		t.Errorf("mark color %v, want the check's color rule", got)
 	}
 }
+
+// A child sits after the check inside the checkbox's box, styled as
+// `checkbutton > label`, and a click on it toggles the checkbox; the
+// check keeps its size, centered across. Without a child the check
+// fills the content box, and SetChild(nil) returns to that.
+func TestCheckButtonChild(t *testing.T) {
+	loadCSS(t, `checkbutton { padding: 3px; }
+		checkbutton check { min-width: 16px; min-height: 16px; }
+		checkbutton label { margin-left: 6px; color: #123456; }`)
+	c := NewCheckButton(false)
+	l := NewLabel(testFace(t), 24, "Allow", 0)
+	c.SetChild(l)
+	host := NewBox(Row, 0, 0)
+	host.Append(c, false)
+	frame(t, host, 300, 60)
+
+	b, lb := c.Bounds(), l.Bounds()
+	if lb.X != b.X+3+16+6 || lb.X+lb.W != b.X+b.W-3 {
+		t.Errorf("label at %v in checkbox %v, want after the 16px check and its 6px margin", lb, b)
+	}
+	if c.Child() != Widget(l) || l.Parent() != Widget(c) {
+		t.Errorf("child %v, label parent %v", c.Child(), l.Parent())
+	}
+	if want := (render.Rect{X: b.X + 3, Y: b.Y + 3 + (b.H-6-16)/2, W: 16, H: 16}); c.indicator != want || b.H <= 22 {
+		t.Errorf("check at %v in %v, want %v (the label sets the height)", c.indicator, b, want)
+	}
+	if got := pickc(0, l.style(l), style.PropColor, 0); got != render.RGB(0x12, 0x34, 0x56) {
+		t.Errorf("label color %v, want the checkbutton label rule", got)
+	}
+	p := Point{X: lb.X + lb.W/2, Y: lb.Y + lb.H/2}
+	if hit := c.HitTest(p); hit != Widget(c) {
+		t.Fatalf("hit on the label = %v, want the checkbox", hit)
+	}
+	c.ClickAt(p)
+	if !c.Checked() {
+		t.Error("a click on the label did not toggle")
+	}
+
+	c.SetChild(nil)
+	frame(t, host, 300, 60)
+	b = c.Bounds()
+	nat := c.Measure(Constraints{Max: Size{W: 300, H: 60}})
+	if l.Parent() != nil || nat != (Size{W: 22, H: 22}) || c.indicator != (render.Rect{X: b.X + 3, Y: b.Y + 3, W: b.W - 6, H: b.H - 6}) {
+		t.Errorf("childless: label parent %v, natural %v, check %v in %v", l.Parent(), nat, c.indicator, b)
+	}
+}
