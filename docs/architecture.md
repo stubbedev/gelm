@@ -190,14 +190,19 @@ model never fight over the same press. On the keyboard side,
 routing and popup hosts both delegate to it (widget/input.go), so an
 editing key means the same thing everywhere.
 
-### 11. A layer surface's auto axis needs both edges of that axis
+### 11. A layer surface's zero axis is automatic, as in gtk4-layer-shell
 
 zwlr_layer_surface_v1 leaves an axis to the compositor only when both
 edges of that axis are anchored; requesting a zero width or height
-otherwise is a protocol error. The layer surface validates the anchor
-rules and the application derives the fallback size from the pinned
-output's current mode (internal/layersurface, app/application.go
-`LayerConfig`, cmd/gelm-bar for the shape).
+otherwise is a protocol error. `LayerConfig` keeps gtk4-layer-shell's
+meaning for a zero axis instead: anchored on both edges it stretches
+(the size the wire carries is zero and the buffer falls back to the
+output mode), and anchored on one edge or none it takes the root's
+natural size, re-measured before every frame so the surface follows its
+content (app/layerfit.go). An OSD or a notification stack anchored to a
+corner therefore needs no size at all. The layer surface still validates
+the wire rule for every concrete request (internal/layersurface), and
+`Reshape` changes anchor and size as one validated state.
 
 ### 12. Optional globals are feature-detected and never gate Connect
 

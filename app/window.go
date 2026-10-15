@@ -653,6 +653,7 @@ func (w *hostWindow) syncOpaque(bw, bh int) {
 // arming. It reports whether the loop may continue; drawErr carries the
 // failure.
 func (w *hostWindow) draw() bool {
+	refitted := w.layer != nil && w.styleRoot != nil && w.layer.refit(w.styleRoot)
 	// Resize before acquiring: Resize retires the free buffers at the
 	// new size and keeps the ones the compositor still holds until
 	// their release, so running it after Acquire would retire the very
@@ -709,6 +710,9 @@ func (w *hostWindow) draw() bool {
 		}
 	}
 	w.pendingRects = append(w.pendingRects, w.focusChangeRects()...)
+	if refitted {
+		w.pendingRects = append(w.pendingRects, bufBounds)
+	}
 	if len(w.pendingRects) == 0 {
 		debug.Log("frame", "draw skipped: nothing damaged")
 		w.paintedPixels = 0

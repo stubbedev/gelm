@@ -203,6 +203,20 @@ func (s *Surface) SetAnchor(a Anchor) error {
 		func() error { return s.Layer.SetAnchor(uint32(a)) })
 }
 
+// Reshape changes the anchor and the size together, validated as one
+// state: a zero axis may become concrete in the same change that drops
+// one of its anchors, which SetAnchor and SetSize alone would each
+// refuse. Both requests land with the next commit.
+func (s *Surface) Reshape(a Anchor, width, height uint32) error {
+	return s.change(func(c *Config) { c.Anchor, c.Width, c.Height = a, width, height }, "reshape",
+		func() error {
+			if err := s.Layer.SetSize(width, height); err != nil {
+				return err
+			}
+			return s.Layer.SetAnchor(uint32(a))
+		})
+}
+
 // SetMargin changes the distances from the anchored edges.
 func (s *Surface) SetMargin(m Margins) error {
 	return s.change(func(c *Config) { c.Margin = m }, "set_margin",

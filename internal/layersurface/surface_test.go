@@ -216,3 +216,21 @@ func TestRuntimeSettersKeepTheRules(t *testing.T) {
 		}
 	}
 }
+
+// Reshape validates the anchor and size as one final state: dropping an
+// anchor under an automatic axis is refused before the wire unless the
+// same change makes that axis concrete (Layer is nil: reaching the wire
+// would panic, so only refusals run here).
+func TestReshapeValidatesTheFinalState(t *testing.T) {
+	s := &Surface{cfg: Config{Anchor: AnchorLeft | AnchorRight | AnchorTop, Height: 30}}
+	if err := s.Reshape(AnchorTop, 0, 30); err == nil {
+		t.Error("an automatic width on a top-only anchor was accepted")
+	}
+	if s.cfg.Anchor != AnchorLeft|AnchorRight|AnchorTop || s.cfg.Width != 0 {
+		t.Errorf("a refused reshape touched the config: %+v", s.cfg)
+	}
+	closed := &Surface{cfg: Config{Width: 10, Height: 10}, closed: true}
+	if err := closed.Reshape(AnchorTop, 10, 10); !errors.Is(err, ErrClosed) {
+		t.Errorf("reshape on a closed surface = %v, want ErrClosed", err)
+	}
+}
