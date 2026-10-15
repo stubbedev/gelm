@@ -163,6 +163,20 @@ func (l *ListBox) RowAt(i int) *ListBoxRow {
 	return l.rows[i]
 }
 
+// Children returns the rows in order, then the placeholder: what tree
+// walks (the restyle pass, focus traversal, the accessibility bridge)
+// descend into, as for every container.
+func (l *ListBox) Children() []Widget {
+	out := make([]Widget, 0, len(l.rows)+1)
+	for _, r := range l.rows {
+		out = append(out, r)
+	}
+	if l.ph != nil {
+		out = append(out, l.ph)
+	}
+	return out
+}
+
 // Rows returns every row widget in order.
 func (l *ListBox) Rows() []Widget {
 	out := make([]Widget, len(l.rows))
