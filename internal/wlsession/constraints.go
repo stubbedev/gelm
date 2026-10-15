@@ -109,7 +109,7 @@ func (c *PointerConstraint) HandleZwpConfinedPointerV1Unconfined(wlr.ZwpConfined
 
 // bindPointerConstraints binds the constraints manager.
 func (s *Session) bindPointerConstraints(ev wl.RegistryGlobalEvent) {
-	ctx, _ := wl.GetUserData[wl.Context](s.registry)
+	ctx := s.registry.Context()
 	mgr := wlr.NewZwpPointerConstraintsV1(ctx)
 	if s.bindOptional(ev, 1, mgr) {
 		s.constraintsMgr = mgr
@@ -119,7 +119,7 @@ func (s *Session) bindPointerConstraints(ev wl.RegistryGlobalEvent) {
 
 // bindRelativePointer binds the relative pointer manager.
 func (s *Session) bindRelativePointer(ev wl.RegistryGlobalEvent) {
-	ctx, _ := wl.GetUserData[wl.Context](s.registry)
+	ctx := s.registry.Context()
 	mgr := wlr.NewZwpRelativePointerManagerV1(ctx)
 	if s.bindOptional(ev, 1, mgr) {
 		s.relativeMgr = mgr

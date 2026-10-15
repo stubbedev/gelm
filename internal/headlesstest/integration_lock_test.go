@@ -153,9 +153,8 @@ func TestSessionLockLifecycle(t *testing.T) {
 	})
 
 	t.Run("a second lock is refused while one holds", func(t *testing.T) {
-		// The rival runs in its own process: the wayland binding keys
-		// proxy user data process-wide, so one process holds one
-		// connection.
+		// The rival runs in its own process, as a rival lock client
+		// does.
 		out := runLockHelper(t, "refused")
 		if !strings.Contains(out, "rival: finished") {
 			t.Fatalf("the rival lock was not refused:\n%s", out)

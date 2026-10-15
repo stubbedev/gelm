@@ -73,7 +73,7 @@ const maxTabletVersion = 1
 
 // bindTabletManager binds the tablet manager global.
 func (s *Session) bindTabletManager(ev wl.RegistryGlobalEvent) {
-	ctx, _ := wl.GetUserData[wl.Context](s.registry)
+	ctx := s.registry.Context()
 	mgr := wlr.NewZwpTabletManagerV2(ctx)
 	if !s.bindOptional(ev, maxTabletVersion, mgr) {
 		return

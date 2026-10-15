@@ -25,7 +25,7 @@ const maxWlrDataControlVersion = 2
 // bindExtDataControlManager binds the optional ext data-control
 // manager global.
 func (s *Session) bindExtDataControlManager(ev wl.RegistryGlobalEvent) {
-	ctx, _ := wl.GetUserData[wl.Context](s.registry)
+	ctx := s.registry.Context()
 	mgr := wlr.NewDataControlManagerV1(ctx)
 	if !s.bindOptional(ev, maxExtDataControlVersion, mgr) {
 		return
@@ -38,7 +38,7 @@ func (s *Session) bindExtDataControlManager(ev wl.RegistryGlobalEvent) {
 // manager global, recording the bound version (primary selection
 // needs 2).
 func (s *Session) bindWlrDataControlManager(ev wl.RegistryGlobalEvent) {
-	ctx, _ := wl.GetUserData[wl.Context](s.registry)
+	ctx := s.registry.Context()
 	mgr := wlr.NewZwlrDataControlManagerV1(ctx)
 	if !s.bindOptional(ev, maxWlrDataControlVersion, mgr) {
 		return

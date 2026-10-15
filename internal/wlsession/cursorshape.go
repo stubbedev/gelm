@@ -69,7 +69,7 @@ func (s *Session) bindCursorShapeManager(ev wl.RegistryGlobalEvent) {
 		debug.Log("shell", "cursor-shape-v1 disabled by GELM_NO_CURSOR_SHAPE")
 		return
 	}
-	ctx, _ := wl.GetUserData[wl.Context](s.registry)
+	ctx := s.registry.Context()
 	mgr := wlr.NewWpCursorShapeManagerV1(ctx)
 	if !s.bindOptional(ev, 1, mgr) {
 		return

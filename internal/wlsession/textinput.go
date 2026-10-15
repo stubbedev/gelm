@@ -78,7 +78,7 @@ type tiPending struct {
 
 // bindTextInputManager binds the optional text-input manager global.
 func (s *Session) bindTextInputManager(ev wl.RegistryGlobalEvent) {
-	ctx, _ := wl.GetUserData[wl.Context](s.registry)
+	ctx := s.registry.Context()
 	mgr := text.NewZwpInputManagerV3(ctx)
 	if !s.bindOptional(ev, 1, mgr) {
 		return

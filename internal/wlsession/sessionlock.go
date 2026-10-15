@@ -24,7 +24,7 @@ func (s *Session) SessionLockManager() *wlr.SessionLockManagerV1 { return s.sess
 
 // bindSessionLockManager binds the optional session-lock manager.
 func (s *Session) bindSessionLockManager(ev wl.RegistryGlobalEvent) {
-	ctx, _ := wl.GetUserData[wl.Context](s.registry)
+	ctx := s.registry.Context()
 	mgr := wlr.NewSessionLockManagerV1(ctx)
 	if !s.bindOptional(ev, maxSessionLockVersion, mgr) {
 		return

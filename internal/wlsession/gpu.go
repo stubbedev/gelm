@@ -35,7 +35,7 @@ func (f dmabufFormats) HandleZwpDmabufV1Modifier(ev wlr.ZwpDmabufV1ModifierEvent
 }
 
 func (s *Session) bindSubcompositor(ev wl.RegistryGlobalEvent) {
-	ctx, _ := wl.GetUserData[wl.Context](s.registry)
+	ctx := s.registry.Context()
 	sub := wl.NewSubcompositor(ctx)
 	if !s.bindOptional(ev, 1, sub) {
 		return
@@ -45,7 +45,7 @@ func (s *Session) bindSubcompositor(ev wl.RegistryGlobalEvent) {
 }
 
 func (s *Session) bindDmabuf(ev wl.RegistryGlobalEvent) {
-	ctx, _ := wl.GetUserData[wl.Context](s.registry)
+	ctx := s.registry.Context()
 	mgr := wlr.NewZwpDmabufV1(ctx)
 	version := bindVersion(ev.Version, maxDmabufVersion)
 	if version < 2 {

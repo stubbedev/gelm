@@ -84,7 +84,7 @@ func (s *Session) Toplevels() []*Toplevel { return s.toplevels }
 // bindForeignToplevelManager binds the optional foreign toplevel
 // manager global.
 func (s *Session) bindForeignToplevelManager(ev wl.RegistryGlobalEvent) {
-	ctx, _ := wl.GetUserData[wl.Context](s.registry)
+	ctx := s.registry.Context()
 	mgr := wlr.NewZwlrForeignToplevelManagerV1(ctx)
 	if !s.bindOptional(ev, maxForeignToplevelVersion, mgr) {
 		return

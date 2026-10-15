@@ -144,7 +144,7 @@ func main() {
 		die("no wl_output reported a current mode")
 	}
 
-	ctx, _ := wl.GetUserData[wl.Context](reg)
+	ctx := reg.Context()
 	seat := wlclient.RegistryBindSeatInterface(reg, g.seatName, 1)
 	mgr := newVPManager(ctx)
 	if err := reg.Bind(g.vpName, "zwlr_virtual_pointer_manager_v1", 1, mgr); err != nil {

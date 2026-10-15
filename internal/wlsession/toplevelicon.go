@@ -43,7 +43,7 @@ func (l *iconSizeListener) HandleToplevelIconManagerV1Done(wlr.ToplevelIconManag
 // bindToplevelIconManager binds the optional toplevel-icon manager and
 // starts collecting its preferred sizes.
 func (s *Session) bindToplevelIconManager(ev wl.RegistryGlobalEvent) {
-	ctx, _ := wl.GetUserData[wl.Context](s.registry)
+	ctx := s.registry.Context()
 	mgr := wlr.NewToplevelIconManagerV1(ctx)
 	if !s.bindOptional(ev, maxToplevelIconManagerVersion, mgr) {
 		return
