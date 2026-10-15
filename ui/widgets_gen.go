@@ -1020,6 +1020,18 @@ func CenterBox(start Node, center Node, end Node) *CenterBoxBuilder {
 	return b
 }
 
+// Orientation calls (*widget.CenterBox).SetOrientation.
+func (b *CenterBoxBuilder) Orientation(a widget.Axis) *CenterBoxBuilder {
+	b.do(func(s *Scope, w *widget.CenterBox) { w.SetOrientation(a) })
+	return b
+}
+
+// WatchOrientation re-applies SetOrientation with get's value after every update.
+func (b *CenterBoxBuilder) WatchOrientation(get func() widget.Axis) *CenterBoxBuilder {
+	b.watch(func(w *widget.CenterBox) { w.SetOrientation(get()) })
+	return b
+}
+
 // CheckButtonBuilder builds a widget.CheckButton.
 type CheckButtonBuilder struct {
 	base[*widget.CheckButton, *CheckButtonBuilder]
