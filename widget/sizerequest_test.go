@@ -40,3 +40,43 @@ func TestSizeRequest(t *testing.T) {
 		t.Errorf("SizeRequest = %v", child.SizeRequest())
 	}
 }
+
+// A squeezed row takes the shortfall from children that can give it,
+// never past a size request or a CSS width, and an aligned child with
+// a CSS size keeps it even with no content of its own.
+func TestFloorsHoldInASqueeze(t *testing.T) {
+	face := goldenFace(t)
+	long := NewLabel(face, 13, "a very long name that cannot possibly fit in this row at all", 0)
+	long.SetEllipsize(EllipsizeEnd)
+	requested := NewLabel(face, 13, "requested cell text", 0)
+	requested.SetEllipsize(EllipsizeEnd)
+	requested.SetSizeRequest(90, 0)
+	sized := NewLabel(face, 13, "css-sized cell text", 0)
+	sized.SetEllipsize(EllipsizeEnd)
+	sized.SetInlineStyle("width: 80px;")
+	row := NewBox(Row, 0, 0)
+	row.Append(long, true).Append(requested, false).Append(sized, false)
+	row.Measure(Constraints{Max: Size{W: 300, H: 30}})
+	row.Arrange(render.Rect{W: 300, H: 30})
+	if w := requested.Bounds().W; w < 90 {
+		t.Errorf("the requested cell squeezed to %d, want at least 90", w)
+	}
+	if w := sized.Bounds().W; w != 80 {
+		t.Errorf("the css-sized cell squeezed to %d, want 80", w)
+	}
+	if w := long.Bounds().W; w > 300-90-80 {
+		t.Errorf("the long name kept %d, want it to give way", w)
+	}
+
+	img := NewImage(nil)
+	img.SetInlineStyle("width: 24px; height: 24px;")
+	img.SetHAlign(AlignCenter)
+	img.SetVAlign(AlignCenter)
+	box := NewBox(Row, 0, 0)
+	box.Append(img, false)
+	box.Measure(Constraints{Max: Size{W: 100, H: 100}})
+	box.Arrange(render.Rect{W: 100, H: 100})
+	if b := img.Bounds(); b.W != 24 || b.H != 24 {
+		t.Errorf("aligned css-sized image at %+v, want 24x24", b)
+	}
+}

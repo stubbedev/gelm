@@ -220,6 +220,10 @@ func arrangeChild(w Widget, r render.Rect) {
 	if h != AlignFill || va != AlignFill {
 		nat := w.Measure(Constraints{Max: Size{W: r.W, H: r.H}})
 		nat = Size{W: max(nat.W, min(l.request.W, r.W)), H: max(nat.H, min(l.request.H, r.H))}
+		if v != nil && cssSized(v) {
+			// The CSS size the measure resolved, not the content's.
+			nat = Size{W: max(min(nat.W, n.cssMax.W), n.cssMin.W), H: max(min(nat.H, n.cssMax.H), n.cssMin.H)}
+		}
 		if h == AlignBaseline {
 			h = AlignStart
 		}
