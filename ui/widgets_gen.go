@@ -30,6 +30,7 @@ type nodeProps interface {
 	SetOnClickWithin(fn func())
 	SetOnFocusChanged(fn func(focused bool))
 	SetOnHoverWithin(fn func(on bool))
+	SetSizeRequest(w int, h int)
 	SetState(flags widget.StateFlags, on bool)
 	SetTooltip(s string)
 	SetTooltipMarkup(markup string)
@@ -191,6 +192,12 @@ func (b *base[W, B]) OnFocusChanged(arg func(focused bool)) B {
 // OnHoverWithin calls SetOnHoverWithin on the widget.
 func (b *base[W, B]) OnHoverWithin(arg func(on bool)) B {
 	b.do(func(s *Scope, w W) { w.SetOnHoverWithin(arg) })
+	return b.self
+}
+
+// SizeRequest calls SetSizeRequest on the widget.
+func (b *base[W, B]) SizeRequest(arg int, h int) B {
+	b.do(func(s *Scope, w W) { w.SetSizeRequest(arg, h) })
 	return b.self
 }
 
