@@ -284,7 +284,7 @@ func (a *Application) rebuildLayer(old *hostWindow) error {
 	sc := l.ls.Config()
 	cfg := l.cfg
 	cfg.Layer, cfg.Anchor, cfg.Margin, cfg.ExclusiveZone = sc.Layer, sc.Anchor, sc.Margin, sc.ExclusiveZone
-	cfg.Width, cfg.Height, cfg.Namespace = sc.Width, sc.Height, sc.Namespace
+	cfg.Width, cfg.Height, cfg.Namespace = l.req[0], l.req[1], sc.Namespace
 	cfg.Output = a.sameOutput(cfg.Output)
 	l.cfg.Output = cfg.Output
 	hw, err := a.openLayer(l, cfg)

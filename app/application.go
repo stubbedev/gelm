@@ -391,8 +391,10 @@ type LayerConfig struct {
 	// Margin distances the surface from the anchored edges.
 	Margin layersurface.Margins
 	// Width and Height: the surface size in logical pixels (the device
-	// scale is applied once at the buffer boundary). An auto (zero)
-	// axis needs both edges of that axis anchored.
+	// scale is applied once at the buffer boundary). A zero axis is
+	// automatic, as in gtk4-layer-shell: anchored on both of its edges
+	// it stretches across the output, otherwise it takes Root's natural
+	// size and follows it as the content changes.
 	Width, Height uint32
 	// ExclusiveZone reserves space along anchored edges; negative
 	// values distance instead.
@@ -515,11 +517,18 @@ func (a *Application) openLayer(l *LayerWindow, cfg LayerConfig) (*hostWindow, e
 	if scale == 0 && cfg.Output != nil {
 		scale = cfg.Output.Scale
 	}
+	l.req = [2]uint32{cfg.Width, cfg.Height}
+	l.fit = contentAxes(cfg.Width, cfg.Height, cfg.Anchor)
+	width, height := cfg.Width, cfg.Height
+	if l.fit.any() {
+		widget.SetStyleRoot(cfg.Root)
+		width, height = fittedSize(cfg.Root, l.fit, width, height, [2]int{}, cfg.Output, naturalSize)
+	}
 	ls, err := layersurface.New(a.sess, surf, outputWire(cfg.Output), layersurface.Config{
 		Layer:         cfg.Layer,
 		Anchor:        cfg.Anchor,
-		Width:         cfg.Width,
-		Height:        cfg.Height,
+		Width:         width,
+		Height:        height,
 		Margin:        cfg.Margin,
 		ExclusiveZone: cfg.ExclusiveZone,
 		Keyboard:      cfg.Keyboard,
@@ -1169,6 +1178,10 @@ type LayerWindow struct {
 	// the SetOpacity in effect.
 	cfg   LayerConfig
 	alpha float64
+	// req is the size the app asked for (zero axes automatic); fit is
+	// which of its axes follow the content.
+	req [2]uint32
+	fit fitAxes
 }
 
 // Close closes the layer surface from the client side: the exit tween
@@ -1191,19 +1204,38 @@ func (l *LayerWindow) SetFocus(w widget.Widget) {
 	}
 }
 
-// SetSize requests a new surface size in logical pixels, for a surface
-// whose content grows or shrinks (a launcher list that fits its rows).
-// Like the initial size, an auto (zero) axis needs both of its edges
-// anchored; a request that breaks the rule is refused with an error
-// before it reaches the wire. The size applies with the next commit,
-// and the compositor's configure answer resizes the buffers.
+// SetSize requests a new surface size in logical pixels. A zero axis
+// is automatic, as at creation (LayerConfig.Width): stretched when
+// anchored on both edges, the content's natural size otherwise. The
+// size applies with the next commit, and the compositor's configure
+// answer resizes the buffers.
 func (l *LayerWindow) SetSize(width, height uint32) error {
-	return l.commit(l.ls.SetSize(width, height))
+	return l.reshape(l.ls.Config().Anchor, [2]uint32{width, height})
 }
 
-// SetAnchor re-anchors the surface (a bar moving edges); the auto-axis
-// rule SetSize states applies. Lands with the next commit.
-func (l *LayerWindow) SetAnchor(a layersurface.Anchor) error { return l.commit(l.ls.SetAnchor(a)) }
+// SetAnchor re-anchors the surface (a bar moving edges); an automatic
+// axis re-resolves against the new anchors. Lands with the next commit.
+func (l *LayerWindow) SetAnchor(a layersurface.Anchor) error { return l.reshape(a, l.req) }
+
+// reshape applies an anchor and a requested size, resolving the
+// automatic axes the pair leaves to the content.
+func (l *LayerWindow) reshape(a layersurface.Anchor, req [2]uint32) error {
+	fit := contentAxes(req[0], req[1], a)
+	width, height := req[0], req[1]
+	if fit.any() {
+		root := l.cfg.Root
+		if hw := l.app.hostWindowOf(l); hw != nil && hw.styleRoot != nil {
+			root = hw.styleRoot
+		}
+		w, h := l.ls.Size()
+		width, height = fittedSize(root, fit, width, height, [2]int{w, h}, l.cfg.Output, measureOnly)
+	}
+	if err := l.ls.Reshape(a, width, height); err != nil {
+		return err
+	}
+	l.req, l.fit = req, fit
+	return l.commit(nil)
+}
 
 // SetMargin changes the distances from the anchored edges.
 func (l *LayerWindow) SetMargin(m layersurface.Margins) error { return l.commit(l.ls.SetMargin(m)) }
