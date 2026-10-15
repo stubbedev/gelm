@@ -5,12 +5,15 @@ import (
 	"github.com/stubbedev/gelm/render"
 )
 
-// CenterBox lays three children like gtk::CenterBox: the center one at
-// the middle of the allocation, the start and end children at the
-// edges. The center child stays centered however wide the sides run.
+// CenterBox lays three children like gtk::CenterBox along its
+// orientation (Row by default): the center one at the middle of the
+// allocation, the start and end children at the ends. The center child
+// stays centered however long the sides run, until one would overlap
+// it: then it moves just clear of that side (GtkCenterLayout).
 type CenterBox struct {
 	node
 	start, center, end Widget
+	axis               Axis
 }
 
 // NewCenterBox returns a three-slot row; any slot may be nil.
@@ -19,6 +22,18 @@ func NewCenterBox(start, center, end Widget) *CenterBox {
 	setParents(b, nonNil(start, center, end)...)
 	return b
 }
+
+// SetOrientation lays the slots along a
+// (gtk_orientable_set_orientation): a Column runs top to bottom.
+func (b *CenterBox) SetOrientation(a Axis) {
+	if b.axis != a {
+		b.axis = a
+		b.InvalidateLayout()
+	}
+}
+
+// Orientation is the axis the slots run along.
+func (b *CenterBox) Orientation() Axis { return b.axis }
 
 func nonNil(ws ...Widget) []Widget {
 	out := make([]Widget, 0, len(ws))
@@ -33,49 +48,83 @@ func nonNil(ws ...Widget) []Widget {
 // Children exposes the slots in start, center, end order.
 func (b *CenterBox) Children() []Widget { return nonNil(b.start, b.center, b.end) }
 
-// Measure sizes to the three naturals side by side, as tall as the
-// tallest.
+// along is s's extent on the box's axis, across the extent on the
+// other.
+func (b *CenterBox) along(s Size) (main, cross int) {
+	if b.axis == Column {
+		return s.H, s.W
+	}
+	return s.W, s.H
+}
+
+// Measure sizes to the three naturals end to end along the axis, as
+// thick as the thickest.
 func (b *CenterBox) Measure(con Constraints) Size {
 	if sz, ok := b.measureHit(con); ok {
 		return sz
 	}
-	var w, h int
+	var main, cross int
 	for _, c := range b.Children() {
-		sz := measureChild(b, c, Constraints{Max: con.Max})
-		w += sz.W
-		h = max(h, sz.H)
+		m, x := b.along(measureChild(b, c, Constraints{Max: con.Max}))
+		main += m
+		cross = max(cross, x)
+	}
+	sz := Size{W: main, H: cross}
+	if b.axis == Column {
+		sz = Size{W: cross, H: main}
 	}
 	v := b.style(b)
-	w = max(w, picki(v, style.PropMinWidth, 0))
-	h = max(h, picki(v, style.PropMinHeight, 0))
-	return b.measureStore(con, Size{W: min(w, con.Max.W), H: min(h, con.Max.H)})
+	sz.W = max(sz.W, picki(v, style.PropMinWidth, 0))
+	sz.H = max(sz.H, picki(v, style.PropMinHeight, 0))
+	return b.measureStore(con, Size{W: min(sz.W, con.Max.W), H: min(sz.H, con.Max.H)})
 }
 
 // ArrangeRoot records the box's own rect.
 func (b *CenterBox) ArrangeRoot(r render.Rect) { b.node.Arrange(r) }
 
-// Arrange centers the center slot in r, the start slot at the left
-// edge, the end slot at the right; every slot spans the height.
+// Arrange places the start slot at the start, the end slot at the end,
+// and the center slot at the middle unless a side would overlap it;
+// every slot spans the box's thickness.
 func (b *CenterBox) Arrange(r render.Rect) {
 	b.ArrangeRoot(r)
-	o := boxOf(b.style(b), render.Insets{}).outer()
-	inner := o.Shrink(r)
-	cw := 0
-	if b.center != nil {
-		cw = measureChild(b, b.center, Constraints{Max: Size{W: inner.W, H: inner.H}}).W
+	inner := boxOf(b.style(b), render.Insets{}).outer().Shrink(r)
+	size, _ := b.along(Size{W: inner.W, H: inner.H})
+	extent := func(w Widget) int {
+		if w == nil {
+			return 0
+		}
+		m, _ := b.along(measureChild(b, w, Constraints{Max: Size{W: inner.W, H: inner.H}}))
+		return m
 	}
-	cx := inner.X + (inner.W-cw)/2
-	if b.start != nil {
-		sw := measureChild(b, b.start, Constraints{Max: Size{W: inner.W, H: inner.H}}).W
-		arrangeChild(b.start, render.Rect{X: inner.X, Y: inner.Y, W: sw, H: inner.H})
+	ss, cs, es := extent(b.start), extent(b.center), extent(b.end)
+	cpos := centerPos(size, ss, cs, es)
+	b.place(b.start, inner, 0, ss)
+	b.place(b.center, inner, cpos, cs)
+	b.place(b.end, inner, size-es, es)
+}
+
+// centerPos is the center slot's offset: the middle of size, moved
+// clear of the start slot, then of the end slot.
+func centerPos(size, start, center, end int) int {
+	pos := (size - center) / 2
+	if pos < start {
+		pos = start
+	} else if pos+center > size-end {
+		pos = max(size-end-center, start)
 	}
-	if b.center != nil {
-		arrangeChild(b.center, render.Rect{X: cx, Y: inner.Y, W: cw, H: inner.H})
+	return pos
+}
+
+// place arranges w over [off, off+n) along the axis, across all of r.
+func (b *CenterBox) place(w Widget, r render.Rect, off, n int) {
+	if w == nil {
+		return
 	}
-	if b.end != nil {
-		ew := measureChild(b, b.end, Constraints{Max: Size{W: inner.W, H: inner.H}}).W
-		arrangeChild(b.end, render.Rect{X: inner.X + inner.W - ew, Y: inner.Y, W: ew, H: inner.H})
+	if b.axis == Column {
+		arrangeChild(w, render.Rect{X: r.X, Y: r.Y + off, W: r.W, H: n})
+		return
 	}
+	arrangeChild(w, render.Rect{X: r.X + off, Y: r.Y, W: n, H: r.H})
 }
 
 // HitTest returns the slot under p, else the box.

@@ -40,3 +40,42 @@ func TestCenterBoxNilSlots(t *testing.T) {
 		t.Error("the box measured to nothing")
 	}
 }
+
+// A side long enough to reach the middle pushes the center slot just
+// clear of it, as GtkCenterLayout does; short sides leave it centered.
+func TestCenterBoxCenterClearsALongSide(t *testing.T) {
+	for _, tc := range []struct {
+		size, start, center, end, want int
+	}{
+		{200, 20, 40, 20, 80},
+		{200, 120, 40, 20, 120},
+		{200, 20, 40, 130, 30},
+		{100, 60, 40, 60, 60},
+	} {
+		if got := centerPos(tc.size, tc.start, tc.center, tc.end); got != tc.want {
+			t.Errorf("centerPos(%d, %d, %d, %d) = %d, want %d", tc.size, tc.start, tc.center, tc.end, got, tc.want)
+		}
+	}
+	long := NewSpacer(120, 10)
+	mid := NewSpacer(40, 10)
+	cb := NewCenterBox(long, mid, NewSpacer(10, 10))
+	arrangeTree(t, cb, 200, 30)
+	if mb := mid.Bounds(); mb.X != 120 {
+		t.Errorf("center slot at %d, want just clear of the 120px start", mb.X)
+	}
+}
+
+// A Column center box runs top to bottom: start at the top, end at the
+// bottom, the center at the vertical middle, each spanning the width.
+func TestCenterBoxColumn(t *testing.T) {
+	top, mid, bottom := NewSpacer(10, 20), NewSpacer(10, 30), NewSpacer(10, 40)
+	cb := NewCenterBox(top, mid, bottom)
+	cb.SetOrientation(Column)
+	if got := cb.Measure(Constraints{Max: Size{W: 500, H: 500}}); got != (Size{W: 10, H: 90}) {
+		t.Errorf("column measures %v, want 10x90", got)
+	}
+	arrangeTree(t, cb, 50, 300)
+	if tb, mb, bb := top.Bounds(), mid.Bounds(), bottom.Bounds(); tb.Y != 0 || mb.Y != 135 || bb.Y != 260 || mb.W != 50 {
+		t.Errorf("top %v mid %v bottom %v, want 0, 135 and 260 across the 50px width", tb, mb, bb)
+	}
+}
