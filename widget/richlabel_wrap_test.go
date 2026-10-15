@@ -3,6 +3,8 @@ package widget
 import (
 	"strings"
 	"testing"
+
+	"github.com/stubbedev/gelm/render"
 )
 
 // A wrapping rich label breaks the text at words to the offered width:
@@ -94,21 +96,71 @@ func TestRichLabelWrapKeepsStyles(t *testing.T) {
 	}
 }
 
-// max-width-chars floors the natural width: a short text still takes
-// the room its card reserves, and 0 removes the floor again.
+// max-width-chars caps the natural width as GTK's does: a long
+// wrapping text asks for its widest row wrapped at the cap, over more
+// rows; a short text keeps its own width; 0 removes the cap.
 func TestRichLabelMaxWidthChars(t *testing.T) {
-	l := NewRichLabel(entryFace(t), 14, "hi", 0)
-	bare := l.Measure(Constraints{Max: Size{W: 400, H: 40}}).W
-	l.SetMaxWidthChars(24)
-	floored := l.Measure(Constraints{Max: Size{W: 400, H: 40}}).W
-	if floored <= bare {
-		t.Errorf("floored width %d, want over the bare %d", floored, bare)
+	long := NewRichLabel(entryFace(t), 14, "the quick brown fox jumps over the lazy dog again and again", 0)
+	long.SetWrap(true)
+	wide := long.Measure(Constraints{Max: Size{W: 2000, H: 400}})
+	long.SetMaxWidthChars(12)
+	capped := long.Measure(Constraints{Max: Size{W: 2000, H: 400}})
+	if capped.W >= wide.W || capped.H <= wide.H {
+		t.Errorf("capped %v, want narrower and taller than the free %v", capped, wide)
 	}
-	if l.MaxWidthChars() != 24 {
+	if long.MaxWidthChars() != 12 {
 		t.Error("MaxWidthChars did not stick")
 	}
-	l.SetMaxWidthChars(0)
-	if got := l.Measure(Constraints{Max: Size{W: 400, H: 40}}).W; got != bare {
-		t.Errorf("width %d after clearing, want the bare %d", got, bare)
+	long.SetMaxWidthChars(0)
+	if got := long.Measure(Constraints{Max: Size{W: 2000, H: 400}}); got != wide {
+		t.Errorf("after clearing %v, want the free %v", got, wide)
+	}
+
+	short := NewRichLabel(entryFace(t), 14, "hi", 0)
+	bare := short.Measure(Constraints{Max: Size{W: 400, H: 40}}).W
+	short.SetMaxWidthChars(24)
+	if got := short.Measure(Constraints{Max: Size{W: 400, H: 40}}).W; got != bare {
+		t.Errorf("a short text under the cap measured %d, want its own %d", got, bare)
+	}
+
+	line := NewRichLabel(entryFace(t), 14, "a single line that runs past the cap", 0)
+	free := line.Measure(Constraints{Max: Size{W: 2000, H: 40}}).W
+	line.SetMaxWidthChars(6)
+	if got := line.Measure(Constraints{Max: Size{W: 2000, H: 40}}).W; got >= free {
+		t.Errorf("a single line under the cap measured %d, want less than %d", got, free)
+	}
+}
+
+// A rich label without a programmatic color paints the cascade's ink,
+// as a plain label does; a programmatic color still wins.
+func TestRichLabelPaintsTheCascadeColor(t *testing.T) {
+	ink := render.RGB(0x10, 0xc0, 0x20)
+	paint := func(color render.Color) bool {
+		root := NewBox(Column, 0, 0)
+		root.AttachStylesheet(NewStylesheet(".body { color: #10c020; }", StylePriorityUser))
+		l := NewRichLabel(entryFace(t), 14, "inked text", color)
+		l.AddClass("body")
+		root.Append(l, false)
+		SetStyleRoot(root)
+		for range 2 {
+			root.Measure(Constraints{Max: Size{W: 200, H: 40}})
+			root.Arrange(render.Rect{W: 200, H: 40})
+		}
+		data := make([]byte, render.Stride(200)*40)
+		cv := render.NewScaled(data, render.Stride(200), 200, 40, 1, 1)
+		cv.Clear(cv.Rect(), 0)
+		l.Paint(cv)
+		for i := 0; i+3 < len(data); i += 4 {
+			if data[i+3] == 0xff && render.RGB(data[i+2], data[i+1], data[i]) == ink {
+				return true
+			}
+		}
+		return false
+	}
+	if !paint(0) {
+		t.Error("an uncolored rich label did not paint the stylesheet's ink")
+	}
+	if paint(render.RGB(0xff, 0, 0)) {
+		t.Error("the stylesheet's ink overrode a programmatic color")
 	}
 }

@@ -77,9 +77,9 @@ type RichLabel struct {
 	// last fitted to, -1 while they hold the whole line.
 	ell  EllipsizeMode
 	fitW int
-	// widthChars floors the natural width at n approximate characters
+	// maxChars caps the natural width at n approximate characters
 	// (GTK's max-width-chars), 0 unset.
-	widthChars int
+	maxChars int
 
 	// wrap breaks the line at words to the arranged width; maxLines
 	// caps a wrapping, ellipsizing label at that many rows. lines holds
@@ -332,21 +332,23 @@ func (l *RichLabel) SetMaxLines(n int) {
 // MaxLines returns the row cap, 0 for none.
 func (l *RichLabel) MaxLines() int { return l.maxLines }
 
-// SetMaxWidthChars floors the label's natural width at n approximate
-// character widths (GTK's max-width-chars): a short text still takes
-// the room its card reserves. n <= 0 removes the floor.
+// SetMaxWidthChars caps the label's natural width at n approximate
+// character widths, GTK's max-width-chars: a wrapping label lays its
+// text out wrapped at the cap and asks for its widest row, a single
+// line truncates by the ellipsize mode; a shorter text keeps its own
+// width. n <= 0 removes the cap.
 func (l *RichLabel) SetMaxWidthChars(n int) {
 	n = max(n, 0)
-	if l.widthChars == n {
+	if l.maxChars == n {
 		return
 	}
-	l.widthChars = n
+	l.maxChars = n
 	l.InvalidateLayout()
 }
 
-// MaxWidthChars returns the natural-width floor in characters, 0 when
+// MaxWidthChars returns the natural-width cap in characters, 0 when
 // unset.
-func (l *RichLabel) MaxWidthChars() int { return l.widthChars }
+func (l *RichLabel) MaxWidthChars() int { return l.maxChars }
 
 // Arrange records the box and fits the line to its width.
 func (l *RichLabel) Arrange(r render.Rect) {
@@ -587,8 +589,12 @@ func (l *RichLabel) Measure(con Constraints) Size {
 	if s, ok := l.measureHit(con); ok {
 		return s
 	}
-	if l.wrap && l.markup != "" && con.Max.W < l.natural.W {
-		l.reflow(con.Max.W)
+	limit := con.Max.W
+	if c := l.widthCap(); c > 0 {
+		limit = min(limit, c)
+	}
+	if l.wrap && l.markup != "" && limit < l.natural.W {
+		l.reflow(limit)
 		w := 0
 		for _, line := range l.lines {
 			w = max(w, int(math.Ceil(line.advance)))
@@ -596,21 +602,19 @@ func (l *RichLabel) Measure(con Constraints) Size {
 		return l.measureStore(con, clampSize(Size{W: w, H: len(l.lines) * l.natural.H}, con))
 	}
 	nat := l.natural
-	if f := l.widthFloor(); f > nat.W {
-		nat.W = f
-	}
+	nat.W = min(nat.W, limit)
 	return l.measureStore(con, clampSize(nat, con))
 }
 
-// widthFloor is the max-width-chars floor in pixels: n approximate
+// widthCap is the max-width-chars cap in pixels: n approximate
 // character widths, 0 when unset.
-func (l *RichLabel) widthFloor() int {
-	if l.widthChars <= 0 {
+func (l *RichLabel) widthCap() int {
+	if l.maxChars <= 0 {
 		return 0
 	}
 	sh := l.faceFor(TextStyle{}).Shape(approxCharSample, l.sizePx)
 	avg := sh.Advance() / float64(len(approxCharSample))
-	return int(math.Ceil(avg * float64(l.widthChars)))
+	return int(math.Ceil(avg * float64(l.maxChars)))
 }
 
 // MinSize is a wrapping label's floor: the widest unbreakable token —
@@ -714,11 +718,13 @@ func (l *RichLabel) Paint(cv *render.Canvas) {
 // color, and its decorations (the stylesheet's, an underline for link
 // and <u> runs, a line through <s> runs).
 func (l *RichLabel) paintLine(cv *render.Canvas, runs []*richRun, lineX float64, baseline int) {
-	css := cssDecoration(l.style(l))
+	v := l.style(l)
+	css := cssDecoration(v)
+	ink := pickc(l.color, v, style.PropColor, l.color)
 	x := lineX
 	for _, r := range runs {
 		dx := int(math.Round(x))
-		col := l.color
+		col := ink
 		if r.style.Color != 0 {
 			col = r.style.Color
 		}
