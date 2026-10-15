@@ -152,13 +152,18 @@ func (s *Switch) InsertRune(r rune) {
 	}
 }
 
-// CheckButton is a boolean checkbox with a painted check mark.
+// CheckButton is a boolean checkbox with a painted check mark, and an
+// optional child (its label) beside the mark that clicks toggle too.
 type CheckButton struct {
 	node
 	checked bool
 	// check is the `check` node under the checkbox (`checkbutton >
 	// check`): the drawn indicator, styled and painted through it.
 	check stylePart
+	// child sits after the check (`checkbutton > label`); indicator is
+	// the arranged check's box.
+	child     Widget
+	indicator render.Rect
 	// mark is the themed icon the check node's -gtk-icon-source names,
 	// cached per name and tint.
 	mark     *Icon
@@ -181,8 +186,33 @@ func NewCheckButton(checked bool) *CheckButton {
 	return c
 }
 
-// appendStyleKids is the check (styleKids).
-func (c *CheckButton) appendStyleKids(buf []Widget) []Widget { return append(buf, &c.check) }
+// appendStyleKids is the check and the child (styleKids).
+func (c *CheckButton) appendStyleKids(buf []Widget) []Widget {
+	buf = append(buf, &c.check)
+	if c.child != nil {
+		buf = append(buf, c.child)
+	}
+	return buf
+}
+
+// SetChild places w after the check (gtk_check_button_set_child): a
+// label, typically, styled as `checkbutton > label`. The checkbox stays
+// the leaf: a click on the child toggles it. nil removes the child.
+func (c *CheckButton) SetChild(w Widget) {
+	if c.child != nil {
+		notifyRemoved(c.child)
+		clearParents(c.child)
+	}
+	c.child = w
+	if w != nil {
+		setParents(c, w)
+	}
+	restyleChildren(c)
+	c.InvalidateLayout()
+}
+
+// Child is the widget SetChild placed, nil for none.
+func (c *CheckButton) Child() Widget { return c.child }
 
 // Checked reports the state.
 func (c *CheckButton) Checked() bool { return c.checked }
@@ -219,25 +249,49 @@ func (c *CheckButton) SetInconsistent(on bool) { c.SetState(StateIndeterminate, 
 // Inconsistent reports the indeterminate state.
 func (c *CheckButton) Inconsistent() bool { return c.HasState(StateIndeterminate) }
 
-// Measure sizes the indicator: the check's min-width/min-height (the
-// theme's 20x20 unstyled), inside the checkbox's CSS box.
+// indicatorSize is the check's min-width/min-height, the theme's
+// 20x20 unstyled.
+func (c *CheckButton) indicatorSize() Size {
+	kv := c.check.style(&c.check)
+	return Size{W: picki(kv, style.PropMinWidth, 20), H: picki(kv, style.PropMinHeight, 20)}
+}
+
+// Measure sizes the indicator and the child after it, inside the
+// checkbox's CSS box.
 func (c *CheckButton) Measure(con Constraints) Size {
 	if sz, ok := c.measureHit(con); ok {
 		return sz
 	}
-	kv := c.check.style(&c.check)
-	w, h := picki(kv, style.PropMinWidth, 20), picki(kv, style.PropMinHeight, 20)
+	ind := c.indicatorSize()
 	v := c.style(c)
 	return c.measureStore(con, measureBox(v, boxOf(v, render.Insets{}), con, func(inner Constraints) Size {
-		return clampSize(Size{W: w, H: h}, inner)
+		sz := ind
+		if c.child != nil {
+			cs := measureChild(c, c.child, Constraints{Max: Size{W: max(0, inner.Max.W-ind.W), H: inner.Max.H}})
+			sz = Size{W: ind.W + cs.W, H: max(ind.H, cs.H)}
+		}
+		return clampSize(sz, inner)
 	}))
 }
 
 // Arrange records the box and links the check below it, so the
-// cascade reaches `checkbutton > check`.
+// cascade reaches `checkbutton > check`. Without a child the check
+// fills the content box; with one it keeps its size at the start,
+// centered across, and the child takes the rest.
 func (c *CheckButton) Arrange(r render.Rect) {
 	c.node.Arrange(r)
 	setParents(c, &c.check)
+	v := c.style(c)
+	content := paddingOr(v, render.Insets{}).Shrink(borderOf(v).Shrink(c.bounds))
+	if c.child == nil {
+		c.indicator = content
+		return
+	}
+	ind := c.indicatorSize()
+	ind.W, ind.H = min(ind.W, content.W), min(ind.H, content.H)
+	c.indicator = render.Rect{X: content.X, Y: content.Y + (content.H-ind.H)/2, W: ind.W, H: ind.H}
+	arrangeChild(c.child, render.Rect{X: content.X + ind.W, Y: content.Y, W: content.W - ind.W, H: content.H})
+	setParents(c, c.child)
 }
 
 // checkRing is the unstyled indicator's border width.
@@ -254,7 +308,7 @@ func (c *CheckButton) Paint(cv *render.Canvas) {
 	fx := pushEffects(cv, &c.node, kv, c.bounds, radiusOr(kv, min(c.bounds.W, c.bounds.H)/2))
 	cv = fx.cv
 	defer fx.pop()
-	box := c.bounds
+	box := c.indicator
 	if box.W > box.H {
 		box.W = box.H
 	}
@@ -301,6 +355,9 @@ func (c *CheckButton) Paint(cv *render.Canvas) {
 		drawCheckMark(cv, box, c.Inconsistent(), tick)
 	}
 	paintOutline(cv, kv, box, radii)
+	if c.child != nil {
+		PaintChild(cv, c.child)
+	}
 }
 
 // drawThemedMark draws the check node's -gtk-icon-source icon centered

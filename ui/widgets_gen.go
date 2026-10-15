@@ -1056,6 +1056,12 @@ func (b *CheckButtonBuilder) WatchChecked(get func() bool) *CheckButtonBuilder {
 	return b
 }
 
+// Child calls (*widget.CheckButton).SetChild.
+func (b *CheckButtonBuilder) Child(child Node) *CheckButtonBuilder {
+	b.do(func(s *Scope, w *widget.CheckButton) { w.SetChild(build(s, child)) })
+	return b
+}
+
 // Group calls (*widget.CheckButton).SetGroup.
 func (b *CheckButtonBuilder) Group(other Of[*widget.CheckButton]) *CheckButtonBuilder {
 	b.do(func(s *Scope, w *widget.CheckButton) { w.SetGroup(buildOf(s, other)) })
@@ -4058,15 +4064,15 @@ func (b *NotebookBuilder) InsertTab(i int, name string, child Node) *NotebookBui
 	return b
 }
 
-// OnSelect sets the widget's OnSelect field.
-func (b *NotebookBuilder) OnSelect(fn func(name string)) *NotebookBuilder {
-	b.do(func(_ *Scope, w *widget.Notebook) { w.OnSelect = fn })
-	return b
-}
-
 // TabLabel calls (*widget.Notebook).SetTabLabel.
 func (b *NotebookBuilder) TabLabel(name string, child Node) *NotebookBuilder {
 	b.do(func(s *Scope, w *widget.Notebook) { w.SetTabLabel(name, build(s, child)) })
+	return b
+}
+
+// OnSelect sets the widget's OnSelect field.
+func (b *NotebookBuilder) OnSelect(fn func(name string)) *NotebookBuilder {
+	b.do(func(_ *Scope, w *widget.Notebook) { w.OnSelect = fn })
 	return b
 }
 
