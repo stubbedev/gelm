@@ -7,8 +7,8 @@ import (
 	"github.com/stubbedev/gelm/widget"
 )
 
-// unboundedFit bounds a content-sized axis whose output is unknown (the
-// compositor picks it) or reports no logical size yet.
+// unboundedFit bounds a content-sized axis when no output reports a
+// logical size yet.
 const unboundedFit = 1 << 14
 
 // fitAxes says which axes of a layer surface follow its content.
@@ -26,13 +26,21 @@ func contentAxes(width, height uint32, a layersurface.Anchor) fitAxes {
 	}
 }
 
-// fitBounds is the space a content-sized axis may take: the output's
-// logical size, or unboundedFit without one.
-func fitBounds(out *wlsession.Output) widget.Size {
-	if out == nil || out.LogicalW <= 0 || out.LogicalH <= 0 {
+// fitBounds is the space a content-sized axis may take: the surface's
+// output's logical size; for a surface the compositor places, the
+// largest output it could pick; unboundedFit while none reports a size.
+func fitBounds(out *wlsession.Output, all []*wlsession.Output) widget.Size {
+	if out != nil {
+		all = []*wlsession.Output{out}
+	}
+	bound := widget.Size{}
+	for _, o := range all {
+		bound.W, bound.H = max(bound.W, int(o.LogicalW)), max(bound.H, int(o.LogicalH))
+	}
+	if bound.W <= 0 || bound.H <= 0 {
 		return widget.Size{W: unboundedFit, H: unboundedFit}
 	}
-	return widget.Size{W: int(out.LogicalW), H: int(out.LogicalH)}
+	return bound
 }
 
 // naturalSize measures root within limit, arranging and re-measuring
@@ -62,8 +70,8 @@ func measureOnly(root widget.Widget, limit widget.Size) widget.Size {
 // content-sized axis takes root's natural extent (at least one pixel,
 // the protocol's floor for a non-automatic axis), measured with the
 // other axis at its current size when that one is fixed.
-func fittedSize(root widget.Widget, fit fitAxes, width, height uint32, cur [2]int, out *wlsession.Output, measure func(widget.Widget, widget.Size) widget.Size) (uint32, uint32) {
-	limit := fitBounds(out)
+func fittedSize(root widget.Widget, fit fitAxes, width, height uint32, cur [2]int, out *wlsession.Output, all []*wlsession.Output, measure func(widget.Widget, widget.Size) widget.Size) (uint32, uint32) {
+	limit := fitBounds(out, all)
 	if !fit.w && cur[0] > 0 {
 		limit.W = cur[0]
 	}
@@ -91,7 +99,7 @@ func (l *LayerWindow) refit(root widget.Widget) bool {
 	}
 	sc := l.ls.Config()
 	w, h := l.ls.Size()
-	nw, nh := fittedSize(root, l.fit, sc.Width, sc.Height, [2]int{w, h}, l.cfg.Output, measureOnly)
+	nw, nh := fittedSize(root, l.fit, sc.Width, sc.Height, [2]int{w, h}, l.cfg.Output, l.app.sess.Outputs(), measureOnly)
 	if nw == sc.Width && nh == sc.Height {
 		return false
 	}
@@ -106,10 +114,10 @@ func defaultSize(root widget.Widget, width, height uint32, outputs []*wlsession.
 	if width != 0 && height != 0 || root == nil {
 		return width, height
 	}
-	var out *wlsession.Output
+	var first []*wlsession.Output
 	if len(outputs) > 0 {
-		out = outputs[0]
+		first = outputs[:1]
 	}
 	widget.SetStyleRoot(root)
-	return fittedSize(root, fitAxes{w: width == 0, h: height == 0}, width, height, [2]int{int(width), int(height)}, out, naturalSize)
+	return fittedSize(root, fitAxes{w: width == 0, h: height == 0}, width, height, [2]int{int(width), int(height)}, nil, first, naturalSize)
 }

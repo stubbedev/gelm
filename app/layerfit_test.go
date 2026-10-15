@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/stubbedev/gelm/internal/layersurface"
+	"github.com/stubbedev/gelm/internal/wlsession"
 	"github.com/stubbedev/gelm/widget"
 )
 
@@ -44,5 +45,22 @@ func TestDefaultSize(t *testing.T) {
 	}
 	if w, h := defaultSize(widget.NewDrawingArea(0, 0), 0, 0, nil); w != 1 || h != 1 {
 		t.Errorf("empty content %dx%d, want the 1x1 floor", w, h)
+	}
+}
+
+// A content-sized axis is bounded by its surface's output, by the
+// largest output when the compositor places the surface, and by
+// unboundedFit only while no output reports a size.
+func TestFitBounds(t *testing.T) {
+	small := &wlsession.Output{LogicalW: 1920, LogicalH: 1080}
+	big := &wlsession.Output{LogicalW: 2560, LogicalH: 1440}
+	if got := fitBounds(small, []*wlsession.Output{small, big}); got != (widget.Size{W: 1920, H: 1080}) {
+		t.Errorf("pinned output bound %v", got)
+	}
+	if got := fitBounds(nil, []*wlsession.Output{small, big}); got != (widget.Size{W: 2560, H: 1440}) {
+		t.Errorf("compositor-placed bound %v, want the largest output", got)
+	}
+	if got := fitBounds(nil, nil); got != (widget.Size{W: unboundedFit, H: unboundedFit}) {
+		t.Errorf("no outputs bound %v", got)
 	}
 }

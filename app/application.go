@@ -525,7 +525,7 @@ func (a *Application) openLayer(l *LayerWindow, cfg LayerConfig) (*hostWindow, e
 	width, height := cfg.Width, cfg.Height
 	if l.fit.any() {
 		widget.SetStyleRoot(cfg.Root)
-		width, height = fittedSize(cfg.Root, l.fit, width, height, [2]int{}, cfg.Output, naturalSize)
+		width, height = fittedSize(cfg.Root, l.fit, width, height, [2]int{}, cfg.Output, a.sess.Outputs(), naturalSize)
 	}
 	ls, err := layersurface.New(a.sess, surf, outputWire(cfg.Output), layersurface.Config{
 		Layer:         cfg.Layer,
@@ -1231,7 +1231,7 @@ func (l *LayerWindow) reshape(a layersurface.Anchor, req [2]uint32) error {
 			root = hw.styleRoot
 		}
 		w, h := l.ls.Size()
-		width, height = fittedSize(root, fit, width, height, [2]int{w, h}, l.cfg.Output, measureOnly)
+		width, height = fittedSize(root, fit, width, height, [2]int{w, h}, l.cfg.Output, l.app.sess.Outputs(), measureOnly)
 	}
 	if err := l.ls.Reshape(a, width, height); err != nil {
 		return err
