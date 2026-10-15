@@ -1,15 +1,18 @@
 package widget
 
 import (
+	"math"
 	"slices"
 
 	"github.com/stubbedev/gelm/internal/style"
 	"github.com/stubbedev/gelm/render"
 )
 
-// Notebook is a tabbed container: a painted tab bar on top and exactly
-// one visible page beneath it, the GtkNotebook model. Tabs carry a
-// name; selecting one shows its page and fires OnSelect. With Closable
+// Notebook is a tabbed container: a tab bar on top and exactly one
+// visible page beneath it, the GtkNotebook model. Tabs carry a name,
+// painted as the tab's label unless SetTabLabel gave it a widget; the
+// header, the tab row, and each tab are CSS boxes. Selecting a tab
+// shows its page and fires OnSelect. With Closable
 // set, each tab paints a close box and a click on it fires OnTabClose
 // instead of selecting - hosts remove the page themselves. With
 // Reorderable set, dragging a tab along the strip moves it (OnReorder
@@ -22,6 +25,7 @@ type Notebook struct {
 	tabs     []notebookTab
 	selected int
 	header   notebookHeader
+	strip    notebookStrip
 
 	// scroll is the tab strip's horizontal offset; arrows are the
 	// overflow chevrons; overHeader tracks the pointer for the wheel.
@@ -42,8 +46,21 @@ type Notebook struct {
 	Reorderable bool
 }
 
-// tabArrowW is an overflow arrow's strip width.
-const tabArrowW = 20
+// The tab bar's metrics: an overflow arrow's width, a closable tab's
+// close box at its right edge, the painted name's size, and the floor
+// of a tab whose stylesheet sets no min-width or min-height (the arrows
+// and the wheel also step by tabWidth).
+const (
+	tabArrowW    = 20
+	tabCloseW    = 20
+	tabTextPx    = 12
+	tabWidth     = 96
+	tabBarHeight = 26
+)
+
+// tabNatural is the open constraint a tab measures its natural size
+// under: the strip scrolls instead of squeezing tabs.
+var tabNatural = Constraints{Max: Size{W: 1 << 20, H: 1 << 20}}
 
 // notebookHeader is the tab bar's node tree (`notebook > header >
 // tabs > tab`): the header strip, the tab row, one tab part per page
@@ -55,27 +72,55 @@ type notebookHeader struct {
 
 type notebookTabs struct {
 	stylePart
-	tab []stylePart
+	tab []*notebookTabPart
 }
 
 func (t *notebookTabs) appendStyleKids(buf []Widget) []Widget {
-	for i := range t.tab {
-		buf = append(buf, &t.tab[i])
+	for _, p := range t.tab {
+		buf = append(buf, p)
 	}
 	return buf
+}
+
+// notebookTabPart is one tab's node: its label widget when the host
+// set one, and the pointer's hover over it.
+type notebookTabPart struct {
+	stylePart
+	label   Widget
+	hovered bool
+}
+
+func (t *notebookTabPart) appendStyleKids(buf []Widget) []Widget {
+	if t.label != nil {
+		buf = append(buf, t.label)
+	}
+	return buf
+}
+
+// setHovered moves the part's :hover.
+func (t *notebookTabPart) setHovered(on bool) {
+	if t.hovered != on {
+		t.hovered = on
+		t.invalidateState(style.Hover)
+	}
 }
 
 type notebookTab struct {
 	name string
 	w    Widget
+	part *notebookTabPart
 }
 
-// tabBarHeight is the reserved strip for the tab row.
-const tabBarHeight = 26
-
-// tabWidth is the fixed strip width per tab; a close box lives at its
-// right edge when Closable is set.
-const tabWidth = 96
+// notebookStrip is the arranged tab bar: the header's and the tab
+// row's border boxes, the row's content box the tabs scroll in, the
+// bar's height above the pages, and each tab's margin box as an
+// offset and width along the unscrolled row.
+type notebookStrip struct {
+	header, tabs, row render.Rect
+	height            int
+	tabX, tabW        []int
+	total             int
+}
 
 // NewNotebook returns an empty notebook with tab labels painted in the
 // given face; a render.Chain adds mixed-script fallback. A nil face
@@ -89,23 +134,28 @@ func NewNotebook(face render.Font) *Notebook {
 	return n
 }
 
-// syncTabs rebuilds the tab parts over the current pages and links the
-// header chain below the notebook.
+// syncTabs lists the tab parts in page order, links the header chain,
+// down to the tab labels, below the notebook, and restyles the tabs
+// for their new positions.
 func (n *Notebook) syncTabs() {
-	n.header.tabs.tab = make([]stylePart, len(n.tabs))
-	for i := range n.header.tabs.tab {
-		n.header.tabs.tab[i].SetElement("tab")
+	n.header.tabs.tab = n.header.tabs.tab[:0]
+	for _, t := range n.tabs {
+		n.header.tabs.tab = append(n.header.tabs.tab, t.part)
+		if t.part.label != nil {
+			setParents(t.part, t.part.label)
+		}
 	}
 	setParents(n, &n.header)
 	setParents(&n.header, &n.header.tabs)
 	setParents(&n.header.tabs, styleKids(&n.header.tabs)...)
+	restyleChildren(&n.header.tabs)
 	n.syncSelectedTab()
 }
 
 // syncSelectedTab mirrors the selection into the tab parts' :checked.
 func (n *Notebook) syncSelectedTab() {
-	for i := range n.header.tabs.tab {
-		n.header.tabs.tab[i].SetState(StateChecked, i == n.selected)
+	for i, p := range n.header.tabs.tab {
+		p.SetState(StateChecked, i == n.selected)
 	}
 }
 
@@ -129,16 +179,47 @@ func (n *Notebook) InsertTab(i int, name string, w Widget) {
 	if len(n.tabs) > 0 && i <= n.selected {
 		n.selected++
 	}
-	n.tabs = slices.Insert(n.tabs, i, notebookTab{name: name, w: w})
+	part := &notebookTabPart{}
+	part.SetElement("tab")
+	n.tabs = slices.Insert(n.tabs, i, notebookTab{name: name, w: w, part: part})
 	n.syncTabs()
 	n.InvalidateLayout()
+}
+
+// SetTabLabel shows w in the tab of the page under name instead of its
+// painted name (gtk_notebook_set_tab_label); nil restores the name.
+// The label styles as the tab's child (`tab > label`) and fills the
+// tab's content box. Unknown names are a no-op.
+func (n *Notebook) SetTabLabel(name string, w Widget) {
+	i := slices.IndexFunc(n.tabs, func(t notebookTab) bool { return t.name == name })
+	if i < 0 {
+		return
+	}
+	part := n.tabs[i].part
+	if part.label != nil {
+		notifyRemoved(part.label)
+		clearParents(part.label)
+	}
+	part.label = w
+	n.syncTabs()
+	n.InvalidateLayout()
+}
+
+// TabLabel is the label widget SetTabLabel gave the page under name
+// (gtk_notebook_get_tab_label); nil for a painted name or an unknown
+// page.
+func (n *Notebook) TabLabel(name string) Widget {
+	i := slices.IndexFunc(n.tabs, func(t notebookTab) bool { return t.name == name })
+	if i < 0 {
+		return nil
+	}
+	return n.tabs[i].part.label
 }
 
 // stripRange is the tab strip as a scroll range: the offset into the
 // tabs' total width, of which the viewport between the arrows shows.
 func (n *Notebook) stripRange() ScrollRange {
-	total := len(n.tabs) * tabWidth
-	page := n.bounds.W
+	total, page := n.strip.total, n.strip.row.W
 	if total > page {
 		page -= 2 * tabArrowW
 	}
@@ -148,7 +229,7 @@ func (n *Notebook) stripRange() ScrollRange {
 // tabViewport is the strip area tabs paint in: inside the arrows while
 // they overflow.
 func (n *Notebook) tabViewport() render.Rect {
-	r := render.Rect{X: n.bounds.X, Y: n.bounds.Y, W: n.bounds.W, H: tabBarHeight}
+	r := n.strip.row
 	if n.stripRange().Overflows() {
 		r.X += tabArrowW
 		r.W -= 2 * tabArrowW
@@ -202,8 +283,8 @@ func (n *Notebook) moveTab(from, to int, dragged bool) {
 			n.selected = i
 		}
 	}
-	n.syncSelectedTab()
-	n.Invalidate()
+	n.syncTabs()
+	n.InvalidateLayout()
 	if dragged && n.OnReorder != nil {
 		n.OnReorder(t.name, to)
 	}
@@ -265,6 +346,10 @@ func (n *Notebook) CloseTabAt(i int) {
 	}
 	t := n.tabs[i]
 	notifyRemoved(t.w)
+	if t.part.label != nil {
+		notifyRemoved(t.part.label)
+		clearParents(t.part.label)
+	}
 	n.tabs = slices.Delete(n.tabs, i, i+1)
 	if n.selected > i || n.selected >= len(n.tabs) {
 		n.selected = max(n.selected-1, 0)
@@ -311,25 +396,92 @@ func (n *Notebook) Measure(con Constraints) Size {
 		best.W = max(best.W, s.W)
 		best.H = max(best.H, s.H)
 	}
-	best.H += tabBarHeight
+	best.H += n.layoutStrip(render.Rect{W: con.Max.W}).height
 	return n.measureStore(con, clampSize(best, con))
 }
 
 // Arrange lays out the tab strip and the visible page beneath it.
 func (n *Notebook) Arrange(r render.Rect) {
 	n.node.Arrange(r)
+	n.strip = n.layoutStrip(r)
+	n.header.Arrange(n.strip.header)
+	n.header.tabs.Arrange(n.strip.tabs)
 	n.scrollStrip(n.scroll) // a wider strip may have less to scroll
 	n.applyReveal()
-	page := render.Rect{X: r.X, Y: r.Y + tabBarHeight, W: r.W, H: max(0, r.H-tabBarHeight)}
+	h := n.strip.height
+	page := render.Rect{X: r.X, Y: r.Y + h, W: r.W, H: max(0, r.H-h)}
 	if n.selected < len(n.tabs) {
 		arrangeChild(n.tabs[n.selected].w, page)
 		setParents(n, n.tabs[n.selected].w)
 	}
 }
 
-// tabRect returns the strip occupied by tab i, scrolled.
+// layoutStrip lays the tab bar out across r's width: each tab at its
+// natural margin box (floored to tabWidth x tabBarHeight where the
+// stylesheet sets no min size), in a row as tall as the tallest, inside
+// the tabs box, inside the header box spanning the notebook (GTK's tabs
+// expand across the header).
+func (n *Notebook) layoutStrip(r render.Rect) notebookStrip {
+	s := notebookStrip{tabX: make([]int, len(n.tabs)), tabW: make([]int, len(n.tabs))}
+	rowH := 0
+	for i, t := range n.tabs {
+		tv := t.part.style(t.part)
+		b := boxOf(tv, render.Insets{})
+		sz := measureBox(tv, b, tabNatural, func(c Constraints) Size { return n.tabContent(t, c) })
+		if !tv.Has(style.PropMinWidth) {
+			sz.W = max(sz.W, tabWidth+b.margin.Left+b.margin.Right)
+		}
+		if !tv.Has(style.PropMinHeight) {
+			sz.H = max(sz.H, tabBarHeight+b.margin.Top+b.margin.Bottom)
+		}
+		s.tabX[i], s.tabW[i] = s.total, sz.W
+		s.total += sz.W
+		rowH = max(rowH, sz.H)
+	}
+	hb := boxOf(n.header.style(&n.header), render.Insets{})
+	tb := boxOf(n.header.tabs.style(&n.header.tabs), render.Insets{})
+	ho, to := hb.outer(), tb.outer()
+	s.height = ho.Top + ho.Bottom + to.Top + to.Bottom + rowH
+	var inHeader render.Rect
+	s.header, inHeader = boxRects(hb, render.Rect{X: r.X, Y: r.Y, W: r.W, H: s.height})
+	s.tabs, s.row = boxRects(tb, inHeader)
+	return s
+}
+
+// tabContent is a tab's content size: its label widget's natural size,
+// else its painted name's, plus the close box when Closable.
+func (n *Notebook) tabContent(t notebookTab, con Constraints) Size {
+	var sz Size
+	if t.part.label != nil {
+		sz = measureChild(t.part, t.part.label, con)
+	} else {
+		sh := n.face.Shape(t.name, tabTextPx)
+		sz = Size{W: int(math.Ceil(sh.Advance())), H: sh.LineHeight()}
+	}
+	if n.Closable {
+		sz.W += tabCloseW
+	}
+	return clampSize(sz, con)
+}
+
+// tabRect returns tab i's border box, scrolled.
 func (n *Notebook) tabRect(i int) render.Rect {
-	return render.Rect{X: n.tabViewport().X + i*tabWidth - n.scroll, Y: n.bounds.Y, W: tabWidth, H: tabBarHeight}
+	vp := n.tabViewport()
+	part := n.tabs[i].part
+	m := marginOf(part.style(part))
+	return m.Shrink(render.Rect{X: vp.X + n.strip.tabX[i] - n.scroll, Y: vp.Y, W: n.strip.tabW[i], H: vp.H})
+}
+
+// tabLabelRect is the box a tab's label fills: its content box, less
+// the close box.
+func (n *Notebook) tabLabelRect(i int, border render.Rect) render.Rect {
+	part := n.tabs[i].part
+	tv := part.style(part)
+	r := paddingOr(tv, render.Insets{}).Shrink(borderOf(tv).Shrink(border))
+	if n.Closable {
+		r.W = max(0, r.W-tabCloseW)
+	}
+	return r
 }
 
 // tabAt is the tab under p, -1 off the visible strip.
@@ -350,17 +502,18 @@ func (n *Notebook) arrowRects() [2]render.Rect {
 	if !n.stripRange().Overflows() {
 		return [2]render.Rect{}
 	}
-	y := n.bounds.Y
+	row := n.strip.row
 	return [2]render.Rect{
-		{X: n.bounds.X, Y: y, W: tabArrowW, H: tabBarHeight},
-		{X: n.bounds.X + n.bounds.W - tabArrowW, Y: y, W: tabArrowW, H: tabBarHeight},
+		{X: row.X, Y: row.Y, W: tabArrowW, H: row.H},
+		{X: row.X + row.W - tabArrowW, Y: row.Y, W: tabArrowW, H: row.H},
 	}
 }
 
 // Paint draws the tab bar through its nodes — the notebook's box, the
-// header strip, and each tab (the selected one :checked: its own
-// background and label color, the accent underline as the theme's
-// fallback) — and the visible page.
+// header and tab-row boxes, and each tab (the selected one :checked:
+// its own background and label color, the accent fill and underline as
+// the theme's fallback where the stylesheet paints none) — and the
+// visible page.
 func (n *Notebook) Paint(cv *render.Canvas) {
 	th := Current()
 	v := n.style(n)
@@ -371,43 +524,36 @@ func (n *Notebook) Paint(cv *render.Canvas) {
 	paintOutline(cv, v, n.bounds, radii)
 	fx.pop()
 
-	header := render.Rect{X: n.bounds.X, Y: n.bounds.Y, W: n.bounds.W, H: tabBarHeight}
-	hv := n.header.style(&n.header)
-	n.header.Arrange(header)
-	n.header.tabs.Arrange(header)
-	hradii := radiusOr(hv, 0)
-	hfx := pushEffects(cv, &n.header.node, hv, header, hradii)
-	paintBoxBehind(hfx.cv, hv, header, hradii, borderOf(hv), pickc(0, hv, style.PropBackgroundColor, 0))
-	paintOutline(hfx.cv, hv, header, hradii)
-	hfx.pop()
+	paintPart(cv, &n.header.node, n.header.style(&n.header), n.strip.header, 0)
+	paintPart(cv, &n.header.tabs.node, n.header.tabs.style(&n.header.tabs), n.strip.tabs, 0)
 
 	strip := cv.PushClip(n.tabViewport())
 	for i, t := range n.tabs {
 		rect := n.tabRect(i)
-		tp := &n.header.tabs.tab[i]
+		tp := t.part
 		tp.Arrange(rect)
 		tv := tp.style(tp)
-		var fill, underline render.Color
+		var fill render.Color
 		if i == n.selected {
-			fill, underline = th.SurfaceHover, th.Accent
+			fill = th.SurfaceHover
 		}
-		tradii := radiusOr(tv, 0)
-		tfx := pushEffects(cv, &tp.node, tv, rect, tradii)
-		paintBoxBehind(tfx.cv, tv, rect, tradii, borderOf(tv), pickc(0, tv, style.PropBackgroundColor, fill))
-		if i == n.selected && !tv.Has(style.PropBoxShadow) {
-			tfx.cv.FillRect(render.Rect{X: rect.X, Y: rect.Y + tabBarHeight - 3, W: rect.W, H: 3}, underline)
+		paintPart(cv, &tp.node, tv, rect, fill)
+		if i == n.selected && !tv.Has(style.PropBoxShadow) && !tv.Has(style.PropBackgroundColor) {
+			cv.FillRect(render.Rect{X: rect.X, Y: rect.Y + rect.H - 3, W: rect.W, H: 3}, th.Accent)
 		}
-		tfx.pop()
-		if n.face != nil {
+		label := n.tabLabelRect(i, rect)
+		if tp.label != nil {
+			arrangeChild(tp.label, label)
+			PaintChild(cv, tp.label)
+		} else {
 			color := th.TextMuted
 			if i == n.selected {
 				color = th.Text
 			}
-			color = pickc(0, tv, style.PropColor, color)
-			n.face.DrawAligned(cv, t.name, rect, 12, color, render.AlignCenter)
+			n.face.DrawAligned(cv, t.name, label, tabTextPx, pickc(0, tv, style.PropColor, color), render.AlignCenter)
 		}
 		if n.Closable {
-			strokeCross(cv, rect.X+rect.W-13, rect.Y+tabBarHeight/2, 4, th.TextMuted)
+			strokeCross(cv, rect.X+rect.W-13, rect.Y+rect.H/2, 4, th.TextMuted)
 		}
 	}
 	cv.PopClip(strip)
@@ -419,13 +565,24 @@ func (n *Notebook) Paint(cv *render.Canvas) {
 		}
 	}
 	if n.selected < len(n.tabs) {
+		h := n.strip.height
 		prev := cv.PushClip(render.Rect{
-			X: n.bounds.X, Y: n.bounds.Y + tabBarHeight,
-			W: n.bounds.W, H: max(0, n.bounds.H-tabBarHeight),
+			X: n.bounds.X, Y: n.bounds.Y + h,
+			W: n.bounds.W, H: max(0, n.bounds.H-h),
 		})
 		PaintChild(cv, n.tabs[n.selected].w)
 		cv.PopClip(prev)
 	}
+}
+
+// paintPart paints a tab bar node's box at its border box: effects,
+// background (fill where the stylesheet sets none), border, outline.
+func paintPart(cv *render.Canvas, nd *node, v *style.Values, border render.Rect, fill render.Color) {
+	radii := radiusOr(v, 0)
+	fx := pushEffects(cv, nd, v, border, radii)
+	paintBoxBehind(fx.cv, v, border, radii, borderOf(v), pickc(0, v, style.PropBackgroundColor, fill))
+	paintOutline(fx.cv, v, border, radii)
+	fx.pop()
 }
 
 // Role implements Roleer.
@@ -437,7 +594,7 @@ func (n *Notebook) HitTest(p Point) Widget {
 	if !n.bounds.Contains(p.X, p.Y) {
 		return nil
 	}
-	if p.Y < n.bounds.Y+tabBarHeight {
+	if n.overStrip(p) {
 		return n
 	}
 	if n.selected < len(n.tabs) {
@@ -496,15 +653,47 @@ func (n *Notebook) DragMove(p Point) {
 // PressEnd drops the tab.
 func (n *Notebook) PressEnd() { n.drag.end() }
 
-// HoverMove tracks whether the pointer is over the tab strip.
-func (n *Notebook) HoverMove(p Point) { n.overHeader = p.Y < n.bounds.Y+tabBarHeight }
+// overStrip reports whether p is on the tab bar.
+func (n *Notebook) overStrip(p Point) bool { return p.Y < n.bounds.Y+n.strip.height }
+
+// HoverMove tracks whether the pointer is over the tab strip, and the
+// tab under it (its :hover).
+func (n *Notebook) HoverMove(p Point) {
+	n.overHeader = n.overStrip(p)
+	n.hoverTab(n.tabAt(p))
+}
 
 // SetHovered forgets the strip when the pointer leaves the notebook
 // itself (into a page, or away).
 func (n *Notebook) SetHovered(on bool) {
 	if !on {
 		n.overHeader = false
+		n.hoverTab(-1)
 	}
+}
+
+// hoverTab moves :hover to tab i, none for -1.
+func (n *Notebook) hoverTab(i int) {
+	for k, t := range n.tabs {
+		t.part.setHovered(k == i)
+	}
+}
+
+// CursorName is the hovered tab label's cursor (GTK resolves it on the
+// label itself), else the notebook's own.
+func (n *Notebook) CursorName() string {
+	for _, t := range n.tabs {
+		if !t.part.hovered || t.part.label == nil {
+			continue
+		}
+		if css := CSSCursorOf(t.part.label); css != "" {
+			return css
+		}
+		if name := CursorNameOf(t.part.label); name != "" {
+			return name
+		}
+	}
+	return CursorNameOf(n)
 }
 
 // ScrollInput scrolls an overflowing strip under the pointer, a third
