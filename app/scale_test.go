@@ -264,3 +264,26 @@ func TestRescaleCarriesTooltipState(t *testing.T) {
 			fh.wnd.frac120, fh.wnd.scale)
 	}
 }
+
+// A configure that resizes the window republishes the scale state at
+// the new logical size: the viewport destination is that size, so a
+// stale one shows the new buffer squeezed into the old rect. Before the
+// first frame nothing is published, and an unchanged size sends nothing.
+func TestResizeRepublishesTheViewportDestination(t *testing.T) {
+	fh := newFracHarness(widget.NewBox(widget.Row, 0, 0), 200, 60, 150)
+	fh.frame()
+	if len(fh.sc.applies) != 1 || fh.sc.applies[0] != (scaleApply{150, 200, 60}) {
+		t.Fatalf("first frame published %+v, want Apply(150, 200, 60)", fh.sc.applies)
+	}
+	fh.sc.applies = nil
+	fh.wnd.host.(*fakeHost).w, fh.wnd.host.(*fakeHost).h = 300, 120
+	fh.frame()
+	if len(fh.sc.applies) != 1 || fh.sc.applies[0] != (scaleApply{150, 300, 120}) {
+		t.Errorf("resize published %+v, want one Apply(150, 300, 120)", fh.sc.applies)
+	}
+	fh.sc.applies = nil
+	fh.frame()
+	if len(fh.sc.applies) != 0 {
+		t.Errorf("an unchanged size republished %+v", fh.sc.applies)
+	}
+}

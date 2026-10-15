@@ -461,6 +461,12 @@ func (w *hostWindow) syncSize() bool {
 	}
 	w.lastW, w.lastH = bw, bh
 	w.pool.Resize(w.allocator())
+	// A viewport's destination is the surface's logical size: it must
+	// follow every resize, or the compositor shows the new buffer
+	// squeezed into the first size.
+	if w.sc != nil && w.scaleApplied {
+		_ = w.sc.Apply(w.frac120, bw, bh)
+	}
 	w.dirty = true
 	debug.Log("frame", "configure resize: %dx%d", bw, bh)
 	return true
