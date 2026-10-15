@@ -1,6 +1,7 @@
 package widget
 
 import (
+	"math"
 	"testing"
 
 	"github.com/stubbedev/gelm/internal/style"
@@ -131,7 +132,7 @@ func TestNotebookTabNodes(t *testing.T) {
 	if got := n.header.style(&n.header).Background; got != render.RGB(0x01, 0x02, 0x03) {
 		t.Errorf("header background %v, want the header rule", got)
 	}
-	first, second := &n.header.tabs.tab[0], &n.header.tabs.tab[1]
+	first, second := n.header.tabs.tab[0], n.header.tabs.tab[1]
 	if got := first.style(first).Background; got != render.RGB(0x0d, 0x0e, 0x0f) {
 		t.Errorf("selected tab background %v, want the :checked rule", got)
 	}
@@ -147,5 +148,149 @@ func TestNotebookTabNodes(t *testing.T) {
 	n.SelectTab("two")
 	if second.style(second).Background != render.RGB(0x0d, 0x0e, 0x0f) || first.style(first).Background != 0 {
 		t.Errorf("after the move: first %v second %v", first.style(first).Background, second.style(second).Background)
+	}
+}
+
+// A tab label widget styles as the tab's child, fills the tab's content
+// box, and sizes the tab; the header, tab row, and tabs are CSS boxes
+// the pages sit below. Without a stylesheet min size a tab keeps the
+// 96x26 floor, and nil restores the painted name.
+func TestNotebookTabLabelsAndBoxes(t *testing.T) {
+	loadCSS(t, `notebook header { margin-bottom: 6px; }
+		notebook header tabs { padding: 4px; border: 1px solid #ffffff; }
+		notebook header tabs tab { min-width: 0; min-height: 0; padding: 2px 10px; }
+		notebook header tabs tab:not(:last-child) { margin-right: 8px; }
+		tab label.tl { color: #112233; }
+		tab:checked label.tl { color: #445566; }`)
+	face := testFace(t)
+	n := NewNotebook(face)
+	page := NewSpacer(20, 20)
+	n.AppendTab("one", page)
+	n.AppendTab("two", NewSpacer(20, 20))
+	label := NewLabel(face, 12, "One", 0)
+	label.AddClass("tl")
+	n.SetTabLabel("one", label)
+	n.SetTabLabel("nope", NewLabel(face, 12, "x", 0))
+	if n.TabLabel("one") != Widget(label) || n.TabLabel("two") != nil || n.TabLabel("nope") != nil {
+		t.Errorf("TabLabel: one %v, two %v, nope %v", n.TabLabel("one"), n.TabLabel("two"), n.TabLabel("nope"))
+	}
+	host := NewBox(Column, 0, 0)
+	host.Append(n, true)
+	frame(t, host, 300, 100)
+
+	nat := label.Measure(tabNatural)
+	first, second := n.tabRect(0), n.tabRect(1)
+	want := render.Rect{X: 5, Y: 5, W: nat.W + 20, H: first.H}
+	if first != want {
+		t.Errorf("first tab %v, want %v (the label plus padding, inside the tabs box)", first, want)
+	}
+	text := n.face.Shape("two", tabTextPx)
+	if second.X != first.X+first.W+8 || second.W != int(math.Ceil(text.Advance()))+20 {
+		t.Errorf("second tab %v after %v: want the margin gap and the painted name's width", second, first)
+	}
+	if got := label.Bounds(); got != (render.Rect{X: first.X + 10, Y: first.Y + 2, W: first.W - 20, H: first.H - 4}) {
+		t.Errorf("label at %v, want the content box of %v", got, first)
+	}
+	if h := n.strip.height; h != 6+2+8+first.H || page.Bounds().Y != h {
+		t.Errorf("bar height %d, page at y=%d, want 16 + the row %d", h, page.Bounds().Y, first.H)
+	}
+	if n.strip.tabs.W != 300 {
+		t.Errorf("tabs box %v, want it across the header", n.strip.tabs)
+	}
+	if got := pickc(0, label.style(label), style.PropColor, 0); got != render.RGB(0x44, 0x55, 0x66) {
+		t.Errorf("selected tab's label color %v, want the tab:checked label rule", got)
+	}
+	n.SelectTab("two")
+	if got := pickc(0, label.style(label), style.PropColor, 0); got != render.RGB(0x11, 0x22, 0x33) {
+		t.Errorf("unselected tab's label color %v, want the tab label rule", got)
+	}
+
+	n.SetTabLabel("one", nil)
+	frame(t, host, 300, 100)
+	if n.TabLabel("one") != nil || label.Parent() != nil || n.tabRect(0).W != int(math.Ceil(n.face.Shape("one", tabTextPx).Advance()))+20 {
+		t.Errorf("after nil: label parent %v, tab %v, want the painted name back", label.Parent(), n.tabRect(0))
+	}
+
+	LoadStylesheet("")
+	plain := NewNotebook(face)
+	plain.AppendTab("a", NewSpacer(10, 10))
+	frame(t, plain, 300, 100)
+	if got := plain.tabRect(0); got.W != tabWidth || got.H != tabBarHeight || plain.strip.height != tabBarHeight {
+		t.Errorf("unstyled tab %v, bar %d, want the %dx%d floor", got, plain.strip.height, tabWidth, tabBarHeight)
+	}
+}
+
+// The tab under the pointer is :hover and alone; its label's cursor is
+// the notebook's while it is hovered, and leaving clears both.
+func TestNotebookTabHoverAndCursor(t *testing.T) {
+	loadCSS(t, `notebook header tabs tab:hover { background-color: #102030; }`)
+	face := testFace(t)
+	n := NewNotebook(face)
+	n.AppendTab("one", NewSpacer(20, 20))
+	n.AppendTab("two", NewSpacer(20, 20))
+	label := NewLabel(face, 12, "One", 0)
+	label.SetCursorName("pointer")
+	n.SetTabLabel("one", label)
+	frame(t, n, 300, 100)
+	center := func(r render.Rect) Point { return Point{X: r.X + r.W/2, Y: r.Y + r.H/2} }
+	hovered := func(i int) bool {
+		p := n.tabs[i].part
+		return p.style(p).Background == render.RGB(0x10, 0x20, 0x30)
+	}
+
+	n.HoverMove(center(n.tabRect(0)))
+	if !hovered(0) || hovered(1) || n.CursorName() != "pointer" {
+		t.Errorf("over the first tab: hover %v/%v, cursor %q", hovered(0), hovered(1), n.CursorName())
+	}
+	n.HoverMove(center(n.tabRect(1)))
+	if hovered(0) || !hovered(1) || n.CursorName() != "" {
+		t.Errorf("over the second tab: hover %v/%v, cursor %q", hovered(0), hovered(1), n.CursorName())
+	}
+	n.SetHovered(false)
+	if hovered(0) || hovered(1) {
+		t.Error("leaving the notebook left a tab hovered")
+	}
+}
+
+// The accent underline is the theme's fallback: a selected tab the
+// stylesheet gives a background paints that background to its edge.
+func TestNotebookUnderlineIsAFallback(t *testing.T) {
+	bottom := func() render.Color {
+		n := NewNotebook(testFace(t))
+		n.AppendTab("one", NewSpacer(20, 20))
+		data := paintPixels(t, n, 300, 80)
+		r := n.tabRect(0)
+		return pxAt(data, 300, r.X+r.W/2, r.Y+r.H-1)
+	}
+	if got := bottom(); got != Current().Accent {
+		t.Errorf("unstyled selected tab's bottom edge %v, want the accent underline", got)
+	}
+	loadCSS(t, `notebook header tabs tab:checked { background-color: #0d0e0f; }`)
+	if got := bottom(); got != render.RGB(0x0d, 0x0e, 0x0f) {
+		t.Errorf("styled selected tab's bottom edge %v, want its background", got)
+	}
+}
+
+// Tabs are siblings under the tab row: structural selectors pick the
+// first, the last, and the nth, not every tab as an only child.
+func TestNotebookTabsAreSiblings(t *testing.T) {
+	loadCSS(t, `notebook header tabs tab:first-child { color: #010101; }
+		notebook header tabs tab:last-child { color: #030303; }
+		notebook header tabs tab:nth-child(2) { color: #020202; }`)
+	n := NewNotebook(testFace(t))
+	for _, name := range []string{"a", "b", "c"} {
+		n.AppendTab(name, NewSpacer(10, 10))
+	}
+	frame(t, n, 400, 60)
+	for i, want := range []render.Color{render.RGB(1, 1, 1), render.RGB(2, 2, 2), render.RGB(3, 3, 3)} {
+		p := n.tabs[i].part
+		if got := pickc(0, p.style(p), style.PropColor, 0); got != want {
+			t.Errorf("tab %d color %v, want %v", i, got, want)
+		}
+	}
+	n.MoveTab(2, 0)
+	frame(t, n, 400, 60)
+	if p := n.tabs[0].part; pickc(0, p.style(p), style.PropColor, 0) != render.RGB(1, 1, 1) {
+		t.Error("a tab moved to the front did not restyle as the first child")
 	}
 }

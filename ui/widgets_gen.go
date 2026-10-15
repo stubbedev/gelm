@@ -4064,6 +4064,12 @@ func (b *NotebookBuilder) OnSelect(fn func(name string)) *NotebookBuilder {
 	return b
 }
 
+// TabLabel calls (*widget.Notebook).SetTabLabel.
+func (b *NotebookBuilder) TabLabel(name string, child Node) *NotebookBuilder {
+	b.do(func(s *Scope, w *widget.Notebook) { w.SetTabLabel(name, build(s, child)) })
+	return b
+}
+
 // OnTabClose sets the widget's OnTabClose field.
 func (b *NotebookBuilder) OnTabClose(fn func(name string)) *NotebookBuilder {
 	b.do(func(_ *Scope, w *widget.Notebook) { w.OnTabClose = fn })

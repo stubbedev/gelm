@@ -1232,7 +1232,9 @@ func (s *styleTargeter) StyleContainers(buf []style.Container) []style.Container
 }
 
 // visibleSiblings returns the visible children of n's parent and n's
-// index among them; -1 when n has no parent or is not among them.
+// index among them; -1 when n has no parent or is not among them. A
+// parent with no Children (a style-only part, like a notebook's tab
+// row) lists its style kids, so its parts take structural selectors.
 // The list is memoized on the parent node keyed by the damage
 // generation: a sibling-selector restyle marks the whole sibling set
 // in one pass, so the rebuild happens once per parent per generation,
@@ -1256,6 +1258,8 @@ func visibleSiblings(n *node, w Widget) ([]Widget, int) {
 			out = p.appendChildren(out)
 		case childser:
 			out = append(out, p.Children()...)
+		case interface{ appendStyleKids([]Widget) []Widget }:
+			out = p.appendStyleKids(out)
 		default:
 			pn.sibs, pn.sibsGen = nil, gen
 			return nil, -1
@@ -1423,6 +1427,10 @@ func hoverActiveOf(w Widget) style.State {
 			s |= style.Hover
 		}
 	case *menuRow:
+		if t.hovered {
+			s |= style.Hover
+		}
+	case *notebookTabPart:
 		if t.hovered {
 			s |= style.Hover
 		}
