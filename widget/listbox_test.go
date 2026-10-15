@@ -201,6 +201,10 @@ func TestListBoxFilterSortHeaders(t *testing.T) {
 	if l.Selected() != -1 {
 		t.Fatalf("the hidden selected row dropped: %d", l.Selected())
 	}
+	if l.RowAt(0).ChildVisible() || !l.RowAt(1).ChildVisible() || !l.RowAt(2).ChildVisible() {
+		t.Fatalf("child visibility %v %v %v, want the filtered row alone hidden",
+			l.RowAt(0).ChildVisible(), l.RowAt(1).ChildVisible(), l.RowAt(2).ChildVisible())
+	}
 	layoutListBox(l, 100)
 	if sz := l.Measure(Constraints{Max: Size{W: 100, H: 1000}}); sz.H != 40 {
 		t.Fatalf("a filtered row still measures: %v", sz)

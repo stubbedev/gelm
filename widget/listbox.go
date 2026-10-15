@@ -474,6 +474,13 @@ func (r *ListBoxRow) Index() int {
 	return -1
 }
 
+// ChildVisible reports whether the list shows the row: false while its
+// filter hides it (gtk_widget_get_child_visible), true when detached.
+func (r *ListBoxRow) ChildVisible() bool {
+	i := r.Index()
+	return i < 0 || !r.box.hidden[i]
+}
+
 // SetSelectable toggles whether the row responds to selection
 // gestures.
 func (r *ListBoxRow) SetSelectable(on bool) { r.selectable = on }
