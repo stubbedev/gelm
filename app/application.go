@@ -319,7 +319,9 @@ type WindowConfig struct {
 	Title, AppID string
 	// Width and Height request the initial size in logical pixels
 	// (surface coordinates; the device scale is applied once at the
-	// buffer boundary); zero lets the compositor pick.
+	// buffer boundary). A zero axis defaults to Root's natural size, as
+	// GTK's default size does: what the window takes when the
+	// compositor leaves the size to the client (a zero configure).
 	Width, Height uint32
 	// MinWidth and MinHeight constrain how far the compositor may
 	// resize the window down (set_min_size on the wire); zero axes are
@@ -460,8 +462,9 @@ func (a *Application) openWindow(w *Window, cfg WindowConfig) (*hostWindow, erro
 	if err != nil {
 		return nil, fmt.Errorf("app: create surface: %w", err)
 	}
+	width, height := defaultSize(cfg.Root, cfg.Width, cfg.Height, a.sess.Outputs())
 	win, err := window.New(a.sess.WmBase(), surf, window.Config{
-		Title: cfg.Title, AppID: cfg.AppID, Width: cfg.Width, Height: cfg.Height,
+		Title: cfg.Title, AppID: cfg.AppID, Width: width, Height: height,
 		MinWidth: cfg.MinWidth, MinHeight: cfg.MinHeight,
 		MaxWidth: cfg.MaxWidth, MaxHeight: cfg.MaxHeight,
 	})

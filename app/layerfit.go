@@ -97,3 +97,19 @@ func (l *LayerWindow) refit(root widget.Widget) bool {
 	}
 	return l.ls.SetSize(nw, nh) == nil
 }
+
+// defaultSize resolves a toplevel's initial size: each zero axis takes
+// root's natural extent within the first output (GTK's default size),
+// at least one pixel, so a compositor that leaves the size to the
+// client (sway's first configure is 0x0) still gets a buffer to map.
+func defaultSize(root widget.Widget, width, height uint32, outputs []*wlsession.Output) (uint32, uint32) {
+	if width != 0 && height != 0 || root == nil {
+		return width, height
+	}
+	var out *wlsession.Output
+	if len(outputs) > 0 {
+		out = outputs[0]
+	}
+	widget.SetStyleRoot(root)
+	return fittedSize(root, fitAxes{w: width == 0, h: height == 0}, width, height, [2]int{int(width), int(height)}, out, naturalSize)
+}
