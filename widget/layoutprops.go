@@ -17,6 +17,9 @@ type layoutProps struct {
 	hexpand, vexpand expandSetting
 	halign, valign   Align
 	margin           render.Insets
+	// request is the size request, a floor on each axis; 0 leaves the
+	// axis to the widget.
+	request          Size
 	expandValid      bool
 	expandH, expandV bool
 }
@@ -67,6 +70,21 @@ func (n *node) SetMargin(m render.Insets) {
 		n.InvalidateLayout()
 	}
 }
+
+// SetSizeRequest sets the widget's minimum size, GTK's
+// set_size_request: a container never measures it smaller than w x h
+// (its border box: padding and border inside, margin outside). A zero
+// axis leaves that axis to the widget; negative values are zero.
+func (n *node) SetSizeRequest(w, h int) {
+	req := Size{W: max(w, 0), H: max(h, 0)}
+	if n.layout.request != req {
+		n.layout.request = req
+		n.InvalidateLayout()
+	}
+}
+
+// SizeRequest returns the size request (zero axes unset).
+func (n *node) SizeRequest() Size { return n.layout.request }
 
 // HAlign returns the horizontal placement.
 func (n *node) HAlign() Align { return n.layout.halign }
@@ -149,16 +167,21 @@ func measureWithMargin(w Widget, con Constraints) Size {
 // measureMargin is the widget's own Measure inside its programmatic
 // margin, with no CSS sizing around it.
 func measureMargin(w Widget, con Constraints) Size {
-	m := layoutMarginOf(w)
-	if m.Zero() {
+	var m render.Insets
+	var req Size
+	if l := layoutOf(w); l != nil {
+		m, req = l.margin, l.request
+	}
+	if m.Zero() && req == (Size{}) {
 		return w.Measure(con)
 	}
 	mw, mh := m.Left+m.Right, m.Top+m.Bottom
 	inner := Constraints{
-		Min: Size{W: max(0, con.Min.W-mw), H: max(0, con.Min.H-mh)},
+		Min: Size{W: max(0, con.Min.W-mw, min(req.W, con.Max.W-mw)), H: max(0, con.Min.H-mh, min(req.H, con.Max.H-mh))},
 		Max: Size{W: max(0, con.Max.W-mw), H: max(0, con.Max.H-mh)},
 	}
 	s := w.Measure(inner)
+	s = Size{W: max(s.W, min(req.W, inner.Max.W)), H: max(s.H, min(req.H, inner.Max.H))}
 	return Size{W: min(s.W+mw, con.Max.W), H: min(s.H+mh, con.Max.H)}
 }
 
@@ -188,12 +211,15 @@ func arrangeChild(w Widget, r render.Rect) {
 		r = holdSlot(n, r, h, va)
 	}
 	if l == nil || (l.margin.Zero() && l.halign == AlignFill && l.valign == AlignFill) {
+		// A size request only floors the measure: a fill child takes
+		// its slot, which the container sized from that measure.
 		arrangeAt(w, v, r)
 		return
 	}
 	r = l.margin.Shrink(r)
 	if h != AlignFill || va != AlignFill {
 		nat := w.Measure(Constraints{Max: Size{W: r.W, H: r.H}})
+		nat = Size{W: max(nat.W, min(l.request.W, r.W)), H: max(nat.H, min(l.request.H, r.H))}
 		if h == AlignBaseline {
 			h = AlignStart
 		}
