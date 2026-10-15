@@ -15,12 +15,38 @@ type Shrinker interface {
 	Shrinkable() int
 }
 
-// shrinkableOf is w's Shrinkable, 0 for a widget that cannot shrink.
+// shrinkableOf is w's Shrinkable, 0 for a widget that cannot shrink,
+// never past its floor.
 func shrinkableOf(w Widget) int {
 	if s, ok := w.(Shrinker); ok {
-		return max(0, s.Shrinkable())
+		return floored(w, max(0, s.Shrinkable()), Column)
 	}
 	return 0
+}
+
+// floored caps what w can give up on axis at its floor: a widget is
+// never squeezed below its size request or its CSS min (a definite CSS
+// size included), whatever its own content could shrink to.
+func floored(w Widget, give int, axis Axis) int {
+	n := nodeOf(w)
+	if n == nil || give == 0 {
+		return give
+	}
+	floor, last := n.layout.request.H, n.measureOut.H
+	if axis == Row {
+		floor, last = n.layout.request.W, n.measureOut.W
+	}
+	if v := n.style(w); cssSized(v) {
+		if axis == Row {
+			floor = max(floor, n.cssMin.W)
+		} else {
+			floor = max(floor, n.cssMin.H)
+		}
+	}
+	if floor == 0 {
+		return give
+	}
+	return min(give, max(0, last-floor))
 }
 
 // Shrinkable implements Shrinker: a column gives what its children
@@ -66,7 +92,7 @@ type WidthShrinker interface {
 // narrow.
 func shrinkableWidthOf(w Widget) int {
 	if s, ok := w.(WidthShrinker); ok {
-		return max(0, s.ShrinkableWidth())
+		return floored(w, max(0, s.ShrinkableWidth()), Row)
 	}
 	return 0
 }
