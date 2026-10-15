@@ -80,3 +80,30 @@ func wantNot(img *image.RGBA, x, y int, c render.Color) error {
 	}
 	return nil
 }
+
+// A toplevel opened without a size maps on sway, whose first configure
+// is 0x0: the window answers with its content's natural size instead of
+// waiting forever with nothing to draw.
+func TestHeadlessUnsizedWindowMaps(t *testing.T) {
+	inproc.Require(t)
+	ink := render.Color(0xff2060d0)
+	content := widget.NewDrawingArea(240, 160)
+	content.OnDraw = func(cv *render.Canvas, r render.Rect) { cv.FillRect(r, ink) }
+	inproc.Show(t, func(a *app.Application, _ *app.Output) error {
+		_, err := a.NewWindow(app.WindowConfig{Title: "gelm-unsized", Root: content})
+		return err
+	})
+	c := inproc.Capture(t)
+	inproc.Eventually(t, "the unsized window on screen", func() error {
+		f, err := c.CaptureOutput(c.Outputs()[0], capture.Options{})
+		if err != nil {
+			return err
+		}
+		img, err := f.Image()
+		if err != nil {
+			return err
+		}
+		b := img.Bounds()
+		return inproc.WantColor(img, b.Dx()/2, b.Dy()/2, ink)
+	})
+}
