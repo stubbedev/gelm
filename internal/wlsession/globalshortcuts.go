@@ -12,7 +12,7 @@ import (
 
 // bindGlobalShortcutsManager binds the optional manager global.
 func (s *Session) bindGlobalShortcutsManager(ev wl.RegistryGlobalEvent) {
-	ctx, _ := wl.GetUserData[wl.Context](s.registry)
+	ctx := s.registry.Context()
 	mgr := wlr.NewGlobalShortcutsManagerV1(ctx)
 	if !s.bindOptional(ev, 1, mgr) {
 		return

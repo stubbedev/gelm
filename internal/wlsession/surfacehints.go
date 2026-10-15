@@ -33,7 +33,7 @@ const (
 
 // bindSurfaceHint binds one of the per-surface hint globals.
 func (s *Session) bindSurfaceHint(ev wl.RegistryGlobalEvent) {
-	ctx, _ := wl.GetUserData[wl.Context](s.registry)
+	ctx := s.registry.Context()
 	switch ev.Interface {
 	case "wp_content_type_manager_v1":
 		mgr := wlr.NewWpContentTypeManagerV1(ctx)

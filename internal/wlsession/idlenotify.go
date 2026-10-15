@@ -61,7 +61,7 @@ func (n *IdleNotification) HandleExtIdleNotificationV1Resumed(wlr.ExtIdleNotific
 
 // bindIdleNotifier binds the notifier global.
 func (s *Session) bindIdleNotifier(ev wl.RegistryGlobalEvent) {
-	ctx, _ := wl.GetUserData[wl.Context](s.registry)
+	ctx := s.registry.Context()
 	mgr := wlr.NewExtIdleNotifierV1(ctx)
 	if s.bindOptional(ev, 2, mgr) {
 		s.idleNotifier, s.idleNotifierVersion = mgr, min(ev.Version, 2)

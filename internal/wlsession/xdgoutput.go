@@ -58,7 +58,7 @@ func (s *Session) XdgOutputAvailable() bool { return s.xdgOutputMgr != nil }
 // bindXdgOutputManager binds the optional xdg-output manager global
 // and back-fills the outputs already discovered.
 func (s *Session) bindXdgOutputManager(ev wl.RegistryGlobalEvent) {
-	ctx, _ := wl.GetUserData[wl.Context](s.registry)
+	ctx := s.registry.Context()
 	mgr := wlr.NewZxdgOutputManagerV1(ctx)
 	if !s.bindOptional(ev, maxXdgOutputVersion, mgr) {
 		return

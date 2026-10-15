@@ -54,3 +54,17 @@ neurlang/wayland#42. The copy goes away, with the imports
 rewritten back to github.com/neurlang/wayland, once upstream carries
 both; gelm's compositor-in-the-loop suites on sway and Hyprland are
 the regression check.
+
+### No process-wide user data
+
+Upstream's `wl.SetUserData`/`GetUserData` kept values in one map for
+the whole process, keyed by proxy id, and `Context.Register` stored
+each registry's context there; `wlclient` and gelm's session looked the
+context up through it. Ids are per connection, so with two connections
+in one process (an application and a capture client) both registries
+are id 2 and the second overwrote the first: the first connection then
+bound new globals (a hotplugged output) with ids from the second
+connection's counter, sent on the wrong wire. The compositor killed the
+first connection, and the second waited forever for an id it never
+sent. The map, its setters and the per-type `*SetUserData` stubs are
+gone; a registry's context is its own `Context()`.

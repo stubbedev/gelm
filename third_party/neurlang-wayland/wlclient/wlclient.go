@@ -10,13 +10,6 @@ func DisplayDispatch(d *wl.Display) error {
 	return d.Context().Run()
 }
 
-func PointerSetUserData(p *wl.Pointer, data interface{}) {
-}
-
-func SurfaceSetUserData(p *wl.Surface, data interface{}) {
-	wl.SetUserData(p, &data)
-}
-
 type PointerListener interface {
 	wl.PointerEnterHandler
 	wl.PointerLeaveHandler
@@ -44,19 +37,16 @@ func PointerAddListener(p *wl.Pointer, h PointerListener) {
 }
 
 func PointerDestroy(p *wl.Pointer) {
-	wl.DeleteUserData(p)
 	//p.Destroy()
 	p.Unregister()
 }
 
 func ShmDestroy(p *wl.Shm) {
-	wl.DeleteUserData(p)
 	//p.Destroy()
 	p.Unregister()
 }
 
 func RegistryDestroy(p *wl.Registry) {
-	wl.DeleteUserData(p)
 	//p.Destroy()
 	p.Unregister()
 }
@@ -89,7 +79,6 @@ type SeatListener interface {
 }
 
 func SeatDestroy(p *wl.Seat) {
-	wl.DeleteUserData(p)
 	//p.Destroy()
 	p.Unregister()
 }
@@ -107,9 +96,6 @@ type RegistryListener interface {
 func RegistryAddListener(r *wl.Registry, data RegistryListener) {
 	r.AddGlobalHandler(data)
 	r.AddGlobalRemoveHandler(data)
-}
-
-func KeyboardSetUserData(*wl.Keyboard, interface{}) {
 }
 
 type KeyboardListener interface {
@@ -131,12 +117,8 @@ func KeyboardAddListener(kb *wl.Keyboard, l KeyboardListener) {
 }
 
 func KeyboardDestroy(p *wl.Keyboard) {
-	wl.DeleteUserData(p)
 	//p.Destroy()
 	p.Unregister()
-}
-
-func TouchSetUserData(*wl.Touch, interface{}) {
 }
 
 type TouchListener interface {
@@ -160,7 +142,6 @@ func TouchAddListener(to *wl.Touch, tl TouchListener) {
 }
 
 func TouchDestroy(p *wl.Touch) {
-	wl.DeleteUserData(p)
 	//p.Destroy()
 	p.Unregister()
 }
@@ -193,31 +174,26 @@ func ShmAddListener(p *wl.Shm, data wl.ShmFormatHandler) {
 }
 
 func RegionDestroy(p *wl.Region) {
-	wl.DeleteUserData(p)
 	_ = p.Destroy() // Ignore error during cleanup
 	p.Unregister()
 }
 
 func CallbackDestroy(p *wl.Callback) {
-	wl.DeleteUserData(p)
 	//p.Destroy()
 	p.Unregister()
 }
 
 func SubsurfaceDestroy(p *wl.Subsurface) {
-	wl.DeleteUserData(p)
 	_ = p.Destroy() // Ignore error during cleanup
 	p.Unregister()
 }
 
 func DataDeviceDestroy(p *wl.DataDevice) {
-	wl.DeleteUserData(p)
 	//p.Destroy()
 	p.Unregister()
 }
 
 func DataDeviceManagerDestroy(p *wl.DataDeviceManager) {
-	wl.DeleteUserData(p)
 	//d.Destroy()
 	p.Unregister()
 }
@@ -247,7 +223,6 @@ type DataOfferListener interface {
 }
 
 func DataOfferDestroy(p *wl.DataOffer) {
-	wl.DeleteUserData(p)
 	//d.Destroy()
 	p.Unregister()
 }
@@ -286,7 +261,7 @@ func DataSourceRemoveListener(p *wl.DataSource, h DataSourceListener) {
 }
 
 func RegistryBindCompositorInterface(r *wl.Registry, name uint32, version uint32) *wl.Compositor {
-	ctx, _ := wl.GetUserData[wl.Context](r)
+	ctx := r.Context()
 
 	c := wl.NewCompositor(ctx)
 	_ = r.Bind(name, "wl_compositor", version, c)
@@ -294,14 +269,14 @@ func RegistryBindCompositorInterface(r *wl.Registry, name uint32, version uint32
 }
 
 func RegistryBindShmInterface(r *wl.Registry, name uint32, version uint32) *wl.Shm {
-	ctx, _ := wl.GetUserData[wl.Context](r)
+	ctx := r.Context()
 	s := wl.NewShm(ctx)
 	_ = r.Bind(name, "wl_shm", version, s)
 	return s
 }
 
 func RegistryBindSubcompositorInterface(r *wl.Registry, name uint32, version uint32) *wl.Subcompositor {
-	ctx, _ := wl.GetUserData[wl.Context](r)
+	ctx := r.Context()
 	s := wl.NewSubcompositor(ctx)
 	_ = r.Bind(name, "wl_subcompositor", version, s)
 	return s
@@ -312,28 +287,28 @@ func RegistryBindDataDeviceManagerInterface(
 	name uint32,
 	version uint32,
 ) *wl.DataDeviceManager {
-	ctx, _ := wl.GetUserData[wl.Context](r)
+	ctx := r.Context()
 	d := wl.NewDataDeviceManager(ctx)
 	_ = r.Bind(name, "wl_data_device_manager", version, d)
 	return d
 }
 
 func RegistryBindOutputInterface(r *wl.Registry, name uint32, version uint32) *wl.Output {
-	ctx, _ := wl.GetUserData[wl.Context](r)
+	ctx := r.Context()
 	d := wl.NewOutput(ctx)
 	_ = r.Bind(name, "wl_output", version, d)
 	return d
 }
 
 func RegistryBindSeatInterface(r *wl.Registry, name uint32, version uint32) *wl.Seat {
-	ctx, _ := wl.GetUserData[wl.Context](r)
+	ctx := r.Context()
 	d := wl.NewSeat(ctx)
 	_ = r.Bind(name, "wl_seat", version, d)
 	return d
 }
 
 func RegistryBindWmBaseInterface(r *wl.Registry, name uint32, version uint32) *xdg.WmBase {
-	ctx, _ := wl.GetUserData[wl.Context](r)
+	ctx := r.Context()
 	d := xdg.NewShell(ctx)
 	_ = r.Bind(name, "xdg_wm_base", version, d)
 	return d

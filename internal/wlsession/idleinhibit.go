@@ -75,7 +75,7 @@ func (s *Session) IdleInhibitAvailable() bool { return s.idleInhibitMgr != nil }
 // bindIdleInhibitManager binds the optional idle-inhibit manager
 // global.
 func (s *Session) bindIdleInhibitManager(ev wl.RegistryGlobalEvent) {
-	ctx, _ := wl.GetUserData[wl.Context](s.registry)
+	ctx := s.registry.Context()
 	mgr := wlr.NewZwpInhibitManagerV1(ctx)
 	if !s.bindOptional(ev, maxIdleInhibitVersion, mgr) {
 		return

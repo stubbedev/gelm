@@ -103,7 +103,7 @@ func (s *Session) ShortcutsInhibitAvailable() bool { return s.shortcutsInhibitMg
 // bindShortcutsInhibitManager binds the optional shortcuts-inhibit
 // manager global.
 func (s *Session) bindShortcutsInhibitManager(ev wl.RegistryGlobalEvent) {
-	ctx, _ := wl.GetUserData[wl.Context](s.registry)
+	ctx := s.registry.Context()
 	mgr := wlr.NewZwpShortcutsInhibitManagerV1(ctx)
 	if !s.bindOptional(ev, maxShortcutsInhibitVersion, mgr) {
 		return

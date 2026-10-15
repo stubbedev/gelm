@@ -21,7 +21,7 @@ const maxDialogManagerVersion = 1
 
 // bindDialogManager binds the optional xdg-dialog manager global.
 func (s *Session) bindDialogManager(ev wl.RegistryGlobalEvent) {
-	ctx, _ := wl.GetUserData[wl.Context](s.registry)
+	ctx := s.registry.Context()
 	mgr := wlr.NewWmDialogV1(ctx)
 	if !s.bindOptional(ev, maxDialogManagerVersion, mgr) {
 		return

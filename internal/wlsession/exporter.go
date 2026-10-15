@@ -15,7 +15,7 @@ import (
 const maxExporterVersion = 1
 
 func (s *Session) bindExporter(ev wl.RegistryGlobalEvent) {
-	ctx, _ := wl.GetUserData[wl.Context](s.registry)
+	ctx := s.registry.Context()
 	exp := wlr.NewZxdgExporterV2(ctx)
 	if !s.bindOptional(ev, maxExporterVersion, exp) {
 		return

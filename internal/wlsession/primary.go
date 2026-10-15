@@ -18,7 +18,7 @@ const maxPrimarySelectionVersion = 1
 // bindPrimarySelectionManager binds the optional primary selection
 // manager global.
 func (s *Session) bindPrimarySelectionManager(ev wl.RegistryGlobalEvent) {
-	ctx, _ := wl.GetUserData[wl.Context](s.registry)
+	ctx := s.registry.Context()
 	mgr := wlr.NewZwpPrimarySelectionDeviceManagerV1(ctx)
 	if !s.bindOptional(ev, maxPrimarySelectionVersion, mgr) {
 		return

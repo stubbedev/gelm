@@ -65,7 +65,7 @@ func (s *Session) ActivationAvailable() bool { return s.activation != nil }
 
 // bindActivation binds the optional activation global.
 func (s *Session) bindActivation(ev wl.RegistryGlobalEvent) {
-	ctx, _ := wl.GetUserData[wl.Context](s.registry)
+	ctx := s.registry.Context()
 	mgr := wlr.NewActivationV1(ctx)
 	if !s.bindOptional(ev, maxActivationVersion, mgr) {
 		return

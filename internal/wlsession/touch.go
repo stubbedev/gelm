@@ -190,7 +190,7 @@ const maxPointerGesturesVersion = 3
 
 // bindPointerGestures binds the touchpad gesture manager.
 func (s *Session) bindPointerGestures(ev wl.RegistryGlobalEvent) {
-	ctx, _ := wl.GetUserData[wl.Context](s.registry)
+	ctx := s.registry.Context()
 	mgr := wlr.NewZwpGesturesV1(ctx)
 	if !s.bindOptional(ev, maxPointerGesturesVersion, mgr) {
 		return

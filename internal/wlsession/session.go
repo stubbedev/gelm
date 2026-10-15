@@ -435,21 +435,21 @@ func (s *Session) HandleRegistryGlobal(ev wl.RegistryGlobalEvent) {
 		s.trackOutput(out)
 		s.ensureXdgOutputs()
 	case "zwlr_layer_shell_v1":
-		ctx, _ := wl.GetUserData[wl.Context](s.registry)
+		ctx := s.registry.Context()
 		shell := wlr.NewZwlrLayerShellV1(ctx)
 		// v4: set_layer (v2), on-demand keyboard interactivity (v4).
 		s.layerShellVersion = bindVersion(ev.Version, 4)
 		_ = s.registry.Bind(ev.Name, ev.Interface, s.layerShellVersion, shell)
 		s.layerShell = shell
 	case "wp_viewporter":
-		ctx, _ := wl.GetUserData[wl.Context](s.registry)
+		ctx := s.registry.Context()
 		vp := wlr.NewWpViewporter(ctx)
 		if !s.bindOptional(ev, 1, vp) {
 			return
 		}
 		s.viewporter = vp
 	case "wp_fractional_scale_manager_v1":
-		ctx, _ := wl.GetUserData[wl.Context](s.registry)
+		ctx := s.registry.Context()
 		mgr := wlr.NewWpScaleManagerV1(ctx)
 		if !s.bindOptional(ev, 1, mgr) {
 			return
@@ -465,20 +465,20 @@ func (s *Session) HandleRegistryGlobal(ev wl.RegistryGlobalEvent) {
 		s.ensurePrimarySelectionDevice()
 		s.ensureTabletSeat()
 	case "xdg_wm_base":
-		ctx, _ := wl.GetUserData[wl.Context](s.registry)
+		ctx := s.registry.Context()
 		wmBase := xdg.NewShell(ctx)
 		s.wmBaseVersion = bindVersion(ev.Version, 5)
 		_ = s.registry.Bind(ev.Name, ev.Interface, s.wmBaseVersion, wmBase)
 		xdg.WmBaseAddListener(wmBase, s)
 		s.wmBase = wmBase
 	case "wl_data_device_manager":
-		ctx, _ := wl.GetUserData[wl.Context](s.registry)
+		ctx := s.registry.Context()
 		s.dataDeviceManager = wl.NewDataDeviceManager(ctx)
 		s.dataDeviceVersion = bindVersion(ev.Version, minDataDeviceVersion)
 		_ = s.registry.Bind(ev.Name, ev.Interface, s.dataDeviceVersion, s.dataDeviceManager)
 		s.ensureDataDevice()
 	case "zxdg_decoration_manager_v1":
-		ctx, _ := wl.GetUserData[wl.Context](s.registry)
+		ctx := s.registry.Context()
 		s.decorationManager = deco.NewZxdgDecorationManagerV1(ctx)
 		_ = s.registry.Bind(ev.Name, ev.Interface, bindVersion(ev.Version, 2), s.decorationManager)
 	case "zwp_text_input_manager_v3":
