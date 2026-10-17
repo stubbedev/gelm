@@ -450,6 +450,10 @@ type Scroll struct {
 	// width, so a wrapping label wraps there instead of at infinity.
 	// The bar's gutter is always reserved beside it.
 	VerticalOnly bool
+	// PropagateNaturalWidth (GTK's propagate-natural-width) makes a
+	// VerticalOnly scroll ask for its child's natural width; without
+	// it the scroll asks for the child's minimum, as GTK's does.
+	PropagateNaturalWidth bool
 	// PropagateNaturalHeight (GTK's propagate-natural-height): the
 	// scroll asks for exactly its content's height — giving nothing up
 	// to a short parent — instead of scrolling whatever does not fit.
@@ -706,6 +710,12 @@ func (s *Scroll) measureContent(con Constraints) Size {
 		s.nat = measureChild(s, s.child, Constraints{Max: Size{W: w, H: math.MaxInt}})
 	}
 	want := s.nat
+	if s.VerticalOnly && !s.PropagateNaturalWidth && s.child != nil {
+		// GTK's never-policy scroll without propagate-natural-width
+		// asks for its child's minimum width: a long line wraps or
+		// ellipsizes at the width it is given instead of widening it.
+		want.W = minContentOf(s.child, Row, s.nat)
+	}
 	stable, both := s.gutterStable()
 	if stable {
 		// scrollbar-gutter: stable reserves the bar's column up front,

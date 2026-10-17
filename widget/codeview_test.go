@@ -212,6 +212,7 @@ func TestTextAreaKeepsTheCaretInItsScroll(t *testing.T) {
 	ta := newTextArea(t, "1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n12")
 	scroll := NewScroll(ta)
 	scroll.VerticalOnly = true
+	scroll.PropagateNaturalWidth = true // as wide as its text in the outer scroll
 	outer := NewScroll(scroll)
 	scroll.SetMaxContentHeight(60)
 	layoutRoot(outer, 200, 40)

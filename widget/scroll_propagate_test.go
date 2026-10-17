@@ -42,3 +42,54 @@ func TestScrollPropagateNaturalHeight(t *testing.T) {
 		t.Errorf("propagating reserve %d, want the whole measured 350 (the panel grows past it via the natural, capped by its own ceiling)", grow)
 	}
 }
+
+// propagate-natural-width: a VerticalOnly scroll asks for its child's
+// minimum width, as GTK's never-policy scroll does, so a long
+// ellipsizing line does not widen it; propagating asks for the full
+// natural width.
+func TestScrollPropagateNaturalWidth(t *testing.T) {
+	build := func(propagate bool) *Scroll {
+		label := NewLabel(entryFace(t), 12, "a long line that would widen any panel it sits in", 0)
+		label.SetEllipsize(EllipsizeEnd)
+		sc := NewScroll(label)
+		sc.VerticalOnly = true
+		sc.PropagateNaturalWidth = propagate
+		return sc
+	}
+	con := Constraints{Max: Size{W: 2000, H: 300}}
+	natural := NewLabel(entryFace(t), 12, "a long line that would widen any panel it sits in", 0).Measure(con).W
+	if w := build(false).Measure(con).W; w >= natural/2 {
+		t.Errorf("never-policy scroll asks %dpx for a %dpx line, want its minimum", w, natural)
+	}
+	if w := build(true).Measure(con).W; w < natural {
+		t.Errorf("propagating scroll asks %dpx, want the %dpx natural width", w, natural)
+	}
+}
+
+// A wrapping rich label gives up width down to its widest token, so a
+// column of them inside a never-policy scroll asks for little more
+// than that token; a single-line one keeps its width.
+func TestWrappingRichLabelMinContent(t *testing.T) {
+	text := "words that wrap onto several lines when the panel is narrow"
+	con := Constraints{Max: Size{W: 2000, H: 300}}
+	wrapping := NewRichLabel(entryFace(t), 12, text, 0)
+	wrapping.SetWrap(true)
+	full := wrapping.Measure(con).W
+	if got, want := wrapping.ShrinkableWidth(), full-wrapping.MinSize().W; got != want || got <= 0 {
+		t.Errorf("wrapping shrinkable %d, want %d down to the widest token", got, want)
+	}
+	single := NewRichLabel(entryFace(t), 12, text, 0)
+	single.Measure(con)
+	if single.ShrinkableWidth() != 0 {
+		t.Error("a single-line rich label offered to shrink")
+	}
+	col := NewBox(Column, 0, 0)
+	body := NewRichLabel(entryFace(t), 12, text, 0)
+	body.SetWrap(true)
+	col.Append(body, false)
+	sc := NewScroll(col)
+	sc.VerticalOnly = true
+	if w := sc.Measure(con).W; w >= full/2 {
+		t.Errorf("never-policy scroll asks %dpx for a %dpx wrapping line, want about its widest token", w, full)
+	}
+}

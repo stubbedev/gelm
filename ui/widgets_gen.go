@@ -4691,6 +4691,12 @@ func (b *ScrollBuilder) VerticalOnly(value bool) *ScrollBuilder {
 	return b
 }
 
+// PropagateNaturalWidth sets the widget's PropagateNaturalWidth field.
+func (b *ScrollBuilder) PropagateNaturalWidth(value bool) *ScrollBuilder {
+	b.do(func(_ *Scope, w *widget.Scroll) { w.PropagateNaturalWidth = value })
+	return b
+}
+
 // PropagateNaturalHeight sets the widget's PropagateNaturalHeight field.
 func (b *ScrollBuilder) PropagateNaturalHeight(value bool) *ScrollBuilder {
 	b.do(func(_ *Scope, w *widget.Scroll) { w.PropagateNaturalHeight = value })
