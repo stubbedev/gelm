@@ -617,6 +617,17 @@ func (l *RichLabel) widthCap() int {
 	return int(math.Ceil(avg * float64(l.maxChars)))
 }
 
+// ShrinkableWidth implements WidthShrinker: a wrapping label gives up
+// its measured width down to its widest token (MinSize), wrapping onto
+// more lines, as a GTK wrapping label's minimum is; a single-line label
+// keeps its width.
+func (l *RichLabel) ShrinkableWidth() int {
+	if !l.wrap || l.text == "" || !l.measureSeen {
+		return 0
+	}
+	return max(0, l.measureOut.W-l.MinSize().W)
+}
+
 // MinSize is a wrapping label's floor: the widest unbreakable token —
 // wrapping narrower than that clips tokens, the one thing wrapping
 // promised not to do — and one line height.
