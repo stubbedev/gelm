@@ -48,12 +48,15 @@ instruction differs from upstream.
 
 ## Upstream status
 
-The fd fix is merged upstream (neurlang/wayland#41, e9df493) but not
-yet in a tagged release. `NewServerBuffer` is proposed upstream as
-neurlang/wayland#42. The copy goes away, with the imports
-rewritten back to github.com/neurlang/wayland, once upstream carries
-both; gelm's compositor-in-the-loop suites on sway and Hyprland are
-the regression check.
+The fd fix (neurlang/wayland#41, e9df493) and `NewServerBuffer`
+(neurlang/wayland#42, 2f1cc8d) are merged upstream but not yet in a
+tagged release; v0.4.4 predates both. The go vet assembly names and
+the removal of the process-wide user data are not upstream: master
+still carries `wl/userdata.go` and the `p+0(FP)` frame slots. The copy
+goes away, with the imports rewritten back to
+github.com/neurlang/wayland, once a tagged release carries all four;
+gelm's compositor-in-the-loop suites on sway and Hyprland are the
+regression check.
 
 ### No process-wide user data
 
