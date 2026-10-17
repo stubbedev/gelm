@@ -486,6 +486,13 @@ func (b *Box) Spacing() int { return b.spacing }
 // orders them for paint and hit testing by their stacking keys. r is
 // the margin box; Bounds records the border box.
 func (b *Box) Arrange(r render.Rect) {
+	// The children lay out from the last measure; one taken under other
+	// constraints (a popover's sizing probe, a parent's earlier pass)
+	// would place them for a size the box no longer has. Measure at the
+	// arranged size first, as GTK sizes children for their allocation.
+	if size := (Size{W: r.W, H: r.H}); !b.measureSeen || b.measureOut != size {
+		b.Measure(Constraints{Max: size})
+	}
 	v := b.style(b)
 	border, inner := boxRects(b.box(v), r)
 	b.ArrangeRoot(border)

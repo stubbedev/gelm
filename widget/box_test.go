@@ -279,3 +279,18 @@ func TestBoxTransform(t *testing.T) {
 		t.Errorf("hovered swatch inks %dpx, want twice the unhovered %d (bilinear edges within tolerance)", width, base)
 	}
 }
+
+// A box arranged at a size its last measure did not produce lays out
+// for the arranged size: a header measured under a zero-height probe
+// still gets its height when the box is arranged tall.
+func TestBoxArrangesForItsAllocationNotAStaleMeasure(t *testing.T) {
+	header := NewSpacer(50, 20)
+	col := NewBox(Column, 0, 0)
+	col.Append(header, false)
+	col.Append(NewSpacer(50, 100), true)
+	col.Measure(Constraints{Max: Size{W: 200, H: 0}})
+	col.Arrange(render.Rect{W: 200, H: 300})
+	if b := header.Bounds(); b.H != 20 || b.W != 200 {
+		t.Errorf("header %v, want 200x20 after the zero-height probe", b)
+	}
+}

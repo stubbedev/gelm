@@ -171,6 +171,9 @@ func TestEntriesShrinkInATightRow(t *testing.T) {
 	row.Append(b, true)
 	nat := a.Measure(Constraints{Max: Size{W: 1000, H: 100}}).W
 	row.Measure(Constraints{Max: Size{W: 1000, H: 100}})
+	if a.ShrinkableWidth() != nat-(entryPad.Left+entryPad.Right) {
+		t.Errorf("shrinkable %d, want the text width %d", a.ShrinkableWidth(), nat-(entryPad.Left+entryPad.Right))
+	}
 	row.Arrange(render.Rect{W: 2 * nat, H: 40})
 	if a.bounds.W != nat || b.bounds.W != nat {
 		t.Errorf("with room: widths %d, %d, want %d each", a.bounds.W, b.bounds.W, nat)
@@ -178,9 +181,6 @@ func TestEntriesShrinkInATightRow(t *testing.T) {
 	row.Arrange(render.Rect{W: 200, H: 40})
 	if a.bounds.W != 100 || b.bounds.W != 100 || b.bounds.X != 100 {
 		t.Errorf("tight row: %v %v, want two 100px fields side by side", a.bounds, b.bounds)
-	}
-	if a.ShrinkableWidth() != nat-(entryPad.Left+entryPad.Right) {
-		t.Errorf("shrinkable %d, want the text width %d", a.ShrinkableWidth(), nat-(entryPad.Left+entryPad.Right))
 	}
 	b.AddClass("floor")
 	row.Measure(Constraints{Max: Size{W: 1000, H: 100}})
