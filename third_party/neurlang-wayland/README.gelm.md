@@ -50,9 +50,11 @@ instruction differs from upstream.
 
 The fd fix (neurlang/wayland#41, e9df493) and `NewServerBuffer`
 (neurlang/wayland#42, 2f1cc8d) are merged upstream but not yet in a
-tagged release; v0.4.4 predates both. The go vet assembly names and
-the removal of the process-wide user data are not upstream: master
-still carries `wl/userdata.go` and the `p+0(FP)` frame slots. The copy
+tagged release; v0.4.4 predates both. The go vet assembly names are
+proposed upstream as neurlang/wayland#43. For the user data, upstream
+keeps its API and keys the map by (Context, id) instead
+(neurlang/wayland#44), which fixes the same collision; gelm needs
+neither form, since it reads a registry's `Context()`. The copy
 goes away, with the imports rewritten back to
 github.com/neurlang/wayland, once a tagged release carries all four;
 gelm's compositor-in-the-loop suites on sway and Hyprland are the
