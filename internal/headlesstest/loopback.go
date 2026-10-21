@@ -7,28 +7,34 @@ import (
 	"testing"
 )
 
-// LoopbackDisplay binds a real unix socket as a wayland display the
-// test process owns: the far end for wire-level and dead-peer tests,
-// no compositor involved. The socket lives in a fresh runtime dir
-// created at the temp root instead of inside t.TempDir, because the
-// kernel caps a socket path at 107 bytes and CI's nested temp dirs
-// push a t.TempDir path past that - bind then fails with EINVAL
-// before the test body runs. The process env is pointed at the
-// display, so wl.Connect("") reaches the listener. The caller closes
-// the listener; the dir goes away at cleanup.
-func LoopbackDisplay(t *testing.T, display string) (*net.UnixListener, string) {
+// RuntimeDir creates a private XDG_RUNTIME_DIR at the temp root and
+// points the process env at it. It sits outside t.TempDir because the
+// kernel caps a socket path at 107 bytes and CI's nested temp dirs push
+// a t.TempDir path past that, so bind fails with EINVAL. The dir goes
+// away at cleanup.
+func RuntimeDir(t *testing.T) string {
 	t.Helper()
-	dir, err := os.MkdirTemp("", "gelm-wl-")
+	dir, err := os.MkdirTemp("", "gelm-rt-")
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = os.RemoveAll(dir) })
-	sock := filepath.Join(dir, display)
+	t.Setenv("XDG_RUNTIME_DIR", dir)
+	return dir
+}
+
+// LoopbackDisplay binds a real unix socket as a wayland display the
+// test process owns: the far end for wire-level and dead-peer tests,
+// no compositor involved. The socket lives in a fresh RuntimeDir and
+// the process env is pointed at the display, so wl.Connect("")
+// reaches the listener. The caller closes the listener.
+func LoopbackDisplay(t *testing.T, display string) (*net.UnixListener, string) {
+	t.Helper()
+	sock := filepath.Join(RuntimeDir(t), display)
 	ln, err := net.ListenUnix("unix", &net.UnixAddr{Name: sock, Net: "unix"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("XDG_RUNTIME_DIR", dir)
 	t.Setenv("WAYLAND_DISPLAY", display)
 	return ln, sock
 }
