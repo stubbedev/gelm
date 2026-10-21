@@ -111,7 +111,7 @@ pkgs.testers.nixosTest {
       # mesa's set includes the software (swrast/llvmpipe) drivers the
       # virtio node renders with.
       hardware.graphics.enable = true;
-      hardware.graphics.extraPackages = [ pkgs.mesa.drivers ];
+      hardware.graphics.extraPackages = [ pkgs.mesa ];
 
       users.users.${gelmUser} = {
         isNormalUser = true;

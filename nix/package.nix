@@ -1,5 +1,5 @@
 { self, ... }: {
-  perSystem = { buildGoModule, lib, ... }:
+  perSystem = { buildGoModule, lib, pkgs, ... }:
     let
       # Shared builder for every gelm derivation: pure Go (CGO off),
       # modules fetched through buildGoModule's standard flow with
@@ -45,7 +45,9 @@
       };
     in
     {
-      packages = {
+      # A Wayland toolkit: the builds exist on Linux only, while the dev
+      # shell stays available on every system.
+      packages = lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
         inherit gelm;
 
         gelm-bar = mkGelm {

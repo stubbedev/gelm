@@ -19,13 +19,13 @@
           # Development tools
           pkgs.golangci-lint # `just lint`, and `just fmt` through its gofumpt + gci formatters; config in .golangci.yml
           pkgs.just # task runner
-
-          # Headless test compositor: sway on WLR_BACKENDS=headless gives
-          # input integration tests a private, deterministic Wayland session
-          # (layer shell + virtual pointer protocol included) without
-          # touching the developer's real desktop.
-          pkgs.sway
-
+        ]
+        # Headless test compositor: sway on WLR_BACKENDS=headless gives
+        # input integration tests a private, deterministic Wayland session
+        # (layer shell + virtual pointer protocol included) without
+        # touching the developer's real desktop. Linux only.
+        ++ lib.optionals pkgs.stdenv.hostPlatform.isLinux [ pkgs.sway ]
+        ++ [
           # `just atspi`'s bus-level tests launch a private dbus-daemon as
           # the accessibility bus and skip when it is missing; shipping it
           # keeps that gate honest wherever the dev shell runs.
