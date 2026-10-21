@@ -18,12 +18,11 @@
   pkgs,
   lib,
   src,
+  go,
   goModules,
 }:
 
 let
-  go = pkgs.go_1_27;
-
   # Same pin set the sway recipe uses (internal/headlesstest guards
   # them): the showcase, the states client and the multilist client
   # float at fixed sizes and positions so client-traced widget
