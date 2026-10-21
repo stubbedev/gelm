@@ -55,7 +55,7 @@ func (swayCompositor) Restart(dir string) error {
 	if bin, err := exec.LookPath("sway"); err == nil {
 		cmd = exec.Command(bin, "-c", cfg) //nolint:gosec // sway from PATH on the recipe's config
 	} else {
-		cmd = exec.Command("devenv", "shell", "--", "sh", "-c", "exec sway -c '"+cfg+"'") //nolint:gosec // the recipe's own boot line
+		cmd = exec.Command("nix", "develop", "-c", "sway", "-c", cfg) //nolint:gosec // the recipe's own boot line
 	}
 	cmd.Env = privateEnv("XDG_RUNTIME_DIR="+dir, "WLR_BACKENDS=headless", "WLR_LIBINPUT_NO_DEVICES=1", "WLR_RENDERER=pixman")
 	log, err := os.OpenFile(filepath.Join(dir, "sway.log"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600) //nolint:gosec // the recipe's private runtime dir

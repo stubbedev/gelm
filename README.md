@@ -120,7 +120,7 @@ path for apps that want the widget tree without components
 ## Development
 
 ```sh
-devenv shell       # pinned Go, gopls, golangci-lint, just, sway; CGO_ENABLED=0
+nix develop        # pinned Go, gopls, golangci-lint, just, sway; CGO_ENABLED=0
 just demo          # the gelm-hello showcase
 ```
 

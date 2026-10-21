@@ -44,9 +44,9 @@ atspi-verify:
 # the suite against it with GELM_HEADLESS=1 - the tests attach to the
 # running compositor, launch the showcase, and drive a synthetic seat
 # through pointer and keyboard while asserting on the client's trace
-# log. The env is always torn down, pass or fail. Runs under
-# devenv shell so sway is on PATH; needs no display and never touches
-# the desktop session.
+# log. The env is always torn down, pass or fail. Runs inside the dev
+# shell so sway is on PATH; needs no display and never touches the
+# desktop session.
 headless:
     #!/bin/sh
     dir="{{headless_test_dir}}"
@@ -189,7 +189,7 @@ test-env dir=test_dir:
         'for_window [app_id="dev.stubbe.gelm.multilist"] floating enable, move position 0 0, resize set 300 300' \
         'for_window [title="modal dialog"] floating enable, move position 340 0' \
         > "$dir/sway.cfg"
-    # The pid file must hold sway itself, not the devenv shell wrapper:
+    # The pid file must hold sway itself, not the dev shell wrapper:
     # a wrapper that runs the command through a shell without exec'ing
     # can die with the kill test's SIGKILL while sway lives on holding
     # the display socket - the client never sees an EOF and parks
@@ -210,12 +210,12 @@ test-env dir=test_dir:
     if [ -z "$bus" ]; then
         echo "private session bus failed to start"; exit 1
     fi
-    # Inside the dev shell (CI runs `devenv shell -- just headless`)
-    # sway is already on PATH: a nested devenv shell there fails to
-    # start it, so the dev shell is only the fallback for a host shell.
+    # Inside the dev shell (CI runs `nix develop -c just headless`)
+    # sway is already on PATH, so the dev shell is only the fallback
+    # for a host shell.
     boot="exec sway -c '$dir/sway.cfg'"
     if ! command -v sway >/dev/null 2>&1; then
-        boot="exec devenv shell -- sway -c '$dir/sway.cfg'"
+        boot="exec nix develop -c sway -c '$dir/sway.cfg'"
     fi
     DBUS_SESSION_BUS_ADDRESS="$bus" XDG_RUNTIME_DIR="$dir" WLR_BACKENDS=headless WLR_LIBINPUT_NO_DEVICES=1 \
         WLR_RENDERER=pixman sh -c "echo \$\$ > '$dir/sway.pid'; $boot" \

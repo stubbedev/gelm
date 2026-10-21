@@ -4,23 +4,30 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     flake-utils.url = "github:numtide/flake-utils";
-    devenv.url = "github:cachix/devenv";
   };
 
-  outputs = { self, nixpkgs, flake-utils, devenv, ... } @ inputs:
+  outputs = { self, nixpkgs, flake-utils }:
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
         inherit (pkgs) lib;
 
-        # One Go toolchain for every package build. go.mod declares
-        # `go 1.27.1` and buildGoModule compiles with GOTOOLCHAIN=local,
-        # so the version is load-bearing: nixpkgs' default `go` (1.26)
-        # cannot compile this module, so the pin is go_1_27, shared with
-        # devenv.nix's dev-shell pin - no toolchain is ever downloaded
-        # at build or dev time.
+        # One Go toolchain for every package build and the dev shell.
+        # go.mod declares `go 1.27.1` and buildGoModule compiles with
+        # GOTOOLCHAIN=local, so the version is load-bearing: nixpkgs'
+        # default `go` (1.26) cannot compile this module, so the pin is
+        # go_1_27 - no toolchain is ever downloaded at build or dev time.
         go = pkgs.go_1_27;
         buildGoModule = pkgs.buildGoModule.override { inherit go; };
+
+        # Rebuild a nixpkgs Go tool against the pinned toolchain: every
+        # buildGo*Module argument its override takes (gopls asks for
+        # buildGoLatestModule, the rest for buildGoModule) gets ours, so
+        # gopls, delve and the editor tools understand go 1.27 sources.
+        withPinnedGo = pkg:
+          pkg.override (lib.mapAttrs (_: _: buildGoModule)
+            (lib.filterAttrs (name: _: lib.match "buildGo.*Module" name != null)
+              (lib.functionArgs pkg.override)));
 
         # Shared builder for every gelm derivation: pure Go (CGO off),
         # modules fetched through buildGoModule's standard flow with
@@ -84,15 +91,58 @@
           default = gelm;
         };
 
-        # The whole dev environment lives in devenv.nix - one
-        # definition for the devenv CLI and this wrapper alike, so
-        # CI's `devenv shell -- just ...` and a flake user's
-        # `nix develop --no-pure-eval` evaluate the same toolchains and
-        # gates. The flag lets devenv read the working directory as the
-        # project root, which pure flake evaluation cannot see.
-        devShells.default = devenv.lib.mkShell {
-          inherit inputs pkgs;
-          modules = [ ./devenv.nix ];
+        devShells.default = pkgs.mkShellNoCC {
+          packages = [
+            go
+            pkgs.git
+
+            # Development tools
+            pkgs.golangci-lint # `just lint`, and `just fmt` through its gofumpt + gci formatters; config in .golangci.yml
+            pkgs.just # task runner
+
+            # Headless test compositor: sway on WLR_BACKENDS=headless gives
+            # input integration tests a private, deterministic Wayland session
+            # (layer shell + virtual pointer protocol included) without
+            # touching the developer's real desktop.
+            pkgs.sway
+
+            # `just atspi`'s bus-level tests launch a private dbus-daemon as
+            # the accessibility bus and skip when it is missing; shipping it
+            # keeps that gate honest wherever the dev shell runs.
+            pkgs.dbus
+          ]
+          # Editor tooling (gopls, delve, and the tools vscode-go and
+          # vim-go install), built against the pinned Go: vscode-go
+          # expects every tool compiled with the Go it drives.
+          ++ map withPinnedGo [
+            pkgs.gopls
+            pkgs.delve
+            pkgs.gotools
+            pkgs.gomodifytags
+            pkgs.impl
+            pkgs.go-tools
+            pkgs.gotests
+            pkgs.iferr
+          ];
+
+          # gelm is pure Go by design; keep accidental cgo out. The
+          # package builds above set the same thing.
+          CGO_ENABLED = "0";
+
+          # nixpkgs' go defaults to GOTOOLCHAIN=auto, which would fetch
+          # whatever toolchain a go.mod line asks for; the shell holds
+          # to the pinned one, as the package builds do.
+          GOTOOLCHAIN = "local";
+
+          # `just atspi-verify` runs the bridge against real at-spi2-core: its
+          # bus launcher and registry daemon live in libexec, off PATH.
+          ATSPI_LIBEXEC = "${pkgs.at-spi2-core}/libexec";
+
+          # `just headless` points the suite's clients at a known xcursor theme:
+          # the client-side cursor path (GELM_NO_CURSOR_SHAPE) needs one, and a
+          # CI runner has none. Only the recipe exports it - a developer's own
+          # cursor setup inside the shell is untouched.
+          GELM_TEST_XCURSOR_PATH = "${pkgs.vanilla-dmz}/share/icons";
         };
 
         checks = {
