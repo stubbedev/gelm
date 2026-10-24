@@ -175,9 +175,9 @@ type node struct {
 	styleRoot bool
 	// accName is the accessible name SetAccessibleName set.
 	accName string
-	// popupHost opens the popups of the tree under this node
-	// (SetPopupHost): set on a surface's root.
-	popupHost PopupHost
+	// surfaceHost opens the popups of the tree under this node
+	// (SetSurfaceHost): set on a surface's root.
+	surfaceHost SurfaceHost
 	// styleAnchor continues a parentless tree's style chain at another
 	// widget (SetStyleAnchor); anchored lists the trees anchored here,
 	// which inherit from this node like its children.

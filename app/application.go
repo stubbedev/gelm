@@ -622,7 +622,6 @@ func (a *Application) newWindow(host Host, scale int, root widget.Widget, hooks 
 	widget.SetStyleRoot(root)
 	ov := inspect.NewOverlay(root)
 	ov.SetOn(a.inspectOn)
-	widget.SetPopupHost(ov, popupHost{a: a, host: host})
 	w := newHostWindow(a.sess, host, scale, ov, hooks, a.dnd, a.primary, animKind, hostCloser(host))
 	w.styleRoot = root
 	w.keyChain = a.combineOnKey(hooks.onKey)
@@ -631,6 +630,7 @@ func (a *Application) newWindow(host Host, scale int, root widget.Widget, hooks 
 		w.input.dismissPopover = func() bool { return a.dismissAutohide(host) }
 	}
 	ov.SetRouter(w.router)
+	widget.SetSurfaceHost(ov, surfaceHost{a: a, host: host, router: w.router})
 	w.inspector = ov
 	a.windows = append(a.windows, w)
 	// Wake the parked loop so a new window paints promptly.

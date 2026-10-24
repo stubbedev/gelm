@@ -8,17 +8,21 @@ import (
 	"github.com/stubbedev/lys-ui/widget"
 )
 
-// popupHost opens the popups a surface's widgets ask for
-// (widget.OpenMenu): menu popovers over host, nested under parent when
-// the surface is a popover.
-type popupHost struct {
+// surfaceHost serves a surface's widgets (widget.SurfaceHost): menu
+// popovers over host, nested under parent when the surface is a
+// popover, and focus moves through the surface's router.
+type surfaceHost struct {
 	a      *Application
 	host   Host
 	parent *Popover
+	router *widget.Router
 }
 
-// OpenMenu implements widget.PopupHost.
-func (p popupHost) OpenMenu(anchor widget.Boundser, face render.Font, sizePx float64, items []widget.MenuItem) {
+// Focus implements widget.SurfaceHost.
+func (p surfaceHost) Focus(w widget.Widget) { p.router.SetFocus(w) }
+
+// OpenMenu implements widget.SurfaceHost.
+func (p surfaceHost) OpenMenu(anchor widget.Boundser, face render.Font, sizePx float64, items []widget.MenuItem) {
 	cfg := MenuPopoverConfig{Anchor: anchor, Face: face, SizePx: sizePx, Items: items, Parent: p.parent}
 	if _, err := p.a.OpenMenuPopover(p.host, cfg); err != nil {
 		p.a.reportPopup(fmt.Errorf("app: open a widget's menu: %w", err))

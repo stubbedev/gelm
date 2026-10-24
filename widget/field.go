@@ -47,6 +47,9 @@ type Field struct {
 	orient  FieldOrientation
 	wide    bool
 	bps     breakpoints
+	// built and shownHorizontal record the structure layout last
+	// built.
+	built, shownHorizontal bool
 	// named reports that the field set the control's accessible name,
 	// so a relabel keeps it in step.
 	named bool
@@ -146,24 +149,20 @@ func (f *Field) horizontal() bool {
 	return f.orient == FieldHorizontal || f.orient == FieldResponsive && f.wide
 }
 
-// layout arranges the parts for the orientation, dropping the empty
-// description and error.
+// layout arranges the parts for the orientation, showing the
+// description and error only while they have text. The control is
+// moved only when the orientation changes, so a field gaining an
+// error keeps a focused control focused.
 func (f *Field) layout() {
-	f.box.Clear()
-	f.content.Clear()
+	if h := f.horizontal(); !f.built || h != f.shownHorizontal {
+		f.restructure(h)
+	}
 	text := f.box
-	if f.horizontal() {
-		f.box.SetAxis(Row)
-		f.box.Append(f.content, true)
-		f.box.AppendAligned(f.control, false, AlignCenter)
+	if f.shownHorizontal {
 		text = f.content
-	} else {
-		f.box.SetAxis(Column)
 	}
-	text.Append(f.title, false)
-	if !f.horizontal() {
-		f.box.Append(f.control, false)
-	}
+	text.Remove(f.desc)
+	text.Remove(f.err)
 	if f.desc.Text() != "" {
 		text.Append(f.desc, false)
 	}
@@ -171,6 +170,24 @@ func (f *Field) layout() {
 		text.Append(f.err, false)
 	}
 	f.InvalidateLayout()
+}
+
+// restructure lays the label and the control out vertically or side
+// by side.
+func (f *Field) restructure(horizontal bool) {
+	f.built, f.shownHorizontal = true, horizontal
+	f.box.Clear()
+	f.content.Clear()
+	if horizontal {
+		f.box.SetAxis(Row)
+		f.content.Append(f.title, false)
+		f.box.Append(f.content, true)
+		f.box.AppendAligned(f.control, false, AlignCenter)
+		return
+	}
+	f.box.SetAxis(Column)
+	f.box.Append(f.title, false)
+	f.box.Append(f.control, false)
 }
 
 // Arrange evaluates the responsive breakpoint against the width, then

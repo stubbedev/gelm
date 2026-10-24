@@ -8,6 +8,7 @@ import (
 	"errors"
 	"log"
 	"os"
+	"strings"
 
 	"github.com/unxed/xkb-go"
 
@@ -66,10 +67,46 @@ type galleryMsg interface{ galleryMsg() }
 
 type togglePalette struct{}
 
+type submitted struct{ name string }
+
 func (togglePalette) galleryMsg() {}
+func (submitted) galleryMsg()     {}
 
 type gallery struct {
-	env ui.Env
+	env    ui.Env
+	status string
+}
+
+// form is the Field and Form section: two required entries and a
+// switch, validated on blur and on submit.
+func (g *gallery) form(cx *component.Context[galleryMsg, struct{}]) ui.Node {
+	var name, email *widget.Entry
+	var form *widget.Form
+	required := func(e **widget.Entry, what string) func() string {
+		return func() string {
+			if strings.TrimSpace((*e).Text()) == "" {
+				return what + " is required."
+			}
+			return ""
+		}
+	}
+	return ui.Column(
+		ui.Form().Ref(&form).
+			Append(ui.Label("Profile").Classes(css.H4)).
+			Add(ui.Field("Name", ui.Entry().Ref(&name)).Description("Your public display name."), required(&name, "Your name")).
+			Add(ui.Field("Email", ui.Entry().Ref(&email)), func() string {
+				if !strings.Contains(email.Text(), "@") {
+					return "Enter a valid email address."
+				}
+				return ""
+			}).
+			Add(ui.Field("Newsletter", ui.Switch(true)).Description("Monthly product updates.").Orientation(widget.FieldHorizontal), nil).
+			OnSubmit(func() { cx.Input(submitted{name: name.Text()}) }),
+		ui.Row(
+			ui.Button(ui.Label("Submit"), 0, 0).Classes(css.SuggestedAction).OnClick(func() { form.Submit() }),
+			ui.Label("").Classes(css.Muted).WatchText(func() string { return g.status }),
+		).Spacing(16),
+	).Spacing(24)
 }
 
 func (g *gallery) Init(cx *component.Context[galleryMsg, struct{}]) widget.Widget {
@@ -105,10 +142,7 @@ func (g *gallery) Init(cx *component.Context[galleryMsg, struct{}]) widget.Widge
 		section("Empty", ui.StatusPage("", "No projects yet", "You haven't created any projects yet. Get started by creating your first project.").
 			Icon(ui.Symbol(widget.SymbolMaximize, 24)).
 			Child(ui.Button(ui.Label("Create project"), 0, 0).Classes(css.SuggestedAction))),
-		section("Field", ui.FieldSet("Profile").Description("This is how others see you.").
-			Add(ui.Field("Name", ui.Entry()).Description("Your public display name.")).
-			Add(ui.Field("Email", ui.Entry()).Error("Enter a valid email address.")).
-			Add(ui.Field("Newsletter", ui.Switch(true)).Description("Monthly product updates.").Orientation(widget.FieldHorizontal))),
+		section("Field and Form", g.form(cx)),
 		section("Kbd", ui.Row(ui.KbdGroup("Ctrl", "Shift", "P"), ui.Label("opens the command palette")).Spacing(12)),
 		section("Pagination", ui.Pagination(10, 5)),
 		section("Skeleton", ui.Row(
@@ -128,7 +162,9 @@ func (g *gallery) Init(cx *component.Context[galleryMsg, struct{}]) widget.Widge
 }
 
 func (g *gallery) Update(_ *component.Context[galleryMsg, struct{}], msg galleryMsg) {
-	switch msg.(type) {
+	switch m := msg.(type) {
+	case submitted:
+		g.status = "Saved " + m.name + "."
 	case togglePalette:
 		if widget.Current().IsDark() {
 			widget.SetTheme(widget.LightTheme())

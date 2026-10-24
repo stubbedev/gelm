@@ -1,6 +1,7 @@
 package widget
 
 import (
+	"slices"
 	"time"
 
 	"github.com/unxed/xkb-go"
@@ -595,6 +596,28 @@ func setFocusStyle(old, new Widget, visible bool) {
 		shiftFocusWithin(new, 1)
 		if n.onFocus != nil {
 			n.onFocus(true)
+		}
+	}
+	notifyFocusObservers(old, new)
+}
+
+// FocusObserver is an ancestor that hears the keyboard focus move
+// into, out of or within its subtree: a form validating the field the
+// focus just left.
+type FocusObserver interface {
+	FocusMoved(from, to Widget)
+}
+
+// notifyFocusObservers tells every FocusObserver above from or to,
+// once each, that the focus moved from from to to.
+func notifyFocusObservers(from, to Widget) {
+	var told []FocusObserver
+	for _, w := range [...]Widget{from, to} {
+		for p := w; p != nil; p = parentOf(p) {
+			if ob, ok := p.(FocusObserver); ok && !slices.Contains(told, ob) {
+				told = append(told, ob)
+				ob.FocusMoved(from, to)
+			}
 		}
 	}
 }

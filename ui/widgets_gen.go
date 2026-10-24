@@ -3296,6 +3296,36 @@ func (b *FontButtonBuilder) OnClick(fn func()) *FontButtonBuilder {
 	return b
 }
 
+// FormBuilder builds a widget.Form.
+type FormBuilder struct {
+	base[*widget.Form, *FormBuilder]
+}
+
+// Form builds a widget.Form with widget.NewForm.
+func Form() *FormBuilder {
+	b := &FormBuilder{}
+	b.init(b, func(s *Scope) *widget.Form { return widget.NewForm() })
+	return b
+}
+
+// Add calls (*widget.Form).Add.
+func (b *FormBuilder) Add(field Of[*widget.Field], validate func() string) *FormBuilder {
+	b.do(func(s *Scope, w *widget.Form) { w.Add(buildOf(s, field), validate) })
+	return b
+}
+
+// Append calls (*widget.Form).Append.
+func (b *FormBuilder) Append(child Node) *FormBuilder {
+	b.do(func(s *Scope, w *widget.Form) { w.Append(build(s, child)) })
+	return b
+}
+
+// OnSubmit sets the widget's OnSubmit field.
+func (b *FormBuilder) OnSubmit(fn func()) *FormBuilder {
+	b.do(func(_ *Scope, w *widget.Form) { w.OnSubmit = fn })
+	return b
+}
+
 // FrameBuilder builds a widget.Frame.
 type FrameBuilder struct {
 	base[*widget.Frame, *FrameBuilder]

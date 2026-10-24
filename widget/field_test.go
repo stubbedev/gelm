@@ -79,3 +79,18 @@ func TestGoldenShadcnField(t *testing.T) {
 		})
 	}
 }
+
+// An error appearing on a focused field keeps its control focused.
+func TestFieldErrorKeepsFocus(t *testing.T) {
+	face := goldenFace(t)
+	e := NewEntry(face, 14, 0)
+	f := NewField(face, "Email", e)
+	arrangeTree(t, f, 300, 200)
+	r := &Router{Root: f}
+	r.SetFocus(e)
+	f.SetError("Enter a valid email.")
+	f.SetDescription("Work address.")
+	if r.Focused() != Widget(e) || parentOf(e) == nil {
+		t.Error("the control lost its focus or its parent when the field changed")
+	}
+}

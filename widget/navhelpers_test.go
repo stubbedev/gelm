@@ -72,10 +72,12 @@ func TestPaginationRejectsBadPages(t *testing.T) {
 	NewPagination(goldenFace(t), 3, 0)
 }
 
-// fakePopupHost records the menus a tree opens.
-type fakePopupHost struct{ menus [][]MenuItem }
+// fakeSurfaceHost records the menus a tree opens.
+type fakeSurfaceHost struct{ menus [][]MenuItem }
 
-func (h *fakePopupHost) OpenMenu(_ Boundser, _ render.Font, _ float64, items []MenuItem) {
+func (h *fakeSurfaceHost) Focus(Widget) {}
+
+func (h *fakeSurfaceHost) OpenMenu(_ Boundser, _ render.Font, _ float64, items []MenuItem) {
 	h.menus = append(h.menus, items)
 }
 
@@ -86,8 +88,8 @@ func TestBreadcrumbCollapse(t *testing.T) {
 	var nav []int
 	b.OnNavigate = func(i int) { nav = append(nav, i) }
 	b.SetMaxItems(3)
-	host := &fakePopupHost{}
-	SetPopupHost(b, host)
+	host := &fakeSurfaceHost{}
+	SetSurfaceHost(b, host)
 	arrangeTree(t, b, 600, 60)
 	var crumbs, ellipses []*Button
 	for _, w := range b.row.Children() {
