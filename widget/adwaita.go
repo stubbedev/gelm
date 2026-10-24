@@ -136,7 +136,6 @@ var classRules = [][2]string{
 	{css.Card, "background-color: @card_bg_color; color: @card_fg_color; border: 1px solid @borders; border-radius: 12px; box-shadow: 0px 1px 2px alpha(black, 0.05);"},
 	{css.BoxedList, "background-color: @card_bg_color; border-radius: 12px;"},
 	{css.OSD, "background-color: #000000b3; color: #ffffff;"},
-	{css.Background, "background-color: @window_bg_color; color: @window_fg_color;"},
 	{css.View, "background-color: @view_bg_color; color: @view_fg_color;"},
 	{css.Toolbar, "padding: 6px;"},
 	{css.Keycap, "font-size: 12px; font-weight: 500; padding: 0px 4px; min-height: 20px; min-width: 20px; border-radius: 4px; background-color: @muted_bg_color; color: @muted_fg_color;"},
@@ -170,6 +169,7 @@ func controlRules() [][2]string {
 		all.WriteString("button." + v)
 	}
 	return [][2]string{
+		{":root." + css.Background, "background-color: @window_bg_color; color: @window_fg_color;"},
 		{"button", "font-weight: 500;"},
 		{all.String(), "min-height: 36px; padding: 0px 16px; border-radius: 8px;"},
 		{"button." + css.Small, "min-height: 32px; padding: 0px 12px; border-radius: 8px;"},

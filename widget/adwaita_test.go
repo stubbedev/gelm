@@ -97,3 +97,25 @@ func TestStatusColorsDerive(t *testing.T) {
 		t.Error("an explicit status color lost to the default")
 	}
 }
+
+// The .background class paints a window root in the window's colors,
+// while popover content, which carries it too, keeps the popover's.
+func TestBackgroundClassOnlyPaintsWindowRoots(t *testing.T) {
+	th := DarkTheme().WithBg(render.RGB(1, 2, 3)).WithPopover(render.RGB(4, 5, 6))
+	SetTheme(th)
+	defer SetTheme(nil)
+	root := NewBox(Column, 0, 0)
+	root.AddClass(css.Background)
+	SetStyleRoot(root)
+	arrangeTree(t, root, 10, 10)
+	if v := root.style(root); v.Background != th.Bg {
+		t.Errorf("window root background = %v, want the window's %v", v.Background, th.Bg)
+	}
+	content := NewBox(Column, 0, 0)
+	content.SetElement("popover")
+	content.AddClass(css.Background)
+	SetStyleAnchor(content, root)
+	if v := content.style(content); v.Background != th.PopoverColor() {
+		t.Errorf("popover content background = %v, want the popover's %v", v.Background, th.PopoverColor())
+	}
+}

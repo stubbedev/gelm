@@ -17,8 +17,9 @@ const (
 	Accent = "accent"
 	// Activatable marks a row as clickable as a whole.
 	Activatable = "activatable"
-	// Background is the window surface: the window's background and
-	// text colors, for a window's root.
+	// Background is the window surface on a window's root: the
+	// window's background and text colors. Popover content carries the
+	// class too, as GTK's does, and keeps the popover's colors.
 	Background = "background"
 	// BoxedList is a list drawn as a rounded card with row separators.
 	BoxedList = "boxed-list"
