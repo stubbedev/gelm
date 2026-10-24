@@ -31,8 +31,12 @@ func TestRealAtSpi2Core(t *testing.T) {
 	session, _ := dbustest.Start(t)
 	runtime := t.TempDir()
 	t.Setenv("DBUS_SESSION_BUS_ADDRESS", session)
+	// dbus-daemon, not dbus-broker: under a systemd user session the
+	// launcher prefers the broker, which only runs with systemd's
+	// socket activation and so dies on this private bus ("No listener
+	// socket inherited").
 	launcher := exec.Command(filepath.Join(libexec, "at-spi-bus-launcher"), "--launch-immediately")
-	launcher.Env = append(os.Environ(), "XDG_RUNTIME_DIR="+runtime)
+	launcher.Env = append(os.Environ(), "XDG_RUNTIME_DIR="+runtime, "ATSPI_DBUS_IMPLEMENTATION=dbus-daemon")
 	if err := launcher.Start(); err != nil {
 		t.Fatal(err)
 	}
