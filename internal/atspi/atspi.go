@@ -32,7 +32,7 @@ import (
 )
 
 // AT-SPI2 role enum values (atspi-constants.h AtspiRole) for the roles
-// the semantic model carries; everything else maps to FILLER (20), the
+// the semantic model carries; everything else maps to FILLER, the
 // container role AT-SPI uses for unlabeled layout widgets.
 const (
 	roleInvalid      uint32 = 0
@@ -44,6 +44,7 @@ const (
 	roleEntry        uint32 = 79
 	roleFiller       uint32 = 20
 	roleLabel        uint32 = 29
+	roleLevelBar     uint32 = 103
 	roleList         uint32 = 31
 	roleMenu         uint32 = 33
 	roleProgressBar  uint32 = 42
@@ -54,10 +55,8 @@ const (
 	roleSplitPane    uint32 = 53
 	rolePageTabList  uint32 = 38
 	roleSwitch       uint32 = 130
-	roleText         uint32 = 61
 	roleToggleButton uint32 = 62
 	roleTextArea     uint32 = 60 // terminal; multi-line text in lys-ui
-	roleWindow       uint32 = 69
 )
 
 // AT-SPI2 state enum values (atspi-constants.h AtspiStateType).
@@ -76,92 +75,50 @@ const (
 	stateVisible    uint32 = 30
 )
 
-// atspiRole maps a semantic role to its AT-SPI enum value.
-func atspiRole(r widget.Role) uint32 {
-	switch r {
-	case widget.RoleButton:
-		return rolePushButton
-	case widget.RoleLabel:
-		return roleLabel
-	case widget.RoleEntry:
-		return roleEntry
-	case widget.RoleTextArea:
-		return roleTextArea
-	case widget.RoleSlider:
-		return roleSlider
-	case widget.RoleSwitch:
-		return roleSwitch
-	case widget.RoleCheckBox:
-		return roleCheckBox
-	case widget.RoleToggleButton:
-		return roleToggleButton
-	case widget.RoleProgressBar:
-		return roleProgressBar
-	case widget.RoleScrollArea:
-		return roleScrollPane
-	case widget.RoleList:
-		return roleList
-	case widget.RoleMenu:
-		return roleMenu
-	case widget.RoleTabList:
-		return rolePageTabList
-	case widget.RoleComboBox:
-		return roleComboBox
-	case widget.RoleSplitter:
-		return roleSplitPane
-	case widget.RoleCalendar:
-		return roleCalendar
-	case widget.RoleColorChooser:
-		return roleColorChooser
-	case widget.RoleScrollBar:
-		return roleScrollBar
-	default:
-		return roleFiller
-	}
+// atspiRoleInfo is a role's AT-SPI enum value and D-Bus name
+// (GetRoleName), the enum's lowercase spelling.
+type atspiRoleInfo struct {
+	id   uint32
+	name string
 }
 
-// atspiRoleName is the role's D-Bus name (GetRoleName); the names
-// match the enum's lowercase AT-SPI spelling.
-func atspiRoleName(r widget.Role) string {
-	switch atspiRole(r) {
-	case rolePushButton:
-		return "push button"
-	case roleLabel:
-		return "label"
-	case roleEntry:
-		return "entry"
-	case roleTextArea:
-		return "text frame"
-	case roleSlider:
-		return "slider"
-	case roleSwitch:
-		return "switch"
-	case roleCheckBox:
-		return "check box"
-	case roleProgressBar:
-		return "progress bar"
-	case roleScrollPane:
-		return "scroll pane"
-	case roleList:
-		return "list"
-	case roleMenu:
-		return "menu"
-	case rolePageTabList:
-		return "page tab list"
-	case roleComboBox:
-		return "combo box"
-	case roleSplitPane:
-		return "split pane"
-	case roleCalendar:
-		return "calendar"
-	case roleColorChooser:
-		return "color chooser"
-	case roleScrollBar:
-		return "scroll bar"
-	default:
-		return "filler"
-	}
+// atspiRoles maps each semantic role to its AT-SPI role, so the enum
+// value and the name never disagree; RoleNone's zero entry is FILLER.
+var atspiRoles = [...]atspiRoleInfo{
+	widget.RoleButton:       {rolePushButton, "push button"},
+	widget.RoleLabel:        {roleLabel, "label"},
+	widget.RoleEntry:        {roleEntry, "entry"},
+	widget.RoleTextArea:     {roleTextArea, "text frame"},
+	widget.RoleSlider:       {roleSlider, "slider"},
+	widget.RoleSwitch:       {roleSwitch, "switch"},
+	widget.RoleCheckBox:     {roleCheckBox, "check box"},
+	widget.RoleProgressBar:  {roleProgressBar, "progress bar"},
+	widget.RoleLevelBar:     {roleLevelBar, "level bar"},
+	widget.RoleScrollArea:   {roleScrollPane, "scroll pane"},
+	widget.RoleList:         {roleList, "list"},
+	widget.RoleMenu:         {roleMenu, "menu"},
+	widget.RoleTabList:      {rolePageTabList, "page tab list"},
+	widget.RoleComboBox:     {roleComboBox, "combo box"},
+	widget.RoleSplitter:     {roleSplitPane, "split pane"},
+	widget.RoleCalendar:     {roleCalendar, "calendar"},
+	widget.RoleColorChooser: {roleColorChooser, "color chooser"},
+	widget.RoleScrollBar:    {roleScrollBar, "scroll bar"},
+	widget.RoleToggleButton: {roleToggleButton, "toggle button"},
 }
+
+// atspiRoleOf is r's AT-SPI role: its table entry, FILLER for RoleNone.
+func atspiRoleOf(r widget.Role) atspiRoleInfo {
+	if int(r) < len(atspiRoles) && atspiRoles[r].id != roleInvalid {
+		return atspiRoles[r]
+	}
+	return atspiRoleInfo{roleFiller, "filler"}
+}
+
+// atspiRole maps a semantic role to its AT-SPI enum value.
+func atspiRole(r widget.Role) uint32 { return atspiRoleOf(r).id }
+
+// atspiRoleName is the role's D-Bus name (GetRoleName).
+func atspiRoleName(r widget.Role) string { return atspiRoleOf(r).name }
 
 // Scene is what the bridge serves: the accessible roots (one per
 // window, in window order) and their focus, plus the loop bridge.

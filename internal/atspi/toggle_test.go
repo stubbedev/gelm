@@ -25,3 +25,17 @@ func TestToggleButtonRoleAndPressedState(t *testing.T) {
 		t.Error("an inactive toggle serves pressed")
 	}
 }
+
+// Every semantic role serves its own AT-SPI role and name: a role the
+// table lacks would read as an unlabeled filler, as toggle buttons and
+// level bars once did.
+func TestEverySemanticRoleMapsToAtspi(t *testing.T) {
+	for r := widget.RoleNone + 1; r.String() != "none"; r++ {
+		if got := atspiRoleOf(r); got.id == roleFiller || got.name == "filler" {
+			t.Errorf("%v serves %+v, want its own role", r, got)
+		}
+	}
+	if got := atspiRoleName(widget.RoleToggleButton); got != "toggle button" {
+		t.Errorf("toggle button role name = %q", got)
+	}
+}
