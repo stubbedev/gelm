@@ -8,6 +8,7 @@ package widget
 import (
 	"sync/atomic"
 
+	"github.com/stubbedev/lys-ui/internal/style"
 	"github.com/stubbedev/lys-ui/render"
 )
 
@@ -45,6 +46,10 @@ type childBuf interface {
 // the process has walked and stays there.
 var walkStack [][]Widget
 
+// backdropReach collects, per walk, the area each backdrop-filtered box
+// reads: its bounds grown by the filter's extent. Reused across walks.
+var backdropReach []render.Rect
+
 // damageGen counts every mark that can turn a tree dirty: a widget
 // invalidation, a style or theme generation move, a stale cascade.
 // Draw owners compare it against the generation they last drained at
@@ -80,7 +85,9 @@ func CollectDamage(root Widget) (rects []render.Rect, any bool) {
 		return nil, false
 	}
 	damageWalks.Add(1)
+	backdropReach = backdropReach[:0]
 	bbox := collectInto(root, &rects, 0)
+	bbox = bbox.Union(widenForBackdrops(&rects))
 	if len(rects) > maxDamageRects {
 		rects = rects[:0]
 		if !bbox.Empty() {
@@ -103,6 +110,13 @@ func collectInto(w Widget, rects *[]render.Rect, depth int) render.Rect {
 		n.restyle(w)
 	}
 	bbox := render.Rect{}
+	if n := nodeOf(w); n != nil {
+		if v := n.style(w); v.Has(style.PropBackdropFilter) && !v.Backdrop.Empty() {
+			if bs, ok := w.(Boundser); ok {
+				backdropReach = append(backdropReach, v.Backdrop.Extent().Grow(bs.Bounds()))
+			}
+		}
+	}
 	if dn, ok := w.(damageNoder); ok {
 		bounds, extras, dirty := dn.takeDamage()
 		if dirty {
@@ -127,6 +141,42 @@ func collectInto(w Widget, rects *[]render.Rect, depth int) render.Rect {
 		bbox = bbox.Union(collectInto(k, rects, depth+1))
 	}
 	return bbox
+}
+
+// widenForBackdrops adds every backdrop reach the damage touches: a
+// backdrop filter reads the backdrop around its box, and outside the
+// damage the canvas still holds last frame's filtered pixels, so a box
+// repaints whole (and the reach around it) whenever any of it does.
+// Added reaches can touch further boxes, so it runs to a fixed point.
+// It returns the bounding box of what it added.
+func widenForBackdrops(rects *[]render.Rect) render.Rect {
+	added := render.Rect{}
+	for grew := true; grew; {
+		grew = false
+		for i := 0; i < len(backdropReach); {
+			reach := backdropReach[i]
+			if !touches(*rects, reach) {
+				i++
+				continue
+			}
+			*rects = append(*rects, reach)
+			added = added.Union(reach)
+			backdropReach[i] = backdropReach[len(backdropReach)-1]
+			backdropReach = backdropReach[:len(backdropReach)-1]
+			grew = true
+		}
+	}
+	return added
+}
+
+// touches reports whether any rect overlaps r.
+func touches(rects []render.Rect, r render.Rect) bool {
+	for _, d := range rects {
+		if !d.Intersect(r).Empty() {
+			return true
+		}
+	}
+	return false
 }
 
 // snapshotKids returns w's children in walkStack's slot for depth: a
