@@ -847,12 +847,19 @@ func (r *Router) applyDragTarget(w Widget, accepted bool) {
 // KeyAction delivers an editing or activation action to the focused
 // widget — never to one that went disabled since it took focus; see
 // keyboardTarget. An ancestor KeyInterceptor sees the action first
-// (GTK's key controller on a parent).
+// (GTK's key controller on a parent), and an ancestor FocusNavigator
+// may move focus instead.
 func (r *Router) KeyAction(a KeyAction, mods Mods) {
 	target := r.keyboardTarget()
 	for w := target; w != nil; w = parentOf(w) {
 		if ic, ok := w.(KeyInterceptor); ok && ic.InterceptKey(target, a, mods) {
 			return
+		}
+		if nav, ok := w.(FocusNavigator); ok {
+			if next := nav.NavigateFocus(target, a); next != nil {
+				r.SetFocus(next)
+				return
+			}
 		}
 	}
 	if h, ok := target.(KeyActionHandler); ok {
@@ -866,6 +873,14 @@ func (r *Router) KeyAction(a KeyAction, mods Mods) {
 // when it consumed the action.
 type KeyInterceptor interface {
 	InterceptKey(target Widget, a KeyAction, mods Mods) bool
+}
+
+// FocusNavigator is an ancestor that moves focus among its own
+// focusable descendants on navigation keys: the roving focus of an
+// accordion's triggers. NavigateFocus returns the widget to focus for
+// action a headed for target, or nil to let the action through.
+type FocusNavigator interface {
+	NavigateFocus(target Widget, a KeyAction) Widget
 }
 
 // SelectedTexter exposes the widget's active selection.

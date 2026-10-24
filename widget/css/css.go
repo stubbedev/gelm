@@ -17,6 +17,9 @@ const (
 	Accent = "accent"
 	// Activatable marks a row as clickable as a whole.
 	Activatable = "activatable"
+	// Background is the window surface: the window's background and
+	// text colors, for a window's root.
+	Background = "background"
 	// BoxedList is a list drawn as a rounded card with row separators.
 	BoxedList = "boxed-list"
 	// Caption is small secondary text.

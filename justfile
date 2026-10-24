@@ -144,6 +144,11 @@ demo-headless LYS_UI_DEBUG="input,frame": test-env test-build
 glass:
     go run ./cmd/lys-ui-glass
 
+# Run the shadcn/ui gallery: every shadcn component lys-ui implements,
+# built with the ui builders; t toggles light and dark, Escape quits.
+shadcn:
+    go run ./cmd/lys-ui-shadcn
+
 # Run the application-model demo (lys-ui-multi): per-output bars,
 # on-demand windows, close-request veto, Escape quits.
 multi:

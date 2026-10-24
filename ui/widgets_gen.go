@@ -293,6 +293,88 @@ func (b *base[W, B]) WatchVisible(get func() bool) B {
 	return b.self
 }
 
+// AccordionBuilder builds a widget.Accordion.
+type AccordionBuilder struct {
+	base[*widget.Accordion, *AccordionBuilder]
+}
+
+// Accordion builds a widget.Accordion with widget.NewAccordion.
+func Accordion(mode widget.AccordionMode) *AccordionBuilder {
+	b := &AccordionBuilder{}
+	b.init(b, func(s *Scope) *widget.Accordion { return widget.NewAccordion(mode) })
+	return b
+}
+
+// Append calls (*widget.Accordion).Append.
+func (b *AccordionBuilder) Append(it Of[*widget.AccordionItem]) *AccordionBuilder {
+	b.do(func(s *Scope, w *widget.Accordion) { w.Append(buildOf(s, it)) })
+	return b
+}
+
+// Collapsible calls (*widget.Accordion).SetCollapsible.
+func (b *AccordionBuilder) Collapsible(on bool) *AccordionBuilder {
+	b.do(func(s *Scope, w *widget.Accordion) { w.SetCollapsible(on) })
+	return b
+}
+
+// WatchCollapsible re-applies SetCollapsible with get's value after every update.
+func (b *AccordionBuilder) WatchCollapsible(get func() bool) *AccordionBuilder {
+	b.watch(func(w *widget.Accordion) { w.SetCollapsible(get()) })
+	return b
+}
+
+// AccordionItemBuilder builds a widget.AccordionItem.
+type AccordionItemBuilder struct {
+	base[*widget.AccordionItem, *AccordionItemBuilder]
+	face render.Font
+	size float64
+}
+
+// AccordionItem builds a widget.AccordionItem with widget.NewAccordionItem.
+func AccordionItem(title string, content Node) *AccordionItemBuilder {
+	b := &AccordionItemBuilder{}
+	b.init(b, func(s *Scope) *widget.AccordionItem {
+		return widget.NewAccordionItem(s.face(b.face), title, build(s, content))
+	})
+	return b
+}
+
+// Font overrides the environment's typeface and size for this widget; zero values keep the environment's.
+func (b *AccordionItemBuilder) Font(face render.Font, sizePx float64) *AccordionItemBuilder {
+	b.face, b.size = face, sizePx
+	return b
+}
+
+// Open calls (*widget.AccordionItem).SetOpen.
+func (b *AccordionItemBuilder) Open(open bool) *AccordionItemBuilder {
+	b.do(func(s *Scope, w *widget.AccordionItem) { w.SetOpen(open) })
+	return b
+}
+
+// WatchOpen re-applies SetOpen with get's value after every update.
+func (b *AccordionItemBuilder) WatchOpen(get func() bool) *AccordionItemBuilder {
+	b.watch(func(w *widget.AccordionItem) { w.SetOpen(get()) })
+	return b
+}
+
+// Title calls (*widget.AccordionItem).SetTitle.
+func (b *AccordionItemBuilder) Title(text string) *AccordionItemBuilder {
+	b.do(func(s *Scope, w *widget.AccordionItem) { w.SetTitle(text) })
+	return b
+}
+
+// WatchTitle re-applies SetTitle with get's value after every update.
+func (b *AccordionItemBuilder) WatchTitle(get func() string) *AccordionItemBuilder {
+	b.watch(func(w *widget.AccordionItem) { w.SetTitle(get()) })
+	return b
+}
+
+// OnToggled sets the widget's OnToggled field.
+func (b *AccordionItemBuilder) OnToggled(fn func(open bool)) *AccordionItemBuilder {
+	b.do(func(_ *Scope, w *widget.AccordionItem) { w.OnToggled = fn })
+	return b
+}
+
 // ActionBarBuilder builds a widget.ActionBar.
 type ActionBarBuilder struct {
 	base[*widget.ActionBar, *ActionBarBuilder]
