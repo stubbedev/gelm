@@ -90,7 +90,7 @@ func (p *player) Init(cx *component.Context[struct{}, struct{}]) widget.Widget {
 func (p *player) Update(*component.Context[struct{}, struct{}], struct{}) {}
 
 func newPlayer(stream *media.Stream) (*player, error) {
-	face, err := app.Font("sans-serif", 13)
+	face, err := app.UIFont(13)
 	if err != nil {
 		return nil, err
 	}

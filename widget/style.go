@@ -379,12 +379,12 @@ func SetMediaResolution(dpi float64) {
 	markDamage()
 }
 
-// defaultFontMetrics loads the system sans face's metrics once; the
+// defaultFontMetrics loads the UI face's metrics once; the
 // ch/ex/cap/ic/lh units resolve against them (per-font-size ratios,
 // so one face serves every size), falling back to the CSS default
-// ratios when the desktop has no font.
+// ratios when the font store cannot load.
 var defaultFontMetrics = sync.OnceValue(func() style.FontMetrics {
-	face, err := sysfont.Sans()
+	face, err := sysfont.UI()
 	if err != nil {
 		return style.FontMetrics{}
 	}

@@ -10,6 +10,7 @@
 package sysfont
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"slices"
@@ -19,6 +20,7 @@ import (
 	"github.com/go-text/typesetting/fontscan"
 	"github.com/go-text/typesetting/language"
 
+	"github.com/stubbedev/lys-ui/internal/uifont"
 	"github.com/stubbedev/lys-ui/render"
 )
 
@@ -55,6 +57,15 @@ func fontmap() (*fontscan.FontMap, error) {
 		if err := fm.UseSystemFonts(""); err != nil {
 			storeErr = fmt.Errorf("sysfont: scan system fonts: %w", err)
 			return
+		}
+		for _, f := range []struct {
+			family string
+			data   []byte
+		}{{uifont.Family, uifont.Sans}, {uifont.MonoFamily, uifont.Mono}} {
+			if err := fm.AddFont(bytes.NewReader(f.data), "embedded:"+f.family, f.family); err != nil {
+				storeErr = fmt.Errorf("sysfont: register embedded %s: %w", f.family, err)
+				return
+			}
 		}
 		storeFM = fm
 	})
@@ -173,6 +184,28 @@ func typeface(face *font.Face) (*render.Typeface, error) {
 // same rules a browser applies to font-family: sans-serif.
 func Sans() (*render.Typeface, error) {
 	return lookup(fontscan.SansSerif, regAspect, 0, 'x')
+}
+
+// UI returns the face lys-ui's default look is drawn in: Geist,
+// embedded in the binary, so every desktop renders the same UI face.
+func UI() (*render.Typeface, error) { return embedded(uifont.Family) }
+
+// UIMono returns the default look's monospace face: Geist Mono,
+// embedded beside UI.
+func UIMono() (*render.Typeface, error) { return embedded(uifont.MonoFamily) }
+
+// embedded resolves an embedded family by name. The store registers
+// them at its first use, so a resolution to another family is a store
+// defect, not a missing install, and errors.
+func embedded(family string) (*render.Typeface, error) {
+	tf, err := lookup(family, regAspect, 0, 'x')
+	if err != nil {
+		return nil, err
+	}
+	if got := tf.Family(); got != family {
+		return nil, fmt.Errorf("sysfont: embedded %s resolved to %s", family, got)
+	}
+	return tf, nil
 }
 
 // Monospace returns the system's default monospace face.

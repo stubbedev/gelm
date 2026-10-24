@@ -68,7 +68,7 @@ func run() error {
 		return err
 	}
 	defer sess.Close()
-	face, err := app.Font("sans-serif", 15)
+	face, err := app.UIFont(15)
 	if err != nil {
 		return err
 	}

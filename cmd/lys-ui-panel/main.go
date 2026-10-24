@@ -86,7 +86,7 @@ func (p *panel) Update(_ *component.Context[brightness, struct{}], b brightness)
 }
 
 func newPanel() (*panel, error) {
-	face, err := app.Font("sans-serif", 13)
+	face, err := app.UIFont(13)
 	if err != nil {
 		return nil, err
 	}

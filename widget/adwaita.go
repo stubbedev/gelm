@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/stubbedev/lys-ui/internal/style"
+	"github.com/stubbedev/lys-ui/internal/uifont"
 	"github.com/stubbedev/lys-ui/render"
 	"github.com/stubbedev/lys-ui/widget/css"
 )
@@ -118,7 +119,7 @@ var classRules = [][2]string{
 	{css.Title2, "font-size: 22px; font-weight: 800;"},
 	{css.Title3, "font-size: 20px; font-weight: 700;"},
 	{css.Title4, "font-size: 17px; font-weight: 700;"},
-	{css.Monospace, "font-family: monospace;"},
+	{css.Monospace, "font-family: \"" + uifont.MonoFamily + "\";"},
 	{css.Flat, "background-color: transparent;"},
 	{css.SuggestedAction, "background-color: @accent_bg_color; color: @accent_fg_color;"},
 	{css.DestructiveAction, "background-color: @destructive_bg_color; color: @destructive_fg_color;"},

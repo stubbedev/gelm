@@ -84,7 +84,7 @@ func main() {
 		Title: "lys-ui i18n", AppID: "dev.stubbe.lys.ui.i18n",
 		Width: 420, Height: 260, Background: widget.Current().Bg,
 	}, func(a *app.Application) (*greeter, error) {
-		face, err := app.Font("sans-serif", 14)
+		face, err := app.UIFont(14)
 		if err != nil {
 			return nil, err
 		}

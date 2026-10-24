@@ -1,8 +1,10 @@
 package widget
 
 import (
+	"fmt"
 	"testing"
 
+	"github.com/stubbedev/lys-ui/internal/sysfont"
 	"github.com/stubbedev/lys-ui/widget/css"
 )
 
@@ -53,4 +55,27 @@ func TestGoldenShadcnControls(t *testing.T) {
 			NewGolden(t, inputs, "shadcn-inputs-"+tc.name, goldenTheme(tc.th), goldenFrame(260, h), goldenFocus(focused))
 		})
 	}
+}
+
+// The embedded UI faces render the same on every machine: Geist at
+// regular, medium and semibold, and Geist Mono (#194).
+func TestGoldenUIFont(t *testing.T) {
+	ui, err := sysfont.UI()
+	if err != nil {
+		t.Fatal(err)
+	}
+	mono, err := sysfont.UIMono()
+	if err != nil {
+		t.Fatal(err)
+	}
+	col := NewBox(Column, 4, 0)
+	for _, w := range []int{400, 500, 600} {
+		face, err := sysfont.Weighted(ui.Family(), 15, w, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		col.Append(NewLabel(face, 15, fmt.Sprintf("Geist %d - The quick brown fox", w), 0), false)
+	}
+	col.Append(NewLabel(mono, 14, "Geist Mono: func main() {}", 0), false)
+	NewGolden(t, col, "ui-font")
 }

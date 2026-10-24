@@ -6,6 +6,7 @@ import (
 
 	"github.com/go-text/typesetting/font"
 
+	"github.com/stubbedev/lys-ui/internal/uifont"
 	"github.com/stubbedev/lys-ui/render"
 )
 
@@ -32,5 +33,34 @@ func TestInstantiateVariable(t *testing.T) {
 	static, _ := render.NewFixtureTypeface()
 	if instantiate(static, font.Aspect{Weight: font.WeightBold}) != static {
 		t.Error("a static face was instanced")
+	}
+}
+
+// The embedded UI faces resolve by name with nothing installed, and as
+// variable fonts serve every weight through the wght axis (#194).
+func TestEmbeddedUIFaces(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		get  func() (*render.Typeface, error)
+		want string
+	}{{"UI", UI, uifont.Family}, {"UIMono", UIMono, uifont.MonoFamily}} {
+		tf, err := tc.get()
+		if err != nil {
+			t.Fatalf("%s: %v", tc.name, err)
+		}
+		if tf.Family() != tc.want || !tf.HasAxis("wght") {
+			t.Errorf("%s = %s (wght axis %v), want the variable %s", tc.name, tf.Family(), tf.HasAxis("wght"), tc.want)
+		}
+		byName, err := Best(tc.want, 14)
+		if err != nil || byName != tf {
+			t.Errorf("Best(%q) = %v, %v; want the embedded face", tc.want, byName, err)
+		}
+		medium, err := Weighted(tc.want, 14, 500, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if vs := medium.Variations(); len(vs) != 1 || vs[0].Tag != "wght" || vs[0].Value != 500 {
+			t.Errorf("%s at 500 = %v, want the wght 500 instance", tc.name, vs)
+		}
 	}
 }

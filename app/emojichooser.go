@@ -14,7 +14,7 @@ import (
 // and wires the insertion target with EmojiChooserForEntry.
 
 // emojiFace resolves an emoji-capable face: an emoji family from the
-// system font configuration, else the sans face (the picker still
+// system font configuration, else the UI face (the picker still
 // inserts real emoji; the display falls back to whatever the system
 // can shape).
 func emojiFace(sizePx float64) render.Font {
@@ -23,7 +23,7 @@ func emojiFace(sizePx float64) render.Font {
 			return tf
 		}
 	}
-	tf, err := sysfont.Sans()
+	tf, err := sysfont.UI()
 	if err != nil {
 		return nil
 	}

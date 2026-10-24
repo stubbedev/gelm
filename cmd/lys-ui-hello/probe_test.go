@@ -15,7 +15,7 @@ import (
 // size, ready for hit tests and router input.
 func arrangedShowcase(t *testing.T) *showcase {
 	t.Helper()
-	face, err := app.Font("sans-serif", 14)
+	face, err := app.UIFont(14)
 	if err != nil {
 		t.Skip("no system font:", err)
 	}

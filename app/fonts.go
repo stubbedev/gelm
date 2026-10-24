@@ -1,6 +1,7 @@
 package app
 
 import (
+	"fmt"
 	"slices"
 	"strings"
 	"sync"
@@ -15,6 +16,25 @@ import (
 // unresolvable name is an error.
 func Font(family string, sizePx float64) (*render.Typeface, error) {
 	return sysfont.Best(family, sizePx)
+}
+
+// UIFont returns the default look's face: Geist, embedded in the
+// binary, the family the theme's controls are designed around.
+// sizePx follows Font.
+func UIFont(sizePx float64) (*render.Typeface, error) {
+	if sizePx <= 0 {
+		return nil, fmt.Errorf("app: UIFont(%v): size must be positive", sizePx)
+	}
+	return sysfont.UI()
+}
+
+// UIMonoFont returns the default look's monospace face: Geist Mono,
+// embedded beside UIFont.
+func UIMonoFont(sizePx float64) (*render.Typeface, error) {
+	if sizePx <= 0 {
+		return nil, fmt.Errorf("app: UIMonoFont(%v): size must be positive", sizePx)
+	}
+	return sysfont.UIMono()
 }
 
 // FontWeighted resolves a system font family at a CSS numeric weight

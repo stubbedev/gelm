@@ -152,7 +152,7 @@ func (a *Application) resolveFace(asked *render.Typeface) *render.Typeface {
 	if a.tooltipFace != nil {
 		return a.tooltipFace
 	}
-	f, err := sysfont.Sans()
+	f, err := sysfont.UI()
 	if err != nil {
 		debug.Log("input", "toast face: %v", err)
 		return nil

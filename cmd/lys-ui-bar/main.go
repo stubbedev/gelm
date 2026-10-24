@@ -58,7 +58,7 @@ type bar struct {
 }
 
 func newBar() (*bar, error) {
-	face, err := app.Font("sans-serif", 14)
+	face, err := app.UIFont(14)
 	if err != nil {
 		return nil, err
 	}

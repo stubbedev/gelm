@@ -63,7 +63,7 @@ func main() {
 		if err := a.AddAccel("Escape", widget.NewAction("quit", a.Quit)); err != nil {
 			return nil, err
 		}
-		face, err := app.Font("sans-serif", 15)
+		face, err := app.UIFont(15)
 		if err != nil {
 			return nil, err
 		}
