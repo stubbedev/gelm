@@ -47,7 +47,6 @@ type sharedTransition struct {
 	spring   *anim.Spring
 	fade     anim.Cancel
 	geometry bool
-	layer    *render.Layer
 	mix      *render.Layer
 }
 
