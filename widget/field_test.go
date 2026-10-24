@@ -21,11 +21,11 @@ func TestField(t *testing.T) {
 	if got := len(f.box.Children()); got != 4 {
 		t.Fatalf("shows %d parts, want label, control, description and error", got)
 	}
-	if !e.HasClass(css.Error) || !f.box.HasClass("invalid") {
+	if !e.HasClass(css.Error) || !f.HasClass("invalid") {
 		t.Error("an error did not mark the field and control invalid")
 	}
 	f.SetError("")
-	if e.HasClass(css.Error) || f.box.HasClass("invalid") || len(f.box.Children()) != 3 {
+	if e.HasClass(css.Error) || f.HasClass("invalid") || len(f.box.Children()) != 3 {
 		t.Error("clearing the error kept the invalid state or the message")
 	}
 	if Describe(e).Name != "Email" {

@@ -204,6 +204,7 @@ func NewStatusPage(face render.Font, iconName, title, description string) *Statu
 		p.SetIcon(NewThemeIcon(iconName, 24))
 	}
 	p.initComposite(p, NewClamp(statusPageWidth, p.column))
+	p.boxed = true
 	return p
 }
 

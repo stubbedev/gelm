@@ -87,6 +87,7 @@ func NewInputOTP(face render.Font, charset OTPCharset, groups ...int) *InputOTP 
 		o.row.AppendAligned(group, false, AlignCenter)
 	}
 	o.initComposite(o, o.row)
+	o.boxed = true
 	o.sync()
 	return o
 }

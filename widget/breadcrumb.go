@@ -36,8 +36,9 @@ const minCollapsed = 3
 // current page last.
 func NewBreadcrumb(face render.Font, path ...string) *Breadcrumb {
 	b := &Breadcrumb{row: NewBox(Row, 6, 0), face: requireFace("widget.NewBreadcrumb", face)}
-	b.row.SetElement("breadcrumb")
+	b.SetElement("breadcrumb")
 	b.initComposite(b, b.row)
+	b.boxed = true
 	b.SetPath(path...)
 	return b
 }

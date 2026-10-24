@@ -21,7 +21,7 @@ func NewInputGroup(entry *Entry) *InputGroup {
 	g.row.SetPadding(render.Insets{Left: 12, Right: 12})
 	g.row.Append(entry, true)
 	g.initComposite(g, g.row)
-	g.surface = surfaceNone
+	g.boxed = true
 	return g
 }
 

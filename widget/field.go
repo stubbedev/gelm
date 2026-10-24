@@ -59,7 +59,7 @@ type Field struct {
 func NewField(face render.Font, label string, control Widget) *Field {
 	face = requireFace("widget.NewField", face)
 	f := &Field{box: NewBox(Column, 12, 0), content: NewBox(Column, 6, 0), control: control}
-	f.box.SetElement("field")
+	f.SetElement("field")
 	f.title = NewLabel(face, fieldTextSize, label, 0)
 	f.title.AddClass("title")
 	f.title.SetWrap(true)
@@ -72,6 +72,7 @@ func NewField(face render.Font, label string, control Widget) *Field {
 	f.bps.add(Breakpoint{Min: fieldResponsiveMin, Apply: func() { f.setWide(true) }, Unapply: func() { f.setWide(false) }})
 	f.initComposite(f, f.box)
 	f.fillWidth = true
+	f.boxed = true
 	if n := nodeOf(control); n != nil && n.accName == "" {
 		n.accName, f.named = label, true
 	}
@@ -104,9 +105,9 @@ func (f *Field) SetError(msg string) {
 	f.err.SetText(msg)
 	invalid := msg != ""
 	if invalid {
-		f.box.AddClass("invalid")
+		f.AddClass("invalid")
 	} else {
-		f.box.RemoveClass("invalid")
+		f.RemoveClass("invalid")
 	}
 	if c, ok := f.control.(interface {
 		AddClass(...string)
@@ -211,7 +212,7 @@ type FieldSet struct {
 func NewFieldSet(face render.Font, legend string) *FieldSet {
 	face = requireFace("widget.NewFieldSet", face)
 	s := &FieldSet{box: NewBox(Column, 8, 0), fields: NewFieldGroup()}
-	s.box.SetElement("fieldset")
+	s.SetElement("fieldset")
 	title := NewLabel(face, 16, legend, 0)
 	title.AddClass("legend")
 	s.desc = NewLabel(face, fieldTextSize, "", 0)
@@ -221,6 +222,7 @@ func NewFieldSet(face render.Font, legend string) *FieldSet {
 	s.box.Append(title, false).Append(s.fields, false)
 	s.initComposite(s, s.box)
 	s.fillWidth = true
+	s.boxed = true
 	return s
 }
 

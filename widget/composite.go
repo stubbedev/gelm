@@ -33,6 +33,20 @@ type composite struct {
 	// surfaceRing is the default border width the surface draws (in
 	// the theme's border color) until the cascade declares one.
 	surfaceRing int
+	// boxed makes the composite its own CSS element: it paints its
+	// cascade box over its bounds less the margin, and lays the root
+	// out inside its margin, border and padding, as a Box does. The
+	// widget's element and classes then sit on the node the app holds.
+	boxed bool
+}
+
+// insets is the margin, border and padding a boxed composite lays its
+// root inside; none otherwise.
+func (c *composite) insets() cssInsets {
+	if !c.boxed {
+		return cssInsets{}
+	}
+	return boxOf(c.style(c.self), render.Insets{})
 }
 
 // surfaceFill is the plain control surface, the fallback most
@@ -60,11 +74,15 @@ func (c *composite) Measure(con Constraints) Size {
 	if sz, ok := c.measureHit(con); ok {
 		return sz
 	}
-	inner := con
+	in := c.insets()
+	inner := in.innerOf(con)
 	if c.fixedWidth > 0 {
 		inner.Max.W = min(inner.Max.W, c.fixedWidth)
 	}
 	sz := measureChild(c.self, c.root, inner)
+	o := in.outer()
+	sz.W += o.Left + o.Right
+	sz.H += o.Top + o.Bottom
 	switch {
 	case c.fixedWidth > 0:
 		sz.W = c.fixedWidth
@@ -78,13 +96,16 @@ func (c *composite) Measure(con Constraints) Size {
 // Arrange lays the root over the whole rect.
 func (c *composite) Arrange(r render.Rect) {
 	c.node.Arrange(r)
-	c.root.Arrange(r)
+	c.root.Arrange(c.insets().outer().Shrink(r))
 	setParents(c.self, c.root)
 }
 
 // Paint draws the surface (when configured) then the root.
 func (c *composite) Paint(cv *render.Canvas) {
-	if c.surface != nil {
+	switch {
+	case c.boxed:
+		c.paintSurface(cv, c.insets().margin.Shrink(c.bounds), 0)
+	case c.surface != nil:
 		c.paintSurface(cv, c.bounds, c.surface(Current()))
 	}
 	PaintChild(cv, c.root)

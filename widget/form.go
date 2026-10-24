@@ -25,9 +25,10 @@ type formField struct {
 // NewForm returns an empty form.
 func NewForm() *Form {
 	f := &Form{group: NewFieldGroup()}
-	f.group.SetElement("form")
+	f.SetElement("form")
 	f.initComposite(f, f.group)
 	f.fillWidth = true
+	f.boxed = true
 	return f
 }
 

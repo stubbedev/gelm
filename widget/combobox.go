@@ -58,6 +58,7 @@ func NewCombobox[T comparable](face render.Font, placeholder string, options ...
 	c.trigger.SetSizeRequest(comboboxWidth, 0)
 	c.trigger.OnClick = c.open
 	c.initComposite(c, c.trigger)
+	c.boxed = true
 	c.sync()
 	return c
 }

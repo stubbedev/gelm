@@ -108,7 +108,7 @@ func NewCommand(face render.Font, placeholder string, groups ...CommandGroup) *C
 	c.scroll.SetMaxContentHeight(commandListHeight)
 	c.column.Append(search, false).Append(c.scroll, true)
 	c.initComposite(c, c.column)
-	c.surface = surfaceNone
+	c.boxed = true
 	c.SetGroups(groups...)
 	return c
 }

@@ -40,8 +40,9 @@ const paginationSize = 14
 // page within 1..count, or the call panics.
 func NewPagination(face render.Font, count, page int) *Pagination {
 	p := &Pagination{row: NewBox(Row, 4, 0), face: requireFace("widget.NewPagination", face), siblings: 1}
-	p.row.SetElement("pagination")
+	p.SetElement("pagination")
 	p.initComposite(p, p.row)
+	p.boxed = true
 	p.SetCount(count, page)
 	return p
 }

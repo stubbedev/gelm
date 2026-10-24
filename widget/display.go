@@ -38,10 +38,11 @@ type Badge struct {
 func NewBadge(face render.Font, text string) *Badge {
 	face = requireFace("widget.NewBadge", face)
 	b := &Badge{row: NewBox(Row, 4, 0)}
-	b.row.SetElement("badge")
+	b.SetElement("badge")
 	b.label = NewLabel(face, 12, text, 0)
 	b.row.AppendAligned(b.label, false, AlignCenter)
 	b.initComposite(b, b.row)
+	b.boxed = true
 	return b
 }
 
@@ -54,10 +55,10 @@ func (b *Badge) Text() string { return b.label.Text() }
 // SetVariant switches the badge's look.
 func (b *Badge) SetVariant(v BadgeVariant) {
 	if old := badgeClasses[b.variant]; old != "" {
-		b.row.RemoveClass(old)
+		b.RemoveClass(old)
 	}
 	if c := badgeClasses[v]; c != "" {
-		b.row.AddClass(c)
+		b.AddClass(c)
 	}
 	b.variant = v
 }

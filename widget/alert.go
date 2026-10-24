@@ -37,7 +37,7 @@ type Alert struct {
 func NewAlert(face render.Font, title, description string) *Alert {
 	face = requireFace("widget.NewAlert", face)
 	a := &Alert{row: NewBox(Row, 12, 0), text: NewBox(Column, 4, 0)}
-	a.row.SetElement("alert")
+	a.SetElement("alert")
 	a.title = NewLabel(face, 14, title, 0)
 	a.title.AddClass("title")
 	a.title.SetWrap(true)
@@ -49,6 +49,7 @@ func NewAlert(face render.Font, title, description string) *Alert {
 	a.SetDescription(description)
 	a.initComposite(a, a.row)
 	a.fillWidth = true
+	a.boxed = true
 	return a
 }
 
@@ -89,9 +90,9 @@ func (a *Alert) SetIcon(w Widget) {
 
 // SetVariant switches the alert's look.
 func (a *Alert) SetVariant(v AlertVariant) {
-	a.row.RemoveClass(css.Destructive)
+	a.RemoveClass(css.Destructive)
 	if v == AlertDestructive {
-		a.row.AddClass(css.Destructive)
+		a.AddClass(css.Destructive)
 	}
 	a.variant = v
 }
