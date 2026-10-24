@@ -472,16 +472,16 @@ func (a *Application) FontChooserDialog(parent *Window, initialFamily string, in
 // through OnResponse when a day is picked (the dialog closes) and
 // "cancel" on Esc. onSelect is the Calendar's own hook for apps that
 // want every applied selection, not just the closing one.
-func (a *Application) CalendarDialog(parent *Window, initial time.Time, onSelect func(time.Time)) (*Dialog, error) {
+func (a *Application) CalendarDialog(parent *Window, initial widget.Date, onSelect func(widget.Date)) (*Dialog, error) {
 	face := a.resolveFace(nil)
 	if face == nil {
 		return nil, ErrNoDialogFace
 	}
-	cal := widget.NewCalendar(face, 13, initial)
+	cal := widget.NewCalendar(face, 14, initial)
 	var d *Dialog
-	cal.OnSelect = func(t time.Time) {
+	cal.OnSelect = func(day widget.Date) {
 		if onSelect != nil {
-			onSelect(t)
+			onSelect(day)
 		}
 		if d != nil {
 			d.Respond("select")
@@ -490,8 +490,8 @@ func (a *Application) CalendarDialog(parent *Window, initial time.Time, onSelect
 	var err error
 	d, err = a.NewDialog(parent, DialogConfig{
 		Title:          widget.Tr("Select date"),
-		Width:          260,
-		Height:         240,
+		Width:          300,
+		Height:         380,
 		Content:        cal,
 		Modal:          true,
 		Buttons:        []DialogButton{{Label: widget.Tr("Cancel"), Response: "cancel", Role: ButtonRoleCancel}},

@@ -1262,7 +1262,7 @@ type CalendarBuilder struct {
 }
 
 // Calendar builds a widget.Calendar with widget.NewCalendar.
-func Calendar(initial time.Time) *CalendarBuilder {
+func Calendar(initial widget.Date) *CalendarBuilder {
 	b := &CalendarBuilder{}
 	b.init(b, func(s *Scope) *widget.Calendar { return widget.NewCalendar(s.face(b.face), s.size(b.size), initial) })
 	return b
@@ -1271,6 +1271,30 @@ func Calendar(initial time.Time) *CalendarBuilder {
 // Font overrides the environment's typeface and size for this widget; zero values keep the environment's.
 func (b *CalendarBuilder) Font(face render.Font, sizePx float64) *CalendarBuilder {
 	b.face, b.size = face, sizePx
+	return b
+}
+
+// Mode calls (*widget.Calendar).SetMode.
+func (b *CalendarBuilder) Mode(m widget.CalendarMode) *CalendarBuilder {
+	b.do(func(s *Scope, w *widget.Calendar) { w.SetMode(m) })
+	return b
+}
+
+// WatchMode re-applies SetMode with get's value after every update.
+func (b *CalendarBuilder) WatchMode(get func() widget.CalendarMode) *CalendarBuilder {
+	b.watch(func(w *widget.Calendar) { w.SetMode(get()) })
+	return b
+}
+
+// Months calls (*widget.Calendar).SetMonths.
+func (b *CalendarBuilder) Months(n int) *CalendarBuilder {
+	b.do(func(s *Scope, w *widget.Calendar) { w.SetMonths(n) })
+	return b
+}
+
+// WatchMonths re-applies SetMonths with get's value after every update.
+func (b *CalendarBuilder) WatchMonths(get func() int) *CalendarBuilder {
+	b.watch(func(w *widget.Calendar) { w.SetMonths(get()) })
 	return b
 }
 
@@ -1286,15 +1310,39 @@ func (b *CalendarBuilder) WatchNames(get func() widget.CalendarNames) *CalendarB
 	return b
 }
 
+// Range calls (*widget.Calendar).SetRange.
+func (b *CalendarBuilder) Range(from widget.Date, to widget.Date) *CalendarBuilder {
+	b.do(func(s *Scope, w *widget.Calendar) { w.SetRange(from, to) })
+	return b
+}
+
+// Today calls (*widget.Calendar).SetToday.
+func (b *CalendarBuilder) Today(d widget.Date) *CalendarBuilder {
+	b.do(func(s *Scope, w *widget.Calendar) { w.SetToday(d) })
+	return b
+}
+
+// WatchToday re-applies SetToday with get's value after every update.
+func (b *CalendarBuilder) WatchToday(get func() widget.Date) *CalendarBuilder {
+	b.watch(func(w *widget.Calendar) { w.SetToday(get()) })
+	return b
+}
+
 // Detail sets the widget's Detail field.
-func (b *CalendarBuilder) Detail(fn func(date time.Time) string) *CalendarBuilder {
+func (b *CalendarBuilder) Detail(fn func(date widget.Date) string) *CalendarBuilder {
 	b.do(func(_ *Scope, w *widget.Calendar) { w.Detail = fn })
 	return b
 }
 
 // OnSelect sets the widget's OnSelect field.
-func (b *CalendarBuilder) OnSelect(fn func(time.Time)) *CalendarBuilder {
+func (b *CalendarBuilder) OnSelect(fn func(widget.Date)) *CalendarBuilder {
 	b.do(func(_ *Scope, w *widget.Calendar) { w.OnSelect = fn })
+	return b
+}
+
+// OnRangeSelect sets the widget's OnRangeSelect field.
+func (b *CalendarBuilder) OnRangeSelect(fn func(from widget.Date, to widget.Date)) *CalendarBuilder {
+	b.do(func(_ *Scope, w *widget.Calendar) { w.OnRangeSelect = fn })
 	return b
 }
 

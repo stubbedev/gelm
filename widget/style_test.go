@@ -6,7 +6,6 @@ import (
 	"slices"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/stubbedev/lys-ui/internal/style"
 	"github.com/stubbedev/lys-ui/render"
@@ -105,7 +104,7 @@ func TestCSSElementNames(t *testing.T) {
 	}
 	// Calendar is listed only to pin its constructor-time name; the
 	// zero value probes the switch, not the constructor.
-	_ = NewCalendar(goldenFace(t), 12, time.Now())
+	_ = NewCalendar(goldenFace(t), 12, Today())
 	_ = NewColorChooser(goldenFace(t), 12, 0)
 	_ = NewGrid(0, 0)
 	_ = NewNotebook(goldenFace(t))

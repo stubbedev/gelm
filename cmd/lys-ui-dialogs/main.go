@@ -11,7 +11,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"time"
 
 	"github.com/unxed/xkb-go"
 
@@ -84,8 +83,8 @@ func run() error {
 		return err
 	}))
 	dialogs.Append(button("calendar", func() error {
-		_, err := application.CalendarDialog(w, time.Now(), func(t time.Time) {
-			say("date chosen %s", t.Format("2006-01-02"))
+		_, err := application.CalendarDialog(w, widget.Today(), func(d widget.Date) {
+			say("date chosen %s", d)
 		})
 		return err
 	}))

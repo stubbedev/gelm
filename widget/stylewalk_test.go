@@ -3,7 +3,6 @@ package widget
 import (
 	"slices"
 	"testing"
-	"time"
 
 	"github.com/stubbedev/lys-ui/render"
 )
@@ -50,7 +49,7 @@ func TestStyleWalkReachesEveryParentedWidget(t *testing.T) {
 		NewList[Widget](staticRows{leaf("list row")}, 0),
 		NewMenu(face, 12, MenuItem{Label: "m", Icon: icon}),
 		nb, grid, stack, drop, flow,
-		sw, NewCalendar(face, 12, time.Date(2026, 10, 2, 0, 0, 0, 0, time.UTC)),
+		sw, NewCalendar(face, 12, Date{2026, 10, 2}),
 		NewColorChooser(face, 12, render.RGB(1, 2, 3)), NewMenuStack(face, 12, MenuItem{Label: "s"}),
 	} {
 		root.Append(w, false)
@@ -81,7 +80,7 @@ func TestStyleWalkReachesEveryParentedWidget(t *testing.T) {
 func TestStyleWalkReachesComposites(t *testing.T) {
 	face := testFace(t)
 	root := NewBox(Column, 0, 0)
-	root.Append(NewCalendar(face, 12, time.Date(2026, 10, 2, 0, 0, 0, 0, time.UTC)), false)
+	root.Append(NewCalendar(face, 12, Date{2026, 10, 2}), false)
 	root.Append(NewColorChooser(face, 12, render.RGB(1, 2, 3)), false)
 	for range 2 {
 		root.Measure(Constraints{Max: Size{W: 400, H: 1200}})

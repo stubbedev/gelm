@@ -372,8 +372,8 @@ func hoverMenuRow(m *Menu, itemH, i int) {
 func TestGoldenCalendar(t *testing.T) {
 	face := goldenFace(t)
 	th := DarkTheme()
-	cal := NewCalendar(face, 13, time.Date(2026, time.September, 14, 0, 0, 0, 0, time.UTC))
-	cal.today = time.Date(2026, time.September, 3, 0, 0, 0, 0, time.UTC)
+	cal := NewCalendar(face, 13, Date{2026, time.September, 14})
+	cal.SetToday(Date{2026, time.September, 3})
 	NewGolden(t, cal, "calendar", goldenTheme(th))
 }
 

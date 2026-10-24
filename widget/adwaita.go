@@ -248,6 +248,8 @@ func controlRules() [][2]string {
 		{"command .empty", "padding: 24px 0px; color: @muted_fg_color;"},
 		{"combobox button", "font-weight: 400; padding: 0px 12px;"},
 		{"combobox .placeholder", "color: @muted_fg_color;"},
+		{"calendar button.nav", "background-color: transparent; border-radius: 6px; color: @muted_fg_color;"},
+		{"calendar button.nav:hover", "background-color: @muted_bg_color; color: @window_fg_color;"},
 		{"skeleton", "background-color: @muted_bg_color; border-radius: 6px;"},
 		{"bullets", "margin-left: 8px;"},
 		{"rows", "border: 1px solid @borders;"},

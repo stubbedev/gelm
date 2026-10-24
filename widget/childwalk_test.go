@@ -2,7 +2,6 @@ package widget
 
 import (
 	"testing"
-	"time"
 
 	"github.com/stubbedev/lys-ui/render"
 )
@@ -50,7 +49,7 @@ func TestChildWalkMatchesChildren(t *testing.T) {
 		scrolled := NewScroll(box)
 		empty := NewScroll(nil)
 
-		cal := NewCalendar(face, 12, time.Now())
+		cal := NewCalendar(face, 12, Today())
 
 		chooser := NewColorChooser(face, 12, render.RGB(1, 2, 3))
 
