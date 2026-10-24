@@ -3780,6 +3780,30 @@ func (b *ImageBuilder) OnPasteImage(fn func(img image.Image)) *ImageBuilder {
 	return b
 }
 
+// InputGroupBuilder builds a widget.InputGroup.
+type InputGroupBuilder struct {
+	base[*widget.InputGroup, *InputGroupBuilder]
+}
+
+// InputGroup builds a widget.InputGroup with widget.NewInputGroup.
+func InputGroup(entry Of[*widget.Entry]) *InputGroupBuilder {
+	b := &InputGroupBuilder{}
+	b.init(b, func(s *Scope) *widget.InputGroup { return widget.NewInputGroup(buildOf(s, entry)) })
+	return b
+}
+
+// Append calls (*widget.InputGroup).Append.
+func (b *InputGroupBuilder) Append(child Node) *InputGroupBuilder {
+	b.do(func(s *Scope, w *widget.InputGroup) { w.Append(build(s, child)) })
+	return b
+}
+
+// Prepend calls (*widget.InputGroup).Prepend.
+func (b *InputGroupBuilder) Prepend(child Node) *InputGroupBuilder {
+	b.do(func(s *Scope, w *widget.InputGroup) { w.Prepend(build(s, child)) })
+	return b
+}
+
 // InscriptionBuilder builds a widget.Inscription.
 type InscriptionBuilder struct {
 	base[*widget.Inscription, *InscriptionBuilder]
@@ -6521,6 +6545,12 @@ func (b *TabViewBuilder) Append(child Node, title string) *TabViewBuilder {
 // Insert calls (*widget.TabView).Insert.
 func (b *TabViewBuilder) Insert(i int, child Node, title string) *TabViewBuilder {
 	b.do(func(s *Scope, w *widget.TabView) { w.Insert(i, build(s, child), title) })
+	return b
+}
+
+// Prepend calls (*widget.TabView).Prepend.
+func (b *TabViewBuilder) Prepend(child Node, title string) *TabViewBuilder {
+	b.do(func(s *Scope, w *widget.TabView) { w.Prepend(build(s, child), title) })
 	return b
 }
 

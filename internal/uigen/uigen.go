@@ -22,7 +22,7 @@ import (
 
 const widgetPath = "github.com/stubbedev/lys-ui/widget"
 
-var mutators = []string{"Set", "Add", "Bind", "Attach", "Append", "Insert", "Pack", "Push", "Put"}
+var mutators = []string{"Set", "Add", "Bind", "Attach", "Append", "Prepend", "Insert", "Pack", "Push", "Put"}
 
 var plumbing = map[string]bool{
 	"SetHovered": true, "SetPressed": true, "SetFocused": true, "SetDragOver": true,

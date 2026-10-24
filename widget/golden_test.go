@@ -124,7 +124,7 @@ func NewGolden(t *testing.T, w Widget, name string, opts ...goldenOption) {
 		cv := render.New(buf, stride, bw, bh)
 		cv.Clear(cv.Rect(), bg)
 		if cfg.focus != nil {
-			cv.MarkFocus(cfg.focus, func(cv *render.Canvas) { PaintFocusRing(cv, cfg.focus) })
+			cv.MarkFocus(FocusRingOwner(cfg.focus), func(cv *render.Canvas) { PaintFocusRing(cv, cfg.focus) })
 		}
 		w.Paint(cv)
 		cv.FinishFocus()

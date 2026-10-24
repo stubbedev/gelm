@@ -844,7 +844,7 @@ func (w *hostWindow) draw() bool {
 	// The focus ring draws right after its widget, in tree order, so
 	// what paints later (a card over the list) covers it.
 	if f := w.focusRingWidget(); f != nil {
-		cv.MarkFocus(f, func(cv *render.Canvas) { widget.PaintFocusRing(cv, f) })
+		cv.MarkFocus(widget.FocusRingOwner(f), func(cv *render.Canvas) { widget.PaintFocusRing(cv, f) })
 	}
 	cv.BeginOverlays()
 	w.router.Root.Paint(cv)

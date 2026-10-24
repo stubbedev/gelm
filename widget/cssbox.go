@@ -159,10 +159,26 @@ const FocusRingWidth = 3
 // ring color: a soft halo, not a hard frame.
 const focusRingAlpha = 0.5
 
-// FocusRingRect is the rect the keyboard focus ring around w covers:
-// w's border box grown by FocusRingWidth on every side. It is empty
-// when w reports no bounds.
+// focusRingClaimer is a widget that draws its descendants' focus ring
+// around itself: an input group around its entry.
+type focusRingClaimer interface{ claimsFocusRing() }
+
+// FocusRingOwner is the widget the focus ring of a focused w goes
+// around: the nearest ancestor that claims it, else w.
+func FocusRingOwner(w Widget) Widget {
+	for p := w; p != nil; p = parentOf(p) {
+		if _, ok := p.(focusRingClaimer); ok {
+			return p
+		}
+	}
+	return w
+}
+
+// FocusRingRect is the rect the keyboard focus ring of a focused w
+// covers: its FocusRingOwner's border box grown by FocusRingWidth on
+// every side. It is empty when the owner reports no bounds.
 func FocusRingRect(w Widget) render.Rect {
+	w = FocusRingOwner(w)
 	bs, ok := w.(Boundser)
 	if !ok {
 		return render.Rect{}
@@ -184,10 +200,11 @@ func CornerRadii(w Widget) render.Corners {
 	return render.Corners{}
 }
 
-// PaintFocusRing draws the keyboard focus ring around w: FocusRingWidth
-// wide outside its border box, following its corner radii, in the
+// PaintFocusRing draws the keyboard focus ring of a focused w around
+// its FocusRingOwner: FocusRingWidth wide outside the border box, following its corner radii, in the
 // theme's ring color at focusRingAlpha.
 func PaintFocusRing(cv *render.Canvas, w Widget) {
+	w = FocusRingOwner(w)
 	r := FocusRingRect(w)
 	if r.Empty() {
 		return

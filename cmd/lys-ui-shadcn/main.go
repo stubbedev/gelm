@@ -143,6 +143,12 @@ func (g *gallery) Init(cx *component.Context[galleryMsg, struct{}]) widget.Widge
 			Icon(ui.Symbol(widget.SymbolMaximize, 24)).
 			Child(ui.Button(ui.Label("Create project"), 0, 0).Classes(css.SuggestedAction))),
 		section("Field and Form", g.form(cx)),
+		section("Input Group",
+			ui.InputGroup(ui.Entry().Placeholder("Search...")).
+				Prepend(ui.Symbol(widget.SymbolCrosshair, 16)).Append(ui.Label("12 results")),
+			ui.InputGroup(ui.Entry().Text("example.com")).
+				Prepend(ui.Label("https://")).
+				Append(ui.Button(ui.Label("Copy"), 0, 0).Classes(css.Ghost, css.Small))),
 		section("Kbd", ui.Row(ui.KbdGroup("Ctrl", "Shift", "P"), ui.Label("opens the command palette")).Spacing(12)),
 		section("Pagination", ui.Pagination(10, 5)),
 		section("Skeleton", ui.Row(
