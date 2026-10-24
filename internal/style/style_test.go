@@ -857,12 +857,24 @@ func TestSensitivity(t *testing.T) {
 			t.Errorf("ancestor class %q missing", c)
 		}
 	}
-	if sens.AncestorClasses["icon"] || sens.Siblings {
+	if sens.AncestorClasses["icon"] || sens.Structural || sens.SiblingFacts {
 		t.Error("rightmost class or siblings recorded")
 	}
-	if !parseOne(t, "a + b { color: red; }").Sensitivity().Siblings ||
-		!parseOne(t, "a:first-child { color: red; }").Sensitivity().Siblings {
-		t.Error("sibling sensitivity missed")
+	for _, tc := range []struct {
+		css               string
+		structural, facts bool
+	}{
+		{"a + b { color: red; }", true, true},
+		{"a ~ b { color: red; }", true, true},
+		{"a:first-child { color: red; }", true, false},
+		{"a:last-child { color: red; }", true, false},
+		{"a:nth-child(2n) { color: red; }", true, false},
+		{"a:nth-child(2n of .x) { color: red; }", true, true},
+	} {
+		got := parseOne(t, tc.css).Sensitivity()
+		if got.Structural != tc.structural || got.SiblingFacts != tc.facts {
+			t.Errorf("%s: structural %v facts %v, want %v %v", tc.css, got.Structural, got.SiblingFacts, tc.structural, tc.facts)
+		}
 	}
 }
 

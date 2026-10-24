@@ -78,9 +78,11 @@ var (
 
 // sensitivity is the union of the loaded sheets' selector summaries.
 type sensitivity struct {
-	states   style.State
-	classes  map[string]bool
-	siblings bool
+	states  style.State
+	classes map[string]bool
+	// structural and siblingFacts are style.Sensitivity's Structural
+	// and SiblingFacts.
+	structural, siblingFacts bool
 	// media reports whether any loaded sheet carries @media or
 	// @container rules: the viewport and preference setters restyle
 	// only then (containers resize with the window).
@@ -173,7 +175,8 @@ func relayer() {
 		}
 		sn := s.sheet.Sensitivity()
 		sensNow.states |= sn.AncestorStates
-		sensNow.siblings = sensNow.siblings || sn.Siblings
+		sensNow.structural = sensNow.structural || sn.Structural
+		sensNow.siblingFacts = sensNow.siblingFacts || sn.SiblingFacts
 		sensNow.has = sensNow.has || sn.HasRelational
 		sensNow.pseudo = sensNow.pseudo || sn.Pseudo
 		sensNow.counters = sensNow.counters || sn.Counters
@@ -2058,11 +2061,11 @@ func appendStyleKids(w Widget, buf []Widget) []Widget {
 }
 
 // restyleChildren marks w's children (and their subtrees) stale: a
-// child was added, removed, reordered, or hidden, and a loaded sibling
-// selector may now match differently. Without sibling selectors it is
+// child was added, removed, reordered, or hidden, and a loaded
+// structural selector may now match differently. Without one it is
 // free.
 func restyleChildren(w Widget) {
-	if !sensNow.siblings {
+	if !sensNow.structural {
 		return
 	}
 	restyleSubtree(w)
@@ -2079,11 +2082,12 @@ func (n *node) invalidateStyle() {
 
 // invalidateState restyles after the state bits in changed flipped:
 // the widget, plus its subtree when a selector reads one of them on an
-// ancestor, plus its siblings when sibling selectors are loaded. The
+// ancestor, plus its siblings when a selector reads a sibling's facts
+// (style.Sensitivity.SiblingFacts). The
 // widget repaints: its own paint may read the state (a theme hover
 // shade).
 func (n *node) invalidateState(changed style.State) {
-	n.invalidateScope(sensNow.states&changed != 0 || sensNow.has, sensNow.siblings)
+	n.invalidateScope(sensNow.states&changed != 0 || sensNow.has, sensNow.siblingFacts)
 }
 
 // restyleState is invalidateState for the propagated states — the
@@ -2092,7 +2096,7 @@ func (n *node) invalidateState(changed style.State) {
 func (n *node) restyleState(changed style.State) {
 	n.styleDirty = true
 	markDamage()
-	n.scope(sensNow.states&changed != 0 || sensNow.has, sensNow.siblings)
+	n.scope(sensNow.states&changed != 0 || sensNow.has, sensNow.siblingFacts)
 }
 
 // invalidateClasses is invalidateState for a class-list change.
@@ -2104,7 +2108,7 @@ func (n *node) invalidateClasses(changed []string) {
 			break
 		}
 	}
-	n.invalidateScope(anc, sensNow.siblings)
+	n.invalidateScope(anc, sensNow.siblingFacts)
 }
 
 // invalidateScope marks n stale, and its subtree when sub, and its

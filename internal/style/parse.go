@@ -176,10 +176,14 @@ type Sensitivity struct {
 	// AncestorClasses are the classes some selector tests on a
 	// non-rightmost compound.
 	AncestorClasses map[string]bool
-	// Siblings reports sibling combinators or structural pseudo-classes
-	// anywhere: a sibling's add, removal, visibility, class, or state
-	// can then restyle its neighbors.
-	Siblings bool
+	// Structural reports structural pseudo-classes or sibling
+	// combinators anywhere: a sibling's add, removal, reorder or
+	// visibility can then restyle its neighbors.
+	Structural bool
+	// SiblingFacts reports sibling combinators or an :nth-*(... of S)
+	// anywhere: a sibling's class or state can then restyle its
+	// neighbors. Position alone (:last-child) reads neither.
+	SiblingFacts bool
 	// HasRelational reports a :has() anywhere: a descendant or
 	// following sibling's facts then feed an ancestor's match, so class
 	// and state changes restyle up the tree too.
@@ -1396,13 +1400,19 @@ func (p *parser) add(sel selector, block, start *Block) {
 	for i := range sel.parts {
 		part := &sel.parts[i]
 		if part.structs != 0 || len(part.nths) > 0 {
-			s.sens.Siblings = true
+			s.sens.Structural = true
+		}
+		for _, n := range part.nths {
+			if n.of != nil {
+				s.sens.SiblingFacts = true
+			}
 		}
 		s.noteCompound(part, i == len(sel.parts)-1)
 	}
 	for _, c := range sel.combs {
 		if c == '+' || c == '~' {
-			s.sens.Siblings = true
+			s.sens.Structural = true
+			s.sens.SiblingFacts = true
 		}
 	}
 	for i := range block.decls {

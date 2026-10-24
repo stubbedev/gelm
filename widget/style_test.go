@@ -655,3 +655,30 @@ func TestFocusBitFollowsTheRouter(t *testing.T) {
 		t.Error("button matched entry:focus")
 	}
 }
+
+// A state change restyles a widget's siblings only under a selector
+// that reads a sibling's facts: a structural one (:last-child) depends
+// on position alone, so the siblings stay clean and repaint nothing.
+func TestStateChangeRestylesSiblingsOnlyForSiblingFacts(t *testing.T) {
+	for _, tc := range []struct {
+		css     string
+		restyle bool
+	}{
+		{".x:last-child { color: #ff0000; }", false},
+		{".x:hover + .x { color: #ff0000; }", true},
+	} {
+		LoadStylesheet(tc.css)
+		a, b := NewBox(Row, 0, 0), NewBox(Row, 0, 0)
+		a.AddClass("x")
+		b.AddClass("x")
+		root := NewBox(Column, 0, 0).Append(a, false).Append(b, false)
+		arrangeTree(t, root, 100, 100)
+		a.style(a)
+		b.style(b)
+		a.SetState(StateSelected, true)
+		if b.styleDirty != tc.restyle {
+			t.Errorf("%s: sibling restyled %v, want %v", tc.css, b.styleDirty, tc.restyle)
+		}
+	}
+	LoadStylesheet("")
+}
