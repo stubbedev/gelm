@@ -79,6 +79,33 @@ func TestReleasedBufferIsReusedBeforeAllocating(t *testing.T) {
 	}
 }
 
+// A buffer handed out stays the compositor's until its release: a
+// reused buffer is as busy as a fresh one, so the next Acquire never
+// returns the buffer on screen (#220).
+func TestAcquireNeverHandsOutAHeldBuffer(t *testing.T) {
+	created := 0
+	p := New(countingCreate(&created, 100, 20), 3)
+	first, err := p.Acquire()
+	if err != nil {
+		t.Fatal(err)
+	}
+	first.Release()
+	reused, err := p.Acquire()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reused != first || !reused.Busy() {
+		t.Fatalf("reused buffer busy = %v, want the released buffer marked busy again", reused.Busy())
+	}
+	next, err := p.Acquire()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if next == reused {
+		t.Error("Acquire handed out the buffer the compositor still holds")
+	}
+}
+
 func TestCreateErrorIsReturnedVerbatim(t *testing.T) {
 	want := errors.New("shm pool exploded")
 	p := New(func() (*Buffer, error) { return nil, want }, 2)

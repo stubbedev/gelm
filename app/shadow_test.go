@@ -88,8 +88,14 @@ func TestToastShadowDamageInWindow(t *testing.T) {
 	}
 
 	// The hover-twitch contract: repaint the card, never re-send the
-	// ring.
+	// ring. The first twitch lands in the other pooled buffer, which
+	// still owes the rest frame's ring; from the second on, the
+	// rotation is in sync and only the card repaints.
 	toast.HoverMove(widget.Point{X: 60, Y: 50})
+	if painted, _ := h.frame(); painted == 0 {
+		t.Fatal("hover twitch painted nothing")
+	}
+	toast.HoverMove(widget.Point{X: 61, Y: 50})
 	if painted, damage := h.frame(); painted == 0 {
 		t.Fatal("hover twitch painted nothing")
 	} else if got := render.UnionAll(damage); got != toast.Bounds() {

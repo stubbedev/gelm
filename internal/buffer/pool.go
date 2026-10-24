@@ -173,6 +173,7 @@ func (p *Pool) Acquire() (*Buffer, error) {
 	for _, b := range p.buffers {
 		if !b.busy {
 			b.refresh()
+			b.busy = true
 			return b, nil
 		}
 	}
