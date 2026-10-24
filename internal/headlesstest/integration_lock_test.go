@@ -238,7 +238,7 @@ func runLockHelper(t *testing.T, mode string) string {
 	cmd.Env = append(privateEnv("LYS_UI_HEADLESS=", "WAYLAND_DISPLAY="+testEnv.Display, "XDG_RUNTIME_DIR="+testEnv.Dir), rivalEnv+"="+mode,
 		// The helper's lock lifecycle, when the suite is built with the
 		// lysuidebug tag (a no-op otherwise).
-		"GOELM_DEBUG=shell,wire")
+		"LYS_UI_DEBUG=shell,wire")
 	out, err := cmd.CombinedOutput()
 	t.Logf("lock helper (%s):\n%s", mode, out)
 	if err != nil {

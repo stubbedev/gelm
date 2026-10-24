@@ -121,15 +121,15 @@ demo:
 
 # Run the widget showcase inside the headless test compositor with
 # input traces on; pair with the move/click/sweep recipes to drive it.
-# GOELM_DEBUG picks trace categories (see internal/debug).
-demo-headless GOELM_DEBUG="input,frame": test-env test-build
+# LYS_UI_DEBUG picks trace categories (see internal/debug).
+demo-headless LYS_UI_DEBUG="input,frame": test-env test-build
     #!/bin/sh
     dir="{{test_dir}}"
     if [ ! -f "$dir/client.env" ]; then
         echo "test compositor env missing; run just test-env"; exit 1
     fi
     . "$dir/client.env"
-    export WAYLAND_DISPLAY DBUS_SESSION_BUS_ADDRESS XDG_RUNTIME_DIR="$dir" GOELM_DEBUG="{{GOELM_DEBUG}}"
+    export WAYLAND_DISPLAY DBUS_SESSION_BUS_ADDRESS XDG_RUNTIME_DIR="$dir" LYS_UI_DEBUG="{{LYS_UI_DEBUG}}"
     "$dir/lys-ui-hello" >"$dir/demo.log" 2>&1 &
     echo $! >"$dir/demo.pid"
     sleep 1
@@ -150,14 +150,14 @@ multi:
     go run ./cmd/lys-ui-multi
 
 # Run the application-model demo inside the headless test compositor.
-multi-headless GOELM_DEBUG="input,frame": test-env test-build
+multi-headless LYS_UI_DEBUG="input,frame": test-env test-build
     #!/bin/sh
     dir="{{test_dir}}"
     if [ ! -f "$dir/client.env" ]; then
         echo "test compositor env missing; run just test-env"; exit 1
     fi
     . "$dir/client.env"
-    export WAYLAND_DISPLAY DBUS_SESSION_BUS_ADDRESS XDG_RUNTIME_DIR="$dir" GOELM_DEBUG="{{GOELM_DEBUG}}"
+    export WAYLAND_DISPLAY DBUS_SESSION_BUS_ADDRESS XDG_RUNTIME_DIR="$dir" LYS_UI_DEBUG="{{LYS_UI_DEBUG}}"
     go build -tags lysuidebug -o "$dir/lys-ui-multi" ./cmd/lys-ui-multi || exit 1
     "$dir/lys-ui-multi" >"$dir/demo.log" 2>&1 &
     echo $! >"$dir/demo.pid"

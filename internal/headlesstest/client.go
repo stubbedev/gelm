@@ -94,7 +94,7 @@ func (e *Env) StartShowcase(bin, name string) (*Client, error) {
 }
 
 // StartClient runs a built client binary inside the env with the given
-// GOELM_DEBUG categories and extra arguments, its stdout and stderr
+// LYS_UI_DEBUG categories and extra arguments, its stdout and stderr
 // going to a log file a LogWatcher can follow. The caller must Stop it
 // (or Wait it after a close request).
 func (e *Env) StartClient(bin, name, categories string, args ...string) (*Client, error) {
@@ -117,7 +117,7 @@ func (e *Env) StartClientEnv(bin, name, categories string, env []string, args ..
 	cmd.Env = append(privateEnv(
 		"WAYLAND_DISPLAY="+e.Display,
 		"XDG_RUNTIME_DIR="+e.Dir,
-		"GOELM_DEBUG="+categories,
+		"LYS_UI_DEBUG="+categories,
 	), env...)
 	if err := cmd.Start(); err != nil {
 		_ = log.Close()

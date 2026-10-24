@@ -6,7 +6,7 @@
 // driver), launches a lys-ui client under test inside it, drives a
 // synthetic seat through zwlr_virtual_pointer_v1 and
 // zwp_virtual_keyboard_v1, and asserts on the client's observable
-// behavior through its GOELM_DEBUG trace log.
+// behavior through its LYS_UI_DEBUG trace log.
 //
 // The package has two kinds of users. The unit-testable pieces (trace
 // parsing, keymap table, compositor drivers) are plain exported

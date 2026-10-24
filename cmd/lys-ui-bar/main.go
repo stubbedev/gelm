@@ -2,7 +2,7 @@
 // clock, and a seconds gauge, ticked once a second by Application.Every.
 // Damage tracking repaints only what changed each second (the gauge,
 // and the clock once a minute); build with -tags lysuidebug and run with
-// GOELM_DEBUG=frame to watch the damage rects. -dump renders one frame
+// LYS_UI_DEBUG=frame to watch the damage rects. -dump renders one frame
 // to a PNG instead.
 package main
 

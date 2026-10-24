@@ -14,7 +14,7 @@ tagged builds do not exist. The cost when it is off is one
 passthrough call per frame operation (measure, arrange, paint, hit
 test) and one bool check per key press — nothing traces, draws, or
 allocates. Real trace instrumentation stays behind the tag
-(`internal/debug`, `GOELM_DEBUG`), so prod binaries carry no trace
+(`internal/debug`, `LYS_UI_DEBUG`), so prod binaries carry no trace
 output.
 
 The tree dump is a plain function call (`widget.DumpTree`,

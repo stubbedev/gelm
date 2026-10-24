@@ -363,7 +363,7 @@ mode switches, and unplug-replug.
 
 ## Debug traces
 
-`internal/debug` (build tag `lysuidebug`, categories via GOELM_DEBUG)
+`internal/debug` (build tag `lysuidebug`, categories via LYS_UI_DEBUG)
 traces the path at its seams, and `app.Trace` lets an application
 trace its own events into the same timeline: `wire`-level pointer events with surface
 ids in `wlsession`, routing decisions and hit bounds in `app`, frame

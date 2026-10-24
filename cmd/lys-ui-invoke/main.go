@@ -2,7 +2,7 @@
 // command "polls a sensor" twice a second on its own goroutine and
 // sends each reading to the component's Update, while Application.Every
 // drives a second label on the loop's own timer wakes. Between ticks
-// the loop parks: build with -tags lysuidebug, run with GOELM_DEBUG=wake,
+// the loop parks: build with -tags lysuidebug, run with LYS_UI_DEBUG=wake,
 // and watch it go quiet - two wakeups per second, nothing in between,
 // 0% idle CPU.
 package main
