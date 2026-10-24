@@ -179,7 +179,6 @@ func runWithTimeout(cmd *exec.Cmd, timeout time.Duration) (string, error) {
 		return out.String(), err
 	case <-time.After(timeout):
 		_ = cmd.Process.Kill()
-		<-done
-		return out.String(), fmt.Errorf("timed out after %s", timeout)
+		return out.String(), fmt.Errorf("timed out after %s: %w", timeout, <-done)
 	}
 }
