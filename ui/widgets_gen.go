@@ -745,9 +745,9 @@ func ShortcutLabel(keys string) *BoxBuilder {
 }
 
 // Skeleton builds a widget.Box with widget.NewSkeleton.
-func Skeleton(arg int, h int) *BoxBuilder {
+func Skeleton(width int, height int) *BoxBuilder {
 	b := &BoxBuilder{}
-	b.init(b, func(s *Scope) *widget.Box { return widget.NewSkeleton(arg, h) })
+	b.init(b, func(s *Scope) *widget.Box { return widget.NewSkeleton(width, height) })
 	return b
 }
 

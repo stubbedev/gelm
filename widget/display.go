@@ -82,6 +82,7 @@ func (b *Badge) SetIcon(w Widget) {
 func NewKbd(face render.Font, key string) *Label {
 	l := NewLabel(requireFace("widget.NewKbd", face), 12, key, 0)
 	l.AddClass(css.Keycap)
+	l.SetAlignment(render.AlignCenter)
 	return l
 }
 
@@ -95,13 +96,13 @@ func NewKbdGroup(face render.Font, keys ...string) *Box {
 	return row
 }
 
-// NewSkeleton is a w x h placeholder block that pulses while content
+// NewSkeleton is a width x height placeholder block that pulses while content
 // loads (shadcn/ui's Skeleton): the `skeleton` element, a muted
 // rounded fill whose pulse stops under reduced motion.
-func NewSkeleton(w, h int) *Box {
+func NewSkeleton(width, height int) *Box {
 	b := NewBox(Column, 0, 0)
 	b.SetElement("skeleton")
-	b.SetSizeRequest(w, h)
+	b.SetSizeRequest(width, height)
 	return b
 }
 
