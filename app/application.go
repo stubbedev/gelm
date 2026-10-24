@@ -67,6 +67,9 @@ type Application struct {
 	// onTransferError hears failed pastes and drops
 	// (SetTransferErrorHandler).
 	onTransferError func(error)
+	// onPopupError hears widget popups that could not open
+	// (SetPopupErrorHandler).
+	onPopupError func(error)
 	// dataControl is the lazily bound data-control device
 	// (datacontrol.go); nil until DataControl first succeeds.
 	dataControl *datacontrol.Device
@@ -619,6 +622,7 @@ func (a *Application) newWindow(host Host, scale int, root widget.Widget, hooks 
 	widget.SetStyleRoot(root)
 	ov := inspect.NewOverlay(root)
 	ov.SetOn(a.inspectOn)
+	widget.SetPopupHost(ov, popupHost{a: a, host: host})
 	w := newHostWindow(a.sess, host, scale, ov, hooks, a.dnd, a.primary, animKind, hostCloser(host))
 	w.styleRoot = root
 	w.keyChain = a.combineOnKey(hooks.onKey)

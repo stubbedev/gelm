@@ -472,6 +472,7 @@ func (a *Application) OpenPopover(host Host, cfg PopoverConfig) (*Popover, error
 	// the loop goroutine, keys through the same Router once a widget
 	// holds focus. Content the app mutates from Invoke repaints on the
 	// next pass, and nothing paints from a second goroutine.
+	widget.SetPopupHost(cfg.Content, popupHost{a: a, host: host, parent: p})
 	router := &widget.Router{Root: keyRoot}
 	op := &openPopover{
 		host:       host,

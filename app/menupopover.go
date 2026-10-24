@@ -29,6 +29,9 @@ type MenuPopoverConfig struct {
 	Items []widget.MenuItem
 	// OnClosed runs once when the whole menu goes away.
 	OnClosed func()
+	// Parent, when set, nests the root menu under that open popover: a
+	// menu opened from a popover's content.
+	Parent *Popover
 }
 
 // SubmenuSide is the side of its row a submenu opens on.
@@ -80,6 +83,7 @@ func (a *Application) OpenMenuPopover(host Host, cfg MenuPopoverConfig) (*MenuPo
 	return openMenuPopover(cfg, func(parent *Popover, anchor widget.Boundser, content widget.Widget, onClosed func()) (*Popover, error) {
 		pc := PopoverConfig{Anchor: anchor, Content: content, OnClosed: onClosed, Parent: parent}
 		if parent == nil {
+			pc.Parent = cfg.Parent
 			pc.Gravity = cfg.Gravity
 		} else {
 			dir := widget.DirectionAuto

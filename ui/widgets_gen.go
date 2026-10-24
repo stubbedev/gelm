@@ -15,6 +15,7 @@ type nodeProps interface {
 	widget.Widget
 	AddClass(names ...string)
 	AttachStylesheet(s *widget.Stylesheet)
+	SetAccessibleName(name string)
 	SetAttr(name string, value string)
 	SetClasses(names ...string)
 	SetCursorName(s string)
@@ -50,6 +51,18 @@ func (b *base[W, B]) AddClass(names ...string) B {
 // AttachStylesheet calls AttachStylesheet on the widget.
 func (b *base[W, B]) AttachStylesheet(stylesheet *widget.Stylesheet) B {
 	b.do(func(s *Scope, w W) { w.AttachStylesheet(stylesheet) })
+	return b.self
+}
+
+// AccessibleName calls SetAccessibleName on the widget.
+func (b *base[W, B]) AccessibleName(name string) B {
+	b.do(func(s *Scope, w W) { w.SetAccessibleName(name) })
+	return b.self
+}
+
+// WatchAccessibleName re-applies SetAccessibleName with get's value after every update.
+func (b *base[W, B]) WatchAccessibleName(get func() string) B {
+	b.watch(func(w W) { w.SetAccessibleName(get()) })
 	return b.self
 }
 
@@ -908,6 +921,50 @@ func (b *BoxBuilder) Spacing(spacing int) *BoxBuilder {
 // WatchSpacing re-applies SetSpacing with get's value after every update.
 func (b *BoxBuilder) WatchSpacing(get func() int) *BoxBuilder {
 	b.watch(func(w *widget.Box) { w.SetSpacing(get()) })
+	return b
+}
+
+// BreadcrumbBuilder builds a widget.Breadcrumb.
+type BreadcrumbBuilder struct {
+	base[*widget.Breadcrumb, *BreadcrumbBuilder]
+	face render.Font
+	size float64
+}
+
+// Breadcrumb builds a widget.Breadcrumb with widget.NewBreadcrumb.
+func Breadcrumb(path ...string) *BreadcrumbBuilder {
+	b := &BreadcrumbBuilder{}
+	b.init(b, func(s *Scope) *widget.Breadcrumb { return widget.NewBreadcrumb(s.face(b.face), path...) })
+	return b
+}
+
+// Font overrides the environment's typeface and size for this widget; zero values keep the environment's.
+func (b *BreadcrumbBuilder) Font(face render.Font, sizePx float64) *BreadcrumbBuilder {
+	b.face, b.size = face, sizePx
+	return b
+}
+
+// MaxItems calls (*widget.Breadcrumb).SetMaxItems.
+func (b *BreadcrumbBuilder) MaxItems(n int) *BreadcrumbBuilder {
+	b.do(func(s *Scope, w *widget.Breadcrumb) { w.SetMaxItems(n) })
+	return b
+}
+
+// WatchMaxItems re-applies SetMaxItems with get's value after every update.
+func (b *BreadcrumbBuilder) WatchMaxItems(get func() int) *BreadcrumbBuilder {
+	b.watch(func(w *widget.Breadcrumb) { w.SetMaxItems(get()) })
+	return b
+}
+
+// Path calls (*widget.Breadcrumb).SetPath.
+func (b *BreadcrumbBuilder) Path(path ...string) *BreadcrumbBuilder {
+	b.do(func(s *Scope, w *widget.Breadcrumb) { w.SetPath(path...) })
+	return b
+}
+
+// OnNavigate sets the widget's OnNavigate field.
+func (b *BreadcrumbBuilder) OnNavigate(fn func(i int)) *BreadcrumbBuilder {
+	b.do(func(_ *Scope, w *widget.Breadcrumb) { w.OnNavigate = fn })
 	return b
 }
 
@@ -4443,6 +4500,62 @@ func OverlaySplitView(sidebar Node, content Node, collapseWidth int) *OverlaySpl
 	b.init(b, func(s *Scope) *widget.OverlaySplitView {
 		return widget.NewOverlaySplitView(build(s, sidebar), build(s, content), collapseWidth)
 	})
+	return b
+}
+
+// PaginationBuilder builds a widget.Pagination.
+type PaginationBuilder struct {
+	base[*widget.Pagination, *PaginationBuilder]
+	face render.Font
+	size float64
+}
+
+// Pagination builds a widget.Pagination with widget.NewPagination.
+func Pagination(count int, page int) *PaginationBuilder {
+	b := &PaginationBuilder{}
+	b.init(b, func(s *Scope) *widget.Pagination { return widget.NewPagination(s.face(b.face), count, page) })
+	return b
+}
+
+// Font overrides the environment's typeface and size for this widget; zero values keep the environment's.
+func (b *PaginationBuilder) Font(face render.Font, sizePx float64) *PaginationBuilder {
+	b.face, b.size = face, sizePx
+	return b
+}
+
+// Count calls (*widget.Pagination).SetCount.
+func (b *PaginationBuilder) Count(count int, page int) *PaginationBuilder {
+	b.do(func(s *Scope, w *widget.Pagination) { w.SetCount(count, page) })
+	return b
+}
+
+// Page calls (*widget.Pagination).SetPage.
+func (b *PaginationBuilder) Page(page int) *PaginationBuilder {
+	b.do(func(s *Scope, w *widget.Pagination) { w.SetPage(page) })
+	return b
+}
+
+// WatchPage re-applies SetPage with get's value after every update.
+func (b *PaginationBuilder) WatchPage(get func() int) *PaginationBuilder {
+	b.watch(func(w *widget.Pagination) { w.SetPage(get()) })
+	return b
+}
+
+// Siblings calls (*widget.Pagination).SetSiblings.
+func (b *PaginationBuilder) Siblings(n int) *PaginationBuilder {
+	b.do(func(s *Scope, w *widget.Pagination) { w.SetSiblings(n) })
+	return b
+}
+
+// WatchSiblings re-applies SetSiblings with get's value after every update.
+func (b *PaginationBuilder) WatchSiblings(get func() int) *PaginationBuilder {
+	b.watch(func(w *widget.Pagination) { w.SetSiblings(get()) })
+	return b
+}
+
+// OnPageChanged sets the widget's OnPageChanged field.
+func (b *PaginationBuilder) OnPageChanged(fn func(page int)) *PaginationBuilder {
+	b.do(func(_ *Scope, w *widget.Pagination) { w.OnPageChanged = fn })
 	return b
 }
 

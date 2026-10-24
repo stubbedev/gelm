@@ -99,10 +99,14 @@ func (g *gallery) Init(cx *component.Context[galleryMsg, struct{}]) widget.Widge
 			ui.Badge("Destructive").Variant(widget.BadgeDestructive),
 			ui.Badge("Outline").Variant(widget.BadgeOutline),
 		).Spacing(8)),
+		section("Breadcrumb",
+			ui.Breadcrumb("Home", "Components", "Breadcrumb"),
+			ui.Breadcrumb("Home", "Docs", "Components", "Data", "Breadcrumb").MaxItems(3)),
 		section("Empty", ui.StatusPage("", "No projects yet", "You haven't created any projects yet. Get started by creating your first project.").
 			Icon(ui.Symbol(widget.SymbolMaximize, 24)).
 			Child(ui.Button(ui.Label("Create project"), 0, 0).Classes(css.SuggestedAction))),
 		section("Kbd", ui.Row(ui.KbdGroup("Ctrl", "Shift", "P"), ui.Label("opens the command palette")).Spacing(12)),
+		section("Pagination", ui.Pagination(10, 5)),
 		section("Skeleton", ui.Row(
 			ui.Skeleton(48, 48),
 			ui.Column(ui.Skeleton(240, 14), ui.Skeleton(180, 14)).Spacing(8),

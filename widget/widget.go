@@ -173,6 +173,11 @@ type node struct {
 	// parent, but :root, inheritance and scoped-sheet lookup stop at it
 	// (SetStyleRoot).
 	styleRoot bool
+	// accName is the accessible name SetAccessibleName set.
+	accName string
+	// popupHost opens the popups of the tree under this node
+	// (SetPopupHost): set on a surface's root.
+	popupHost PopupHost
 	// styleAnchor continues a parentless tree's style chain at another
 	// widget (SetStyleAnchor); anchored lists the trees anchored here,
 	// which inherit from this node like its children.

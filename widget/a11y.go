@@ -92,6 +92,14 @@ func (r Role) String() string {
 	}
 }
 
+// SetAccessibleName names the widget for assistive technology, over
+// its tooltip and the name its content gives it: an icon button's
+// "Close", a page link's "Go to page 3". Empty restores those.
+func (n *node) SetAccessibleName(name string) { n.accName = name }
+
+// AccessibleName returns the name SetAccessibleName set.
+func (n *node) AccessibleName() string { return n.accName }
+
 // Roleer is implemented by widgets carrying a semantic role.
 type Roleer interface {
 	// Role returns the widget's semantic role.
@@ -112,8 +120,9 @@ func RoleOf(w Widget) Role {
 // with caret and selection, and state flags.
 type A11yState struct {
 	Role Role
-	// Name is the accessible name: the tooltip text when set, else the
-	// visible label text for labeled controls.
+	// Name is the accessible name: SetAccessibleName's when set, else
+	// the tooltip text, else the visible label text for labeled
+	// controls.
 	Name string
 	// Text is the current contents for text-bearing roles.
 	Text string
@@ -156,7 +165,9 @@ func Describe(w Widget) A11yState {
 		return A11yState{}
 	}
 	st := A11yState{Role: RoleOf(w), Enabled: IsEnabled(w), Focusable: isFocusable(w)}
-	if t, ok := w.(TooltipTexter); ok {
+	if n := nodeOf(w); n != nil && n.accName != "" {
+		st.Name = n.accName
+	} else if t, ok := w.(TooltipTexter); ok {
 		st.Name = t.TooltipText()
 	}
 	if b, ok := w.(Boundser); ok {
