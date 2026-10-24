@@ -21,7 +21,7 @@
             );
           };
           env.CGO_ENABLED = "0";
-          vendorHash = "sha256-NH6lBAUZwa7nuoC7ftPnE9zQn4VH9xGDKf7ePS8px3c=";
+          vendorHash = "sha256-UmqOjHeJru5LyCyJOdCbMtMR8AF7i+juJ0I4ROorcqo=";
           doCheck = false;
           # third_party/ holds patched upstream packages lys-ui imports;
           # they build as dependencies, not as targets of their own.
