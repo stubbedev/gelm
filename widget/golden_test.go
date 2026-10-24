@@ -94,7 +94,7 @@ func NewGolden(t *testing.T, w Widget, name string, opts ...goldenOption) {
 	// previous test left in the global.
 	prevTheme := Current()
 	SetTheme(cfg.theme) // nil restores DarkTheme
-	t.Cleanup(func() { SetTheme(prevTheme) })
+	defer SetTheme(prevTheme)
 	theme := Current()
 
 	frame := cfg.frame

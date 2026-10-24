@@ -204,7 +204,13 @@ func TestGoldenRows(t *testing.T) {
 	plain := NewActionRow(face, 14, "Notifications", "When they arrive")
 	plain.SetActivatable(true)
 	plain.ShowChevron(true)
+	prev, callers := Current(), LightTheme()
+	SetTheme(callers)
 	NewGolden(t, plain, "actionrow", goldenTheme(th), goldenFrame(320, 48))
+	if Current() != callers {
+		t.Fatal("NewGolden left its shot's theme installed; the caller's must be back on return")
+	}
+	SetTheme(prev)
 
 	group := NewPreferencesGroup(face, 14, "General")
 	sw := NewSwitchRow(face, 14, "Dark style", "Follow the night", nil)
