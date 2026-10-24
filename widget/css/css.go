@@ -38,6 +38,9 @@ const (
 	// Glass is clear glass: a translucent surface over a blurred,
 	// saturated backdrop.
 	Glass = "glass"
+	// Frosted is frosted glass: a heavier blur under a whiter tint and
+	// a fine grain, so the surface reads as etched.
+	Frosted = "frosted"
 	// BlurUnavailable marks a window's root that asked the compositor
 	// to blur behind it while no blur is in effect, so its style can
 	// turn opaque instead of showing the unblurred desktop.

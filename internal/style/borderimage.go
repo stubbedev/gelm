@@ -164,7 +164,7 @@ func parseBorderImageSource(ts []token, cx *ctx, v *Values) bool {
 	if len(comps) != 1 {
 		return false
 	}
-	img, ok := imageOf(comps[0], cx)
+	img, ok := borderImageOf(comps[0], cx)
 	if ok {
 		v.BorderImage.Source = img
 	}
@@ -213,7 +213,7 @@ func parseBorderImage(ts []token, cx *ctx, v *Values) bool {
 	var haveSrc, haveSlice, haveRep bool
 	for i := 0; i < len(comps); {
 		if !haveSrc {
-			if img, ok := imageOf(comps[i], cx); ok {
+			if img, ok := borderImageOf(comps[i], cx); ok {
 				b.Source, haveSrc = img, true
 				i++
 				continue
@@ -286,6 +286,17 @@ func isImageOrRepeat(c []token, cx *ctx) bool {
 	if len(c) == 1 && c[0].ident("none") {
 		return true
 	}
-	_, ok := imageOf(c, cx)
+	_, ok := borderImageOf(c, cx)
 	return ok
+}
+
+// borderImageOf is imageOf for border-image-source: a -lys-grain()
+// noise has no pixels a border image could slice, so it is invalid
+// there.
+func borderImageOf(ts []token, cx *ctx) (ImageSource, bool) {
+	img, ok := imageOf(ts, cx)
+	if img.Grain != 0 {
+		return ImageSource{}, false
+	}
+	return img, ok
 }

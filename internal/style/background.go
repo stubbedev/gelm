@@ -17,14 +17,17 @@ import (
 type ImageSource struct {
 	Gradient *Gradient
 	URL      string
+	// Grain is lys-ui's -lys-grain(): a fine noise at this opacity
+	// (0 to 1) over the layer's area, the etching of frosted glass.
+	Grain float64
 }
 
 // None reports an image that paints nothing.
-func (s ImageSource) None() bool { return s.Gradient == nil && s.URL == "" }
+func (s ImageSource) None() bool { return s.Gradient == nil && s.URL == "" && s.Grain == 0 }
 
 // equal compares two sources, gradients by value.
 func (s ImageSource) equal(o ImageSource) bool {
-	if s.URL != o.URL || (s.Gradient == nil) != (o.Gradient == nil) {
+	if s.URL != o.URL || s.Grain != o.Grain || (s.Gradient == nil) != (o.Gradient == nil) {
 		return false
 	}
 	return s.Gradient == nil || *s.Gradient == *o.Gradient
@@ -231,6 +234,23 @@ func imageOf(ts []token, cx *ctx) (ImageSource, bool) {
 	}
 	if g, ok := gradientOf(ts, cx); ok {
 		return ImageSource{Gradient: &g}, true
+	}
+	if len(ts) > 0 && ts[0].kind == tkFunc && strings.EqualFold(ts[0].s, "-lys-grain") {
+		comps := components(funcArgs(ts))
+		if len(comps) != 1 {
+			return ImageSource{}, false
+		}
+		n, ok := evalNumeric(comps[0], cx)
+		if !ok || (n.kind != numNumber && n.kind != numPercent) {
+			return ImageSource{}, false
+		}
+		if n.kind == numPercent {
+			n.v /= 100
+		}
+		if n.v <= 0 || n.v > 1 {
+			return ImageSource{}, false
+		}
+		return ImageSource{Grain: n.v}, true
 	}
 	if len(ts) > 0 && ts[0].kind == tkFunc && (strings.EqualFold(ts[0].s, "image-set") || strings.EqualFold(ts[0].s, "-webkit-image-set")) {
 		return imageSetOf(funcArgs(ts), cx)

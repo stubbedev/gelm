@@ -38,6 +38,7 @@ func boxesOf(v *style.Values, border render.Rect, radii render.Corners, bw rende
 // file with its natural size.
 type layerImage struct {
 	gradient   *style.Gradient
+	grain      float64
 	icon       *render.Icon
 	natW, natH float64
 }
@@ -47,6 +48,9 @@ type layerImage struct {
 func resolveLayerImage(src style.ImageSource) (layerImage, bool) {
 	if src.Gradient != nil {
 		return layerImage{gradient: src.Gradient}, true
+	}
+	if src.Grain > 0 {
+		return layerImage{grain: src.Grain}, true
 	}
 	ic := bgImageFor(src.URL)
 	if ic == nil {
@@ -135,6 +139,10 @@ func tileAxis(k style.TileKind, pos style.AxisPos, start, area, size float64) (f
 func paintLayerImage(cv *render.Canvas, img layerImage, t render.Tile, clip render.Rect, radii render.Corners) {
 	if img.icon != nil {
 		cv.PaintImageTiles(iconAsImage(img.icon), t, clip, radii)
+		return
+	}
+	if img.grain > 0 {
+		cv.PaintGrain(clip, radii, img.grain, int(math.Round(t.X)), int(math.Round(t.Y)))
 		return
 	}
 	var buf [style.MaxResolvedStops]render.GradientStop

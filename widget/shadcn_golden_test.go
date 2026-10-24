@@ -117,6 +117,11 @@ func TestGlassBlurUnavailableIsOpaque(t *testing.T) {
 	if v := glass.style(glass); v.Background != Current().CardColor() {
 		t.Errorf("fallback background %08x, want the opaque card color %08x", uint32(v.Background), uint32(Current().CardColor()))
 	}
+	frosted := NewBox(Column, 0, 0)
+	frosted.AddClass(css.Frosted, css.BlurUnavailable)
+	if v := frosted.style(frosted); v.Background != Current().CardColor() {
+		t.Errorf("frosted fallback background %08x, want the opaque card color", uint32(v.Background))
+	}
 }
 
 // .liquid-glass over a busy backdrop, in both palettes: the stripes
@@ -137,6 +142,28 @@ func TestGoldenLiquidGlass(t *testing.T) {
 			stage := NewOverlay().Append(backdrop).AppendAligned(pill, AlignCenter, AlignCenter)
 			cssShot(t, `.stripes { background-image: repeating-linear-gradient(90deg, #e05561 0px, #e05561 10px, #3fb68b 10px, #3fb68b 20px, #4f7cff 20px, #4f7cff 30px); }`,
 				stage, "liquid-glass-"+tc.name, goldenTheme(tc.th), goldenFrame(300, 150))
+		})
+	}
+}
+
+// .frosted over a busy backdrop, in both palettes: a heavier blur, a
+// whiter tint and the grain that makes it read as etched (#198).
+func TestGoldenFrosted(t *testing.T) {
+	face := goldenFace(t)
+	for _, tc := range []struct {
+		name string
+		th   *Theme
+	}{{"dark", DarkTheme()}, {"light", LightTheme()}} {
+		t.Run(tc.name, func(t *testing.T) {
+			backdrop := NewBox(Column, 0, 0)
+			backdrop.AddClass("stripes")
+			card := NewBox(Column, 4, 16)
+			card.AddClass(css.Frosted)
+			card.Append(NewLabel(face, 15, "Frosted glass", 0), false).
+				Append(NewLabel(face, 13, "blur, tint and grain", 0), false)
+			stage := NewOverlay().Append(backdrop).AppendAligned(card, AlignCenter, AlignCenter)
+			cssShot(t, `.stripes { background-image: repeating-linear-gradient(45deg, #e05561 0px, #e05561 10px, #3fb68b 10px, #3fb68b 20px, #4f7cff 20px, #4f7cff 30px); }`,
+				stage, "frosted-"+tc.name, goldenTheme(tc.th), goldenFrame(260, 140))
 		})
 	}
 }

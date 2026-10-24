@@ -79,6 +79,24 @@ func TestRefractFilterParses(t *testing.T) {
 	}
 }
 
+// -lys-grain(<opacity>) is a background image of noise: a number or
+// percentage in (0, 1]; a border image has nothing to slice in it.
+func TestGrainImageParses(t *testing.T) {
+	s := parseOne(t, `a { background-image: -lys-grain(0.05); } b { background-image: -lys-grain(8%); }`)
+	if v := computeTree(s, el("a")); v.Bg.Layer(0).Image.Grain != 0.05 {
+		t.Errorf("grain = %v", v.Bg.Layer(0).Image)
+	}
+	if v := computeTree(s, el("b")); v.Bg.Layer(0).Image.Grain != 0.08 {
+		t.Errorf("percent grain = %v", v.Bg.Layer(0).Image)
+	}
+	for _, bad := range []string{`background-image: -lys-grain(0)`, `background-image: -lys-grain(2)`, `background-image: -lys-grain(red)`, `border-image-source: -lys-grain(0.1)`} {
+		s := parseWarns(t, `a { `+bad+`; }`)
+		if v := computeTree(s, el("a")); v.Has(PropBackgroundImage) || v.Has(PropBorderImageSource) {
+			t.Errorf("%s parsed", bad)
+		}
+	}
+}
+
 func TestMixBlendModeAndIsolation(t *testing.T) {
 	s := parseOne(t, `a { mix-blend-mode: color-dodge; } b { mix-blend-mode: screen; isolation: isolate; }`)
 	v := computeTree(s, el("a"))
