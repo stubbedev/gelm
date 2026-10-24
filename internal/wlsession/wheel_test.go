@@ -3,7 +3,7 @@ package wlsession
 import (
 	"testing"
 
-	"github.com/stubbedev/lys-ui/third_party/neurlang-wayland/wl"
+	"github.com/neurlang/wayland/wl"
 )
 
 // axisRecordingHandler captures scroll deltas.

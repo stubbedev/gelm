@@ -11,6 +11,11 @@ import (
 	"sync/atomic"
 	"time"
 
+	text "github.com/neurlang/wayland/unstable/text-input-v3"
+	deco "github.com/neurlang/wayland/unstable/xdg-decoration-v1"
+	"github.com/neurlang/wayland/wl"
+	"github.com/neurlang/wayland/wlclient"
+	"github.com/neurlang/wayland/xdg"
 	"github.com/unxed/xkb-go"
 
 	"github.com/stubbedev/lys-ui/internal/buffer"
@@ -18,11 +23,6 @@ import (
 	"github.com/stubbedev/lys-ui/internal/debug"
 	"github.com/stubbedev/lys-ui/internal/keymapfd"
 	"github.com/stubbedev/lys-ui/internal/logutil"
-	text "github.com/stubbedev/lys-ui/third_party/neurlang-wayland/unstable/text-input-v3"
-	deco "github.com/stubbedev/lys-ui/third_party/neurlang-wayland/unstable/xdg-decoration-v1"
-	"github.com/stubbedev/lys-ui/third_party/neurlang-wayland/wl"
-	"github.com/stubbedev/lys-ui/third_party/neurlang-wayland/wlclient"
-	"github.com/stubbedev/lys-ui/third_party/neurlang-wayland/xdg"
 	"github.com/stubbedev/lys-ui/wlr"
 )
 

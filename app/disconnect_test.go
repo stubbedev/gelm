@@ -15,11 +15,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/neurlang/wayland/wl"
+
 	"github.com/stubbedev/lys-ui/internal/animclock"
 	"github.com/stubbedev/lys-ui/internal/buffer"
 	"github.com/stubbedev/lys-ui/internal/headlesstest"
 	"github.com/stubbedev/lys-ui/internal/wlsession"
-	"github.com/stubbedev/lys-ui/third_party/neurlang-wayland/wl"
 	"github.com/stubbedev/lys-ui/widget"
 )
 

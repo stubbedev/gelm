@@ -7,9 +7,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/neurlang/wayland/wl"
+	"github.com/neurlang/wayland/xdg"
+
 	"github.com/stubbedev/lys-ui/internal/headlesstest"
-	"github.com/stubbedev/lys-ui/third_party/neurlang-wayland/wl"
-	"github.com/stubbedev/lys-ui/third_party/neurlang-wayland/xdg"
 )
 
 // TestPingIsAnsweredWithPong plays the compositor on a loopback socket:

@@ -5,9 +5,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/neurlang/wayland/wl"
+	"github.com/neurlang/wayland/wlcursor"
+
 	"github.com/stubbedev/lys-ui/internal/debug"
-	"github.com/stubbedev/lys-ui/third_party/neurlang-wayland/wl"
-	"github.com/stubbedev/lys-ui/third_party/neurlang-wayland/wlcursor"
 )
 
 // defaultCursor is shown whenever the app has not asked for another

@@ -15,6 +15,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/neurlang/wayland/wl"
+
 	"github.com/stubbedev/lys-ui/internal/animclock"
 	"github.com/stubbedev/lys-ui/internal/clipboard"
 	"github.com/stubbedev/lys-ui/internal/datacontrol"
@@ -31,7 +33,6 @@ import (
 	"github.com/stubbedev/lys-ui/internal/window"
 	"github.com/stubbedev/lys-ui/internal/wlsession"
 	"github.com/stubbedev/lys-ui/render"
-	"github.com/stubbedev/lys-ui/third_party/neurlang-wayland/wl"
 	"github.com/stubbedev/lys-ui/widget"
 )
 

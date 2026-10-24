@@ -5,6 +5,7 @@
 package app
 
 import (
+	"github.com/neurlang/wayland/wl"
 	"github.com/unxed/xkb-go"
 
 	"github.com/stubbedev/lys-ui/internal/buffer"
@@ -13,7 +14,6 @@ import (
 	"github.com/stubbedev/lys-ui/internal/scale"
 	"github.com/stubbedev/lys-ui/internal/wlsession"
 	"github.com/stubbedev/lys-ui/render"
-	"github.com/stubbedev/lys-ui/third_party/neurlang-wayland/wl"
 	"github.com/stubbedev/lys-ui/transfer"
 	"github.com/stubbedev/lys-ui/widget"
 )

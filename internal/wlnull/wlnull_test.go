@@ -3,7 +3,7 @@ package wlnull
 import (
 	"testing"
 
-	"github.com/stubbedev/lys-ui/third_party/neurlang-wayland/wl"
+	"github.com/neurlang/wayland/wl"
 )
 
 // TestNullIsASafeProxy pins what the wire encoder relies on: Null is a

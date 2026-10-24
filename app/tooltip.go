@@ -3,12 +3,13 @@ package app
 import (
 	"time"
 
+	"github.com/neurlang/wayland/xdg"
+
 	"github.com/stubbedev/lys-ui/internal/debug"
 	"github.com/stubbedev/lys-ui/internal/popup"
 	"github.com/stubbedev/lys-ui/internal/surfx"
 	"github.com/stubbedev/lys-ui/internal/wlsession"
 	"github.com/stubbedev/lys-ui/render"
-	"github.com/stubbedev/lys-ui/third_party/neurlang-wayland/xdg"
 	"github.com/stubbedev/lys-ui/widget"
 )
 

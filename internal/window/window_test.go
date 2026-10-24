@@ -4,7 +4,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/stubbedev/lys-ui/third_party/neurlang-wayland/xdg"
+	"github.com/neurlang/wayland/xdg"
 )
 
 func TestConfigureHandshake(t *testing.T) {

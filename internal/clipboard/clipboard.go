@@ -13,10 +13,11 @@ import (
 	"image"
 	"os"
 
+	"github.com/neurlang/wayland/wl"
+
 	"github.com/stubbedev/lys-ui/internal/debug"
 	"github.com/stubbedev/lys-ui/internal/wlsession"
 	"github.com/stubbedev/lys-ui/internal/xfer"
-	"github.com/stubbedev/lys-ui/third_party/neurlang-wayland/wl"
 	"github.com/stubbedev/lys-ui/transfer"
 	"github.com/stubbedev/lys-ui/wlr"
 )

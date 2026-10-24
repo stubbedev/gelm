@@ -193,8 +193,7 @@ toolchain. Pushing a `v*` tag releases `lys-ui-hello`, `lys-ui-bar` and
 ## Dependencies
 
 All pure Go:
-[neurlang/wayland](https://github.com/neurlang/wayland) (patched copy
-in `third_party/`),
+[neurlang/wayland](https://github.com/neurlang/wayland),
 [godbus/dbus](https://github.com/godbus/dbus),
 [go-text/typesetting](https://github.com/go-text/typesetting),
 [rivo/uniseg](https://github.com/rivo/uniseg),

@@ -7,9 +7,10 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/neurlang/wayland/wlcursor"
+	"github.com/neurlang/wayland/wlcursor/xcursor"
+
 	"github.com/stubbedev/lys-ui/internal/debug"
-	"github.com/stubbedev/lys-ui/third_party/neurlang-wayland/wlcursor"
-	"github.com/stubbedev/lys-ui/third_party/neurlang-wayland/wlcursor/xcursor"
 )
 
 // File cursors (CSS cursor: url()): the stylesheet names an xcursor

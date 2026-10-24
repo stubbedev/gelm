@@ -14,6 +14,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/neurlang/wayland/wl"
 	"github.com/unxed/xkb-go"
 
 	"github.com/stubbedev/lys-ui/internal/clipboard"
@@ -24,7 +25,6 @@ import (
 	"github.com/stubbedev/lys-ui/internal/touchinput"
 	"github.com/stubbedev/lys-ui/internal/wlsession"
 	"github.com/stubbedev/lys-ui/render"
-	"github.com/stubbedev/lys-ui/third_party/neurlang-wayland/wl"
 	"github.com/stubbedev/lys-ui/widget"
 )
 

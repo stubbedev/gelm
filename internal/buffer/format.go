@@ -7,7 +7,7 @@ package buffer
 import (
 	"strconv"
 
-	"github.com/stubbedev/lys-ui/third_party/neurlang-wayland/wl"
+	"github.com/neurlang/wayland/wl"
 )
 
 // FormatName describes the shm pixel format every lys-ui buffer uses:
