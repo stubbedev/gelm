@@ -1,6 +1,9 @@
 package widget
 
-import "github.com/stubbedev/gelm/internal/style"
+import (
+	"github.com/stubbedev/gelm/internal/style"
+	"github.com/stubbedev/gelm/render"
+)
 
 // Shrinker is a widget that can be arranged shorter than its natural
 // height and still do its job: a Scroll scrolls what no longer fits.
@@ -239,12 +242,14 @@ func (s *Stack) pageFloor(name string) int {
 // grow once mapped - a popup - reserves it up front for a stack sized
 // to its visible page.
 func (s *Stack) PageFloor(con Constraints) int {
+	box := boxOf(s.style(s), render.Insets{})
+	inner, o := box.innerOf(con), box.outer()
 	floor := 0
 	for _, name := range s.order {
-		s.measured[name] = s.kids[name].Measure(con)
+		s.measured[name] = measureChild(s, s.kids[name], inner)
 		floor = max(floor, s.pageFloor(name))
 	}
-	return floor
+	return floor + o.Top + o.Bottom
 }
 
 // scrollFloor is the least height a Scroll gives way to: room for the

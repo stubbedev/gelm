@@ -198,6 +198,10 @@ func (s *Stack) Homogeneous() bool { return !s.heterogeneous }
 // (SetInterpolateSize).
 func (s *Stack) InterpolateSize() bool { return s.interpolate }
 
+// Page is the child added under name, visible or not (GtkStack's
+// get_child_by_name); nil for an unknown name.
+func (s *Stack) Page(name string) Widget { return s.kids[name] }
+
 // Order returns the page names in add order.
 func (s *Stack) Order() []string { return slices.Clone(s.order) }
 
@@ -244,31 +248,36 @@ func (s *Stack) Visible() string {
 	return s.visible
 }
 
-// Measure measures every child once and reports the largest, clamped to
-// con - or, sized to its visible page, that page, tweened from the page
-// leaving while an interpolating switch runs.
+// Measure measures every child once and reports the largest - or,
+// sized to its visible page, that page, tweened from the page leaving
+// while an interpolating switch runs - inside the stack's CSS box
+// (GtkStack's padding, border and min sizes), clamped to con.
 func (s *Stack) Measure(con Constraints) Size {
 	if sz, ok := s.measureHit(con); ok {
 		return sz
 	}
-	best := Size{}
-	for _, name := range s.order {
-		nat := measureChild(s, s.kids[name], con)
-		s.measured[name] = nat
-		best.W = max(best.W, nat.W)
-		best.H = max(best.H, nat.H)
-	}
-	if s.heterogeneous {
-		best = s.visibleSize()
-	}
-	return s.measureStore(con, clampSize(best, con))
+	v := s.style(s)
+	return s.measureStore(con, measureBox(v, boxOf(v, render.Insets{}), con, func(inner Constraints) Size {
+		best := Size{}
+		for _, name := range s.order {
+			nat := measureChild(s, s.kids[name], inner)
+			s.measured[name] = nat
+			best.W = max(best.W, nat.W)
+			best.H = max(best.H, nat.H)
+		}
+		if s.heterogeneous {
+			best = s.visibleSize()
+		}
+		return clampSize(best, inner)
+	}))
 }
 
-// Arrange assigns the whole rect to every child.
+// Arrange assigns the content box to every child.
 func (s *Stack) Arrange(r render.Rect) {
-	s.ArrangeRoot(r)
+	border, inner := boxRects(boxOf(s.style(s), render.Insets{}), r)
+	s.ArrangeRoot(border)
 	for _, name := range s.order {
-		arrangeChild(s.kids[name], r)
+		arrangeChild(s.kids[name], inner)
 		setParents(s, s.kids[name])
 	}
 }
@@ -278,8 +287,10 @@ func (s *Stack) ArrangeRoot(r render.Rect) {
 	s.node.Arrange(r)
 }
 
-// Paint draws the visible child, or both pages mid-switch.
+// Paint draws the stack's own CSS layers, then the visible child, or
+// both pages mid-switch.
 func (s *Stack) Paint(cv *render.Canvas) {
+	paintCSSBox(cv, s.style(s), s.bounds)
 	w, ok := s.kids[s.visible]
 	if !ok {
 		return

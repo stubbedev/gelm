@@ -36,6 +36,16 @@ func (b cssInsets) outer() render.Insets {
 	}
 }
 
+// innerOf is the content box's share of con: con less the insets.
+func (b cssInsets) innerOf(con Constraints) Constraints {
+	o := b.outer()
+	h, v := o.Left+o.Right, o.Top+o.Bottom
+	return Constraints{
+		Min: Size{W: max(0, con.Min.W-h), H: max(0, con.Min.H-v)},
+		Max: Size{W: max(0, con.Max.W-h), H: max(0, con.Max.H-v)},
+	}
+}
+
 // measureBox measures a CSS box: the content measures under the
 // constraints less the insets, min-width/min-height floor the content
 // box (GTK's rule; under box-sizing: border-box they floor the border
@@ -43,11 +53,7 @@ func (b cssInsets) outer() render.Insets {
 func measureBox(v *style.Values, b cssInsets, con Constraints, content func(Constraints) Size) Size {
 	o := b.outer()
 	h, vv := o.Left+o.Right, o.Top+o.Bottom
-	inner := Constraints{
-		Min: Size{W: max(0, con.Min.W-h), H: max(0, con.Min.H-vv)},
-		Max: Size{W: max(0, con.Max.W-h), H: max(0, con.Max.H-vv)},
-	}
-	sz := content(inner)
+	sz := content(b.innerOf(con))
 	minW, minH := picki(v, style.PropMinWidth, 0), picki(v, style.PropMinHeight, 0)
 	if v.Layout.BoxSizing == style.BoxSizingBorder {
 		minW -= b.border.Left + b.border.Right + b.padding.Left + b.padding.Right
