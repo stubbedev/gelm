@@ -105,6 +105,10 @@ func (g *gallery) Init(cx *component.Context[galleryMsg, struct{}]) widget.Widge
 		section("Empty", ui.StatusPage("", "No projects yet", "You haven't created any projects yet. Get started by creating your first project.").
 			Icon(ui.Symbol(widget.SymbolMaximize, 24)).
 			Child(ui.Button(ui.Label("Create project"), 0, 0).Classes(css.SuggestedAction))),
+		section("Field", ui.FieldSet("Profile").Description("This is how others see you.").
+			Add(ui.Field("Name", ui.Entry()).Description("Your public display name.")).
+			Add(ui.Field("Email", ui.Entry()).Error("Enter a valid email address.")).
+			Add(ui.Field("Newsletter", ui.Switch(true)).Description("Monthly product updates.").Orientation(widget.FieldHorizontal))),
 		section("Kbd", ui.Row(ui.KbdGroup("Ctrl", "Shift", "P"), ui.Label("opens the command palette")).Spacing(12)),
 		section("Pagination", ui.Pagination(10, 5)),
 		section("Skeleton", ui.Row(

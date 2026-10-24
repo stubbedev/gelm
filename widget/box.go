@@ -122,6 +122,19 @@ func (b *Box) SetHomogeneous(on bool) {
 // main-axis size.
 func (b *Box) Homogeneous() bool { return b.homogeneous }
 
+// SetAxis lays the children along a instead (GTK's orientable): a
+// field turning horizontal when it gets wide.
+func (b *Box) SetAxis(a Axis) {
+	if b.axis == a {
+		return
+	}
+	b.axis = a
+	b.InvalidateLayout()
+}
+
+// Axis returns the axis the children lie along.
+func (b *Box) Axis() Axis { return b.axis }
+
 // NewBox returns an empty box along axis with the given spacing between
 // children and padding on every side.
 func NewBox(axis Axis, spacing, padding int) *Box {

@@ -825,6 +825,13 @@ func BulletList(items ...string) *BoxBuilder {
 	return b
 }
 
+// FieldGroup builds a widget.Box with widget.NewFieldGroup.
+func FieldGroup() *BoxBuilder {
+	b := &BoxBuilder{}
+	b.init(b, func(s *Scope) *widget.Box { return widget.NewFieldGroup() })
+	return b
+}
+
 // KbdGroup builds a widget.Box with widget.NewKbdGroup.
 func KbdGroup(keys ...string) *BoxBuilder {
 	b := &BoxBuilder{}
@@ -873,6 +880,18 @@ func (b *BoxBuilder) InsertAligned(i int, child Node, expand bool, cross widget.
 // InsertAt calls (*widget.Box).InsertAt.
 func (b *BoxBuilder) InsertAt(i int, child Node, expand bool) *BoxBuilder {
 	b.do(func(s *Scope, w *widget.Box) { w.InsertAt(i, build(s, child), expand) })
+	return b
+}
+
+// Axis calls (*widget.Box).SetAxis.
+func (b *BoxBuilder) Axis(a widget.Axis) *BoxBuilder {
+	b.do(func(s *Scope, w *widget.Box) { w.SetAxis(a) })
+	return b
+}
+
+// WatchAxis re-applies SetAxis with get's value after every update.
+func (b *BoxBuilder) WatchAxis(get func() widget.Axis) *BoxBuilder {
+	b.watch(func(w *widget.Box) { w.SetAxis(get()) })
 	return b
 }
 
@@ -2908,6 +2927,112 @@ func (b *FaderBuilder) Opacity(a float64) *FaderBuilder {
 // WatchOpacity re-applies SetOpacity with get's value after every update.
 func (b *FaderBuilder) WatchOpacity(get func() float64) *FaderBuilder {
 	b.watch(func(w *widget.Fader) { w.SetOpacity(get()) })
+	return b
+}
+
+// FieldBuilder builds a widget.Field.
+type FieldBuilder struct {
+	base[*widget.Field, *FieldBuilder]
+	face render.Font
+	size float64
+}
+
+// Field builds a widget.Field with widget.NewField.
+func Field(label string, control Node) *FieldBuilder {
+	b := &FieldBuilder{}
+	b.init(b, func(s *Scope) *widget.Field { return widget.NewField(s.face(b.face), label, build(s, control)) })
+	return b
+}
+
+// Font overrides the environment's typeface and size for this widget; zero values keep the environment's.
+func (b *FieldBuilder) Font(face render.Font, sizePx float64) *FieldBuilder {
+	b.face, b.size = face, sizePx
+	return b
+}
+
+// Description calls (*widget.Field).SetDescription.
+func (b *FieldBuilder) Description(text string) *FieldBuilder {
+	b.do(func(s *Scope, w *widget.Field) { w.SetDescription(text) })
+	return b
+}
+
+// WatchDescription re-applies SetDescription with get's value after every update.
+func (b *FieldBuilder) WatchDescription(get func() string) *FieldBuilder {
+	b.watch(func(w *widget.Field) { w.SetDescription(get()) })
+	return b
+}
+
+// Error calls (*widget.Field).SetError.
+func (b *FieldBuilder) Error(msg string) *FieldBuilder {
+	b.do(func(s *Scope, w *widget.Field) { w.SetError(msg) })
+	return b
+}
+
+// WatchError re-applies SetError with get's value after every update.
+func (b *FieldBuilder) WatchError(get func() string) *FieldBuilder {
+	b.watch(func(w *widget.Field) { w.SetError(get()) })
+	return b
+}
+
+// Label calls (*widget.Field).SetLabel.
+func (b *FieldBuilder) Label(text string) *FieldBuilder {
+	b.do(func(s *Scope, w *widget.Field) { w.SetLabel(text) })
+	return b
+}
+
+// WatchLabel re-applies SetLabel with get's value after every update.
+func (b *FieldBuilder) WatchLabel(get func() string) *FieldBuilder {
+	b.watch(func(w *widget.Field) { w.SetLabel(get()) })
+	return b
+}
+
+// Orientation calls (*widget.Field).SetOrientation.
+func (b *FieldBuilder) Orientation(o widget.FieldOrientation) *FieldBuilder {
+	b.do(func(s *Scope, w *widget.Field) { w.SetOrientation(o) })
+	return b
+}
+
+// WatchOrientation re-applies SetOrientation with get's value after every update.
+func (b *FieldBuilder) WatchOrientation(get func() widget.FieldOrientation) *FieldBuilder {
+	b.watch(func(w *widget.Field) { w.SetOrientation(get()) })
+	return b
+}
+
+// FieldSetBuilder builds a widget.FieldSet.
+type FieldSetBuilder struct {
+	base[*widget.FieldSet, *FieldSetBuilder]
+	face render.Font
+	size float64
+}
+
+// FieldSet builds a widget.FieldSet with widget.NewFieldSet.
+func FieldSet(legend string) *FieldSetBuilder {
+	b := &FieldSetBuilder{}
+	b.init(b, func(s *Scope) *widget.FieldSet { return widget.NewFieldSet(s.face(b.face), legend) })
+	return b
+}
+
+// Font overrides the environment's typeface and size for this widget; zero values keep the environment's.
+func (b *FieldSetBuilder) Font(face render.Font, sizePx float64) *FieldSetBuilder {
+	b.face, b.size = face, sizePx
+	return b
+}
+
+// Add calls (*widget.FieldSet).Add.
+func (b *FieldSetBuilder) Add(child Node) *FieldSetBuilder {
+	b.do(func(s *Scope, w *widget.FieldSet) { w.Add(build(s, child)) })
+	return b
+}
+
+// Description calls (*widget.FieldSet).SetDescription.
+func (b *FieldSetBuilder) Description(text string) *FieldSetBuilder {
+	b.do(func(s *Scope, w *widget.FieldSet) { w.SetDescription(text) })
+	return b
+}
+
+// WatchDescription re-applies SetDescription with get's value after every update.
+func (b *FieldSetBuilder) WatchDescription(get func() string) *FieldSetBuilder {
+	b.watch(func(w *widget.FieldSet) { w.SetDescription(get()) })
 	return b
 }
 
