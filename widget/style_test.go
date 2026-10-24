@@ -682,3 +682,41 @@ func TestStateChangeRestylesSiblingsOnlyForSiblingFacts(t *testing.T) {
 	}
 	LoadStylesheet("")
 }
+
+// Load reinstalls a removed AddStylesheet sheet, but a NewStylesheet
+// sheet stays scoped: it styles nothing until attached, and then only
+// its subtree.
+func TestStylesheetLoadKeepsScopedSheetsScoped(t *testing.T) {
+	red := render.RGB(0xff, 0, 0)
+	global := AddStylesheet(".x { color: #ff0000; }", StylePriorityApplication)
+	global.Remove()
+	global.Load(".x { color: #ff0000; }")
+	t.Cleanup(global.Remove)
+	a := NewBox(Column, 0, 0)
+	a.AddClass("x")
+	arrangeTree(t, a, 10, 10)
+	if v := a.style(a); v.Color != red {
+		t.Error("Load did not reinstall a removed installed sheet")
+	}
+	global.Remove()
+
+	scoped := NewStylesheet("", StylePriorityApplication)
+	scoped.Load(".y { color: #ff0000; }")
+	inside, outside := NewBox(Column, 0, 0), NewBox(Column, 0, 0)
+	inside.AddClass("y")
+	outside.AddClass("y")
+	host := NewBox(Column, 0, 0).Append(inside, false)
+	root := NewBox(Column, 0, 0).Append(host, false).Append(outside, false)
+	arrangeTree(t, root, 10, 10)
+	if v := outside.style(outside); v.Color == red {
+		t.Fatal("a loaded NewStylesheet sheet styled an unattached widget")
+	}
+	host.AttachStylesheet(scoped)
+	t.Cleanup(func() { host.DetachStylesheet(scoped) })
+	if v := inside.style(inside); v.Color != red {
+		t.Error("the scoped sheet does not style its attached subtree")
+	}
+	if v := outside.style(outside); v.Color == red {
+		t.Error("the scoped sheet leaked past its subtree once attached")
+	}
+}

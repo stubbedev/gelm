@@ -60,6 +60,9 @@ type Stylesheet struct {
 	sheet    *style.Sheet
 	priority int
 	live     bool
+	// scoped marks a NewStylesheet sheet: it styles only the subtrees it
+	// is attached to and is never installed process-wide.
+	scoped bool
 	// attached counts the widgets the sheet is attached to.
 	attached int
 	// file is the file the sheet was loaded from, for the hot-reload
@@ -109,7 +112,7 @@ var styleGen uint64 = 1
 // NewStylesheet parses css into a stylesheet at priority without
 // installing it: attach it to the widgets whose subtrees it styles.
 func NewStylesheet(css string, priority int) *Stylesheet {
-	return &Stylesheet{sheet: style.Parse(css), priority: priority}
+	return &Stylesheet{sheet: style.Parse(css), priority: priority, scoped: true}
 }
 
 // SetParseWarn installs f as the CSS engine's parse-warning sink; nil
@@ -134,12 +137,13 @@ func AddStylesheet(css string, priority int) *Stylesheet {
 
 // Load replaces the stylesheet's rules with css, keeping its priority
 // and position, and stops its file poll: the sheet is string-backed
-// from here on. Loading into a removed (never attached) stylesheet
-// reinstalls it; an attached one keeps styling its subtrees.
+// from here on. Loading into an installed stylesheet that was removed
+// (and is attached nowhere) reinstalls it; a NewStylesheet sheet stays
+// scoped, styling only the subtrees it is attached to.
 func (s *Stylesheet) Load(css string) {
 	s.sheet = style.Parse(css)
 	unwatch(s)
-	if !s.live && s.attached == 0 {
+	if !s.live && !s.scoped && s.attached == 0 {
 		s.live = true
 		sheets = append(sheets, s)
 	}
