@@ -25,9 +25,11 @@ type recDriver struct {
 	frames    int
 	sealed    bool
 	destroyed int
+	morph     bool
 }
 
-func (d *recDriver) ApplyVisual(reveal float64) {
+func (d *recDriver) ApplyVisual(reveal float64, morph bool) {
+	d.morph = morph
 	d.reveal = reveal
 	d.frames++
 	d.events = append(d.events, fmt.Sprintf("frame %.3f", reveal))
@@ -211,11 +213,6 @@ func TestInstantPathsRunTheSameMachine(t *testing.T) {
 			motion: func() bool { return true },
 			setup:  func(t *testing.T) { t.Cleanup(SetEnabled(false)) },
 		},
-		{
-			name:   "theme motion off (motion hook)",
-			motion: func() bool { return false },
-			setup:  func(t *testing.T) {},
-		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			animclock.Reset()
@@ -250,26 +247,98 @@ func TestInstantPathsRunTheSameMachine(t *testing.T) {
 }
 
 func TestPerKindDefaults(t *testing.T) {
-	menu := Lookup(KindMenu)
-	tooltip := Lookup(KindTooltip)
-	if tooltip.Enter.Duration <= 0 {
-		t.Fatal("tooltip enter duration missing")
+	menu, tooltip, dialog := Lookup(KindMenu), Lookup(KindTooltip), Lookup(KindDialog)
+	// Menus and dialogs morph out of their anchor on springs; tooltips
+	// stay a quick fade.
+	if menu.Enter.Spring == nil || !menu.Morph || dialog.Enter.Spring == nil || !dialog.Morph {
+		t.Errorf("menu %+v / dialog %+v: want spring enters that morph", menu, dialog)
 	}
-	if tooltip.Enter.Duration >= menu.Enter.Duration {
-		t.Errorf("tooltip enter %v is not shorter than menu enter %v", tooltip.Enter.Duration, menu.Enter.Duration)
+	if tooltip.Enter.Spring != nil || tooltip.Enter.Duration <= 0 || tooltip.Morph {
+		t.Errorf("tooltip %+v: want a short tween fade", tooltip)
 	}
-	if menu.Exit.Duration <= 0 || menu.Enter.Duration <= 0 {
-		t.Fatal("menu durations missing")
+	if menu.Exit.Duration <= 0 || menu.Exit.Spring != nil {
+		t.Errorf("menu exit %+v: want a short tween", menu.Exit)
 	}
-	// Plan folds the motion decision: off collapses durations only —
-	// curves and the machine's shape stay.
-	fast := Plan(KindTooltip, false)
-	if fast.Enter.Duration != 0 || fast.Exit.Duration != 0 {
-		t.Errorf("motion-off plan = %+v, want zero durations", fast)
+	// Reduced motion (the theme's switch) is a short fade, no movement;
+	// the package toggle and LYS_UI_NO_ANIM are instant.
+	if got := Plan(KindMenu, false); got.Morph || got.Enter.Spring != nil || got.Enter.Duration <= 0 || got.Enter.Duration > 100*time.Millisecond {
+		t.Errorf("reduced-motion plan = %+v, want a short plain fade", got)
 	}
-	full := Plan(KindTooltip, true)
-	if full.Enter.Duration != tooltip.Enter.Duration {
-		t.Errorf("motion-on plan = %+v, want the tooltip defaults", full)
+	t.Cleanup(anim.SetInstant(true))
+	if got := Plan(KindMenu, true); got.Enter.moves() || got.Exit.moves() {
+		t.Errorf("instant plan = %+v, want no motion", got)
+	}
+}
+
+// driveClock steps the pinned animation clock until nothing runs.
+func driveClock(t *testing.T, onFrame func()) {
+	t.Helper()
+	now := time.Unix(1750000000, 0)
+	for steps := 0; ; steps++ {
+		if _, ok := animclock.Next(); !ok {
+			return
+		}
+		now = now.Add(animclock.FrameInterval)
+		animclock.Tick(now)
+		if onFrame != nil {
+			onFrame()
+		}
+		if steps > 2000 {
+			t.Fatal("the motion never settled")
+		}
+	}
+}
+
+// A menu's spring enter swells past rest, settles exactly at it, and
+// morphs all the way; reduced motion only fades.
+func TestSpringEnterOvershootsAndSettles(t *testing.T) {
+	t.Cleanup(animclock.SetClock(func() time.Time { return time.Unix(1750000000, 0) }))
+	animclock.Reset()
+	d := &recDriver{}
+	fx := NewCoordinator(KindMenu, d, func() bool { return true })
+	fx.Enter()
+	peak := 0.0
+	driveClock(t, func() { peak = max(peak, d.reveal) })
+	if peak <= 1 || d.reveal != 1 || !d.morph {
+		t.Errorf("peak %v, rest %v, morph %v: want an overshoot settling at exactly 1, morphing", peak, d.reveal, d.morph)
+	}
+
+	animclock.Reset()
+	d = &recDriver{}
+	fx = NewCoordinator(KindMenu, d, func() bool { return false })
+	fx.Enter()
+	driveClock(t, nil)
+	if d.reveal != 1 || d.morph || d.frames < 3 {
+		t.Errorf("reduced motion: rest %v, morph %v over %d frames; want a plain fade over a few frames", d.reveal, d.morph, d.frames)
+	}
+}
+
+// Dismissing mid-enter reverses from where the surface is: the exit's
+// first frame starts at the enter's last reveal, not at rest.
+func TestDismissMidEnterReverses(t *testing.T) {
+	t.Cleanup(animclock.SetClock(func() time.Time { return time.Unix(1750000000, 0) }))
+	animclock.Reset()
+	d := &recDriver{}
+	fx := NewCoordinator(KindDialog, d, func() bool { return true })
+	fx.Enter()
+	now := time.Unix(1750000000, 0)
+	for range 4 {
+		now = now.Add(animclock.FrameInterval)
+		animclock.Tick(now)
+	}
+	mid := d.reveal
+	if mid <= 0 || mid >= 1 {
+		t.Fatalf("mid-enter reveal %v, want a fraction", mid)
+	}
+	fx.Dismiss()
+	now = now.Add(animclock.FrameInterval)
+	animclock.Tick(now)
+	if d.reveal >= mid || d.reveal <= 0 {
+		t.Errorf("first exit frame at %v from %v: want it heading down from the mid-enter reveal", d.reveal, mid)
+	}
+	driveClock(t, nil)
+	if d.destroyed != 1 {
+		t.Errorf("destroyed %d times, want once", d.destroyed)
 	}
 }
 

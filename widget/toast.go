@@ -293,11 +293,10 @@ func (t *Toast) Arrange(r render.Rect) {
 		t.stopTimer()
 		t.progress = 0
 		t.lastDy = toastSlide
-		st := toastPlan()
-		t.cancelSlide = anim.Play(anim.Animate(st.Enter.Duration, func(p float64) {
+		t.cancelSlide = surfx.Rise(toastPlan().Enter, 0, func(p float64) {
 			t.progress = min(p, 1)
 			t.invalidateFrame()
-		}).Easing(st.Enter.Easing))
+		})
 		t.armTimer()
 	default:
 		// Out of the tree (or already gone): hold nothing.

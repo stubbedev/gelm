@@ -613,7 +613,7 @@ func (a *Application) newWindow(host Host, scale int, root widget.Widget, hooks 
 	// is off the overlay is pure passthrough (measure, arrange, hit
 	// test, damage), so wrapping costs nothing visible; toggling it on
 	// never changes layout or which widget input lands on.
-	// The tree styles as its own root: the overlay and the fader above
+	// The tree styles as its own root: the overlay and the morph above
 	// it are layout plumbing, never a style ancestor.
 	widget.SetStyleRoot(root)
 	ov := inspect.NewOverlay(root)

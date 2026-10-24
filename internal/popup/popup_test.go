@@ -42,9 +42,9 @@ func (p *inkProbe) HitTest(widget.Point) widget.Widget { return p }
 func newTweenView(t *testing.T, reveal float64, g Gravity) (*animView, *inkProbe) {
 	t.Helper()
 	probe := &inkProbe{}
-	v := newAnimView(probe, reveal, g)
-	v.slide.Measure(widget.Constraints{Max: widget.Size{W: 100, H: 100}})
-	v.slide.Arrange(render.Rect{X: 0, Y: 0, W: 60, H: 20})
+	v := newAnimView(probe, reveal, true, g, 0, nil)
+	v.morph.Measure(widget.Constraints{Max: widget.Size{W: 100, H: 100}})
+	v.morph.Arrange(render.Rect{X: 0, Y: 0, W: 60, H: 20})
 	return v, probe
 }
 
@@ -52,23 +52,23 @@ func TestAnimViewFirstFramePaintsNothing(t *testing.T) {
 	v, probe := newTweenView(t, 0, GravityBottom)
 	cv := render.NewScaled(make([]byte, render.Stride(64)*24), render.Stride(64), 64, 24, 1, 120)
 	before := cv.Touched()
-	v.slide.Paint(cv)
+	v.morph.Paint(cv)
 	if probe.paints != 0 || cv.Touched() != before {
 		t.Errorf("enter's first frame painted: paints = %d touched delta = %d, want nothing written",
 			probe.paints, cv.Touched()-before)
 	}
 	// And the same holds for a recycled buffer that already holds the
 	// last opaque frame: Run raw-clears before the faded paint.
-	v.setProgress(1)
+	v.setProgress(1, true)
 	cv.ClearDevice(cv.Rect(), render.Color(0)) // raw clear, uncounted here
-	v.slide.Paint(cv)
+	v.morph.Paint(cv)
 	if cv.Touched() == before {
 		t.Fatal("rest state painted nothing; the probe lost ink")
 	}
 	opaque := cv.Touched()
 	before = cv.Touched()
-	v.setProgress(0.25)
-	v.slide.Paint(cv)
+	v.setProgress(0.25, true)
+	v.morph.Paint(cv)
 	if cv.Touched() <= before || cv.Touched() < opaque/2 {
 		t.Errorf("mid-exit frame painted no ink (touched %d, before %d)", cv.Touched(), before)
 	}
@@ -79,16 +79,21 @@ func TestAnimViewRestMatchesContentRect(t *testing.T) {
 	if probe.bounds != (render.Rect{X: 0, Y: 0, W: 60, H: 20}) {
 		t.Errorf("rest bounds = %v, want the exact content rect", probe.bounds)
 	}
-	// GravityBottom grows from the top edge: hidden content sits above
-	// its rest rect (shifted toward the anchor), clipped at paint time.
-	_, probe2 := newTweenView(t, 0, GravityBottom)
-	if probe2.bounds.Y >= 0 {
-		t.Errorf("hidden gravity-bottom content at y=%d, want shifted up toward the anchor", probe2.bounds.Y)
+	// Mid-enter the popup grows from the edge facing its anchor: below
+	// its anchor (bottom gravity) the top rows are inked and the bottom
+	// ones not yet; above it (top gravity), the mirror.
+	ink := func(g Gravity, y int) bool {
+		v, _ := newTweenView(t, 0.4, g)
+		data := make([]byte, render.Stride(60)*20)
+		cv := render.New(data, render.Stride(60), 60, 20)
+		v.morph.Paint(cv)
+		return render.ColorFromBytes(data[y*render.Stride(60)+30*4:]).A() > 0
 	}
-	// GravityTop is the mirror: hidden content sits below its rest.
-	_, probe3 := newTweenView(t, 0, GravityTop)
-	if probe3.bounds.Y <= 0 {
-		t.Errorf("hidden gravity-top content at y=%d, want shifted down", probe3.bounds.Y)
+	if !ink(GravityBottom, 2) || ink(GravityBottom, 18) {
+		t.Errorf("bottom gravity mid-enter: top inked %v, bottom inked %v; want it growing down from the top", ink(GravityBottom, 2), ink(GravityBottom, 18))
+	}
+	if ink(GravityTop, 2) || !ink(GravityTop, 18) {
+		t.Errorf("top gravity mid-enter: top inked %v, bottom inked %v; want it growing up from the bottom", ink(GravityTop, 2), ink(GravityTop, 18))
 	}
 }
 

@@ -328,11 +328,11 @@ func TestSetSurfaceMotion(t *testing.T) {
 	a := testApp(nil)
 	t.Cleanup(func() { surfx.SetEnabled(true) })
 	a.SetSurfaceMotion(false)
-	if surfx.Enabled() || surfx.Plan(surfx.KindOverlay, true).Enter.Duration != 0 {
-		t.Error("surface motion off left the overlay tween running")
+	if st := surfx.Plan(surfx.KindOverlay, true); surfx.Enabled() || st.Enter.Duration != 0 || st.Enter.Spring != nil {
+		t.Error("surface motion off left the overlay motion running")
 	}
 	a.SetSurfaceMotion(true)
-	if !surfx.Enabled() || surfx.Plan(surfx.KindOverlay, true).Enter.Duration == 0 {
-		t.Error("surface motion on did not restore the tween")
+	if st := surfx.Plan(surfx.KindOverlay, true); !surfx.Enabled() || st.Enter.Spring == nil {
+		t.Error("surface motion on did not restore the overlay spring")
 	}
 }

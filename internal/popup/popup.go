@@ -429,11 +429,11 @@ func (p *Popup) SealInput() {
 }
 
 // ApplyVisual implements surfx.Driver: one tween frame.
-func (p *Popup) ApplyVisual(reveal float64) {
+func (p *Popup) ApplyVisual(reveal float64, morph bool) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.anim != nil {
-		p.anim.setProgress(reveal)
+		p.anim.setProgress(reveal, morph)
 	}
 }
 

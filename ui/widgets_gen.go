@@ -3988,6 +3988,48 @@ func (b *MenuStackBuilder) OnDismiss(fn func()) *MenuStackBuilder {
 	return b
 }
 
+// MorphBuilder builds a widget.Morph.
+type MorphBuilder struct {
+	base[*widget.Morph, *MorphBuilder]
+}
+
+// Morph builds a widget.Morph with widget.NewMorph.
+func Morph(child Node) *MorphBuilder {
+	b := &MorphBuilder{}
+	b.init(b, func(s *Scope) *widget.Morph { return widget.NewMorph(build(s, child)) })
+	return b
+}
+
+// Origin calls (*widget.Morph).SetOrigin.
+func (b *MorphBuilder) Origin(fx float64, fy float64) *MorphBuilder {
+	b.do(func(s *Scope, w *widget.Morph) { w.SetOrigin(fx, fy) })
+	return b
+}
+
+// Plate calls (*widget.Morph).SetPlate.
+func (b *MorphBuilder) Plate(inset int, plate func(cv *render.Canvas, content render.Rect)) *MorphBuilder {
+	b.do(func(s *Scope, w *widget.Morph) { w.SetPlate(inset, plate) })
+	return b
+}
+
+// Radius calls (*widget.Morph).SetRadius.
+func (b *MorphBuilder) Radius(r int) *MorphBuilder {
+	b.do(func(s *Scope, w *widget.Morph) { w.SetRadius(r) })
+	return b
+}
+
+// WatchRadius re-applies SetRadius with get's value after every update.
+func (b *MorphBuilder) WatchRadius(get func() int) *MorphBuilder {
+	b.watch(func(w *widget.Morph) { w.SetRadius(get()) })
+	return b
+}
+
+// Reveal calls (*widget.Morph).SetReveal.
+func (b *MorphBuilder) Reveal(reveal float64, morph bool) *MorphBuilder {
+	b.do(func(s *Scope, w *widget.Morph) { w.SetReveal(reveal, morph) })
+	return b
+}
+
 // NavigationSplitViewBuilder builds a widget.NavigationSplitView.
 type NavigationSplitViewBuilder struct {
 	base[*widget.NavigationSplitView, *NavigationSplitViewBuilder]

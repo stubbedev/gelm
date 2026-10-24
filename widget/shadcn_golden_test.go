@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/stubbedev/lys-ui/internal/sysfont"
+	"github.com/stubbedev/lys-ui/render"
 	"github.com/stubbedev/lys-ui/widget/css"
 )
 
@@ -166,4 +167,22 @@ func TestGoldenFrosted(t *testing.T) {
 				stage, "frosted-"+tc.name, goldenTheme(tc.th), goldenFrame(260, 140))
 		})
 	}
+}
+
+// A popover mid-enter (#200): grown out of its top edge - scaled, its
+// rounded clip half unrolled, the shadow and plate drawn for the
+// unrolled shape - at reveal 0.5.
+func TestGoldenMorphMidEnter(t *testing.T) {
+	face := goldenFace(t)
+	box := NewBox(Column, 4, 10)
+	box.Append(NewLabel(face, 13, "Open", 0), false).Append(NewLabel(face, 13, "Save as...", 0), false).Append(NewLabel(face, 13, "Quit", 0), false)
+	m := NewMorph(box)
+	m.SetOrigin(0.5, 0)
+	m.SetRadius(8)
+	m.SetPlate(12, func(cv *render.Canvas, c render.Rect) {
+		Current().DrawShadow(cv, c, 8)
+		cv.RoundedRect(c, 8, Current().PopoverColor())
+	})
+	m.SetReveal(0.5, true)
+	NewGolden(t, m, "morph-mid-enter", goldenTheme(DarkTheme()))
 }

@@ -86,9 +86,9 @@ func newExitHarness(t *testing.T, kind surfx.Kind) *exitHarness {
 		return h
 	}
 	// What newHostWindow does for animated kinds, minus the session:
-	// fader over the tree, coordinator driving this window.
-	ph.wnd.fader = widget.NewFader(root)
-	ph.wnd.router.Root = ph.wnd.fader
+	// morph over the tree, coordinator driving this window.
+	ph.wnd.morph = widget.NewMorph(root)
+	ph.wnd.router.Root = ph.wnd.morph
 	ph.wnd.fx = surfx.NewCoordinator(kind, ph.wnd, func() bool { return true })
 	ph.wnd.destroy = func() {
 		h.destroyed++
@@ -105,20 +105,20 @@ func TestLayerOverlayExitKeepsLoopParkedBetweenFrames(t *testing.T) {
 	// The enter starts on the first usable pass; its first visual is
 	// progress 0 — the window's first frame paints nothing.
 	hw.enterIfDue()
-	if hw.fader == nil {
-		t.Fatal("animated kind built no fader")
+	if hw.morph == nil {
+		t.Fatal("animated kind built no morph")
 	}
-	if got := hw.fader.Alpha(); got != 0 {
+	if got := hw.morph.Reveal(); got != 0 {
 		t.Fatalf("enter first frame alpha = %v, want 0 (no final-frame flash)", got)
 	}
 	c.step()
-	if got := hw.fader.Alpha(); got <= 0 || got >= 1 {
+	if got := hw.morph.Reveal(); got <= 0 || got >= 1 {
 		t.Fatalf("mid-enter alpha = %v, want a fraction", got)
 	}
 
 	// Enter lands: alpha rests at exactly 1, and nothing was destroyed.
 	c.drive()
-	if got := hw.fader.Alpha(); got != 1 {
+	if got := hw.morph.Reveal(); got != 1 {
 		t.Fatalf("rest alpha = %v, want 1", got)
 	}
 	if h.destroyed != 0 {
@@ -172,7 +172,7 @@ func TestNonAnimatedWindowClosesImmediately(t *testing.T) {
 	if h.ph.wnd.beginExit() {
 		t.Fatal("a non-animated kind began an exit")
 	}
-	if h.ph.wnd.fx != nil || h.ph.wnd.fader != nil {
+	if h.ph.wnd.fx != nil || h.ph.wnd.morph != nil {
 		t.Error("non-animated kind built animation state")
 	}
 }
@@ -222,7 +222,7 @@ func TestExitTweenPaintsFadingFrames(t *testing.T) {
 	c.drive()
 
 	hw.beginExit()
-	alphas := []float64{hw.fader.Alpha()}
+	alphas := []float64{hw.morph.Reveal()}
 	commitsBefore := h.ph.surf.commits
 	frames := 0
 	for c.step() {
@@ -237,7 +237,7 @@ func TestExitTweenPaintsFadingFrames(t *testing.T) {
 		if !hw.draw() {
 			t.Fatal(hw.drawErr)
 		}
-		alphas = append(alphas, hw.fader.Alpha())
+		alphas = append(alphas, hw.morph.Reveal())
 		if frames > 1000 {
 			t.Fatal("exit tween never landed")
 		}

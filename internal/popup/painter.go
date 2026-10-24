@@ -32,7 +32,7 @@ type Painter struct {
 	bg      render.Color
 	noPlate bool          // Config.NoPlate: the content paints its own look
 	gutter  int           // the shadow margin the content is inset by
-	visual  widget.Widget // the slide wrapper around the fader-wrapped content
+	visual  widget.Widget // the morph wrapper around the content, plate included
 	// create allocates a buffer at the popup's current size; w, h is
 	// the size the pool's buffers have, so a resize retires them.
 	create func() (*buffer.Buffer, error)
@@ -58,7 +58,6 @@ func (p *Popup) NewPainter(sess *wlsession.Session, frac120 uint32, root widget.
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	p.anim = newAnimView(root, p.fx.Reveal(), p.gravity)
 	pc := &Painter{
 		p:       p,
 		pool:    buffer.New(create, 2),
@@ -67,9 +66,11 @@ func (p *Popup) NewPainter(sess *wlsession.Session, frac120 uint32, root widget.
 		bg:      bg,
 		noPlate: p.cfg.NoPlate,
 		gutter:  p.gutter,
-		visual:  p.anim.slide,
 		create:  create,
 	}
+	reveal, morph := p.fx.Visual()
+	p.anim = newAnimView(root, reveal, morph, p.gravity, p.gutter, pc.paintPlate)
+	pc.visual = p.anim.morph
 	pc.w, pc.h = p.Size()
 	pc.dirty.Store(true)
 	p.painter = pc
@@ -140,30 +141,17 @@ func (pc *Painter) Pass() (bool, error) {
 	}
 	w, h := p.Size()
 	_ = p.sc.Apply(pc.frac120, w, h)
-	cw, ch := max(0, w-2*pc.gutter), max(0, h-2*pc.gutter)
-	content := render.Rect{X: pc.gutter, Y: pc.gutter, W: cw, H: ch}
-	pc.visual.Measure(widget.Constraints{Max: widget.Size{W: cw, H: ch}})
-	pc.visual.Arrange(content)
+	pc.visual.Measure(widget.Constraints{Max: widget.Size{W: w, H: h}})
+	pc.visual.Arrange(render.Rect{W: w, H: h})
 
 	cv := render.NewScaled(b.Data, b.Stride, b.Width, b.Height, int(pc.frac120), scale.Denom)
-	reveal := p.fx.Reveal()
-	// The surface raw-clears to transparent either way: with a shadow
-	// gutter the falloff must blend over whatever the popup floats
-	// above, and a recycled buffer must not leak its last frame
-	// through (ClearDevice ignores PushAlpha by design).
+	// The surface raw-clears to transparent: with a shadow gutter the
+	// falloff must blend over whatever the popup floats above, and a
+	// recycled buffer must not leak its last frame through. The morph
+	// paints shadow, plate and content together, so the motion carries
+	// the elevation with the popup.
 	cv.ClearDevice(cv.Rect(), render.Color(0))
-	if reveal < 1 {
-		// Tween frame: the whole surface — shadow, plate, content —
-		// fades under one PushAlpha, so the exit tween carries the
-		// elevation out with the popup.
-		prev := cv.PushAlpha(reveal)
-		pc.paintPlate(cv, content)
-		pc.visual.Paint(cv)
-		cv.PopAlpha(prev)
-	} else {
-		pc.paintPlate(cv, content)
-		pc.visual.Paint(cv)
-	}
+	pc.visual.Paint(cv)
 
 	if err := pc.surf.Attach(b.WL, 0, 0); err != nil {
 		p.mu.Unlock()

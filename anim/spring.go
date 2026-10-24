@@ -28,11 +28,9 @@ var (
 	SpringBouncy = SpringParams{Response: 450 * time.Millisecond, Damping: 0.68}
 )
 
-// springEpsilon is how close to its target, in value units per
-// component, a spring must be before it counts as settled and snaps
-// there; its velocity must be under springEpsilon times the spring's
-// angular frequency, the speed of a swing that small.
-const springEpsilon = 0.01
+// springPrecision is the default settle precision, in value units: a
+// hundredth, right for pixels and color channels.
+const springPrecision = 0.01
 
 // Spring moves any number of components (a rect's x, y, w, h; a
 // radius; a color's channels) toward their targets with a damped
@@ -51,6 +49,11 @@ type Spring struct {
 	onFrame func(pos []float64)
 	last    time.Time
 	cancel  func()
+	// precision is how close to its target, in value units per
+	// component, the spring must be before it counts as settled and
+	// snaps there; its velocity must be under precision times the
+	// angular frequency, the speed of a swing that small.
+	precision float64
 }
 
 // NewSpring returns a spring at rest at initial, which reports its
@@ -63,8 +66,15 @@ func NewSpring(p SpringParams, initial []float64, onFrame func(pos []float64)) *
 		vel:     make([]float64, n),
 		target:  append(make([]float64, 0, n), initial...),
 		onFrame: onFrame,
+
+		precision: springPrecision,
 	}
 }
+
+// SetPrecision sets how close, in the components' units, counts as
+// arrived: the default hundredth suits pixels; a 0-to-1 fraction wants
+// a thousandth, or a small overshoot would read as settled.
+func (s *Spring) SetPrecision(p float64) { s.precision = p }
 
 // SetParams reshapes the spring; the motion in flight continues under
 // the new shape from its current position and velocity.
@@ -143,10 +153,10 @@ func (s *Spring) step(now time.Time) bool {
 // the settled ones to their target. It reports whether all settled.
 func (s *Spring) advance(dt float64) bool {
 	all := true
-	vEps := springEpsilon * springOmega(s.params)
+	vEps := s.precision * springOmega(s.params)
 	for i := range s.pos {
 		x, v := springStep(springOmega(s.params), s.params.Damping, s.pos[i]-s.target[i], s.vel[i], dt)
-		if math.Abs(x) < springEpsilon && math.Abs(v) < vEps {
+		if math.Abs(x) < s.precision && math.Abs(v) < vEps {
 			x, v = 0, 0
 		} else {
 			all = false

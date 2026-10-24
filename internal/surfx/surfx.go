@@ -54,43 +54,93 @@ const (
 	KindOverlay
 )
 
-// Spec is one tween's shape: duration and curve.
+// Spec is one motion's shape: a tween's duration and curve, or a
+// physics spring (Spring set), which runs until it settles and may
+// overshoot the rest state - the surface swells past its size and
+// settles back.
 type Spec struct {
 	Duration time.Duration
 	Easing   anim.Easing
+	Spring   *anim.SpringParams
 }
 
-// Style is a kind's enter and exit tweens.
+// moves reports whether the spec animates at all.
+func (s Spec) moves() bool { return s.Duration > 0 || s.Spring != nil }
+
+// revealPrecision is a reveal spring's settle precision: a reveal is a
+// 0-to-1 fraction, so a thousandth.
+const revealPrecision = 0.001
+
+// Rise runs a rising motion from start to rest (1), calling fn with
+// every frame's reveal: the spec's spring when it has one - from
+// wherever start is, overshoot included, until it settles - else its
+// tween over the rest of the way. A spec that does not move lands 1 at
+// once.
+func Rise(spec Spec, start float64, fn func(reveal float64)) anim.Cancel {
+	if spec.Spring != nil {
+		s := anim.NewSpring(*spec.Spring, []float64{start}, func(pos []float64) { fn(pos[0]) })
+		s.SetPrecision(revealPrecision)
+		s.SetTarget(1)
+		return anim.Cancel(s.Stop)
+	}
+	tween := anim.Animate(spec.Duration, func(p float64) { fn(start + (1-start)*p) })
+	if spec.Easing != nil {
+		tween.Easing(spec.Easing)
+	}
+	return anim.Play(tween)
+}
+
+// Style is a kind's enter and exit motion. Morph surfaces grow out of
+// the side facing their anchor - scaling up and unrolling a rounded
+// clip as they fade in - and shrink back into it on the way out;
+// without it they only fade.
 type Style struct {
 	Enter, Exit Spec
+	Morph       bool
 }
 
-// Defaults are the per-kind profiles. Menus and dialogs slide+fade in
-// with the fast-start ease-out-cubic landing; tooltips are quicker and
-// quieter (a pure fade wants no fanfare); toasts keep #30's timings;
-// overlays (launchers, panel reveals) are the slowest and grandest.
+// Defaults are the per-kind profiles. Menus and dropdowns morph out of
+// their anchor on a snappy spring, toasts on a bouncy one, dialogs and
+// overlays (launchers, panel reveals) on a smooth one; tooltips stay a
+// quick, quiet fade. Every exit is a short emphasized-accelerate tween
+// back into the anchor.
 var Defaults = map[Kind]Style{
-	KindMenu: {Enter: Spec{Duration: 130 * time.Millisecond}, Exit: Spec{Duration: 90 * time.Millisecond, Easing: anim.EaseInQuad}},
+	KindMenu: {
+		Enter: Spec{Spring: &anim.SpringSnappy},
+		Exit:  Spec{Duration: 110 * time.Millisecond, Easing: anim.EmphasizedAccelerate},
+		Morph: true,
+	},
 	KindTooltip: {
-		Enter: Spec{Duration: 80 * time.Millisecond, Easing: anim.EaseOutQuad},
-		Exit:  Spec{Duration: 60 * time.Millisecond, Easing: anim.EaseInQuad},
+		Enter: Spec{Duration: 90 * time.Millisecond, Easing: anim.EmphasizedDecelerate},
+		Exit:  Spec{Duration: 60 * time.Millisecond, Easing: anim.EmphasizedAccelerate},
 	},
 	KindToast: {
-		Enter: Spec{Duration: 180 * time.Millisecond},
-		Exit:  Spec{Duration: 160 * time.Millisecond, Easing: anim.Linear},
+		Enter: Spec{Spring: &anim.SpringBouncy},
+		Exit:  Spec{Duration: 160 * time.Millisecond, Easing: anim.EmphasizedAccelerate},
+		Morph: true,
 	},
 	KindDropdown: {
-		Enter: Spec{Duration: 110 * time.Millisecond},
-		Exit:  Spec{Duration: 70 * time.Millisecond, Easing: anim.EaseInQuad},
+		Enter: Spec{Spring: &anim.SpringSnappy},
+		Exit:  Spec{Duration: 90 * time.Millisecond, Easing: anim.EmphasizedAccelerate},
+		Morph: true,
 	},
 	KindDialog: {
-		Enter: Spec{Duration: 150 * time.Millisecond},
-		Exit:  Spec{Duration: 120 * time.Millisecond, Easing: anim.EaseInQuad},
+		Enter: Spec{Spring: &anim.SpringSmooth},
+		Exit:  Spec{Duration: 130 * time.Millisecond, Easing: anim.EmphasizedAccelerate},
+		Morph: true,
 	},
 	KindOverlay: {
-		Enter: Spec{Duration: 200 * time.Millisecond},
-		Exit:  Spec{Duration: 150 * time.Millisecond, Easing: anim.EaseInQuad},
+		Enter: Spec{Spring: &anim.SpringSmooth},
+		Exit:  Spec{Duration: 150 * time.Millisecond, Easing: anim.EmphasizedAccelerate},
+		Morph: true,
 	},
+}
+
+// reducedMotion is the profile every kind degrades to when the theme
+// turns motion off: a short fade, no movement.
+var reducedMotion = Style{
+	Enter: Spec{Duration: 90 * time.Millisecond, Easing: anim.Linear},
+	Exit:  Spec{Duration: 70 * time.Millisecond, Easing: anim.Linear},
 }
 
 var (
@@ -99,13 +149,13 @@ var (
 	enabled   = true
 )
 
-// SetStyle overrides a kind's profile; apps tune curves and durations
-// here instead of forking the state machine. Passing a zero Duration
-// clears the override.
+// SetStyle overrides a kind's profile; apps tune curves, springs and
+// durations here instead of forking the state machine. A style that
+// moves neither way clears the override.
 func SetStyle(k Kind, s Style) {
 	mu.Lock()
 	defer mu.Unlock()
-	if s.Enter.Duration <= 0 && s.Exit.Duration <= 0 {
+	if !s.Enter.moves() && !s.Exit.moves() {
 		delete(overrides, k)
 		return
 	}
@@ -146,17 +196,19 @@ func Enabled() bool {
 	return enabled
 }
 
-// Plan resolves a kind's effective tween profile. Motion off — the
-// package toggle, LYS_UI_NO_ANIM, or a caller's own reduced-motion
-// source such as the theme — collapses both durations to zero and is
-// why callers pass their theme state here instead of consulting it
-// twice. The zero-duration tweens deliver their end state once at
-// launch, so the state machine's shape is identical either way.
+// Plan resolves a kind's effective profile. The package toggle and
+// LYS_UI_NO_ANIM collapse it to zero-duration tweens, which deliver
+// their end state once at launch, so the state machine's shape is
+// identical either way. A caller's reduced-motion source such as the
+// theme (motion false) degrades it to a short fade with no movement -
+// which is why callers pass their theme state here instead of
+// consulting it twice.
 func Plan(k Kind, motion bool) Style {
-	if !motion || !Enabled() || anim.Instant() {
-		s := Lookup(k)
-		s.Enter.Duration, s.Exit.Duration = 0, 0
-		return s
+	switch {
+	case !Enabled() || anim.Instant():
+		return Style{}
+	case !motion:
+		return reducedMotion
 	}
 	return Lookup(k)
 }
@@ -166,9 +218,10 @@ func Plan(k Kind, motion bool) Style {
 // never touches wire objects itself.
 type Driver interface {
 	// ApplyVisual applies the reveal fraction, 0 hidden through 1 at
-	// rest: opacity through a Fader, the slide offset from the anchor,
-	// whatever the surface's kind animates.
-	ApplyVisual(reveal float64)
+	// rest - a spring enter may overshoot past 1 before it settles.
+	// morph says whether the surface grows out of its anchor (scale and
+	// clip with the fade) or only fades.
+	ApplyVisual(reveal float64, morph bool)
 	// MarkFrame schedules a repaint of the current visual and wakes the
 	// surface's loop if it is parked. Called once per tween frame.
 	MarkFrame()
@@ -213,6 +266,8 @@ type Coordinator struct {
 	cancelEnter anim.Cancel
 	cancelExit  anim.Cancel
 	onDismissed func()
+	// morph is the running style's Morph, applied with every frame.
+	morph bool
 }
 
 // NewCoordinator builds the machine for one surface of kind k. motion,
@@ -254,6 +309,14 @@ func (c *Coordinator) Reveal() float64 {
 	return c.reveal
 }
 
+// Visual returns the current frame: the reveal fraction and whether
+// the motion morphs, for a driver building its view after frames ran.
+func (c *Coordinator) Visual() (reveal float64, morph bool) {
+	c.mp.Lock()
+	defer c.mp.Unlock()
+	return c.reveal, c.morph
+}
+
 // motionOn resolves the motion decision for a launch.
 func (c *Coordinator) motionOn() bool {
 	return c.motion == nil || c.motion()
@@ -278,12 +341,13 @@ func (c *Coordinator) Enter() {
 	}
 	c.ph = phaseOpen
 	st := Plan(c.kind, c.motionOn())
+	c.morph = st.Morph
 	c.mp.Unlock()
 	// The first frame applies synchronously at progress 0, whatever the
 	// duration, so the driver's very first paint is the hidden/offset
 	// one — never a flash of the finished surface. (Reduced motion then
 	// lands 1 inside play, on the same call stack.)
-	c.drv.ApplyVisual(0)
+	c.drv.ApplyVisual(0, st.Morph)
 	cancel := c.play(st.Enter, true, 0)
 	c.mp.Lock()
 	if c.ph == phaseOpen && !c.destroyed {
@@ -309,6 +373,7 @@ func (c *Coordinator) Dismiss() bool {
 		c.cancelEnter = nil
 	}
 	st := Plan(c.kind, c.motionOn())
+	c.morph = st.Morph
 	c.mp.Unlock()
 	// Input dies before the first exit frame: the seal is the whole
 	// click-through guarantee, and for a still-held client-side grab it
@@ -325,10 +390,12 @@ func (c *Coordinator) Dismiss() bool {
 	return true
 }
 
-// play launches one tween. Rising tweens run reveal from 0 to 1; the
-// exit runs from start down to 0. Zero durations (reduced motion) land
-// the end state — and for the exit that means Destroy — synchronously
-// inside this call.
+// play launches one motion. Rising ones run reveal from 0 to 1 - a
+// spring from wherever it is, through any overshoot, until it settles;
+// the exit runs from start down to 0, so an exit interrupting an enter
+// reverses from the current state. Zero durations (instant motion)
+// land the end state — and for the exit that means Destroy —
+// synchronously inside this call.
 func (c *Coordinator) play(spec Spec, rising bool, start float64) anim.Cancel {
 	fn := func(p float64) {
 		c.mp.Lock()
@@ -345,12 +412,16 @@ func (c *Coordinator) play(spec Spec, rising bool, start float64) anim.Cancel {
 			reveal = start * (1 - p)
 		}
 		c.reveal = reveal
+		morph := c.morph
 		c.mp.Unlock()
-		c.drv.ApplyVisual(reveal)
+		c.drv.ApplyVisual(reveal, morph)
 		c.drv.MarkFrame()
 		if !rising && p >= 1 {
 			c.finishExit()
 		}
+	}
+	if rising {
+		return Rise(spec, start, fn)
 	}
 	tween := anim.Animate(spec.Duration, fn)
 	if spec.Easing != nil {

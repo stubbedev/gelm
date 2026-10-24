@@ -267,3 +267,15 @@ func SpringEasing(zeta, omega float64) Easing {
 		return 1 + x
 	}
 }
+
+// The emphasized curves, the Material 3 motion pair, and its standard
+// curve: an entrance decelerates hard into place, an exit accelerates
+// away, and a transform between two resting states eases both ends.
+var (
+	// EmphasizedDecelerate brings content in fast and settles it long.
+	EmphasizedDecelerate = CubicBezier(0.05, 0.7, 0.1, 1)
+	// EmphasizedAccelerate starts slow and leaves fast: exits.
+	EmphasizedAccelerate = CubicBezier(0.3, 0, 0.8, 0.15)
+	// Standard eases a change between two resting states.
+	Standard = CubicBezier(0.2, 0, 0, 1)
+)

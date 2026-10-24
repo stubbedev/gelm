@@ -61,13 +61,14 @@ type hostWindow struct {
 	isDialog bool
 
 	// Exit/enter animation state. fx is nil for kinds that do not
-	// animate (plain toplevels open and close instantly). fader wraps
-	// the app's tree while fx exists; destroy is the raw wire teardown
+	// animate (plain toplevels open and close instantly). morph wraps
+	// the app's tree while fx exists, growing it from the window's
+	// center; destroy is the raw wire teardown
 	// the coordinator's exit lands into. exiting flips at Dismiss, so
 	// input goes dead before the first fade frame and the loop keeps
 	// the window mapped and drawing until the tween finishes.
 	fx           *surfx.Coordinator
-	fader        *widget.Fader
+	morph        *widget.Morph
 	enterStarted bool
 	exiting      bool
 	destroy      func()
@@ -224,12 +225,12 @@ func newHostWindow(sess *wlsession.Session, host Host, initialScale int, root wi
 		destroy: destroy,
 	}
 	// Animated kinds (layer overlays, dialogs) wrap their tree in a
-	// fader the coordinator drives; the enter starts lazily — at the
+	// morph the coordinator drives; the enter starts lazily — at the
 	// first usable pass, after the configure handshake — so the very
 	// first frame paints at reveal 0, never the finished surface.
 	if animKind != surfx.KindMenu {
-		w.fader = widget.NewFader(root)
-		w.router.Root = w.fader
+		w.morph = widget.NewMorph(root)
+		w.router.Root = w.morph
 		w.fx = surfx.NewCoordinator(animKind, w, func() bool { return widget.Current().Animations })
 	}
 	// Toplevel hosts carry the size limits, the resize grab, and the
@@ -349,10 +350,10 @@ func (w *hostWindow) enterIfDue() {
 	}
 }
 
-// ApplyVisual implements surfx.Driver: one tween frame's reveal.
-func (w *hostWindow) ApplyVisual(reveal float64) {
-	if w.fader != nil {
-		w.fader.SetOpacity(reveal)
+// ApplyVisual implements surfx.Driver: one motion frame.
+func (w *hostWindow) ApplyVisual(reveal float64, morph bool) {
+	if w.morph != nil {
+		w.morph.SetReveal(reveal, morph)
 	}
 }
 
