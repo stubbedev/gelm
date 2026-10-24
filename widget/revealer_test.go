@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stubbedev/lys-ui/anim"
 	"github.com/stubbedev/lys-ui/internal/animclock"
 	"github.com/stubbedev/lys-ui/render"
 )
@@ -372,5 +373,30 @@ func TestRevealerCollapseLeavesOtherTransitionsTheirSlot(t *testing.T) {
 	}
 	if sz := relayout(r); sz != (Size{W: 40, H: 20}) {
 		t.Errorf("an uncollapsed hidden slide measures %v, want the child held", sz)
+	}
+}
+
+// Tab skips a hidden revealer's content and reaches a shown one's.
+func TestHiddenRevealerContentTakesNoFocus(t *testing.T) {
+	t.Cleanup(anim.SetInstant(true))
+	face := goldenFace(t)
+	before := NewButton(NewLabel(face, 14, "before", 0), 4, 4)
+	inner := NewButton(NewLabel(face, 14, "inner", 0), 4, 4)
+	after := NewButton(NewLabel(face, 14, "after", 0), 4, 4)
+	rv := NewRevealer(inner)
+	root := NewBox(Column, 0, 0).Append(before, false).Append(rv, false).Append(after, false)
+	arrangeTree(t, root, 200, 200)
+	r := &Router{Root: root}
+	r.SetFocus(before)
+	r.FocusNext()
+	if r.Focused() != Widget(after) {
+		t.Fatal("Tab landed in a hidden revealer")
+	}
+	rv.SetRevealed(true)
+	arrangeTree(t, root, 200, 200)
+	r.SetFocus(before)
+	r.FocusNext()
+	if r.Focused() != Widget(inner) {
+		t.Error("Tab skipped a shown revealer's content")
 	}
 }

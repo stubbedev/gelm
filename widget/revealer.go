@@ -460,18 +460,32 @@ func (r *Revealer) HitTest(p Point) Widget {
 	return r.HitLeaf(r, p)
 }
 
-// Children exposes the child for damage, focus and accessibility.
+// Children exposes the child for damage, focus and accessibility
+// while any of it shows or is being revealed, so keyboard traversal
+// and the accessibility tree skip a hidden revealer's content.
 func (r *Revealer) Children() []Widget {
-	if r.child == nil {
+	if !r.showing() {
 		return nil
 	}
 	return []Widget{r.child}
 }
 
-// appendChildren appends the wrapped child, matching Children.
+// appendChildren appends the shown child, matching Children.
 func (r *Revealer) appendChildren(buf []Widget) []Widget {
+	if r.showing() {
+		return append(buf, r.child)
+	}
+	return buf
+}
+
+// appendStyleKids is the child, shown or not (styleKids): a hidden
+// child keeps its cascade, so a reveal starts from its styled look.
+func (r *Revealer) appendStyleKids(buf []Widget) []Widget {
 	if r.child != nil {
 		return append(buf, r.child)
 	}
 	return buf
 }
+
+// showing reports a child that is shown, or on its way in or out.
+func (r *Revealer) showing() bool { return r.child != nil && (r.reveal || r.progress > 0) }
