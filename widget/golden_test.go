@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/stubbedev/lys-ui/anim"
+	"github.com/stubbedev/lys-ui/internal/style"
 	"github.com/stubbedev/lys-ui/internal/golden"
 	"github.com/stubbedev/lys-ui/render"
 )
@@ -515,6 +516,7 @@ func caretsForShot(w Widget) (restore func()) {
 		case *Entry, *TextArea:
 			if n := nodeOf(k); n != nil && !n.focused {
 				n.focused = true
+				n.invalidateState(style.Focus)
 				marked = append(marked, n)
 			}
 		}
@@ -522,6 +524,7 @@ func caretsForShot(w Widget) (restore func()) {
 	return func() {
 		for _, n := range marked {
 			n.focused = false
+			n.invalidateState(style.Focus)
 		}
 	}
 }
