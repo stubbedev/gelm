@@ -363,3 +363,33 @@ func TestDrivePopoversFitsGrowingContent(t *testing.T) {
 		t.Errorf("a dismissed popover resized: %v", surf.resizes)
 	}
 }
+
+// The content's own size request floors the popover, as GTK honors a
+// popover's width and height requests: content smaller than the
+// request fits the request, and content that outgrows it grows past.
+func TestPopoverFitHonorsTheContentsSizeRequest(t *testing.T) {
+	box := widget.NewBox(widget.Column, 0, 0)
+	box.Append(widget.NewSpacer(40, 20), false)
+	box.SetSizeRequest(100, 80)
+	op, surf, _, _ := newLoopPopover(box)
+	surf.w, surf.h = 1, 1
+	a := &Application{openPopovers: []*openPopover{op}}
+	if err := a.drivePopovers(true); err != nil {
+		t.Fatal(err)
+	}
+	// The fake surface's gutter is 2px a side.
+	if got := surf.resizes[len(surf.resizes)-1]; got != [2]int{104, 84} {
+		t.Errorf("small content fits %v, want the 100x80 request plus the gutter", got)
+	}
+	op.keyRoot.Arrange(render.Rect{W: 100, H: 80})
+	widget.CollectDamage(op.keyRoot)
+	// The fake host's 100px caps the width; the height grows past the
+	// request.
+	box.Append(widget.NewSpacer(90, 100), false)
+	if err := a.drivePopovers(false); err != nil {
+		t.Fatal(err)
+	}
+	if got := surf.resizes[len(surf.resizes)-1]; got != [2]int{104, 124} {
+		t.Errorf("grown content fits %v, want 100x120 plus the gutter", got)
+	}
+}

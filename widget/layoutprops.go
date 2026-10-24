@@ -164,6 +164,16 @@ func measureWithMargin(w Widget, con Constraints) Size {
 	return measureOuter(w, con)
 }
 
+// MeasureAsChild measures w as a container measures its child: its
+// size request, programmatic margin and CSS sizes apply. A host that
+// owns a tree's top (a popover around its content) measures through it
+// so the top's own size request counts, as GTK honors a popover's.
+func MeasureAsChild(w Widget, con Constraints) Size { return measureWithMargin(w, con) }
+
+// ArrangeAsChild arranges w in r as a container arranges its child:
+// inside its margin, held to its CSS bounds. MeasureAsChild's pair.
+func ArrangeAsChild(w Widget, r render.Rect) { arrangeChild(w, r) }
+
 // measureMargin is the widget's own Measure inside its programmatic
 // margin, with no CSS sizing around it.
 func measureMargin(w Widget, con Constraints) Size {
