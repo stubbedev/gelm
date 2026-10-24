@@ -58,6 +58,7 @@ func init() {
 		"perspective":           {setOf(PropPerspective), parsePerspective},
 		"transform-style":       {setOf(PropTransformStyle), parseTransformStyle},
 		"backface-visibility":   {setOf(PropBackfaceVisibility), parseBackfaceVisibility},
+		"-lys-layout-motion":    {setOf(PropLayoutMotion), parseLayoutMotion},
 		"container-type":        {setOf(PropContainerType), parseContainerType},
 		"container-name":        {setOf(PropContainerName), parseContainerName},
 		"container":             {setOf(PropContainerName, PropContainerType), parseContainer},

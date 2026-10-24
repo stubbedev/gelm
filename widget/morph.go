@@ -83,10 +83,20 @@ func (m *Morph) content() render.Rect {
 	return render.UniformInsets(m.inset).Shrink(m.bounds)
 }
 
+// shownContent is the content rect the backing is drawn for: the
+// child's own report when it has one (a surface root whose content is
+// mid layout motion), else the content rect.
+func (m *Morph) shownContent() render.Rect {
+	if s, ok := m.child.(interface{ ShownRect() render.Rect }); ok {
+		return s.ShownRect()
+	}
+	return m.content()
+}
+
 // paintAtRest paints the backing and the child, unanimated.
 func (m *Morph) paintAtRest(cv *render.Canvas) {
 	if m.plate != nil {
-		m.plate(cv, m.content())
+		m.plate(cv, m.shownContent())
 	}
 	PaintChild(cv, m.child)
 }
@@ -144,7 +154,7 @@ func (m *Morph) Paint(cv *render.Canvas) {
 	}
 	l := cv.Layer(m.layer, dev)
 	m.layer = l
-	content := m.content()
+	content := m.shownContent()
 	// The clip unrolls from the origin side; a centered origin has no
 	// side, so it only scales.
 	clip := m.clipAt(content, r)

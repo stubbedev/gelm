@@ -557,3 +557,25 @@ func parseBackfaceVisibility(ts []token, cx *ctx, v *Values) bool {
 	}
 	return true
 }
+
+// parseLayoutMotion parses lys-ui's -lys-layout-motion: none, or the
+// spring a change of the box's laid-out rect animates on.
+func parseLayoutMotion(ts []token, _ *ctx, v *Values) bool {
+	comps := components(ts)
+	if len(comps) != 1 {
+		return false
+	}
+	switch rawName(comps[0]) {
+	case "none":
+		v.LayoutMotion = LayoutMotionNone
+	case "smooth":
+		v.LayoutMotion = LayoutMotionSmooth
+	case "snappy":
+		v.LayoutMotion = LayoutMotionSnappy
+	case "bouncy":
+		v.LayoutMotion = LayoutMotionBouncy
+	default:
+		return false
+	}
+	return true
+}

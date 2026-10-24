@@ -120,6 +120,7 @@ const (
 	PropPerspective
 	PropTransformStyle
 	PropBackfaceVisibility
+	PropLayoutMotion
 	PropScrollBehavior
 	PropScrollMarginTop
 	PropScrollMarginRight
@@ -843,6 +844,9 @@ type Scalars struct {
 	Preserve3D bool
 	// BackfaceHidden is backface-visibility: hidden.
 	BackfaceHidden bool
+	// LayoutMotion is lys-ui's -lys-layout-motion: the spring a change
+	// of the box's laid-out rect animates on, none by default.
+	LayoutMotion LayoutMotion
 
 	Padding     Sides
 	Margin      Sides
@@ -1150,3 +1154,16 @@ func tokensEqual(a, b []token) bool {
 	}
 	return true
 }
+
+// LayoutMotion is a -lys-layout-motion value: how a box animates a
+// change of its laid-out rect - not at all, or on one of the named
+// springs.
+type LayoutMotion uint8
+
+// The layout motions.
+const (
+	LayoutMotionNone LayoutMotion = iota
+	LayoutMotionSmooth
+	LayoutMotionSnappy
+	LayoutMotionBouncy
+)

@@ -94,10 +94,18 @@ type Widget interface {
 // the memoized Measure result, dropped by InvalidateLayout when a
 // mutation changes what a widget wants.
 type node struct {
-	layout  layoutProps
-	bounds  render.Rect
-	parent  Widget
-	tooltip string
+	layout layoutProps
+	bounds render.Rect
+	parent Widget
+	// layoutMotion is the programmatic layout motion (SetLayoutMotion)
+	// and motion the running one. shownWalk is the damage walk the
+	// widget (or a child of it) last painted in, zero before any: a
+	// first paint inside a parent shown in an earlier walk is an
+	// insertion.
+	layoutMotion LayoutMotion
+	motion       *layoutMotionState
+	shownWalk    uint64
+	tooltip      string
 	// fx, fxb, fxf and fxmask cache the effect pipeline's offscreen
 	// layers across frames: the widget's own filtered layer, the
 	// backdrop snapshot, the filtered backdrop, and the mask-image.
@@ -831,7 +839,11 @@ func PaintChild(cv *render.Canvas, w Widget) {
 			return
 		}
 	}
-	w.Paint(cv)
+	if n := nodeOf(w); n != nil && n.moving(w) {
+		n.paintMoving(cv, w)
+	} else {
+		w.Paint(cv)
+	}
 	cv.Painted(w)
 }
 

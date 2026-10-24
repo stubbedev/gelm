@@ -26,6 +26,7 @@ type nodeProps interface {
 	SetID(id string)
 	SetInlineStyle(css string)
 	SetInlineStylePriority(css string, priority int)
+	SetLayoutMotion(m widget.LayoutMotion)
 	SetMargin(m render.Insets)
 	SetOnClickWithin(fn func())
 	SetOnFocusChanged(fn func(focused bool))
@@ -162,6 +163,18 @@ func (b *base[W, B]) WatchInlineStyle(get func() string) B {
 // InlineStylePriority calls SetInlineStylePriority on the widget.
 func (b *base[W, B]) InlineStylePriority(css string, priority int) B {
 	b.do(func(s *Scope, w W) { w.SetInlineStylePriority(css, priority) })
+	return b.self
+}
+
+// LayoutMotion calls SetLayoutMotion on the widget.
+func (b *base[W, B]) LayoutMotion(m widget.LayoutMotion) B {
+	b.do(func(s *Scope, w W) { w.SetLayoutMotion(m) })
+	return b.self
+}
+
+// WatchLayoutMotion re-applies SetLayoutMotion with get's value after every update.
+func (b *base[W, B]) WatchLayoutMotion(get func() widget.LayoutMotion) B {
+	b.watch(func(w W) { w.SetLayoutMotion(get()) })
 	return b.self
 }
 

@@ -1148,6 +1148,8 @@ func copyProp(dst, src *Values, p Prop) {
 		dst.Preserve3D = src.Preserve3D
 	case PropBackfaceVisibility:
 		dst.BackfaceHidden = src.BackfaceHidden
+	case PropLayoutMotion:
+		dst.LayoutMotion = src.LayoutMotion
 	case PropScrollBehavior:
 		dst.ScrollSmooth = src.ScrollSmooth
 	case PropScrollMarginTop:

@@ -35,6 +35,7 @@ var interps [numProps]interp
 var discreteEq = map[Prop]func(a, b *Values) bool{
 	PropIsolation:          func(a, b *Values) bool { return a.Isolate == b.Isolate },
 	PropBackfaceVisibility: func(a, b *Values) bool { return a.BackfaceHidden == b.BackfaceHidden },
+	PropLayoutMotion:       func(a, b *Values) bool { return a.LayoutMotion == b.LayoutMotion },
 	PropMixBlendMode:       func(a, b *Values) bool { return a.Blend == b.Blend },
 	PropAppearance:         func(a, b *Values) bool { return a.Appearance == b.Appearance },
 	PropCaretShape:         func(a, b *Values) bool { return a.CaretShape == b.CaretShape },

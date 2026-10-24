@@ -40,7 +40,9 @@ type PopoverConfig struct {
 	// Gravity picks the side; zero opens below the anchor.
 	Gravity Gravity
 	// Content is the popover's widget tree (a Menu is the common
-	// case).
+	// case). Content that sets no layout motion of its own gets a
+	// smooth one, so when it grows while open the popover springs to
+	// the new size: the surface grows at once, the visible box follows.
 	Content widget.Widget
 	// OnClosed runs exactly once when the popover goes away, whatever
 	// the cause.
@@ -279,7 +281,11 @@ func (r *popoverKeyRoot) Arrange(rect render.Rect) {
 	widget.ArrangeAsChild(r.content, rect)
 }
 
-func (r *popoverKeyRoot) Paint(cv *render.Canvas) { r.content.Paint(cv) }
+func (r *popoverKeyRoot) Paint(cv *render.Canvas) { widget.PaintChild(cv, r.content) }
+
+// ShownRect reports the content's shown rect, so the popup's plate and
+// shadow follow the content through a layout motion.
+func (r *popoverKeyRoot) ShownRect() render.Rect { return widget.ShownRect(r.content) }
 
 // Children exposes the content to the tree walks (damage, focus).
 func (r *popoverKeyRoot) Children() []widget.Widget { return []widget.Widget{r.content} }
@@ -332,6 +338,12 @@ type LayerSurfacer interface {
 func (a *Application) OpenPopover(host Host, cfg PopoverConfig) (*Popover, error) {
 	if cfg.Anchor == nil || cfg.Content == nil {
 		return nil, errors.New("app: popover needs an anchor and content")
+	}
+	if m, ok := cfg.Content.(interface {
+		SetLayoutMotion(widget.LayoutMotion)
+		LayoutMotion() widget.LayoutMotion
+	}); ok && m.LayoutMotion() == widget.LayoutMotionNone {
+		m.SetLayoutMotion(widget.LayoutMotionSmooth)
 	}
 	parent := cfg.Parent
 	if parent != nil {
