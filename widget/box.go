@@ -742,16 +742,23 @@ func (b *Box) paintTransformed(cv *render.Canvas, v *style.Values) {
 		}
 		region = p3.MapBounds(b.bounds).Union(region)
 	}
-	l := cv.Layer(b.layer, region)
+	// The layer and the composite work in device pixels: the region
+	// maps out, and the transforms - logical, about a logical origin -
+	// conjugate by the device scale.
+	num, denom := cv.DeviceScale()
+	f := float64(num) / float64(denom)
+	toDev, toLogical := render.Scale(f, f), render.Scale(1/f, 1/f)
+	dev := cv.MapRect(region)
+	l := cv.Layer(b.layer, dev)
 	b.layer = l
 	fx := pushLayerEffects(l.Canvas(), &b.node, v, b.bounds, radii)
 	b.paintBox(fx.cv, v, radii)
 	fx.pop()
 	if v.Transform.P != render.Identity3 || v.Perspective > 0 {
-		cv.CompositeProjective(l, region, p3, 1)
+		cv.CompositeProjective(l, dev, render.Affine3(toDev).Mul(p3).Mul(render.Affine3(toLogical)), 1)
 		return
 	}
-	cv.Composite(l, l.Canvas().Rect(), m, 1)
+	cv.Composite(l, l.Canvas().Rect(), toDev.Mul(m).Mul(toLogical), 1)
 }
 
 // HitTest returns the deepest child under p, topmost in stacking order

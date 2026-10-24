@@ -680,3 +680,31 @@ switch slider { background-color: var(--knob, #0000ff); }`)
 		t.Errorf("knob = %#08x, want the inherited yellow", uint32(got))
 	}
 }
+
+// A CSS transform lands at the same logical place on every device
+// scale: the layer and the composite are device pixels, the transform
+// logical (#224).
+func TestTransformOnScaledOutput(t *testing.T) {
+	loadCSS(t, `.t { min-width: 10px; min-height: 10px; background-color: #ff0000; transform: translateX(10px) rotate(0deg); }`)
+	for _, num := range []int{1, 2, 3} {
+		b := NewBox(Column, 0, 0)
+		b.AddClass("t")
+		root := NewBox(Column, 0, 0)
+		root.Append(b, false)
+		root.Measure(Constraints{Max: Size{W: 60, H: 30}})
+		root.Arrange(render.Rect{W: 60, H: 30})
+		w, h := 60*num, 30*num
+		data := make([]byte, render.Stride(w)*h)
+		root.Paint(render.NewScaled(data, render.Stride(w), w, h, num, 1))
+		first := -1
+		for x := range w {
+			if render.ColorFromBytes(data[(5*num)*render.Stride(w)+x*4:]).A() > 128 {
+				first = x
+				break
+			}
+		}
+		if want := 10 * num; first < want-1 || first > want+1 {
+			t.Errorf("at %dx the translated box starts at device x %d, want %d", num, first, want)
+		}
+	}
+}
