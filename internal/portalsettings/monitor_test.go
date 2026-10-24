@@ -42,7 +42,9 @@ type mockPortal struct {
 	// iconTheme answers the org.gnome.desktop.interface icon-theme
 	// read; iconRaw overrides it for unreadable-value cases.
 	iconTheme string
-	iconRaw   any
+	// settings answers any other namespace.key the test set.
+	settings map[string]any
+	iconRaw  any
 	// raw, when set, overrides value entirely — for variants the spec
 	// does not define (a string where the uint32 belongs).
 	raw any
@@ -68,6 +70,16 @@ func (p *mockPortal) setIconTheme(name string) {
 	p.mu.Unlock()
 }
 
+// setSetting answers namespace.key with v from now on.
+func (p *mockPortal) setSetting(namespace, key string, v any) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.settings == nil {
+		p.settings = map[string]any{}
+	}
+	p.settings[namespace+"."+key] = v
+}
+
 func (p *mockPortal) fail() {
 	p.mu.Lock()
 	p.fails = true
@@ -78,6 +90,9 @@ func (p *mockPortal) fail() {
 func (p *mockPortal) ReadOne(namespace, key string) (dbus.Variant, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	if v, ok := p.settings[namespace+"."+key]; ok {
+		return dbus.MakeVariant(v), nil
+	}
 	if namespace == interfaceNamespace && key == iconThemeKey {
 		if p.iconRaw != nil {
 			return dbus.MakeVariant(p.iconRaw), nil
@@ -735,5 +750,50 @@ func TestUpdateAfterCloseDeliversNothing(t *testing.T) {
 	m.scheme.update(m, appearance.Dark, true)
 	if got := snapshot(); len(got) != 0 {
 		t.Fatalf("a change after Close reached a listener: %v", got)
+	}
+}
+
+// TestInterfaceFontStream pins the font-name and text-scaling-factor
+// settings: the startup read, change delivery per key, and the value
+// mapping (a non-string font and a non-positive or non-double scale
+// read as unset).
+func TestInterfaceFontStream(t *testing.T) {
+	address, _ := startBus(t)
+	mock := publishMock(t, address)
+	mock.setSetting(interfaceNamespace, fontNameKey, "Adwaita Sans 11")
+	mock.setSetting(interfaceNamespace, textScaleKey, 1.25)
+	m := newTestMonitor(t, address)
+	if got := m.FontName(); got != "Adwaita Sans 11" {
+		t.Fatalf("FontName() = %q, want the startup read", got)
+	}
+	if got := m.TextScale(); got != 1.25 {
+		t.Fatalf("TextScale() = %v, want the startup read", got)
+	}
+
+	fonts := make(chan string, 4)
+	scales := make(chan float64, 4)
+	m.OnFontNameChange(func(s string) { fonts <- s })
+	m.OnTextScaleChange(func(f float64) { scales <- f })
+	emitSetting(t, mock.conn, interfaceNamespace, fontNameKey, "Cantarell 12")
+	emitSetting(t, mock.conn, interfaceNamespace, textScaleKey, 1.5)
+	if got := <-fonts; got != "Cantarell 12" {
+		t.Errorf("font change = %q", got)
+	}
+	if got := <-scales; got != 1.5 {
+		t.Errorf("scale change = %v", got)
+	}
+
+	emitSetting(t, mock.conn, interfaceNamespace, fontNameKey, uint32(3))
+	emitSetting(t, mock.conn, interfaceNamespace, textScaleKey, -1.0)
+	if got := <-fonts; got != "" {
+		t.Errorf("a numeric font-name = %q, want unset", got)
+	}
+	if got := <-scales; got != 0 {
+		t.Errorf("a negative scale = %v, want unset", got)
+	}
+	select {
+	case got := <-scales:
+		t.Errorf("an extra scale event %v", got)
+	case <-time.After(100 * time.Millisecond):
 	}
 }

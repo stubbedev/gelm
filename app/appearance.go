@@ -5,6 +5,7 @@ import (
 	"sync/atomic"
 
 	"github.com/stubbedev/gelm/appearance"
+	"github.com/stubbedev/gelm/internal/gtksettings"
 )
 
 // ColorScheme returns the desktop's current dark/light preference,
@@ -36,6 +37,42 @@ func (a *Application) Contrast() appearance.Contrast { return a.portal.Contrast(
 // goroutine like OnColorSchemeChange.
 func (a *Application) OnContrastChange(fn func(appearance.Contrast)) (off func()) {
 	return onLoop(a, a.portal.OnContrastChange, fn)
+}
+
+// DesktopFontSize is the default font size, in logical pixels, a GTK
+// app on this desktop uses - what 1rem is there: the desktop font's
+// size (the portal's font-name, else settings.ini's gtk-font-name, else
+// GTK's "Sans 10") at its text DPI (the portal's text-scaling-factor,
+// else gtk-xft-dpi, else 96). gelm keeps its own 16px rem unless the
+// app applies this with widget.SetRootFontSize.
+func (a *Application) DesktopFontSize() float64 {
+	ini := a.gtkSettings()
+	return appearance.ResolveFontSettings(a.portal.FontName(), a.portal.TextScale(), ini.FontName, ini.DPI).DefaultFontPx()
+}
+
+// OnDesktopFontSizeChange registers fn for every change of
+// DesktopFontSize (a portal font-name or text-scaling-factor change
+// that moves it), on the loop goroutine like OnColorSchemeChange.
+func (a *Application) OnDesktopFontSizeChange(fn func(px float64)) (off func()) {
+	last := a.DesktopFontSize()
+	report := func() {
+		if px := a.DesktopFontSize(); px != last {
+			last = px
+			fn(px)
+		}
+	}
+	offFont := onLoop(a, a.portal.OnFontNameChange, func(string) { report() })
+	offScale := onLoop(a, a.portal.OnTextScaleChange, func(float64) { report() })
+	return sync.OnceFunc(func() {
+		offFont()
+		offScale()
+	})
+}
+
+// gtkSettings reads settings.ini once per application.
+func (a *Application) gtkSettings() gtksettings.Settings {
+	a.gtkIniOnce.Do(func() { a.gtkIni = gtksettings.Load() })
+	return a.gtkIni
 }
 
 func onLoop[T any](a *Application, register func(func(T)) func(), fn func(T)) (off func()) {

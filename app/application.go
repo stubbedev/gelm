@@ -20,6 +20,7 @@ import (
 	"github.com/stubbedev/gelm/internal/datacontrol"
 	"github.com/stubbedev/gelm/internal/debug"
 	"github.com/stubbedev/gelm/internal/dragdrop"
+	"github.com/stubbedev/gelm/internal/gtksettings"
 	"github.com/stubbedev/gelm/internal/icons"
 	"github.com/stubbedev/gelm/internal/inspect"
 	"github.com/stubbedev/gelm/internal/layersurface"
@@ -81,8 +82,11 @@ type Application struct {
 	// openPopovers are the popovers the loop drives, oldest first.
 	openPopovers []*openPopover
 	// toasts tracks each window's toast stack (see toast.go).
-	toasts         toastRegistry
-	portal         *portalsettings.Monitor
+	toasts toastRegistry
+	portal *portalsettings.Monitor
+	// gtkIni is settings.ini, read on first use (gtkSettings).
+	gtkIniOnce     sync.Once
+	gtkIni         gtksettings.Settings
 	stopIconFollow func()
 	// windowIcons (windowicon.go): per-window overrides and the app
 	// default posted through xdg-toplevel-icon-v1, plus the icons

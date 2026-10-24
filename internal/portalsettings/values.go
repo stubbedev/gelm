@@ -58,3 +58,16 @@ func contrastValue(v any) appearance.Contrast {
 	}
 	return appearance.ContrastUnknown
 }
+
+// scaleValue maps a portal value - a variant around a double - to a
+// text scaling factor; anything else, and a non-positive factor, maps
+// to 0 (unset) rather than a guessed scale.
+func scaleValue(v any) float64 {
+	if variant, ok := v.(dbus.Variant); ok {
+		v = variant.Value()
+	}
+	if f, ok := v.(float64); ok && f > 0 {
+		return f
+	}
+	return 0
+}

@@ -1,6 +1,6 @@
 // Package portalsettings follows the desktop settings xdg-desktop-portal
-// publishes (color scheme, accent color, contrast, icon theme) over the
-// session bus. Listeners run on the monitor's own goroutine; the
+// publishes (color scheme, accent color, contrast, icon theme, the
+// interface font and its text scaling) over the session bus. Listeners run on the monitor's own goroutine; the
 // application bridges them onto its loop.
 package portalsettings
 
@@ -35,6 +35,8 @@ const (
 
 	interfaceNamespace = "org.gnome.desktop.interface"
 	iconThemeKey       = "icon-theme"
+	fontNameKey        = "font-name"
+	textScaleKey       = "text-scaling-factor"
 
 	schemeDark  uint32 = 1
 	schemeLight uint32 = 2
@@ -93,6 +95,8 @@ type Monitor struct {
 	icons    setting[string]
 	accent   setting[appearance.Accent]
 	contrast setting[appearance.Contrast]
+	font     setting[string]
+	scale    setting[float64]
 }
 
 // New starts a monitor on the session bus. It performs the startup read
@@ -162,6 +166,8 @@ func (m *Monitor) refresh(conn *dbus.Conn, deliver bool) {
 	m.icons.update(m, readSetting(conn, interfaceNamespace, iconThemeKey, stringValue, ""), deliver)
 	m.accent.update(m, readSetting(conn, schemeNamespace, accentKey, accentValue, appearance.Accent{}), deliver)
 	m.contrast.update(m, readSetting(conn, schemeNamespace, contrastKey, contrastValue, appearance.ContrastUnknown), deliver)
+	m.font.update(m, readSetting(conn, interfaceNamespace, fontNameKey, stringValue, ""), deliver)
+	m.scale.update(m, readSetting(conn, interfaceNamespace, textScaleKey, scaleValue, 0), deliver)
 }
 
 // ColorScheme returns the current color-scheme preference, Unknown when
@@ -285,6 +291,12 @@ func (m *Monitor) signal(sig *dbus.Signal) {
 	if v, ok := settingChanged(sig, schemeNamespace, contrastKey, contrastValue, appearance.ContrastUnknown); ok {
 		m.contrast.update(m, v, true)
 	}
+	if v, ok := settingChanged(sig, interfaceNamespace, fontNameKey, stringValue, ""); ok {
+		m.font.update(m, v, true)
+	}
+	if v, ok := settingChanged(sig, interfaceNamespace, textScaleKey, scaleValue, 0); ok {
+		m.scale.update(m, v, true)
+	}
 }
 
 // redial reconnects with exponential backoff (retry doubling to
@@ -355,6 +367,35 @@ func (m *Monitor) Contrast() appearance.Contrast {
 // OnChange.
 func (m *Monitor) OnContrastChange(fn func(appearance.Contrast)) (off func()) {
 	return m.contrast.on(m, fn)
+}
+
+// FontName returns the desktop's interface font description (the
+// portal's org.gnome.desktop.interface font-name, "Adwaita Sans 11"):
+// empty means no portal, no setting, or a value that is not a string.
+// Safe from any goroutine.
+func (m *Monitor) FontName() string {
+	return m.font.get(m)
+}
+
+// OnFontNameChange registers fn for every font-name change; the
+// returned function unregisters it. Same threading contract as
+// OnChange.
+func (m *Monitor) OnFontNameChange(fn func(string)) (off func()) {
+	return m.font.on(m, fn)
+}
+
+// TextScale returns the desktop's text-scaling-factor (1 is
+// unscaled), 0 when it published none or an unusable value. Safe from
+// any goroutine.
+func (m *Monitor) TextScale() float64 {
+	return m.scale.get(m)
+}
+
+// OnTextScaleChange registers fn for every text-scaling-factor change;
+// the returned function unregisters it. Same threading contract as
+// OnChange.
+func (m *Monitor) OnTextScaleChange(fn func(float64)) (off func()) {
+	return m.scale.on(m, fn)
 }
 
 // isClosed reports whether Close has fired.
