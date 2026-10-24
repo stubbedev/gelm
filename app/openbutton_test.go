@@ -8,9 +8,9 @@ import (
 
 	"golang.org/x/image/font/gofont/goregular"
 
-	"github.com/stubbedev/gelm/internal/recentfiles"
-	"github.com/stubbedev/gelm/render"
-	"github.com/stubbedev/gelm/widget"
+	"github.com/stubbedev/lys-ui/internal/recentfiles"
+	"github.com/stubbedev/lys-ui/render"
+	"github.com/stubbedev/lys-ui/widget"
 )
 
 func openButtonApp(t *testing.T) *Application {
@@ -62,8 +62,8 @@ func TestOpenButtonChoose(t *testing.T) {
 		t.Fatal(err)
 	}
 	entries := m.List()
-	if len(entries) != 1 || entries[0].Path != path || entries[0].App != "gelm" {
-		t.Fatalf("round trip = %+v, want the path under gelm", entries)
+	if len(entries) != 1 || entries[0].Path != path || entries[0].App != "lys-ui" {
+		t.Fatalf("round trip = %+v, want the path under lys-ui", entries)
 	}
 }
 
@@ -78,12 +78,12 @@ func TestOpenButtonRecentsDropdown(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, p := range paths {
-		if err := m.Add(p, "gelm"); err != nil {
+		if err := m.Add(p, "lys-ui"); err != nil {
 			t.Fatal(err)
 		}
 	}
 	missing := filepath.Join(t.TempDir(), "gone.txt")
-	if err := m.Add(missing, "gelm"); err != nil {
+	if err := m.Add(missing, "lys-ui"); err != nil {
 		t.Fatal(err)
 	}
 	a.recentFiles = m
@@ -122,7 +122,7 @@ func TestOpenButtonDropdownPick(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, p := range paths {
-		if err := m.Add(p, "gelm"); err != nil {
+		if err := m.Add(p, "lys-ui"); err != nil {
 			t.Fatal(err)
 		}
 	}

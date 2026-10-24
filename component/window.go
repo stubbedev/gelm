@@ -3,7 +3,7 @@ package component
 import (
 	"errors"
 
-	"github.com/stubbedev/gelm/app"
+	"github.com/stubbedev/lys-ui/app"
 )
 
 var _ Loop = (*app.Application)(nil)

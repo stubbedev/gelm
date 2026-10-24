@@ -1,4 +1,4 @@
-// Package inproc runs gelm applications inside a test process against
+// Package inproc runs lys-ui applications inside a test process against
 // the headless compositor and inspects the output through screencopy:
 // the in-process half of the compositor-in-the-loop suite, for tests
 // that drive the app API directly instead of a demo client.
@@ -12,20 +12,20 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stubbedev/gelm/app"
-	"github.com/stubbedev/gelm/capture"
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/app"
+	"github.com/stubbedev/lys-ui/capture"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 // Require skips unless the test runs under just headless.
 func Require(t *testing.T) {
 	t.Helper()
-	if os.Getenv("GELM_HEADLESS") == "" {
-		t.Skip("GELM_HEADLESS is not set; in-process compositor tests run under just headless")
+	if os.Getenv("LYS_UI_HEADLESS") == "" {
+		t.Skip("LYS_UI_HEADLESS is not set; in-process compositor tests run under just headless")
 	}
 }
 
-// Show runs a gelm application on its own goroutine with build adding
+// Show runs a lys-ui application on its own goroutine with build adding
 // its surfaces, and stops it at test cleanup.
 func Show(t *testing.T, build func(a *app.Application, out *app.Output) error) {
 	t.Helper()

@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-The first release of gelm, a pure-Go Wayland widget toolkit and relm4
+The first release of lys-ui, a pure-Go Wayland widget toolkit and relm4
 counterpart. It contains:
 
 - **The framework.** Components with typed input and output messages,

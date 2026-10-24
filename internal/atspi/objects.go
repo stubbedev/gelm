@@ -13,7 +13,7 @@ package atspi
 import (
 	"github.com/godbus/dbus/v5"
 
-	"github.com/stubbedev/gelm/widget"
+	"github.com/stubbedev/lys-ui/widget"
 )
 
 // objRef is the (so) object reference: a bus name and an object path.
@@ -107,7 +107,7 @@ func (o *accessibleIface) GetInterfaces() []string {
 // arranged rects and the compositor owns the window's screen position,
 // so a screen coord_type returns the same window-local values
 // (documented limitation: review cursors and magnifiers read positions
-// relative to the gelm window, not the desktop).
+// relative to the lys-ui window, not the desktop).
 type componentIface struct {
 	b  *Bridge
 	id int32
@@ -240,7 +240,7 @@ func (o *textIface) GetStringAtOffset(offset, granularity uint32) (string, int32
 		return sentenceAt(r, off)
 	case 3: // LINE
 		return lineAt(r, off)
-	default: // PARAGRAPH: gelm text is a single paragraph
+	default: // PARAGRAPH: lys-ui text is a single paragraph
 		return string(r), 0, int32(len(r))
 	}
 }
@@ -397,7 +397,7 @@ type applicationIface struct {
 	b *Bridge
 }
 
-func (o *applicationIface) GetToolkitName() string           { return "gelm" }
+func (o *applicationIface) GetToolkitName() string           { return "lys-ui" }
 func (o *applicationIface) GetVersion() string               { return toolkitVersion }
 func (o *applicationIface) GetAtspiVersion() string          { return "2.1" }
 func (o *applicationIface) GetLocale(lctype uint32) string   { return "" }

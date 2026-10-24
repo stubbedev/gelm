@@ -15,7 +15,7 @@ import (
 // cache compiles it in seconds, a cold one needs the slack.
 const buildTimeout = 3 * time.Minute
 
-// ModuleDir locates the gelm module root by walking up from the
+// ModuleDir locates the lys-ui module root by walking up from the
 // current directory (the tests run inside the module tree), so the
 // harness can build cmd targets without assuming a working directory.
 func ModuleDir() (string, error) {
@@ -35,14 +35,14 @@ func ModuleDir() (string, error) {
 	}
 }
 
-// BuildShowcase compiles the widget showcase with the gelmdebug tag
-// (its trace calls are compiled out otherwise) into dir/gelm-hello and
+// BuildShowcase compiles the widget showcase with the lysuidebug tag
+// (its trace calls are compiled out otherwise) into dir/lys-ui-hello and
 // returns the binary path.
 func BuildShowcase(dir string) (string, error) {
-	return BuildClient(dir, "./cmd/gelm-hello", "gelm-hello")
+	return BuildClient(dir, "./cmd/lys-ui-hello", "lys-ui-hello")
 }
 
-// BuildClient compiles one gelm command package with the gelmdebug tag
+// BuildClient compiles one lys-ui command package with the lysuidebug tag
 // (trace calls are compiled out otherwise) into dir/bin and returns the
 // binary path.
 func BuildClient(dir, pkg, bin string) (string, error) {
@@ -52,7 +52,7 @@ func BuildClient(dir, pkg, bin string) (string, error) {
 	}
 	// goTool and dir come from the module tree this test binary runs in,
 	// not from any untrusted source.
-	cmd := exec.Command(goTool(), "build", "-tags", "gelmdebug", "-o", filepath.Join(dir, bin), pkg) //nolint:gosec // fixed subcommand, module-local paths
+	cmd := exec.Command(goTool(), "build", "-tags", "lysuidebug", "-o", filepath.Join(dir, bin), pkg) //nolint:gosec // fixed subcommand, module-local paths
 	cmd.Dir = root
 	cmd.Env = append(os.Environ(), "CGO_ENABLED=0")
 	out, err := runWithTimeout(cmd, buildTimeout)
@@ -102,7 +102,7 @@ func (e *Env) StartClient(bin, name, categories string, args ...string) (*Client
 }
 
 // StartClientEnv is StartClient with extra environment entries
-// (KEY=value), for knobs such as GELM_NO_CURSOR_SHAPE.
+// (KEY=value), for knobs such as LYS_UI_NO_CURSOR_SHAPE.
 func (e *Env) StartClientEnv(bin, name, categories string, env []string, args ...string) (*Client, error) {
 	logPath := filepath.Join(e.Dir, name+".log")
 	// The path is the harness's own runtime dir, built from the test's

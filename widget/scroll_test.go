@@ -3,7 +3,7 @@ package widget
 import (
 	"testing"
 
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 // newScrollFixture builds a 60x60 scroll wrapping a 60x200 child: a

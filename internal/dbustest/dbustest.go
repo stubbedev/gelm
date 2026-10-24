@@ -50,7 +50,7 @@ func Start(t testing.TB) (string, int) {
 // path exceeds AF_UNIX's 108-byte sun_path and the bus cannot bind.
 func SocketPath(t testing.TB) string {
 	t.Helper()
-	dir, err := os.MkdirTemp("", "gelm-bus-")
+	dir, err := os.MkdirTemp("", "lys-ui-bus-")
 	if err != nil {
 		t.Fatal(err)
 	}

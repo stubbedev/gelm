@@ -5,13 +5,13 @@ import (
 	"slices"
 	"strconv"
 
-	"github.com/stubbedev/gelm/render"
-	"github.com/stubbedev/gelm/transfer"
+	"github.com/stubbedev/lys-ui/render"
+	"github.com/stubbedev/lys-ui/transfer"
 )
 
 // TabMime is the drag payload of a dragged tab: its page id, which
 // any TabBar in the process resolves to move the page.
-const TabMime = "application/x-gelm-tab"
+const TabMime = "application/x-lys-ui-tab"
 
 // TabBar is libadwaita's AdwTabBar: the tabs of a TabView in a row.
 // Clicking a tab selects it, its close button closes it (pinned tabs

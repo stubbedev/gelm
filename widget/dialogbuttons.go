@@ -3,7 +3,7 @@ package widget
 import (
 	"fmt"
 
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 // ColorButton is GTK's ColorDialogButton: a swatch of the current

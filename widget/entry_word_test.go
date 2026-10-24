@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 func TestEntryWordEditing(t *testing.T) {

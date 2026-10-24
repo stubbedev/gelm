@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stubbedev/gelm/internal/animclock"
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/internal/animclock"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 func TestSpinnerNeedsSpinningAndVisible(t *testing.T) {

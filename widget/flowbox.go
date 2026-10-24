@@ -3,8 +3,8 @@ package widget
 import (
 	"slices"
 
-	"github.com/stubbedev/gelm/internal/style"
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/internal/style"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 // flowMaxPerLine is GtkFlowBox's default max-children-per-line.

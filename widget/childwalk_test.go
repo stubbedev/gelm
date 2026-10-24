@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 // TestChildWalkMatchesChildren pins the contract the frame's damage

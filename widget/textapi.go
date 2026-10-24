@@ -1,8 +1,8 @@
 package widget
 
 import (
-	"github.com/stubbedev/gelm/internal/text"
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/internal/text"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 // TextSelector is a text widget whose caret and selection code - and

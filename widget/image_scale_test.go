@@ -5,7 +5,7 @@ import (
 	"image/color"
 	"testing"
 
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 func solidImage(w, h int, c color.NRGBA) *image.NRGBA {

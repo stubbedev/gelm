@@ -4,7 +4,7 @@ import (
 	"math"
 	"testing"
 
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 // approx reports whether got is within tol of want.

@@ -8,9 +8,9 @@ import (
 	"reflect"
 	"sync"
 
-	"github.com/stubbedev/gelm/internal/atomicfile"
-	"github.com/stubbedev/gelm/internal/debug"
-	"github.com/stubbedev/gelm/widget"
+	"github.com/stubbedev/lys-ui/internal/atomicfile"
+	"github.com/stubbedev/lys-ui/internal/debug"
+	"github.com/stubbedev/lys-ui/widget"
 )
 
 // Settings is the persisted settings bag, GSettings/relm4's Settings

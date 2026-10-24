@@ -11,7 +11,7 @@ import (
 
 	"golang.org/x/sys/unix"
 
-	"github.com/stubbedev/gelm/internal/xfer"
+	"github.com/stubbedev/lys-ui/internal/xfer"
 )
 
 // fakeManager records the sources the core creates.

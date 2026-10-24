@@ -28,9 +28,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/stubbedev/gelm/internal/style"
-	"github.com/stubbedev/gelm/internal/sysfont"
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/internal/style"
+	"github.com/stubbedev/lys-ui/internal/sysfont"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 // Style priorities, GTK's provider priorities: a higher priority wins
@@ -2562,7 +2562,7 @@ func fontPx(v *style.Values, def float64) float64 {
 }
 
 // typeElementName returns the widget type's element name: GTK's CSS
-// node name where gelm has the GTK widget (an Icon is GtkImage's
+// node name where lys-ui has the GTK widget (an Icon is GtkImage's
 // image, a Scroll GtkScrolledWindow's scrolledwindow, a TextArea
 // GtkTextView's textview, a Slider GtkScale's scale, a List GtkListView's
 // listview, a RichLabel a label), so a GTK stylesheet applies as

@@ -5,9 +5,9 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/stubbedev/gelm/internal/sysfont"
-	"github.com/stubbedev/gelm/render"
-	"github.com/stubbedev/gelm/widget"
+	"github.com/stubbedev/lys-ui/internal/sysfont"
+	"github.com/stubbedev/lys-ui/render"
+	"github.com/stubbedev/lys-ui/widget"
 )
 
 // Font resolves a system font family by name at the given logical

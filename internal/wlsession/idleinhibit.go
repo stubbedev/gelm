@@ -10,9 +10,9 @@ package wlsession
 import (
 	"errors"
 
-	"github.com/stubbedev/gelm/internal/debug"
-	"github.com/stubbedev/gelm/third_party/neurlang-wayland/wl"
-	"github.com/stubbedev/gelm/wlr"
+	"github.com/stubbedev/lys-ui/internal/debug"
+	"github.com/stubbedev/lys-ui/third_party/neurlang-wayland/wl"
+	"github.com/stubbedev/lys-ui/wlr"
 )
 
 // maxIdleInhibitVersion is the zwp_idle_inhibit_manager_v1 version we

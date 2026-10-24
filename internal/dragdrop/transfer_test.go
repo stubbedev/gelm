@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stubbedev/gelm/internal/xfer"
-	"github.com/stubbedev/gelm/third_party/neurlang-wayland/wl"
-	"github.com/stubbedev/gelm/transfer"
+	"github.com/stubbedev/lys-ui/internal/xfer"
+	"github.com/stubbedev/lys-ui/third_party/neurlang-wayland/wl"
+	"github.com/stubbedev/lys-ui/transfer"
 )
 
 // capturingOffer plays a foreign drag offer and remembers the write

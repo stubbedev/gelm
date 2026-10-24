@@ -3,8 +3,8 @@ package widget
 import (
 	"time"
 
-	"github.com/stubbedev/gelm/anim"
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/anim"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 // sheetHandle is the drag strip at the sheet's top edge.

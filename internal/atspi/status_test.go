@@ -7,7 +7,7 @@ import (
 
 	"github.com/godbus/dbus/v5"
 
-	"github.com/stubbedev/gelm/internal/dbustest"
+	"github.com/stubbedev/lys-ui/internal/dbustest"
 )
 
 // fakeStatus plays at-spi-bus-launcher's org.a11y.Status properties.

@@ -4,7 +4,7 @@ import (
 	"math"
 	"strings"
 
-	"github.com/stubbedev/gelm/anim"
+	"github.com/stubbedev/lys-ui/anim"
 )
 
 // Timing is a transition or animation timing function (CSS Easing 2):

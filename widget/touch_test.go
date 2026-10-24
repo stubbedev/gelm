@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 // gestureProbe is a leaf that records and claims gestures of one kind.

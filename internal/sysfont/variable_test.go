@@ -6,7 +6,7 @@ import (
 
 	"github.com/go-text/typesetting/font"
 
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 // A variable face the store matched at its default instance serves a

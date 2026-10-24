@@ -5,7 +5,7 @@ import "testing"
 // shellProtocols are the wayle-facing protocols added for issue #33.
 // Each is feature-detected: binding one must never become a Connect
 // requirement, so a compositor without any of them still runs every
-// existing gelm behavior.
+// existing lys-ui behavior.
 var shellProtocols = []string{
 	"zwlr_foreign_toplevel_manager_v1",
 	"xdg_activation_v1",

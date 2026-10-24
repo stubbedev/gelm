@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stubbedev/gelm/render"
-	"github.com/stubbedev/gelm/widget"
+	"github.com/stubbedev/lys-ui/render"
+	"github.com/stubbedev/lys-ui/widget"
 )
 
 func TestTooltipShouldOpen(t *testing.T) {

@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stubbedev/gelm/app"
-	"github.com/stubbedev/gelm/render"
-	"github.com/stubbedev/gelm/widget"
+	"github.com/stubbedev/lys-ui/app"
+	"github.com/stubbedev/lys-ui/render"
+	"github.com/stubbedev/lys-ui/widget"
 )
 
 // lockTimeout bounds each step of the session-lock scenario.
@@ -235,9 +235,9 @@ func runLockHelper(t *testing.T, mode string) string {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*lockTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestSessionLockRivalHelper$", "-test.v")
-	cmd.Env = append(privateEnv("GELM_HEADLESS=", "WAYLAND_DISPLAY="+testEnv.Display, "XDG_RUNTIME_DIR="+testEnv.Dir), rivalEnv+"="+mode,
+	cmd.Env = append(privateEnv("LYS_UI_HEADLESS=", "WAYLAND_DISPLAY="+testEnv.Display, "XDG_RUNTIME_DIR="+testEnv.Dir), rivalEnv+"="+mode,
 		// The helper's lock lifecycle, when the suite is built with the
-		// gelmdebug tag (a no-op otherwise).
+		// lysuidebug tag (a no-op otherwise).
 		"GOELM_DEBUG=shell,wire")
 	out, err := cmd.CombinedOutput()
 	t.Logf("lock helper (%s):\n%s", mode, out)
@@ -248,7 +248,7 @@ func runLockHelper(t *testing.T, mode string) string {
 }
 
 // rivalEnv switches TestSessionLockRivalHelper on in a child process.
-const rivalEnv = "GELM_LOCK_RIVAL"
+const rivalEnv = "LYS_UI_LOCK_RIVAL"
 
 // TestSessionLockRivalHelper is TestSessionLockLifecycle's child
 // lock client (runLockHelper): as the rival it requests a lock while

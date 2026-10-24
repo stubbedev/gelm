@@ -12,10 +12,10 @@ import (
 // the forwarded invocation. Everything rides on the same
 // compositor/wire/loop path a desktop launch would.
 func TestSingleInstanceForwardsToPrimary(t *testing.T) {
-	if os.Getenv("GELM_HEADLESS") == "" {
-		t.Skip("GELM_HEADLESS is not set; compositor input tests run under just check-headless")
+	if os.Getenv("LYS_UI_HEADLESS") == "" {
+		t.Skip("LYS_UI_HEADLESS is not set; compositor input tests run under just check-headless")
 	}
-	bin, err := BuildClient(testEnv.Dir, "./cmd/gelm-messages", "gelm-messages")
+	bin, err := BuildClient(testEnv.Dir, "./cmd/lys-ui-messages", "lys-ui-messages")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -29,11 +29,11 @@ func TestSingleInstanceForwardsToPrimary(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := w.Wait("shell", "instance dev.stubbe.gelm.messages: primary", traceTimeout); err != nil {
+	if _, err := w.Wait("shell", "instance dev.stubbe.lys.ui.messages: primary", traceTimeout); err != nil {
 		t.Fatalf("primary never claimed the AppID: %v", err)
 	}
 
-	secondary, err := testEnv.StartClient(bin, "instance-secondary", "shell", "--open", "/tmp/gelm-opened.txt")
+	secondary, err := testEnv.StartClient(bin, "instance-secondary", "shell", "--open", "/tmp/lys-ui-opened.txt")
 	if err != nil {
 		t.Fatal(err)
 	}

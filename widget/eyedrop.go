@@ -3,7 +3,7 @@ package widget
 import (
 	"image"
 
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 // ScreenPick displays one captured screen and reports the pixel color

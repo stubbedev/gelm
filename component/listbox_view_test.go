@@ -3,9 +3,9 @@ package component_test
 import (
 	"testing"
 
-	"github.com/stubbedev/gelm/component"
-	"github.com/stubbedev/gelm/component/componenttest"
-	"github.com/stubbedev/gelm/widget"
+	"github.com/stubbedev/lys-ui/component"
+	"github.com/stubbedev/lys-ui/component/componenttest"
+	"github.com/stubbedev/lys-ui/widget"
 )
 
 func TestListBoxViewFollowsEdits(t *testing.T) {

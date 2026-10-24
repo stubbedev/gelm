@@ -3,9 +3,9 @@ package widget
 import (
 	"image"
 
-	"github.com/stubbedev/gelm/media"
-	"github.com/stubbedev/gelm/render"
-	"github.com/stubbedev/gelm/widget/css"
+	"github.com/stubbedev/lys-ui/media"
+	"github.com/stubbedev/lys-ui/render"
+	"github.com/stubbedev/lys-ui/widget/css"
 )
 
 // Video is GTK's GtkVideo: a media.Stream's frames fitted into the

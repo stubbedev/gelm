@@ -16,16 +16,16 @@ import (
 
 	"github.com/unxed/xkb-go"
 
-	"github.com/stubbedev/gelm/internal/clipboard"
-	"github.com/stubbedev/gelm/internal/compose"
-	"github.com/stubbedev/gelm/internal/debug"
-	"github.com/stubbedev/gelm/internal/dragdrop"
-	"github.com/stubbedev/gelm/internal/surfx"
-	"github.com/stubbedev/gelm/internal/touchinput"
-	"github.com/stubbedev/gelm/internal/wlsession"
-	"github.com/stubbedev/gelm/render"
-	"github.com/stubbedev/gelm/third_party/neurlang-wayland/wl"
-	"github.com/stubbedev/gelm/widget"
+	"github.com/stubbedev/lys-ui/internal/clipboard"
+	"github.com/stubbedev/lys-ui/internal/compose"
+	"github.com/stubbedev/lys-ui/internal/debug"
+	"github.com/stubbedev/lys-ui/internal/dragdrop"
+	"github.com/stubbedev/lys-ui/internal/surfx"
+	"github.com/stubbedev/lys-ui/internal/touchinput"
+	"github.com/stubbedev/lys-ui/internal/wlsession"
+	"github.com/stubbedev/lys-ui/render"
+	"github.com/stubbedev/lys-ui/third_party/neurlang-wayland/wl"
+	"github.com/stubbedev/lys-ui/widget"
 )
 
 // ErrClosed reports that the surface ended and the loop exited. Callers
@@ -91,7 +91,7 @@ type Config struct {
 	OnKey func(r *widget.Router, keycode uint32, mods wlsession.Mods)
 	// Inspect arms the debug inspector: the widget-tree overlay plus
 	// the ctrl+shift+i (toggle) and ctrl+shift+d (dump) chords.
-	// GELM_INSPECT=1 arms it for every app; this field is the
+	// LYS_UI_INSPECT=1 arms it for every app; this field is the
 	// in-code opt-in. See docs/inspector.md.
 	Inspect bool
 	// OnDisconnect observes the compositor connection dying (restart,

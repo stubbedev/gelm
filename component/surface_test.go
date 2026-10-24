@@ -4,9 +4,9 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/stubbedev/gelm/app"
-	"github.com/stubbedev/gelm/component/componenttest"
-	"github.com/stubbedev/gelm/widget"
+	"github.com/stubbedev/lys-ui/app"
+	"github.com/stubbedev/lys-ui/component/componenttest"
+	"github.com/stubbedev/lys-ui/widget"
 )
 
 type titled struct {

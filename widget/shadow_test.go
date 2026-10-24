@@ -9,7 +9,7 @@ package widget
 import (
 	"testing"
 
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 // paintCard paints an Elevation card — plate plus shadow — on a

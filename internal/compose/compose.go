@@ -6,7 +6,7 @@
 //
 // The parser, trie, and state machine come from unxed/xkb-go's pure-Go
 // compose implementation (no cgo, the Compose file is just data); this
-// package adds gelm's semantics on top: Feed answers pending,
+// package adds lys-ui's semantics on top: Feed answers pending,
 // done-with-text, or none; backspace unwinds one level; a nil table —
 // no compose file anywhere — is the disabled state and every call is a
 // no-op, so callers never branch on whether compose exists.

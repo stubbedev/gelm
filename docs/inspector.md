@@ -1,6 +1,6 @@
 # The debug inspector
 
-gelm's counterpart of the GTK inspector: a widget-tree overlay over
+lys-ui's counterpart of the GTK inspector: a widget-tree overlay over
 the live UI, a text dump of the tree for bug reports, and a doctor
 block that snapshots the session's environment. Everything here is
 read-only observation; the inspector never mutates widget state (a
@@ -8,7 +8,7 @@ test pins the overlay's paint as side-effect free).
 
 ## Prod visibility: always compiled in, inert until asked for
 
-The inspector is deliberately NOT behind the `gelmdebug` build tag.
+The inspector is deliberately NOT behind the `lysuidebug` build tag.
 Its whole purpose is diagnosing layout bugs in the field, where
 tagged builds do not exist. The cost when it is off is one
 passthrough call per frame operation (measure, arrange, paint, hit
@@ -18,15 +18,15 @@ allocates. Real trace instrumentation stays behind the tag
 output.
 
 The tree dump is a plain function call (`widget.DumpTree`,
-`widget.DumpTreeTo`) and the doctor block prints on `GELM_DOCTOR=1`;
+`widget.DumpTreeTo`) and the doctor block prints on `LYS_UI_DOCTOR=1`;
 both are always available.
 
 ## Turning it on
 
 Two equivalent paths:
 
-- `GELM_INSPECT=1` (or `true`/`yes`/`on`) in the environment arms the
-  inspector for any gelm app at startup, overlay on.
+- `LYS_UI_INSPECT=1` (or `true`/`yes`/`on`) in the environment arms the
+  inspector for any lys-ui app at startup, overlay on.
 - In code: `Application.SetInspect(true)` / `ToggleInspect()`, or
   `app.Config{Inspect: true}` for the single-window `app.Run`
   convenience.
@@ -69,7 +69,7 @@ arms the inspector keeps both combos to itself.
 in paint order; the inspector's `ctrl+shift+d` prints it under a
 banner line naming the widget count (internal/inspect `Dump`):
 
-    gelm tree dump: 5 widgets
+    lys-ui tree dump: 5 widgets
     *widget.Box bounds=0,0+400x300
       *widget.Label bounds=4,4+392x16 role=label tooltip="the page title"
       *widget.Button name="toolbar:save" bounds=4,28+392x36 role=button tooltip="saves the thing" focusable hover pressed
@@ -91,11 +91,11 @@ up in the dump and the overlay labels.
 ## The doctor block
 
 The doctor block is the diagnostics a bug report carries verbatim.
-Every app prints it at startup when `GELM_DOCTOR=1` (or
+Every app prints it at startup when `LYS_UI_DOCTOR=1` (or
 `true`/`yes`/`on`) is set; `NewApplication` renders it through
 internal/inspect `Doctor`:
 
-    gelm doctor
+    lys-ui doctor
     go: go1.27.1 (linux/amd64)
     globals: wl_compositor v4, wl_output v2, wl_seat v7, wl_shm v1
     outputs: DP-1 mode 2560x1440 scale 2 logical 0,0+1280x720
@@ -112,7 +112,7 @@ internal/inspect `Doctor`:
   not.
 - `fonts` — the default sans and monospace faces the system font
   lookup resolved, plus the installed standard fallback families.
-- `buffer` — the one shm pixel format gelm submits
+- `buffer` — the one shm pixel format lys-ui submits
   (`buffer.FormatName`).
 - `fractional scale` — whether surfaces scale fractionally or fall
   back to integer `set_buffer_scale`.
@@ -129,7 +129,7 @@ tools can read the values without parsing the block.
 - `internal/inspect/inspect_test.go` — overlay passthrough
   (measure/arrange/hit test/children), overlay paint does not mutate
   widget state and issues no invalidation, annotations carry names
-  and states, label-face failure is safe, `GELM_INSPECT` parsing,
+  and states, label-face failure is safe, `LYS_UI_INSPECT` parsing,
   doctor lines against a fake-session snapshot, banner format.
 - `internal/wlsession/inspect_test.go` — globals+versions recording
   and removal, snapshot fields on a fake session, cursor theme

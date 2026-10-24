@@ -3,8 +3,8 @@ package widget
 import (
 	"math"
 
-	"github.com/stubbedev/gelm/internal/style"
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/internal/style"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 // SymbolKind names one of the vector glyphs the toolkit draws for its

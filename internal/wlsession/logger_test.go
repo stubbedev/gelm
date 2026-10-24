@@ -10,8 +10,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/stubbedev/gelm/internal/logutil"
-	"github.com/stubbedev/gelm/third_party/neurlang-wayland/wl"
+	"github.com/stubbedev/lys-ui/internal/logutil"
+	"github.com/stubbedev/lys-ui/third_party/neurlang-wayland/wl"
 )
 
 // capturedOutput redirects the process's stderr and stdout into pipes
@@ -90,7 +90,7 @@ func (c *capturedOutput) Stdout() string {
 // error, and teardown. No compositor and no wire objects: every step
 // is the same code path a live connection runs (bindFailed is the
 // funnel of every optional bind site; Close is nil-safe on a session
-// that never fully connected). In a prod build (no gelmdebug tag) the
+// that never fully connected). In a prod build (no lysuidebug tag) the
 // trace facility at these sites is compiled out, so only the injected
 // logger can produce output.
 func driveLifecycle(t *testing.T) {

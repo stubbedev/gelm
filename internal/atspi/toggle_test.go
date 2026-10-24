@@ -4,7 +4,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/stubbedev/gelm/widget"
+	"github.com/stubbedev/lys-ui/widget"
 )
 
 // A toggle button serves AT-SPI's toggle-button role and the pressed

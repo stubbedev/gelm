@@ -5,7 +5,7 @@ import (
 	"iter"
 	"strconv"
 
-	"github.com/stubbedev/gelm/widget"
+	"github.com/stubbedev/lys-ui/widget"
 )
 
 type packed struct {

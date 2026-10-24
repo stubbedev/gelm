@@ -1,7 +1,7 @@
 package widget
 
 import (
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 // The tree half of #90: a parent/child row model flattened into the

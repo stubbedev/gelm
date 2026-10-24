@@ -6,7 +6,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/stubbedev/gelm/internal/uigen"
+	"github.com/stubbedev/lys-ui/internal/uigen"
 )
 
 func main() {

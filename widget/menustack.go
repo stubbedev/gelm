@@ -3,7 +3,7 @@ package widget
 import (
 	"github.com/unxed/xkb-go"
 
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 // MenuStack presents a Menu tree with sliding submenus: activating a

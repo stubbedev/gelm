@@ -5,10 +5,10 @@ import (
 	"os"
 	"testing"
 
-	"github.com/stubbedev/gelm/internal/wlsession"
-	"github.com/stubbedev/gelm/third_party/neurlang-wayland/wl"
-	"github.com/stubbedev/gelm/transfer"
-	"github.com/stubbedev/gelm/wlr"
+	"github.com/stubbedev/lys-ui/internal/wlsession"
+	"github.com/stubbedev/lys-ui/third_party/neurlang-wayland/wl"
+	"github.com/stubbedev/lys-ui/transfer"
+	"github.com/stubbedev/lys-ui/wlr"
 )
 
 func TestPrimaryUnavailableWithoutOffer(t *testing.T) {
@@ -26,7 +26,7 @@ func TestPrimaryUnavailableWithoutOffer(t *testing.T) {
 	// An offer with no text mime reads as unavailable.
 	prim := &wlr.ZwpPrimarySelectionOfferV1{} // opaque identity; never driven on the wire here
 	c.primary = prim
-	c.primaryMimes = map[string]bool{"application/x-gelm-tile": true}
+	c.primaryMimes = map[string]bool{"application/x-lys-ui-tile": true}
 	if _, err := c.ReadPrimary(); !errors.Is(err, ErrUnavailable) {
 		t.Errorf("ReadPrimary without a text mime = %v, want ErrUnavailable", err)
 	}
@@ -64,7 +64,7 @@ func TestPrimaryOfferTrackingIsolatesSelections(t *testing.T) {
 	sel := &wl.DataOffer{}
 	selMimes := &offerMimes{mimes: make(map[string]bool)}
 	c.offers[sel] = selMimes
-	selMimes.HandleDataOfferOffer(wl.DataOfferOfferEvent{MimeType: "application/x-gelm-tile"})
+	selMimes.HandleDataOfferOffer(wl.DataOfferOfferEvent{MimeType: "application/x-lys-ui-tile"})
 	c.HandleDataDeviceSelection(wl.DataDeviceSelectionEvent{Id: sel})
 	if len(c.primaryMimes) != 1 || !c.primaryMimes["text/plain;charset=utf-8"] {
 		t.Errorf("primary mimes = %v, want only the utf-8 text type", c.primaryMimes)

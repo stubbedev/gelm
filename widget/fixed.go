@@ -4,7 +4,7 @@ import (
 	"math"
 	"slices"
 
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 // fixedChild is one Fixed child: the widget, its position in logical

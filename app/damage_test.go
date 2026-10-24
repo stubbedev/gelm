@@ -8,11 +8,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stubbedev/gelm/internal/buffer"
-	"github.com/stubbedev/gelm/internal/scale"
-	"github.com/stubbedev/gelm/render"
-	"github.com/stubbedev/gelm/third_party/neurlang-wayland/wl"
-	"github.com/stubbedev/gelm/widget"
+	"github.com/stubbedev/lys-ui/internal/buffer"
+	"github.com/stubbedev/lys-ui/internal/scale"
+	"github.com/stubbedev/lys-ui/render"
+	"github.com/stubbedev/lys-ui/third_party/neurlang-wayland/wl"
+	"github.com/stubbedev/lys-ui/widget"
 )
 
 // fakeHost is a wire-free Host of a fixed size.

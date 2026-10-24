@@ -1,16 +1,16 @@
 package app
 
 import (
-	"github.com/stubbedev/gelm/internal/emoji"
-	"github.com/stubbedev/gelm/internal/sysfont"
-	"github.com/stubbedev/gelm/render"
-	"github.com/stubbedev/gelm/widget"
+	"github.com/stubbedev/lys-ui/internal/emoji"
+	"github.com/stubbedev/lys-ui/internal/sysfont"
+	"github.com/stubbedev/lys-ui/render"
+	"github.com/stubbedev/lys-ui/widget"
 )
 
 // The emoji chooser (#92): a popover over the internal/emoji table -
 // category sections in a scrollable grid, a search field over the
 // names and keywords, and a click picking the emoji. GTK binds it on
-// ctrl+period; gelm leaves the binding to the app (an accel or OnKey)
+// ctrl+period; lys-ui leaves the binding to the app (an accel or OnKey)
 // and wires the insertion target with EmojiChooserForEntry.
 
 // emojiFace resolves an emoji-capable face: an emoji family from the

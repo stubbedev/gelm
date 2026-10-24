@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stubbedev/gelm/wlr"
+	"github.com/stubbedev/lys-ui/wlr"
 )
 
 // Without the protocol idle notification is unavailable; a watch

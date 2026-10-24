@@ -1,6 +1,6 @@
 package text
 
-import "github.com/stubbedev/gelm/third_party/neurlang-wayland/wl"
+import "github.com/stubbedev/lys-ui/third_party/neurlang-wayland/wl"
 
 type (
 	BaseProxy = wl.BaseProxy

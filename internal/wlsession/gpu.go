@@ -5,10 +5,10 @@
 package wlsession
 
 import (
-	"github.com/stubbedev/gelm/dmabuf"
-	"github.com/stubbedev/gelm/internal/debug"
-	"github.com/stubbedev/gelm/third_party/neurlang-wayland/wl"
-	"github.com/stubbedev/gelm/wlr"
+	"github.com/stubbedev/lys-ui/dmabuf"
+	"github.com/stubbedev/lys-ui/internal/debug"
+	"github.com/stubbedev/lys-ui/third_party/neurlang-wayland/wl"
+	"github.com/stubbedev/lys-ui/wlr"
 )
 
 const maxDmabufVersion = 3

@@ -4,8 +4,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/stubbedev/gelm/internal/debug"
-	"github.com/stubbedev/gelm/widget"
+	"github.com/stubbedev/lys-ui/internal/debug"
+	"github.com/stubbedev/lys-ui/widget"
 )
 
 const openButtonDefaultRecents = 5
@@ -98,7 +98,7 @@ func (ob *OpenButton) openDialog() {
 }
 
 func (ob *OpenButton) choose(path string) {
-	if err := ob.app.recentsManager().Add(path, "gelm"); err != nil {
+	if err := ob.app.recentsManager().Add(path, "lys-ui"); err != nil {
 		debug.Log("config", "recents add %s: %v", path, err)
 	}
 	if ob.cfg.OnOpen != nil {

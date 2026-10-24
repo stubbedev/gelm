@@ -1,4 +1,4 @@
-// Package gelm is a pure-Go (no cgo) widget toolkit for Wayland and a
+// Package lysui is a pure-Go (no cgo) widget toolkit for Wayland and a
 // counterpart of relm4: a component framework with typed messages, a
 // retained widget tree with GTK4/libadwaita-class widgets, xdg-shell
 // windows and layer-shell surfaces, a CSS engine over a typed palette,
@@ -32,4 +32,4 @@
 // holds the reference: architecture, components, the application,
 // input and threading models, CSS, appearance, icons, accessibility,
 // the inspector, and the capability map in docs/completeness.md.
-package gelm
+package lysui

@@ -12,7 +12,7 @@ package style
 import (
 	"math"
 
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 // XformOp names one transform primitive.

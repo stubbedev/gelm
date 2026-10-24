@@ -3,9 +3,9 @@ package widget
 import (
 	"slices"
 
-	"github.com/stubbedev/gelm/internal/style"
-	"github.com/stubbedev/gelm/render"
-	"github.com/stubbedev/gelm/widget/css"
+	"github.com/stubbedev/lys-ui/internal/style"
+	"github.com/stubbedev/lys-ui/render"
+	"github.com/stubbedev/lys-ui/widget/css"
 )
 
 // ListBox is a non-virtualized list of rows: every row is a child

@@ -12,8 +12,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/stubbedev/gelm/internal/debug"
-	"github.com/stubbedev/gelm/internal/mailbox"
+	"github.com/stubbedev/lys-ui/internal/debug"
+	"github.com/stubbedev/lys-ui/internal/mailbox"
 )
 
 // Single-instance activation, GApplication/relm4 parity (#79): the
@@ -38,7 +38,7 @@ type Invocation struct {
 
 // OSInvocation builds the Invocation of this process from args (os.Args
 // without the program): "--open PATH" pairs move into Open, and a token
-// in XDG_ACTIVATION_TOKEN rides along - gelm's launch convention, so
+// in XDG_ACTIVATION_TOKEN rides along - lys-ui's launch convention, so
 // every single-instance app understands --open without parsing it
 // twice.
 func OSInvocation(args []string) Invocation {
@@ -337,5 +337,5 @@ func instanceSocketPath(appID string) (string, error) {
 	if len(safe) == 0 {
 		return "", errors.New("app: single-instance AppID is required")
 	}
-	return filepath.Join(dir, "gelm-"+string(safe)+".sock"), nil
+	return filepath.Join(dir, "lys-ui-"+string(safe)+".sock"), nil
 }

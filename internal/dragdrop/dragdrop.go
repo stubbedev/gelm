@@ -13,11 +13,11 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/stubbedev/gelm/internal/debug"
-	"github.com/stubbedev/gelm/internal/wlsession"
-	"github.com/stubbedev/gelm/internal/xfer"
-	"github.com/stubbedev/gelm/third_party/neurlang-wayland/wl"
-	"github.com/stubbedev/gelm/transfer"
+	"github.com/stubbedev/lys-ui/internal/debug"
+	"github.com/stubbedev/lys-ui/internal/wlsession"
+	"github.com/stubbedev/lys-ui/internal/xfer"
+	"github.com/stubbedev/lys-ui/third_party/neurlang-wayland/wl"
+	"github.com/stubbedev/lys-ui/transfer"
 )
 
 // minActionVersion is the wl_data_device_manager version that gained

@@ -7,7 +7,7 @@ package widget
 import (
 	"strings"
 
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 // TextStyle is the style state markup tags accumulate over a run of

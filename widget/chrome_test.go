@@ -6,7 +6,7 @@ import (
 
 	"golang.org/x/image/font/gofont/goregular"
 
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 // chromeFace builds the test font.
@@ -26,9 +26,9 @@ func TestHeaderBarPacksAndControls(t *testing.T) {
 	face := chromeFace(t)
 	th := DarkTheme()
 	bar := NewHeaderBar(face, 14)
-	bar.SetTitle("gelm")
+	bar.SetTitle("lys-ui")
 	bar.SetSubtitle("fourth pass")
-	if bar.title.Text() != "gelm" || bar.sub.Text() != "fourth pass" {
+	if bar.title.Text() != "lys-ui" || bar.sub.Text() != "fourth pass" {
 		t.Fatalf("title/subtitle = %q/%q", bar.title.Text(), bar.sub.Text())
 	}
 
@@ -162,7 +162,7 @@ func TestGoldenChrome(t *testing.T) {
 	face := goldenFace(t)
 	th := DarkTheme()
 	header := NewHeaderBar(face, 14)
-	header.SetTitle("gelm")
+	header.SetTitle("lys-ui")
 	header.SetSubtitle("window chrome")
 	controls := header.Controls()
 	controls.ShowClose(true)

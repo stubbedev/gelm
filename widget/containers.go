@@ -5,9 +5,9 @@ import (
 	"slices"
 	"time"
 
-	"github.com/stubbedev/gelm/anim"
-	"github.com/stubbedev/gelm/internal/style"
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/anim"
+	"github.com/stubbedev/lys-ui/internal/style"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 // StackTransition is how a Stack moves between pages.

@@ -3,7 +3,7 @@ package app
 import (
 	"testing"
 
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 // TestDialogButtonRoles pins the role-aware key mapping: an explicit

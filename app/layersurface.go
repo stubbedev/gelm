@@ -1,12 +1,12 @@
 package app
 
 import (
-	"github.com/stubbedev/gelm/internal/layersurface"
-	"github.com/stubbedev/gelm/internal/wlsession"
+	"github.com/stubbedev/lys-ui/internal/layersurface"
+	"github.com/stubbedev/lys-ui/internal/wlsession"
 )
 
 // Public aliases for the layer-surface enums. The internal package is
-// importable only inside gelm, so external consumers of LayerConfig
+// importable only inside lys-ui, so external consumers of LayerConfig
 // address layers, anchors, margins, and keyboard modes through these.
 
 // Layer selects the stack layer a layer surface renders in.

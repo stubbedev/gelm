@@ -10,8 +10,8 @@ package widget
 import (
 	"testing"
 
-	"github.com/stubbedev/gelm/internal/text"
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/internal/text"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 // bidiFace shapes Latin and digits with Cantarell, Hebrew with the

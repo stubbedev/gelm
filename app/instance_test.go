@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stubbedev/gelm/internal/headlesstest"
+	"github.com/stubbedev/lys-ui/internal/headlesstest"
 )
 
 // feedForward hands the primary a forwarded invocation the way a
@@ -68,7 +68,7 @@ func TestClaimTwoProcessesOneWins(t *testing.T) {
 	t.Cleanup(ins.Close)
 
 	cmd := exec.Command(os.Args[0], "-test.run=TestInstanceChildProcess")
-	cmd.Env = append(os.Environ(), "GELM_INSTANCE_CHILD=1", "GELM_INSTANCE_APPID="+appID)
+	cmd.Env = append(os.Environ(), "LYS_UI_INSTANCE_CHILD=1", "LYS_UI_INSTANCE_APPID="+appID)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("child claim run: %v\n%s", err, out)
@@ -94,7 +94,7 @@ func TestClaimTwoProcessesOneWins(t *testing.T) {
 // TestInstanceChildProcess is the secondary side of
 // TestClaimTwoProcessesOneWins, run as its own process.
 func TestInstanceChildProcess(t *testing.T) {
-	if os.Getenv("GELM_INSTANCE_CHILD") != "1" {
+	if os.Getenv("LYS_UI_INSTANCE_CHILD") != "1" {
 		return
 	}
 	inv := Invocation{
@@ -103,7 +103,7 @@ func TestInstanceChildProcess(t *testing.T) {
 		Cwd:   "/wd",
 		Token: "tok",
 	}
-	ins, primary, err := ClaimInstance(InstanceConfig{AppID: os.Getenv("GELM_INSTANCE_APPID")}, inv)
+	ins, primary, err := ClaimInstance(InstanceConfig{AppID: os.Getenv("LYS_UI_INSTANCE_APPID")}, inv)
 	switch {
 	case err != nil:
 		fmt.Printf("child-error %v\n", err)

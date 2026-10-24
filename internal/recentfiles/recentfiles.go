@@ -1,5 +1,5 @@
 // Package recentfiles tracks recently used files in the XDG
-// recently-used.xbel format (TOML-free, XML as the spec says), so gelm
+// recently-used.xbel format (TOML-free, XML as the spec says), so lys-ui
 // apps share the recents list with the desktop's other citizens. The
 // manager keeps the list bounded, most-recent first, and writes
 // atomically; a missing or corrupt file starts an empty list.
@@ -13,8 +13,8 @@ import (
 	"slices"
 	"time"
 
-	"github.com/stubbedev/gelm/internal/atomicfile"
-	"github.com/stubbedev/gelm/transfer"
+	"github.com/stubbedev/lys-ui/internal/atomicfile"
+	"github.com/stubbedev/lys-ui/transfer"
 )
 
 // Entry is one recently used file: its path (decoded from the file://
@@ -156,7 +156,7 @@ func (m *Manager) Save() error {
 			Visited:  e.When.Format(time.RFC3339),
 			Infos: []xbelInfo{{
 				Metadatas: []xbelMetadata{{
-					Owner: "gelm",
+					Owner: "lys-ui",
 					App:   xbelApp{Name: e.App},
 				}},
 			}},
@@ -175,7 +175,7 @@ func (m *Manager) Save() error {
 	return atomicfile.WriteFile(m.path, body, 0o600)
 }
 
-// xbel is the on-disk document; only the fields gelm writes and reads
+// xbel is the on-disk document; only the fields lys-ui writes and reads
 // are modeled, unknown content is dropped on rewrite.
 type xbel struct {
 	XMLName       xml.Name       `xml:"xbel"`

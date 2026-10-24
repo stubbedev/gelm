@@ -3,7 +3,7 @@ package widget
 import (
 	"time"
 
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 // calendarCells is the fixed grid: seven weekday columns, six week

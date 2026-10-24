@@ -45,7 +45,7 @@
           pkgs.iferr
         ];
 
-        # gelm is pure Go by design; keep accidental cgo out. The
+        # lys-ui is pure Go by design; keep accidental cgo out. The
         # package builds set the same thing.
         CGO_ENABLED = "0";
 
@@ -59,10 +59,10 @@
         ATSPI_LIBEXEC = "${pkgs.at-spi2-core}/libexec";
 
         # `just headless` points the suite's clients at a known xcursor theme:
-        # the client-side cursor path (GELM_NO_CURSOR_SHAPE) needs one, and a
+        # the client-side cursor path (LYS_UI_NO_CURSOR_SHAPE) needs one, and a
         # CI runner has none. Only the recipe exports it - a developer's own
         # cursor setup inside the shell is untouched.
-        GELM_TEST_XCURSOR_PATH = "${pkgs.vanilla-dmz}/share/icons";
+        LYS_UI_TEST_XCURSOR_PATH = "${pkgs.vanilla-dmz}/share/icons";
       };
     };
 }

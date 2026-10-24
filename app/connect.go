@@ -1,6 +1,6 @@
 package app
 
-import "github.com/stubbedev/gelm/internal/wlsession"
+import "github.com/stubbedev/lys-ui/internal/wlsession"
 
 // Connect opens the Wayland session for an Application. The session
 // type is unexported on purpose (consumers hold it opaquely and pass

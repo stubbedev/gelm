@@ -3,8 +3,8 @@ package widget
 import (
 	"slices"
 
-	"github.com/stubbedev/gelm/render"
-	"github.com/stubbedev/gelm/transfer"
+	"github.com/stubbedev/lys-ui/render"
+	"github.com/stubbedev/lys-ui/transfer"
 )
 
 // ColumnView is the virtualized table (#90): typed columns over a
@@ -302,7 +302,7 @@ func (v *ColumnView[T]) buildRow(i int) Widget {
 const headerInset = 6
 
 // rowReorderMime is the internal drag mime for row moves.
-const rowReorderMime = "application/x-gelm-row"
+const rowReorderMime = "application/x-lys-ui-row"
 
 // dragRow makes a table row a drag source and drop target for
 // reordering: dragging offers the row's visible index, dropping on

@@ -3,7 +3,7 @@ package wlsession
 import (
 	"github.com/unxed/xkb-go"
 
-	"github.com/stubbedev/gelm/internal/compose"
+	"github.com/stubbedev/lys-ui/internal/compose"
 )
 
 // Compose wiring. The session owns the compose table (resolved once

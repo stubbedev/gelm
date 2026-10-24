@@ -6,8 +6,8 @@
 package popup
 
 import (
-	"github.com/stubbedev/gelm/render"
-	"github.com/stubbedev/gelm/widget"
+	"github.com/stubbedev/lys-ui/render"
+	"github.com/stubbedev/lys-ui/widget"
 )
 
 // slideDist is how far the content travels toward its anchor over the

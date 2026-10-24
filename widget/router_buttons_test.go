@@ -3,7 +3,7 @@ package widget
 import (
 	"testing"
 
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 // moduleButton is the wayle-shaped test widget: a Button wrapped by a

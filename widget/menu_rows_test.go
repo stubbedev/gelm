@@ -5,7 +5,7 @@ import (
 
 	"github.com/unxed/xkb-go"
 
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 // solidIcon is a static w x w icon of one opaque color.

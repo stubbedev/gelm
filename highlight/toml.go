@@ -8,7 +8,7 @@ import (
 	"regexp"
 	"unicode"
 
-	"github.com/stubbedev/gelm/widget"
+	"github.com/stubbedev/lys-ui/widget"
 )
 
 // TOML highlights TOML as GtkSourceView's toml.lang does: comments,

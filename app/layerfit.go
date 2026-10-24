@@ -1,10 +1,10 @@
 package app
 
 import (
-	"github.com/stubbedev/gelm/internal/layersurface"
-	"github.com/stubbedev/gelm/internal/wlsession"
-	"github.com/stubbedev/gelm/render"
-	"github.com/stubbedev/gelm/widget"
+	"github.com/stubbedev/lys-ui/internal/layersurface"
+	"github.com/stubbedev/lys-ui/internal/wlsession"
+	"github.com/stubbedev/lys-ui/render"
+	"github.com/stubbedev/lys-ui/widget"
 )
 
 // unboundedFit bounds a content-sized axis when no output reports a

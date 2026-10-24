@@ -4,7 +4,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 // recTarget is a focusTarget that counts key actions and clicks, so

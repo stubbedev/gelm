@@ -10,9 +10,9 @@ import (
 
 	"github.com/godbus/dbus/v5"
 
-	"github.com/stubbedev/gelm/internal/dbustest"
-	"github.com/stubbedev/gelm/render"
-	"github.com/stubbedev/gelm/widget"
+	"github.com/stubbedev/lys-ui/internal/dbustest"
+	"github.com/stubbedev/lys-ui/render"
+	"github.com/stubbedev/lys-ui/widget"
 )
 
 // TestRealAtSpi2Core verifies the bridge against real at-spi2-core
@@ -137,8 +137,8 @@ func TestRealAtSpi2Core(t *testing.T) {
 	var toolkit string
 	if v, err := app.GetProperty(ifaceApplication + ".ToolkitName"); err != nil {
 		t.Fatalf("ToolkitName: %v", err)
-	} else if toolkit, _ = v.Value().(string); toolkit != "gelm" {
-		t.Errorf("toolkit = %q, want gelm", toolkit)
+	} else if toolkit, _ = v.Value().(string); toolkit != "lys-ui" {
+		t.Errorf("toolkit = %q, want lys-ui", toolkit)
 	}
 	var items []cacheItem
 	if err := at.Object(owner, CachePath).Call(ifaceCache+".GetItems", 0).Store(&items); err != nil {

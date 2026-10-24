@@ -6,8 +6,8 @@ import (
 	"github.com/unxed/xkb-go"
 	"golang.org/x/image/font/gofont/goregular"
 
-	"github.com/stubbedev/gelm/render"
-	"github.com/stubbedev/gelm/widget"
+	"github.com/stubbedev/lys-ui/render"
+	"github.com/stubbedev/lys-ui/widget"
 )
 
 // TestDialogRespondOnce pins the once-guard: the first Respond fires

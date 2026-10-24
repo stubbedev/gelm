@@ -3,7 +3,7 @@ package widget
 import (
 	"testing"
 
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 // stub is a fixed-size leaf that records its arranged rect and paints

@@ -115,7 +115,7 @@ func (w *Writer) Close() error {
 	w.begin(pagesObj)
 	w.out.printf("<< /Type /Pages /Kids [%s] /Count %d >>\nendobj\n", strings.Join(kids, " "), len(w.pages))
 	w.begin(infoObj)
-	w.out.printf("<< /Producer (gelm)")
+	w.out.printf("<< /Producer (lys-ui)")
 	if w.title != "" {
 		w.out.printf(" /Title %s", textString(w.title))
 	}

@@ -1,14 +1,14 @@
 // Package appearance holds the desktop's presentation preferences as
 // xdg-desktop-portal publishes them: the color scheme, the accent
 // color and the contrast level. An app.Application reads them and
-// reports changes on its loop goroutine; gelm never applies them on its
+// reports changes on its loop goroutine; lys-ui never applies them on its
 // own.
 package appearance
 
 import (
 	"math"
 
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 // ColorScheme is the desktop's dark/light preference.

@@ -1,8 +1,8 @@
 package widget
 
 import (
-	"github.com/stubbedev/gelm/internal/style"
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/internal/style"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 // CenterBox lays three children like gtk::CenterBox along its

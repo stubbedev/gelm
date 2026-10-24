@@ -13,7 +13,7 @@ import (
 	"testing"
 )
 
-const module = "github.com/stubbedev/gelm/"
+const module = "github.com/stubbedev/lys-ui/"
 
 var rawProtocolTools = map[string]bool{"wlpointer": true, "zz-vpclick": true}
 

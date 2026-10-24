@@ -5,7 +5,7 @@ import (
 	"sync"
 )
 
-// Binding is a loop-owned observable model value, gelm's counterpart of
+// Binding is a loop-owned observable model value, lys-ui's counterpart of
 // relm4's binding module: one T that any number of widgets observe.
 // Set applies the value and notifies the subscribers synchronously,
 // which is what a widget connector needs - the new value is on screen

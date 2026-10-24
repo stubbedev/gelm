@@ -14,8 +14,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stubbedev/gelm/internal/imgcache"
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/internal/imgcache"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 // quadImage returns a 4x4 raster with solid 2x2 quadrants: red top

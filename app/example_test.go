@@ -9,8 +9,8 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/stubbedev/gelm/app"
-	"github.com/stubbedev/gelm/widget"
+	"github.com/stubbedev/lys-ui/app"
+	"github.com/stubbedev/lys-ui/widget"
 )
 
 // ExampleApplication is the README's minimal app, on the public API
@@ -42,7 +42,7 @@ func run() error {
 
 	application := app.NewApplication(sess)
 	if _, err := application.NewWindow(app.WindowConfig{
-		Title: "hello", AppID: "dev.stubbe.gelm.hello",
+		Title: "hello", AppID: "dev.stubbe.lys.ui.hello",
 		Width: 320, Height: 120,
 		Root: button, Background: widget.Current().Bg,
 	}); err != nil {

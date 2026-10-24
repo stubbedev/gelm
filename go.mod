@@ -1,4 +1,4 @@
-module github.com/stubbedev/gelm
+module github.com/stubbedev/lys-ui
 
 go 1.27.1
 

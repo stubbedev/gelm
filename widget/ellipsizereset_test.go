@@ -3,7 +3,7 @@ package widget
 import (
 	"testing"
 
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 // A GTK-style `* { all: unset; }` reset keeps a label's programmatic

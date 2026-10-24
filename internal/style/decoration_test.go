@@ -3,7 +3,7 @@ package style
 import (
 	"testing"
 
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 // TestTextDecoration pins the shorthand: lines in any combination, a

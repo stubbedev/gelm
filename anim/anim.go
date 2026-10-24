@@ -10,17 +10,17 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/stubbedev/gelm/internal/animclock"
+	"github.com/stubbedev/lys-ui/internal/animclock"
 )
 
 var instant atomic.Bool
 
 func init() {
-	instant.Store(os.Getenv("GELM_NO_ANIM") == "1")
+	instant.Store(os.Getenv("LYS_UI_NO_ANIM") == "1")
 }
 
 // Instant reports whether tweens collapse to their end state: the
-// reduced-motion mode, on with GELM_NO_ANIM=1 or SetInstant. Delays
+// reduced-motion mode, on with LYS_UI_NO_ANIM=1 or SetInstant. Delays
 // keep their durations, so timing survives and only motion goes away.
 func Instant() bool { return instant.Load() }
 

@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 // cssTree loads css, then measures and arranges root in a w x h rect

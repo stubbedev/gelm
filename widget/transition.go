@@ -14,8 +14,8 @@ import (
 	"math"
 	"time"
 
-	"github.com/stubbedev/gelm/anim"
-	"github.com/stubbedev/gelm/internal/style"
+	"github.com/stubbedev/lys-ui/anim"
+	"github.com/stubbedev/lys-ui/internal/style"
 )
 
 // trGroup is the longhands one transition entry carries.

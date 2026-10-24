@@ -8,15 +8,15 @@ import (
 
 	"github.com/unxed/xkb-go"
 
-	"github.com/stubbedev/gelm/internal/debug"
-	"github.com/stubbedev/gelm/internal/popup"
-	"github.com/stubbedev/gelm/internal/scale"
-	"github.com/stubbedev/gelm/internal/wlsession"
-	"github.com/stubbedev/gelm/render"
-	"github.com/stubbedev/gelm/third_party/neurlang-wayland/wl"
-	"github.com/stubbedev/gelm/third_party/neurlang-wayland/xdg"
-	"github.com/stubbedev/gelm/widget"
-	"github.com/stubbedev/gelm/wlr"
+	"github.com/stubbedev/lys-ui/internal/debug"
+	"github.com/stubbedev/lys-ui/internal/popup"
+	"github.com/stubbedev/lys-ui/internal/scale"
+	"github.com/stubbedev/lys-ui/internal/wlsession"
+	"github.com/stubbedev/lys-ui/render"
+	"github.com/stubbedev/lys-ui/third_party/neurlang-wayland/wl"
+	"github.com/stubbedev/lys-ui/third_party/neurlang-wayland/xdg"
+	"github.com/stubbedev/lys-ui/widget"
+	"github.com/stubbedev/lys-ui/wlr"
 )
 
 // Gravity is the side of its anchor a popover opens on.

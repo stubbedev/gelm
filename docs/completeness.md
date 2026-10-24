@@ -1,13 +1,13 @@
-# gelm completeness
+# lys-ui completeness
 
-The capability map against relm4, GTK4 and libadwaita: what gelm ships
+The capability map against relm4, GTK4 and libadwaita: what lys-ui ships
 per area and where it lives. Known gaps are listed at the end; anything
 not listed there is shipped. The standing non-goals and their reasons
 live in [architecture.md](architecture.md#non-goals).
 
 ## Framework
 
-| relm4 / GTK | gelm | Where |
+| relm4 / GTK | lys-ui | Where |
 | --- | --- | --- |
 | `relm4::Application`, `ApplicationWindow` | `app.Application` (one loop for every window), `app.Window`, `app.LayerWindow` | app/application.go, [application-model.md](application-model.md) |
 | main-thread contract, `glib::timeout_add` | one loop goroutine; `Application.Invoke`, `Every`; the off-loop mutation guard | app/invoke.go, widget/thread.go, [threading.md](threading.md) |
@@ -24,11 +24,11 @@ live in [architecture.md](architecture.md#non-goals).
 | gettext (`gettext`, `ngettext`, `pgettext`, catalogs, locales) | `i18n`: pure-Go `.mo`/`.po` parsing, Plural-Forms, contexts, `Locales()`, `Load`/`LoadSystem`; `widget.SetMessageCatalog`, `Tr`, `TrN`, `TrCtx` for built-in and app strings | i18n/, widget/message.go |
 | `RelmAction`, `RelmActionGroup`, `menu!`, `set_accels_for_action` | typed `widget.Action`, `ParamAction[P]` and `StateAction[S]` (`Toggle`, `Target`); `ActionItem`/`CheckItem`/`RadioItem` menu rows; `BindAction` on buttons and toggles; `AddAccel` (chords) and subtree-scoped `AddScopedAccel` | widget/action.go, app/accel.go |
 | library logging | injectable `*slog.Logger` (`app.SetLogger`), silent by default | internal/logutil |
-| GTK inspector | `GELM_INSPECT=1`, `Application.SetInspect`, `widget.DumpTree` | app/inspect.go, [inspector.md](inspector.md) |
+| GTK inspector | `LYS_UI_INSPECT=1`, `Application.SetInspect`, `widget.DumpTree` | app/inspect.go, [inspector.md](inspector.md) |
 
 ## Widgets
 
-| relm4 / GTK / adw | gelm | Where |
+| relm4 / GTK / adw | lys-ui | Where |
 | --- | --- | --- |
 | Label, styled text | `Label` (UAX #14 wrap, start/middle/end ellipsize), `RichLabel` (markup, links) | widget/label.go, widget/richlabel.go |
 | Button, ToggleButton, CheckButton, Switch, radio groups | `Button` (any child), `ToggleButton`, `CheckButton`, `Switch`; toggles and checks join radio groups | widget/button.go, widget/toggle.go, widget/radio.go |
@@ -70,7 +70,7 @@ live in [architecture.md](architecture.md#non-goals).
 
 ## Text, rendering and theming
 
-| Area | gelm | Where |
+| Area | lys-ui | Where |
 | --- | --- | --- |
 | rendering | premultiplied ARGB8888, signed-distance AA, damage-clipped repaint, gradients (linear, radial, conic, repeating) | render/ |
 | fonts | system lookup (`app.Font`, `FontWeighted`, `FontFamilies`), per-rune fallback chains, color emoji (CBDT/sbix, COLRv0/v1, OT-SVG), variable fonts | app/fonts.go, render/, internal/sysfont |
@@ -82,7 +82,7 @@ live in [architecture.md](architecture.md#non-goals).
 
 ## Protocols and platform
 
-| Area | gelm | Where |
+| Area | lys-ui | Where |
 | --- | --- | --- |
 | windows | xdg-shell toplevels (close veto, resize edges, min/max, maximize, fullscreen per output, transient parents, move/resize grabs), wlr-layer-shell surfaces | internal/window, internal/layersurface, app/windowctl.go |
 | decorations | xdg-decoration when the compositor decorates; `HeaderBar` is the explicit client-side opt-in | internal/window, [application-model.md](application-model.md#window-chrome) |

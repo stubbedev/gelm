@@ -7,7 +7,7 @@ import (
 
 	"golang.org/x/image/font/gofont/goregular"
 
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 // chooserFace builds the test font.

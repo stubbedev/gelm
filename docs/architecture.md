@@ -1,6 +1,6 @@
-# gelm architecture
+# lys-ui architecture
 
-How gelm is put together, and the rules that keep it correct: the
+How lys-ui is put together, and the rules that keep it correct: the
 layering first, then the invariants each layer must hold. Each rule
 cites the code and the tests that pin it.
 
@@ -44,7 +44,7 @@ no loop plumbing of their own.
 connection, and one goroutine drives the loop (internal/wlsession/
 session.go, app/application.go). Wayland requests from one client must
 stay ordered, and per-window goroutines would need a marshalling layer
-to preserve that, so gelm has none (see Non-goals). Timer work (key
+to preserve that, so lys-ui has none (see Non-goals). Timer work (key
 repeat, animation deadlines, tooltip dwell, animated cursors) runs on
 small goroutines that only arm `Session.WakeAfter`, which kicks the
 parked read with a `wl_display.sync` and returns.
@@ -322,20 +322,20 @@ applies; a theme is never rejected for its colors.
 - **No per-window goroutines.** There is one loop and one goroutine,
   so requests stay ordered (rule 1). Background work runs on its own
   goroutines and reaches the loop through `Invoke`.
-- **No window manager.** gelm does no cascading, tiling or focus
+- **No window manager.** lys-ui does no cascading, tiling or focus
   stealing; on Wayland that is the compositor's job.
 - **No automatic theme switching.** The toolkit never changes its own
   palette, not even on a system dark/light change. The preference is
   offered as a signal (`Application.OnColorSchemeChange`), and the app
   decides whether to call `SetTheme` ([appearance.md](appearance.md)).
-- **One kind of subsurface: GPUArea's. No single-pixel buffers.** gelm
+- **One kind of subsurface: GPUArea's. No single-pixel buffers.** lys-ui
   draws each window into one buffer per surface. Overlays (popover
   shadows, drag icons, the fader) are painted into that buffer, and
   spacers are rectangle fills inside the damage, so damage and pacing
   stay one problem per window. The one exception is `widget.GPUArea`,
-  whose pixels the application renders outside gelm. Each area gets one
+  whose pixels the application renders outside lys-ui. Each area gets one
   desynchronized subsurface placed *below* its window, so everything
-  gelm draws over the area stays on top. The surface shows through a
+  lys-ui draws over the area stays on top. The surface shows through a
   transparent hole the area paints, which is also cut out of the opaque
   region. It has an empty input region, so the window keeps routing
   input, and a viewport sized to the area's bounds. Its frames pace
@@ -346,10 +346,10 @@ applies; a theme is never rejected for its colors.
   frame clock like any other repaint; commit timing matters only to a
   presentation path that targets exact display times.
 - **No security context and no toplevel drag.** Security context is
-  for sandbox launchers, which gelm does not ship. Toplevel drag only
+  for sandbox launchers, which lys-ui does not ship. Toplevel drag only
   matters for detachable tabs.
 - **No color management or HDR.** A surface without an image
-  description is handled as sRGB, which is what gelm paints, so its
+  description is handled as sRGB, which is what lys-ui paints, so its
   colors map correctly onto wide-gamut and HDR outputs. Showing content
   beyond sRGB would need per-surface image descriptions, a color-state
   canvas, 10-bit or half-float formats and blending in the right

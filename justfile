@@ -1,15 +1,15 @@
-# gelm dev tasks.
+# lys-ui dev tasks.
 
 # List all recipes with their descriptions.
 default:
     @just --list
 
 # Directory for headless test sessions: compositor socket, client logs, pids.
-test_dir := "/tmp/gelm-test-env"
+test_dir := "/tmp/lys-ui-test-env"
 
 # Directory for the compositor-in-the-loop test suite, separate from
 # the interactive demo dir so the two never clobber each other.
-headless_test_dir := "/tmp/gelm-test-env-24"
+headless_test_dir := "/tmp/lys-ui-test-env-24"
 
 # Run every release gate in order: vet, lint, test, build.
 check: vet lint test build
@@ -18,10 +18,10 @@ check: vet lint test build
 # inside a private NixOS VM (own kernel, own virtio-gpu DRM node, own
 # seatd - aquamarine cannot boot without a real DRM node and the
 # developer's card belongs to their live session) and runs the same
-# suite just headless runs, driven by GELM_TEST_COMPOSITOR=hyprland.
+# suite just headless runs, driven by LYS_UI_TEST_COMPOSITOR=hyprland.
 # Needs KVM; a required CI gate alongside sway.
 hyprland-vm:
-    nix build -L .#checks.{{ arch() }}-{{ os() }}.gelm-hyprland-vm
+    nix build -L .#checks.{{ arch() }}-{{ os() }}.lys-ui-hyprland-vm
 
 # The AT-SPI bridge's bus-level tests (#65, #114): a private
 # dbus-daemon plays the accessibility bus, a second connection plays
@@ -41,7 +41,7 @@ atspi-verify:
 
 # Run the compositor-in-the-loop input tests (internal/headlesstest):
 # boots a private headless sway with the test-env recipe, then runs
-# the suite against it with GELM_HEADLESS=1 - the tests attach to the
+# the suite against it with LYS_UI_HEADLESS=1 - the tests attach to the
 # running compositor, launch the showcase, and drive a synthetic seat
 # through pointer and keyboard while asserting on the client's trace
 # log. The env is always torn down, pass or fail. Runs inside the dev
@@ -53,16 +53,16 @@ headless:
     just test-env "$dir" || exit 1
     trap 'just test-env-stop "$dir"' EXIT INT TERM
     . "$dir/client.env"
-    export WAYLAND_DISPLAY DBUS_SESSION_BUS_ADDRESS XDG_RUNTIME_DIR="$dir" GELM_HEADLESS=1
+    export WAYLAND_DISPLAY DBUS_SESSION_BUS_ADDRESS XDG_RUNTIME_DIR="$dir" LYS_UI_HEADLESS=1
     # The client-side cursor path needs a theme; the dev shell supplies
-    # one (GELM_TEST_XCURSOR_PATH) so the run does not depend on the host.
-    if [ -n "$GELM_TEST_XCURSOR_PATH" ]; then
-        export XCURSOR_PATH="$GELM_TEST_XCURSOR_PATH" XCURSOR_THEME=Vanilla-DMZ
+    # one (LYS_UI_TEST_XCURSOR_PATH) so the run does not depend on the host.
+    if [ -n "$LYS_UI_TEST_XCURSOR_PATH" ]; then
+        export XCURSOR_PATH="$LYS_UI_TEST_XCURSOR_PATH" XCURSOR_THEME=Vanilla-DMZ
     fi
     go test ./internal/headlesstest ./capture ./vinput ./app -count=1
 
 # `check` plus the headless input gate - what CI runs. The gate is
-# required there: GELM_HEADLESS=1 turns every skip into a failure.
+# required there: LYS_UI_HEADLESS=1 turns every skip into a failure.
 check-headless: check headless
 
 # Static analysis of every package with go vet.
@@ -92,7 +92,7 @@ goldens:
 
 # Compile-check the bar binary; the output is discarded.
 build:
-    go build -o /dev/null ./cmd/gelm-bar
+    go build -o /dev/null ./cmd/lys-ui-bar
 
 # Format every Go source in place: gofumpt and gci as configured in
 # .golangci.yml, which also excludes third_party/ (upstream code carried
@@ -105,9 +105,9 @@ fmt:
 fmt-check:
     golangci-lint fmt --diff ./...
 
-# Run the widget showcase (gelm-hello): clicks, drag, tooltips, menu, Tab focus.
+# Run the widget showcase (lys-ui-hello): clicks, drag, tooltips, menu, Tab focus.
 demo:
-    go run ./cmd/gelm-hello
+    go run ./cmd/lys-ui-hello
 
 # Run the widget showcase inside the headless test compositor with
 # input traces on; pair with the move/click/sweep recipes to drive it.
@@ -120,7 +120,7 @@ demo-headless GOELM_DEBUG="input,frame": test-env test-build
     fi
     . "$dir/client.env"
     export WAYLAND_DISPLAY DBUS_SESSION_BUS_ADDRESS XDG_RUNTIME_DIR="$dir" GOELM_DEBUG="{{GOELM_DEBUG}}"
-    "$dir/gelm-hello" >"$dir/demo.log" 2>&1 &
+    "$dir/lys-ui-hello" >"$dir/demo.log" 2>&1 &
     echo $! >"$dir/demo.pid"
     sleep 1
     if kill -0 "$(cat "$dir/demo.pid")" 2>/dev/null; then
@@ -129,10 +129,10 @@ demo-headless GOELM_DEBUG="input,frame": test-env test-build
         echo "demo died:"; cat "$dir/demo.log"; exit 1
     fi
 
-# Run the application-model demo (gelm-multi): per-output bars,
+# Run the application-model demo (lys-ui-multi): per-output bars,
 # on-demand windows, close-request veto, Escape quits.
 multi:
-    go run ./cmd/gelm-multi
+    go run ./cmd/lys-ui-multi
 
 # Run the application-model demo inside the headless test compositor.
 multi-headless GOELM_DEBUG="input,frame": test-env test-build
@@ -143,27 +143,27 @@ multi-headless GOELM_DEBUG="input,frame": test-env test-build
     fi
     . "$dir/client.env"
     export WAYLAND_DISPLAY DBUS_SESSION_BUS_ADDRESS XDG_RUNTIME_DIR="$dir" GOELM_DEBUG="{{GOELM_DEBUG}}"
-    go build -tags gelmdebug -o "$dir/gelm-multi" ./cmd/gelm-multi || exit 1
-    "$dir/gelm-multi" >"$dir/demo.log" 2>&1 &
+    go build -tags lysuidebug -o "$dir/lys-ui-multi" ./cmd/lys-ui-multi || exit 1
+    "$dir/lys-ui-multi" >"$dir/demo.log" 2>&1 &
     echo $! >"$dir/demo.pid"
     sleep 1
     if kill -0 "$(cat "$dir/demo.pid")" 2>/dev/null; then
-        echo "gelm-multi running (pid $(cat "$dir/demo.pid")); traces: just test-log"
+        echo "lys-ui-multi running (pid $(cat "$dir/demo.pid")); traces: just test-log"
     else
-        echo "gelm-multi died:"; cat "$dir/demo.log"; exit 1
+        echo "lys-ui-multi died:"; cat "$dir/demo.log"; exit 1
     fi
 
 # Build the headless test binaries: the traced showcase and wlpointer.
 test-build dir=test_dir:
-    go build -tags gelmdebug -o {{dir}}/gelm-hello ./cmd/gelm-hello
+    go build -tags lysuidebug -o {{dir}}/lys-ui-hello ./cmd/lys-ui-hello
     go build -o {{dir}}/wlpointer ./cmd/wlpointer
 
 # Start the headless test compositor: sway on wlroots' headless backend
 # in a private XDG_RUNTIME_DIR, so synthetic-input runs never touch the
 # real desktop. Idempotent: a second call reports and exits. The sway
-# config pins the showcase (dev.stubbe.gelm.hello) to a floating
+# config pins the showcase (dev.stubbe.lys.ui.hello) to a floating
 # 640x470 window at the output's origin and the states client
-# (dev.stubbe.gelm.states) to a floating 420x280 window - keep those in
+# (dev.stubbe.lys.ui.states) to a floating 420x280 window - keep those in
 # sync with internal/headlesstest (TestSwayRecipePinsTheShowcase and
 # the state test guard them).
 test-env dir=test_dir:
@@ -184,9 +184,9 @@ test-env dir=test_dir:
         'default_border none' \
         'default_floating_border none' \
         'input type:keyboard repeat_delay 5000' \
-        'for_window [app_id="dev.stubbe.gelm.hello"] floating enable, move position 0 0, resize set 640 470' \
-        'for_window [app_id="dev.stubbe.gelm.states"] floating enable, move position 40 40, resize set 420 280' \
-        'for_window [app_id="dev.stubbe.gelm.multilist"] floating enable, move position 0 0, resize set 300 300' \
+        'for_window [app_id="dev.stubbe.lys.ui.hello"] floating enable, move position 0 0, resize set 640 470' \
+        'for_window [app_id="dev.stubbe.lys.ui.states"] floating enable, move position 40 40, resize set 420 280' \
+        'for_window [app_id="dev.stubbe.lys.ui.multilist"] floating enable, move position 0 0, resize set 300 300' \
         'for_window [title="modal dialog"] floating enable, move position 340 0' \
         > "$dir/sway.cfg"
     # The pid file must hold sway itself, not the dev shell wrapper:
@@ -252,9 +252,9 @@ test-env-stop dir=test_dir:
     # to this dir's config so no survivor outlives the teardown.
     pkill -9 -f "$dir/sway.cfg" 2>/dev/null
     pkill -f "$dir/bus.conf" 2>/dev/null
-    pkill -f "$dir/gelm-hello" 2>/dev/null
-    pkill -f "$dir/gelm-multi" 2>/dev/null
-    pkill -f "$dir/gelm-states" 2>/dev/null
+    pkill -f "$dir/lys-ui-hello" 2>/dev/null
+    pkill -f "$dir/lys-ui-multi" 2>/dev/null
+    pkill -f "$dir/lys-ui-states" 2>/dev/null
     rm -rf "$dir"
     echo "test compositor stopped"
 
@@ -283,10 +283,10 @@ axis x="450" y="350" dy="60": test-env test-build
 sweep x0="100" y0="100" x1="600" y1="100" step="40": test-env test-build
     env XDG_RUNTIME_DIR={{test_dir}} $(cat {{test_dir}}/client.env) {{test_dir}}/wlpointer sweep {{x0}} {{y0}} {{x1}} {{y1}} {{step}}
 
-# Run the layer-shell panel (gelm-panel): right-anchored widgets with live input.
+# Run the layer-shell panel (lys-ui-panel): right-anchored widgets with live input.
 panel:
-    go run ./cmd/gelm-panel
+    go run ./cmd/lys-ui-panel
 
-# Run the layer-shell status bar (gelm-bar).
+# Run the layer-shell status bar (lys-ui-bar).
 bar:
-    go run ./cmd/gelm-bar
+    go run ./cmd/lys-ui-bar

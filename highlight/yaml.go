@@ -4,7 +4,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/stubbedev/gelm/widget"
+	"github.com/stubbedev/lys-ui/widget"
 )
 
 // YAML highlights YAML as GtkSourceView's yaml.lang does: comments,

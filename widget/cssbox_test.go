@@ -4,8 +4,8 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/stubbedev/gelm/internal/style"
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/internal/style"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 // addCSS installs css at priority for one test.

@@ -7,13 +7,13 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 // FileChooser is the pure-Go file picker behind app.OpenFileDialog and
 // app.SaveFileDialog (#82): a places row, the current directory's
 // listing, filters, a name row in save mode, and Apply validation. It
-// is the whole picker gelm needs - List, Entry, Dropdown, and Button
+// is the whole picker lys-ui needs - List, Entry, Dropdown, and Button
 // are the parts - so it works on any compositor with no portal in
 // sight; the directory listing comes from an injected source, the seam
 // tests and any future portal backend plug into.

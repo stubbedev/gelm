@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/stubbedev/gelm/internal/style"
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/internal/style"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 // The Text group's fixture metrics. The suite's labels shape the

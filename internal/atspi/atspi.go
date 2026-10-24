@@ -2,7 +2,7 @@
 // widget tree's accessibility semantics (widget.Describe and the
 // semantic roles, the plain-Go model of widget/a11y.go) over D-Bus in
 // the AT-SPI2 shape, so screen readers and tools like accerciser can
-// walk a gelm application. It ships in every build; the application
+// walk a lys-ui application. It ships in every build; the application
 // starts it when the desktop asks for assistive technologies
 // (org.a11y.Status, status.go), so without one it costs nothing.
 //
@@ -27,8 +27,8 @@ import (
 
 	"github.com/godbus/dbus/v5"
 
-	"github.com/stubbedev/gelm/internal/debug"
-	"github.com/stubbedev/gelm/widget"
+	"github.com/stubbedev/lys-ui/internal/debug"
+	"github.com/stubbedev/lys-ui/widget"
 )
 
 // AT-SPI2 role enum values (atspi-constants.h AtspiRole) for the roles
@@ -56,7 +56,7 @@ const (
 	roleSwitch       uint32 = 130
 	roleText         uint32 = 61
 	roleToggleButton uint32 = 62
-	roleTextArea     uint32 = 60 // terminal; multi-line text in gelm
+	roleTextArea     uint32 = 60 // terminal; multi-line text in lys-ui
 	roleWindow       uint32 = 69
 )
 
@@ -189,7 +189,7 @@ type Options struct {
 	// dbus-activates at-spi-bus-launcher on a real desktop).
 	Address string
 	// Name is the bus name to claim; empty picks
-	// org.a11y.atspi.gelm.p<pid> (a bus element may not lead with a
+	// org.a11y.atspi.lysui.p<pid> (a bus element may not lead with a
 	// digit).
 	Name string
 	// Poll is the sampling interval. Zero means the default (100ms);
@@ -285,7 +285,7 @@ func Serve(scene Scene, opts Options) (*Bridge, error) {
 	if name == "" {
 		// A bus name element may not start with a digit, so the pid is
 		// prefixed; the registry tracks apps by unique name anyway.
-		name = fmt.Sprintf("org.a11y.atspi.gelm.p%d", os.Getpid())
+		name = fmt.Sprintf("org.a11y.atspi.lysui.p%d", os.Getpid())
 	}
 	if _, err := conn.RequestName(name, dbus.NameFlagDoNotQueue); err != nil {
 		_ = conn.Close()
@@ -549,7 +549,7 @@ func diff(old, cur *tree, busName string) []event {
 		if now.st.Enabled != before.st.Enabled {
 			// AT-SPI carries both: enabled is the application state,
 			// sensitive the interacts-with-input reading. They move
-			// together in gelm (IsEnabled is the effective state).
+			// together in lys-ui (IsEnabled is the effective state).
 			out = append(out, stateEvent(now, "enabled", now.st.Enabled),
 				stateEvent(now, "sensitive", now.st.Enabled))
 		}

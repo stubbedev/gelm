@@ -10,7 +10,7 @@ import (
 
 	"github.com/godbus/dbus/v5"
 
-	"github.com/stubbedev/gelm/internal/dbustest"
+	"github.com/stubbedev/lys-ui/internal/dbustest"
 )
 
 type mockDesktop struct {

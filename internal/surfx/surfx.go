@@ -35,7 +35,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/stubbedev/gelm/anim"
+	"github.com/stubbedev/lys-ui/anim"
 )
 
 // Kind selects a surface's animation profile. The zero value is the
@@ -124,7 +124,7 @@ func Lookup(k Kind) Style {
 }
 
 // SetEnabled turns surface animations on or off — the API toggle beside
-// GELM_NO_ANIM. It returns the restore function. Disabled animations
+// LYS_UI_NO_ANIM. It returns the restore function. Disabled animations
 // collapse the durations to zero; the state machine still runs, so
 // dismissal, sealing, callbacks, and destroy all behave identically.
 func SetEnabled(on bool) (restore func()) {
@@ -147,7 +147,7 @@ func Enabled() bool {
 }
 
 // Plan resolves a kind's effective tween profile. Motion off — the
-// package toggle, GELM_NO_ANIM, or a caller's own reduced-motion
+// package toggle, LYS_UI_NO_ANIM, or a caller's own reduced-motion
 // source such as the theme — collapses both durations to zero and is
 // why callers pass their theme state here instead of consulting it
 // twice. The zero-duration tweens deliver their end state once at

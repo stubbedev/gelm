@@ -1,8 +1,8 @@
 package widget
 
 import (
-	"github.com/stubbedev/gelm/render"
-	"github.com/stubbedev/gelm/widget/css"
+	"github.com/stubbedev/lys-ui/render"
+	"github.com/stubbedev/lys-ui/widget/css"
 )
 
 // frameRadius and framePad are the Adwaita frame outline's corner and

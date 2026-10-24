@@ -7,7 +7,7 @@ package app
 import (
 	"testing"
 
-	"github.com/stubbedev/gelm/widget"
+	"github.com/stubbedev/lys-ui/widget"
 )
 
 func TestWindowCloseReturnsPool(t *testing.T) {

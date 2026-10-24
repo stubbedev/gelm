@@ -1,4 +1,4 @@
-// Logging convention for the session. gelm is silent by default: the
+// Logging convention for the session. lys-ui is silent by default: the
 // logger starts as a discarding sink and nothing writes to
 // stdout/stderr on its own. Applications install their logger once —
 // SetLogger below, mirrored by app.SetLogger — and every library emit
@@ -10,8 +10,8 @@ package wlsession
 import (
 	"log/slog"
 
-	"github.com/stubbedev/gelm/internal/logutil"
-	"github.com/stubbedev/gelm/third_party/neurlang-wayland/wl"
+	"github.com/stubbedev/lys-ui/internal/logutil"
+	"github.com/stubbedev/lys-ui/third_party/neurlang-wayland/wl"
 )
 
 // SetLogger installs the library-wide logger: protocol-level warnings

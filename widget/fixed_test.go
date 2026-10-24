@@ -4,7 +4,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 func TestFixedMeasure(t *testing.T) {

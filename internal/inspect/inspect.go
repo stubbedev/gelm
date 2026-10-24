@@ -1,13 +1,13 @@
-// Package inspect is gelm's debug inspector (the GTK-inspector
+// Package inspect is lys-ui's debug inspector (the GTK-inspector
 // counterpart): a widget-tree overlay drawn over the live UI, the
 // tree dump for bug reports, and the doctor diagnostics block.
 //
 // Prod visibility: everything here is always compiled in but inert
-// until asked for - GELM_INSPECT=1 at startup, an explicit
+// until asked for - LYS_UI_INSPECT=1 at startup, an explicit
 // Application.SetInspect/ToggleInspect call, or (for the dump and
 // doctor) an explicit call. With the inspector off, an app pays one
 // passthrough call per frame operation and one bool check per key
-// press; nothing traces, draws, or allocates. The gelmdebug build tag
+// press; nothing traces, draws, or allocates. The lysuidebug build tag
 // was deliberately NOT used: the inspector exists to debug prod
 // binaries in the field, where tagged builds do not exist. Real
 // trace instrumentation stays behind the tag (internal/debug).
@@ -19,16 +19,16 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/stubbedev/gelm/internal/sysfont"
-	"github.com/stubbedev/gelm/render"
-	"github.com/stubbedev/gelm/widget"
+	"github.com/stubbedev/lys-ui/internal/sysfont"
+	"github.com/stubbedev/lys-ui/render"
+	"github.com/stubbedev/lys-ui/widget"
 )
 
 // Enabled reports whether the environment asked for the inspector at
-// startup: GELM_INSPECT set to 1, true, yes, or on (case-insensitive).
+// startup: LYS_UI_INSPECT set to 1, true, yes, or on (case-insensitive).
 // Anything else - unset, empty, 0, off - leaves it off.
 func Enabled() bool {
-	switch strings.ToLower(strings.TrimSpace(os.Getenv("GELM_INSPECT"))) {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("LYS_UI_INSPECT"))) {
 	case "1", "true", "yes", "on":
 		return true
 	}
@@ -285,7 +285,7 @@ func shortType(t string) string {
 func Dump(root widget.Widget, r *widget.Router) string {
 	nodes := widget.InspectTree(root, r)
 	var b strings.Builder
-	fmt.Fprintf(&b, "gelm tree dump: %d widgets\n", len(nodes))
+	fmt.Fprintf(&b, "lys-ui tree dump: %d widgets\n", len(nodes))
 	b.WriteString(widget.DumpTree(root, r))
 	return b.String()
 }

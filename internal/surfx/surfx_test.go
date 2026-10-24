@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stubbedev/gelm/anim"
-	"github.com/stubbedev/gelm/internal/animclock"
+	"github.com/stubbedev/lys-ui/anim"
+	"github.com/stubbedev/lys-ui/internal/animclock"
 )
 
 // recDriver is a fake Driver recording the call order, so tests can
@@ -202,7 +202,7 @@ func TestInstantPathsRunTheSameMachine(t *testing.T) {
 	}
 	for _, tc := range []instantCase{
 		{
-			name:   "GELM_NO_ANIM equivalent (anim.SetInstant)",
+			name:   "LYS_UI_NO_ANIM equivalent (anim.SetInstant)",
 			motion: func() bool { return true },
 			setup:  func(t *testing.T) { t.Cleanup(anim.SetInstant(true)) },
 		},

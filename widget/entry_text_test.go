@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 // entryShot paints e arranged at its natural size on a black canvas.

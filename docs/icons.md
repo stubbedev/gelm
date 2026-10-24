@@ -1,6 +1,6 @@
-# gelm icons
+# lys-ui icons
 
-How gelm resolves and paints themed icons.
+How lys-ui resolves and paints themed icons.
 
 ## Pieces
 

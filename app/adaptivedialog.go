@@ -3,7 +3,7 @@ package app
 import (
 	"errors"
 
-	"github.com/stubbedev/gelm/widget"
+	"github.com/stubbedev/lys-ui/widget"
 )
 
 // DialogPresentation is how an AdaptiveDialog shows.

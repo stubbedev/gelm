@@ -11,7 +11,7 @@ import (
 
 	"github.com/godbus/dbus/v5"
 
-	"github.com/stubbedev/gelm/widget"
+	"github.com/stubbedev/lys-ui/widget"
 )
 
 // readToolkitVersion digs the module version out of the build info.
@@ -187,7 +187,7 @@ func nameOf(n *anode) string {
 	case n == nil:
 		return ""
 	case n.id == 0:
-		return "gelm"
+		return "lys-ui"
 	default:
 		return n.st.Name
 	}
@@ -271,7 +271,7 @@ func (b *Bridge) properties(id int32, iface string) map[string]dbus.Variant {
 		appID := b.appID
 		b.mu.Unlock()
 		return map[string]dbus.Variant{
-			"ToolkitName":      dbus.MakeVariant("gelm"),
+			"ToolkitName":      dbus.MakeVariant("lys-ui"),
 			"ToolkitVersion":   dbus.MakeVariant(toolkitVersion),
 			"Version":          dbus.MakeVariant(toolkitVersion),
 			"AtspiVersion":     dbus.MakeVariant("2.1"),

@@ -5,9 +5,9 @@ import (
 
 	"golang.org/x/image/font/gofont/goregular"
 
-	"github.com/stubbedev/gelm/internal/clipboard"
-	"github.com/stubbedev/gelm/render"
-	"github.com/stubbedev/gelm/widget"
+	"github.com/stubbedev/lys-ui/internal/clipboard"
+	"github.com/stubbedev/lys-ui/render"
+	"github.com/stubbedev/lys-ui/widget"
 )
 
 // primaryClaim is one primary-selection claim a fakePrimarySource saw.

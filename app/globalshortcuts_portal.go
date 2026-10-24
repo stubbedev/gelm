@@ -14,7 +14,7 @@ import (
 
 	"github.com/godbus/dbus/v5"
 
-	"github.com/stubbedev/gelm/internal/debug"
+	"github.com/stubbedev/lys-ui/internal/debug"
 )
 
 // ErrGlobalShortcutDenied reports the user refusing the portal's bind

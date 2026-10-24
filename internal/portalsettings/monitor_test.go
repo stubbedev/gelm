@@ -14,9 +14,9 @@ import (
 
 	"github.com/godbus/dbus/v5"
 
-	"github.com/stubbedev/gelm/appearance"
-	"github.com/stubbedev/gelm/internal/dbustest"
-	"github.com/stubbedev/gelm/internal/icons"
+	"github.com/stubbedev/lys-ui/appearance"
+	"github.com/stubbedev/lys-ui/internal/dbustest"
+	"github.com/stubbedev/lys-ui/internal/icons"
 )
 
 // The mock: a real dbus daemon on a private unix socket (never the

@@ -1,5 +1,5 @@
 // The doctor diagnostics block: one line block a bug report carries
-// verbatim ("here is my gelm doctor output"), covering the session's
+// verbatim ("here is my lys-ui doctor output"), covering the session's
 // bound globals and their versions, outputs and scales, the resolved
 // cursor theme, the fonts sysfont selected, and the shm buffer
 // format. Everything is read-only snapshot data; the app prints it at
@@ -14,9 +14,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/stubbedev/gelm/internal/buffer"
-	"github.com/stubbedev/gelm/internal/sysfont"
-	"github.com/stubbedev/gelm/internal/wlsession"
+	"github.com/stubbedev/lys-ui/internal/buffer"
+	"github.com/stubbedev/lys-ui/internal/sysfont"
+	"github.com/stubbedev/lys-ui/internal/wlsession"
 )
 
 // DoctorOptions carries the doctor's overridable inputs. Empty fields
@@ -45,7 +45,7 @@ func Doctor(sess *wlsession.Session, opts DoctorOptions) string {
 // humans skimming an issue) can rely on it.
 func DoctorFrom(info wlsession.InspectInfo, opts DoctorOptions) string {
 	var b strings.Builder
-	b.WriteString("gelm doctor\n")
+	b.WriteString("lys-ui doctor\n")
 	b.WriteString("go: " + runtime.Version() + " (" + runtime.GOOS + "/" + runtime.GOARCH + ")\n")
 
 	switch {

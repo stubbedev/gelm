@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stubbedev/gelm/internal/animclock"
-	"github.com/stubbedev/gelm/media"
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/internal/animclock"
+	"github.com/stubbedev/lys-ui/media"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 func halves(left, right color.RGBA) *image.RGBA {

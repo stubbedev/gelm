@@ -4,7 +4,7 @@ import (
 	"math"
 	"testing"
 
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 // TestGoldenDrawingArea pins a pressure-sensitive stroke: stylus

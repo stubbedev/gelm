@@ -7,7 +7,7 @@ import (
 
 	"github.com/yalue/native_endian"
 
-	"github.com/stubbedev/gelm/third_party/neurlang-wayland/os"
+	"github.com/stubbedev/lys-ui/third_party/neurlang-wayland/os"
 )
 
 // Request is the request message from your program to the Wayland compositor

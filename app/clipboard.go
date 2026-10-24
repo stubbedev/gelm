@@ -1,8 +1,8 @@
 package app
 
 import (
-	"github.com/stubbedev/gelm/internal/clipboard"
-	"github.com/stubbedev/gelm/internal/wlsession"
+	"github.com/stubbedev/lys-ui/internal/clipboard"
+	"github.com/stubbedev/lys-ui/internal/wlsession"
 )
 
 // Clipboard is the seat's regular and primary selections: ReadText and

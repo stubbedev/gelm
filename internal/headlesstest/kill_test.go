@@ -23,7 +23,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stubbedev/gelm/app"
+	"github.com/stubbedev/lys-ui/app"
 )
 
 // killTimeout bounds how long the client may take to notice the dead

@@ -4,7 +4,7 @@ import (
 	"slices"
 	"sync/atomic"
 
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 // TabPage is one page of a TabView: its child and what its tab shows.

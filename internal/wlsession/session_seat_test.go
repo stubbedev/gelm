@@ -4,9 +4,9 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/stubbedev/gelm/third_party/neurlang-wayland/wl"
-	"github.com/stubbedev/gelm/third_party/neurlang-wayland/wlclient"
-	"github.com/stubbedev/gelm/third_party/neurlang-wayland/wlcursor"
+	"github.com/stubbedev/lys-ui/third_party/neurlang-wayland/wl"
+	"github.com/stubbedev/lys-ui/third_party/neurlang-wayland/wlclient"
+	"github.com/stubbedev/lys-ui/third_party/neurlang-wayland/wlcursor"
 )
 
 // fakePointer records the requests the capability and cursor paths

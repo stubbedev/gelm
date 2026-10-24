@@ -9,10 +9,10 @@ import (
 
 	"golang.org/x/image/font/gofont/goregular"
 
-	"github.com/stubbedev/gelm/internal/icons"
-	"github.com/stubbedev/gelm/internal/surfx"
-	"github.com/stubbedev/gelm/render"
-	"github.com/stubbedev/gelm/widget"
+	"github.com/stubbedev/lys-ui/internal/icons"
+	"github.com/stubbedev/lys-ui/internal/surfx"
+	"github.com/stubbedev/lys-ui/render"
+	"github.com/stubbedev/lys-ui/widget"
 )
 
 // testApp builds an Application whose Invoke can be driven without a

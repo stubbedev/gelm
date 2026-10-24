@@ -20,7 +20,7 @@ type StateWatcher[In, Out any] struct {
 // initial call and no copy of the model, so fn must only read it: it
 // must not change the model, and must not send the component input -
 // a Send from inside the notification re-enters the component it
-// observes. gelm cannot run it reentrantly (input sent from inside a
+// observes. lys-ui cannot run it reentrantly (input sent from inside a
 // batch lands on the next loop pass, like a self-send from Update),
 // but an observer has no reason to rely on that. Subscribe is safe
 // from any goroutine, and after shutdown fn never runs. The returned

@@ -10,12 +10,12 @@ import (
 
 	"github.com/unxed/xkb-go"
 
-	"github.com/stubbedev/gelm/internal/debug"
-	"github.com/stubbedev/gelm/internal/surfx"
-	"github.com/stubbedev/gelm/internal/sysfont"
-	"github.com/stubbedev/gelm/internal/wlsession"
-	"github.com/stubbedev/gelm/render"
-	"github.com/stubbedev/gelm/widget"
+	"github.com/stubbedev/lys-ui/internal/debug"
+	"github.com/stubbedev/lys-ui/internal/surfx"
+	"github.com/stubbedev/lys-ui/internal/sysfont"
+	"github.com/stubbedev/lys-ui/internal/wlsession"
+	"github.com/stubbedev/lys-ui/render"
+	"github.com/stubbedev/lys-ui/widget"
 )
 
 // DialogButton is one button in a dialog's button row. Role, when

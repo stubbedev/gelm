@@ -5,15 +5,15 @@ import (
 	"io"
 	"testing"
 
-	"github.com/stubbedev/gelm/internal/dragdrop"
-	"github.com/stubbedev/gelm/internal/wlsession"
-	"github.com/stubbedev/gelm/render"
-	"github.com/stubbedev/gelm/third_party/neurlang-wayland/wl"
-	"github.com/stubbedev/gelm/widget"
+	"github.com/stubbedev/lys-ui/internal/dragdrop"
+	"github.com/stubbedev/lys-ui/internal/wlsession"
+	"github.com/stubbedev/lys-ui/render"
+	"github.com/stubbedev/lys-ui/third_party/neurlang-wayland/wl"
+	"github.com/stubbedev/lys-ui/widget"
 )
 
-// mimeGelmTile is the custom type the test drag content offers.
-const mimeGelmTile = "application/x-gelm-tile"
+// mimeLysUITile is the custom type the test drag content offers.
+const mimeLysUITile = "application/x-lys-ui-tile"
 
 // fakeDnD records what the surface input drives through the
 // dragController seam.
@@ -70,7 +70,7 @@ func (s *dragStub) DragContent() *widget.DragContent {
 		return nil
 	}
 	return &widget.DragContent{
-		Mimes: []string{mimeGelmTile},
+		Mimes: []string{mimeLysUITile},
 		Write: func(mime string, w io.Writer) error {
 			_, err := io.WriteString(w, "stub")
 			return err
@@ -194,7 +194,7 @@ func TestDragGestureStartsDataDeviceDrag(t *testing.T) {
 	if cfg.GrabSerial != 4242 {
 		t.Errorf("grab serial = %d, want the press serial 4242", cfg.GrabSerial)
 	}
-	if len(cfg.Content.Mimes) != 1 || cfg.Content.Mimes[0] != mimeGelmTile {
+	if len(cfg.Content.Mimes) != 1 || cfg.Content.Mimes[0] != mimeLysUITile {
 		t.Errorf("offered mimes = %v, want the card's content", cfg.Content.Mimes)
 	}
 	if cfg.Content.Write == nil {
@@ -272,13 +272,13 @@ func TestDragGestureGuards(t *testing.T) {
 }
 
 func TestSurfaceInputRoutesDrops(t *testing.T) {
-	zone := &dropZone{mime: mimeGelmTile}
+	zone := &dropZone{mime: mimeLysUITile}
 	root := rowOf(zone)
 	dnd := &fakeDnD{payload: []byte("tile-7")}
 	in := newDragTestInput(root, dnd)
 
-	mime := in.DragEnter([]string{mimeGelmTile, "text/plain"}, 5, 6)
-	if mime != mimeGelmTile {
+	mime := in.DragEnter([]string{mimeLysUITile, "text/plain"}, 5, 6)
+	if mime != mimeLysUITile {
 		t.Fatalf("accepted = %q, want the tile mime", mime)
 	}
 	if zone.enters != 1 || len(zone.enteredMimes) != 2 {
@@ -299,10 +299,10 @@ func TestSurfaceInputRoutesDrops(t *testing.T) {
 	if zone.drops != 1 {
 		t.Fatalf("zone got %d drops", zone.drops)
 	}
-	if dnd.lastReadMime != mimeGelmTile {
+	if dnd.lastReadMime != mimeLysUITile {
 		t.Errorf("payload read for %q, want the accepted mime", dnd.lastReadMime)
 	}
-	if string(zone.dropData) != "tile-7" || zone.dropMime != mimeGelmTile {
+	if string(zone.dropData) != "tile-7" || zone.dropMime != mimeLysUITile {
 		t.Errorf("drop = (%q, %q)", zone.dropMime, zone.dropData)
 	}
 	if zone.dropPoint != (widget.Point{X: 7, Y: 8}) {
@@ -314,7 +314,7 @@ func TestSurfaceInputRoutesDrops(t *testing.T) {
 }
 
 func TestSurfaceInputDropCoordinatesAreLogical(t *testing.T) {
-	zone := &dropZone{mime: mimeGelmTile}
+	zone := &dropZone{mime: mimeLysUITile}
 	root := rowOf(zone)
 	dnd := &fakeDnD{payload: []byte("x")}
 	in := newDragTestInput(root, dnd)
@@ -322,7 +322,7 @@ func TestSurfaceInputDropCoordinatesAreLogical(t *testing.T) {
 
 	// Drop points are logical surface pixels at any device scale: the
 	// widget tree is laid out in the same space the events arrive in.
-	if m := in.DragEnter([]string{mimeGelmTile}, 5, 3); m == "" {
+	if m := in.DragEnter([]string{mimeLysUITile}, 5, 3); m == "" {
 		t.Fatal("drag was rejected")
 	}
 	if zone.enterPoint != (widget.Point{X: 5, Y: 3}) {
@@ -339,7 +339,7 @@ func TestSurfaceInputRejectsAndLeaves(t *testing.T) {
 	root := rowOf(rejecter)
 	in := newDragTestInput(root, &fakeDnD{})
 
-	if m := in.DragEnter([]string{mimeGelmTile}, 5, 5); m != "" {
+	if m := in.DragEnter([]string{mimeLysUITile}, 5, 5); m != "" {
 		t.Fatalf("rejecting zone accepted %q", m)
 	}
 	if rejecter.dragOver {
@@ -347,9 +347,9 @@ func TestSurfaceInputRejectsAndLeaves(t *testing.T) {
 	}
 
 	// An accepted zone that is left again accepts nothing on drop.
-	zone := &dropZone{mime: mimeGelmTile}
+	zone := &dropZone{mime: mimeLysUITile}
 	in2 := newDragTestInput(rowOf(zone), &fakeDnD{})
-	in2.DragEnter([]string{mimeGelmTile}, 5, 5)
+	in2.DragEnter([]string{mimeLysUITile}, 5, 5)
 	if !zone.dragOver {
 		t.Fatal("enter did not highlight the zone")
 	}
@@ -364,11 +364,11 @@ func TestSurfaceInputRejectsAndLeaves(t *testing.T) {
 }
 
 func TestSurfaceInputRejectsDropsWhenBlocked(t *testing.T) {
-	zone := &dropZone{mime: mimeGelmTile}
+	zone := &dropZone{mime: mimeLysUITile}
 	in := newDragTestInput(rowOf(zone), &fakeDnD{})
 	in.blocked = func() bool { return true } // a modal dialog owns the pointer
 
-	if m := in.DragEnter([]string{mimeGelmTile}, 5, 5); m != "" {
+	if m := in.DragEnter([]string{mimeLysUITile}, 5, 5); m != "" {
 		t.Errorf("blocked window accepted %q", m)
 	}
 	in.Drop(5, 5)

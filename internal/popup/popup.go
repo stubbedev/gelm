@@ -15,18 +15,18 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/stubbedev/gelm/internal/animclock"
-	"github.com/stubbedev/gelm/internal/debug"
-	"github.com/stubbedev/gelm/internal/scale"
-	"github.com/stubbedev/gelm/internal/surfx"
-	"github.com/stubbedev/gelm/internal/touchinput"
-	"github.com/stubbedev/gelm/internal/wlnull"
-	"github.com/stubbedev/gelm/internal/wlsession"
-	"github.com/stubbedev/gelm/render"
-	"github.com/stubbedev/gelm/third_party/neurlang-wayland/wl"
-	"github.com/stubbedev/gelm/third_party/neurlang-wayland/xdg"
-	"github.com/stubbedev/gelm/widget"
-	"github.com/stubbedev/gelm/wlr"
+	"github.com/stubbedev/lys-ui/internal/animclock"
+	"github.com/stubbedev/lys-ui/internal/debug"
+	"github.com/stubbedev/lys-ui/internal/scale"
+	"github.com/stubbedev/lys-ui/internal/surfx"
+	"github.com/stubbedev/lys-ui/internal/touchinput"
+	"github.com/stubbedev/lys-ui/internal/wlnull"
+	"github.com/stubbedev/lys-ui/internal/wlsession"
+	"github.com/stubbedev/lys-ui/render"
+	"github.com/stubbedev/lys-ui/third_party/neurlang-wayland/wl"
+	"github.com/stubbedev/lys-ui/third_party/neurlang-wayland/xdg"
+	"github.com/stubbedev/lys-ui/widget"
+	"github.com/stubbedev/lys-ui/wlr"
 )
 
 // Gravity picks which side of the anchor rect the popup opens on.
@@ -367,7 +367,7 @@ func (p *Popup) Dismiss() {
 
 // Close tears the popup down on the spot: the teardown path through
 // the same state machine, for error paths and callers that want no
-// exit (gelm-hello's replace-on-open, buffer allocation failures).
+// exit (lys-ui-hello's replace-on-open, buffer allocation failures).
 // OnClosed still fires exactly once, and the wire objects are
 // destroyed exactly once even if a tween was mid-flight.
 func (p *Popup) Close() {

@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stubbedev/gelm/third_party/neurlang-wayland/wl"
-	"github.com/stubbedev/gelm/third_party/neurlang-wayland/wlcursor"
+	"github.com/stubbedev/lys-ui/third_party/neurlang-wayland/wl"
+	"github.com/stubbedev/lys-ui/third_party/neurlang-wayland/wlcursor"
 )
 
 // Regression: the client never set a pointer cursor, leaving the

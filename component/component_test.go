@@ -8,10 +8,10 @@ import (
 
 	"golang.org/x/image/font/gofont/goregular"
 
-	"github.com/stubbedev/gelm/component"
-	"github.com/stubbedev/gelm/component/componenttest"
-	"github.com/stubbedev/gelm/render"
-	"github.com/stubbedev/gelm/widget"
+	"github.com/stubbedev/lys-ui/component"
+	"github.com/stubbedev/lys-ui/component/componenttest"
+	"github.com/stubbedev/lys-ui/render"
+	"github.com/stubbedev/lys-ui/widget"
 )
 
 func face(t *testing.T) *render.Typeface {

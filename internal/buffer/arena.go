@@ -13,10 +13,10 @@ import (
 	"os"
 	"sync"
 
-	"github.com/stubbedev/gelm/render"
-	wlos "github.com/stubbedev/gelm/third_party/neurlang-wayland/os"
-	"github.com/stubbedev/gelm/third_party/neurlang-wayland/wl"
-	"github.com/stubbedev/gelm/third_party/neurlang-wayland/wlclient"
+	"github.com/stubbedev/lys-ui/render"
+	wlos "github.com/stubbedev/lys-ui/third_party/neurlang-wayland/os"
+	"github.com/stubbedev/lys-ui/third_party/neurlang-wayland/wl"
+	"github.com/stubbedev/lys-ui/third_party/neurlang-wayland/wlclient"
 )
 
 // slot is a byte range in the arena's pool file. Buffer geometry (width,

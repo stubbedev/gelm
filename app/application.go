@@ -1,5 +1,5 @@
 // Application runs many windows — toplevels and layer surfaces — on one
-// session and one parked event loop. It is gelm's counterpart of
+// session and one parked event loop. It is lys-ui's counterpart of
 // relm4's Application/Window model (see docs/application-model.md): the
 // process owns one connection, windows are created declaratively, and
 // every window joins the same parked loop with its own dirty state,
@@ -15,24 +15,24 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/stubbedev/gelm/internal/animclock"
-	"github.com/stubbedev/gelm/internal/clipboard"
-	"github.com/stubbedev/gelm/internal/datacontrol"
-	"github.com/stubbedev/gelm/internal/debug"
-	"github.com/stubbedev/gelm/internal/dragdrop"
-	"github.com/stubbedev/gelm/internal/gtksettings"
-	"github.com/stubbedev/gelm/internal/icons"
-	"github.com/stubbedev/gelm/internal/inspect"
-	"github.com/stubbedev/gelm/internal/layersurface"
-	"github.com/stubbedev/gelm/internal/notify"
-	"github.com/stubbedev/gelm/internal/portalsettings"
-	"github.com/stubbedev/gelm/internal/recentfiles"
-	"github.com/stubbedev/gelm/internal/surfx"
-	"github.com/stubbedev/gelm/internal/window"
-	"github.com/stubbedev/gelm/internal/wlsession"
-	"github.com/stubbedev/gelm/render"
-	"github.com/stubbedev/gelm/third_party/neurlang-wayland/wl"
-	"github.com/stubbedev/gelm/widget"
+	"github.com/stubbedev/lys-ui/internal/animclock"
+	"github.com/stubbedev/lys-ui/internal/clipboard"
+	"github.com/stubbedev/lys-ui/internal/datacontrol"
+	"github.com/stubbedev/lys-ui/internal/debug"
+	"github.com/stubbedev/lys-ui/internal/dragdrop"
+	"github.com/stubbedev/lys-ui/internal/gtksettings"
+	"github.com/stubbedev/lys-ui/internal/icons"
+	"github.com/stubbedev/lys-ui/internal/inspect"
+	"github.com/stubbedev/lys-ui/internal/layersurface"
+	"github.com/stubbedev/lys-ui/internal/notify"
+	"github.com/stubbedev/lys-ui/internal/portalsettings"
+	"github.com/stubbedev/lys-ui/internal/recentfiles"
+	"github.com/stubbedev/lys-ui/internal/surfx"
+	"github.com/stubbedev/lys-ui/internal/window"
+	"github.com/stubbedev/lys-ui/internal/wlsession"
+	"github.com/stubbedev/lys-ui/render"
+	"github.com/stubbedev/lys-ui/third_party/neurlang-wayland/wl"
+	"github.com/stubbedev/lys-ui/widget"
 )
 
 // Application is a set of windows sharing one session.
@@ -71,7 +71,7 @@ type Application struct {
 	dataControl *datacontrol.Device
 
 	// inspector state: armed enables the chords (ctrl+shift+i/d), on
-	// paints the widget-tree overlay. Armed by GELM_INSPECT=1 or an
+	// paints the widget-tree overlay. Armed by LYS_UI_INSPECT=1 or an
 	// explicit SetInspect/ToggleInspect; see inspect.go.
 	inspectArmed bool
 	inspectOn    bool
@@ -1311,7 +1311,7 @@ func (a *Application) repaintOnIconReset(c *icons.Cache) {
 	})
 }
 
-// SetSurfaceMotion turns gelm's own surface tweens on or off app-wide:
+// SetSurfaceMotion turns lys-ui's own surface tweens on or off app-wide:
 // the fade and slide every layer surface, dialog, popover and tooltip
 // plays as it maps and closes. An application that animates its
 // surfaces' content itself (through a widget.Revealer) turns them off

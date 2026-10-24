@@ -1,4 +1,4 @@
-// Package component is gelm's component framework, the counterpart of
+// Package component is lys-ui's component framework, the counterpart of
 // relm4's Component: a model with typed input and output messages, an
 // Init that builds its view, an Update that runs on the loop goroutine
 // for every input, and controllers that own a component's lifetime and
@@ -20,8 +20,8 @@ import (
 	"context"
 	"slices"
 
-	"github.com/stubbedev/gelm/internal/mailbox"
-	"github.com/stubbedev/gelm/widget"
+	"github.com/stubbedev/lys-ui/internal/mailbox"
+	"github.com/stubbedev/lys-ui/widget"
 )
 
 // Loop is the event loop components run on. *app.Application is the

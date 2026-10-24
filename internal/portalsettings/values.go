@@ -3,7 +3,7 @@ package portalsettings
 import (
 	"github.com/godbus/dbus/v5"
 
-	"github.com/stubbedev/gelm/appearance"
+	"github.com/stubbedev/lys-ui/appearance"
 )
 
 // contrastHigh is the portal's one defined contrast value.

@@ -1,6 +1,6 @@
 # Binaries `go build ./cmd/<name>` drops in the repo root.
-/gelm-*
-!/gelm-*/
+/lys-ui-*
+!/lys-ui-*/
 /wlpointer
 /zz-vpclick
 *.test

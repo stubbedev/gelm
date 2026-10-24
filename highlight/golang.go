@@ -3,7 +3,7 @@ package highlight
 import (
 	"regexp"
 
-	"github.com/stubbedev/gelm/widget"
+	"github.com/stubbedev/lys-ui/widget"
 )
 
 // Go highlights Go as GtkSourceView's go.lang does: line and block

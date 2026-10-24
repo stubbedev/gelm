@@ -4,7 +4,7 @@ import (
 	"math"
 	"strings"
 
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 // Inscription is GTK's Inscription: text sized by character and line

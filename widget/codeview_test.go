@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 // areaShot lays ta out at w x h and paints it over black.

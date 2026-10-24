@@ -1,4 +1,4 @@
-# gelm CSS
+# lys-ui CSS
 
 A GTK-flavored CSS layer above the typed `Theme`. The palette stays the
 source of truth and works with no stylesheet loaded. Stylesheets
@@ -204,7 +204,7 @@ box.AttachStylesheet(widget.NewStylesheet(css, widget.StylePriorityApplication))
   color, font-family, weight, and size, the remainder in the
   label's style. `::first-line` never matches (see
   [Syntax and selector limits](#syntax-and-selector-limits)).
-- **Element names.** These are GTK's CSS node names where gelm has the
+- **Element names.** These are GTK's CSS node names where lys-ui has the
   GTK widget (`button`, `label`, `entry`, `scale`, `scrolledwindow`,
   `textview`, `listview`, `row`, `gridview`, `child`, `flowboxchild`, ...), and otherwise
   the Go type lowercased. Sub-nodes are named too: `entry > text`,
@@ -314,7 +314,7 @@ box.AttachStylesheet(widget.NewStylesheet(css, widget.StylePriorityApplication))
     palette.
 - **Images.** Wherever an image is taken (`background-image`,
   `mask-image`, `border-image-source`): `none`, `url("file")` (a local
-  path or `file://` URL; gelm loads no network images), the linear,
+  path or `file://` URL; lys-ui loads no network images), the linear,
   radial and conic gradients and their `repeating-` forms — color
   stops with up to two positions each, as lengths or percentages along
   the gradient line (angles around a conic one), color hints between

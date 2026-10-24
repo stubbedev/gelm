@@ -9,12 +9,12 @@ import (
 
 	"golang.org/x/image/font/gofont/goregular"
 
-	"github.com/stubbedev/gelm/component"
-	"github.com/stubbedev/gelm/component/componenttest"
-	"github.com/stubbedev/gelm/internal/uigen"
-	"github.com/stubbedev/gelm/render"
-	"github.com/stubbedev/gelm/ui"
-	"github.com/stubbedev/gelm/widget"
+	"github.com/stubbedev/lys-ui/component"
+	"github.com/stubbedev/lys-ui/component/componenttest"
+	"github.com/stubbedev/lys-ui/internal/uigen"
+	"github.com/stubbedev/lys-ui/render"
+	"github.com/stubbedev/lys-ui/ui"
+	"github.com/stubbedev/lys-ui/widget"
 )
 
 func env(t *testing.T) ui.Env {

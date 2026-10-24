@@ -3,8 +3,8 @@ package app
 import (
 	"image"
 
-	"github.com/stubbedev/gelm/internal/wlsession"
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/internal/wlsession"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 // PointerConstraint is a pointer lock or confinement on one host

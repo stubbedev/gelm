@@ -3,8 +3,8 @@ package wlsession
 import (
 	"testing"
 
-	"github.com/stubbedev/gelm/third_party/neurlang-wayland/wl"
-	"github.com/stubbedev/gelm/third_party/neurlang-wayland/wlclient"
+	"github.com/stubbedev/lys-ui/third_party/neurlang-wayland/wl"
+	"github.com/stubbedev/lys-ui/third_party/neurlang-wayland/wlclient"
 )
 
 // touchHandler records touch and gesture traffic for one surface.

@@ -3,8 +3,8 @@ package app
 import (
 	"testing"
 
-	"github.com/stubbedev/gelm/render"
-	"github.com/stubbedev/gelm/widget"
+	"github.com/stubbedev/lys-ui/render"
+	"github.com/stubbedev/lys-ui/widget"
 )
 
 // The ring marks keyboard focus only: a click focuses without one

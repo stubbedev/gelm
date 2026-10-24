@@ -8,7 +8,7 @@ import (
 	"github.com/go-text/typesetting/language"
 	"golang.org/x/image/font/gofont/goregular"
 
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 // mustSans resolves the default sans face, skipping the test when the
@@ -159,7 +159,7 @@ func TestFallbackChain(t *testing.T) {
 	ch := Fallback(primary)
 
 	t.Run("fully covered text never consults the store", func(t *testing.T) {
-		s := ch.Shape("gelm", 14)
+		s := ch.Shape("lys-ui", 14)
 		if s.Runs() != 1 {
 			t.Errorf("Runs = %d, want 1", s.Runs())
 		}

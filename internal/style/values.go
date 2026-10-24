@@ -5,7 +5,7 @@ import (
 	"math/bits"
 	"slices"
 
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 // Prop names one longhand property of the docs/css.md table. Shorthands

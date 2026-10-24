@@ -23,7 +23,7 @@ before and after, and leaves the goldens byte-identical
 
 ## Widget gallery
 
-`buildShowcase` is the gelm-hello window shape: 73 widgets. The style
+`buildShowcase` is the lys-ui-hello window shape: 73 widgets. The style
 benchmarks load a 25-rule stylesheet over the same tree.
 
 | benchmark | sec/op | B/op | allocs/op |
@@ -166,7 +166,7 @@ why it stays:
   damage is usually one or two rects: about 6 `sendmsg` and 20
   read-side syscalls per animated frame.
 - **The Go runtime's background monitor**: about 28 `nanosleep` calls
-  per animated frame during tweens, none at idle. It is not gelm code.
+  per animated frame during tweens, none at idle. It is not lys-ui code.
 - **Walk snapshot buffers** (`widget.walkStack`, `styleStack`,
   `walkTreeStack`, the per-parent sibling lists) and **the rune-keyed
   shaping table**: the buffers are retained at the deepest tree the

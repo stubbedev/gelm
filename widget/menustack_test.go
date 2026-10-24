@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 // stackFixture is a two-level tree: a leaf, a submenu with a long

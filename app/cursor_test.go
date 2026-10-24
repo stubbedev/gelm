@@ -3,8 +3,8 @@ package app
 import (
 	"testing"
 
-	"github.com/stubbedev/gelm/render"
-	"github.com/stubbedev/gelm/widget"
+	"github.com/stubbedev/lys-ui/render"
+	"github.com/stubbedev/lys-ui/widget"
 )
 
 // caretBox is a plain box that asks for the text caret while hovered,

@@ -3,10 +3,10 @@ package widget
 import (
 	"time"
 
-	"github.com/stubbedev/gelm/anim"
-	"github.com/stubbedev/gelm/internal/style"
-	"github.com/stubbedev/gelm/internal/surfx"
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/anim"
+	"github.com/stubbedev/lys-ui/internal/style"
+	"github.com/stubbedev/lys-ui/internal/surfx"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 const (

@@ -1,6 +1,6 @@
 # Components
 
-`package component` is gelm's counterpart of relm4's component
+`package component` is lys-ui's counterpart of relm4's component
 framework. A component is a model with typed input and output messages.
 Its `Init` builds the view, its `Update` runs on the loop goroutine for
 every input, and a controller owns its lifetime and forwards its
@@ -196,7 +196,7 @@ of the child's updates - once per batch, like `UpdateView`, not once
 per message - and receives the live model itself, not a copy. It may
 only read the model: it must not change it, and it must not send the
 child input from inside the notification (a Send re-enters the child
-it observes; gelm queues it to the next loop pass rather than running
+it observes; lys-ui queues it to the next loop pass rather than running
 it reentrantly, but an observer has no reason to rely on that). There
 is no initial call; subscribe before the first batch or read the model
 directly. The returned unsubscribe is idempotent and safe from any

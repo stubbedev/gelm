@@ -1,7 +1,7 @@
 package widget
 
 import (
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 // PreferencesGroup and PreferencesPage (#93): the labeled, bordered

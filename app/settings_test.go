@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stubbedev/gelm/widget"
+	"github.com/stubbedev/lys-ui/widget"
 )
 
 // settingsEnv points the settings file at a scratch config dir and

@@ -1,4 +1,4 @@
-# gelm
+# lys-ui
 
 A pure-Go (no cgo) widget toolkit for Wayland, built as a
 feature-complete counterpart of [relm4](https://relm4.org): a component
@@ -9,7 +9,7 @@ protocols, and an event loop that idles at 0% CPU.
 
 ## Status
 
-gelm runs on sway and Hyprland, and both are required CI gates: the
+lys-ui runs on sway and Hyprland, and both are required CI gates: the
 compositor-in-the-loop suite runs against a private headless sway
 (`just headless`) and against Hyprland in a private NixOS VM
 (`just hyprland-vm`). [docs/completeness.md](docs/completeness.md) maps
@@ -18,7 +18,7 @@ every capability against relm4, GTK4 and libadwaita.
 ## Install
 
 ```sh
-go get github.com/stubbedev/gelm@latest
+go get github.com/stubbedev/lys-ui@latest
 ```
 
 ## Packages
@@ -56,10 +56,10 @@ import (
 	"log"
 	"strconv"
 
-	"github.com/stubbedev/gelm/app"
-	"github.com/stubbedev/gelm/component"
-	"github.com/stubbedev/gelm/ui"
-	"github.com/stubbedev/gelm/widget"
+	"github.com/stubbedev/lys-ui/app"
+	"github.com/stubbedev/lys-ui/component"
+	"github.com/stubbedev/lys-ui/ui"
+	"github.com/stubbedev/lys-ui/widget"
 )
 
 type Msg int
@@ -121,7 +121,7 @@ path for apps that want the widget tree without components
 
 ```sh
 nix develop        # pinned Go, gopls, golangci-lint, just, sway; CGO_ENABLED=0
-just demo          # the gelm-hello showcase
+just demo          # the lys-ui-hello showcase
 ```
 
 The gates, all required in CI:
@@ -141,9 +141,9 @@ method and the allocation budgets the tests enforce). `just goldens`
 regenerates the golden-image snapshots after a deliberate visual
 change.
 
-`nix build .#gelm` builds the module and every demo with the pinned
-toolchain. Pushing a `v*` tag releases `gelm-hello`, `gelm-bar` and
-`gelm-panel` (linux/amd64 and arm64) through goreleaser.
+`nix build .#lys-ui` builds the module and every demo with the pinned
+toolchain. Pushing a `v*` tag releases `lys-ui-hello`, `lys-ui-bar` and
+`lys-ui-panel` (linux/amd64 and arm64) through goreleaser.
 
 ## Documentation
 
@@ -165,29 +165,29 @@ toolchain. Pushing a `v*` tag releases `gelm-hello`, `gelm-bar` and
 
 | Command | What it shows |
 | --- | --- |
-| `cmd/gelm-hello` | the showcase as a component: core widgets, a context menu on typed actions, tooltips, Tab focus, drag-to-move |
-| `cmd/gelm-bar` | a layer-shell top bar repainting only what changed each second |
-| `cmd/gelm-panel` | a right-anchored layer-shell panel with live widgets |
-| `cmd/gelm-launcher` | a launcher: a keyboard-exclusive overlay, a filtered app grid, live toplevel thumbnails through `capture` |
-| `cmd/gelm-osd` | an OSD: a transient layer-shell volume/brightness popup over the overlay layer |
-| `cmd/gelm-lock` | a lock screen: one ext-session-lock surface per output with an auth entry |
-| `cmd/gelm-multi` | one loop: per-output layer bars, on-demand windows, close-request veto |
-| `cmd/gelm-invoke` | a lifetime-bound spawned command and `Every` feeding a component |
-| `cmd/gelm-messages` | the typed messaging layer and single-instance forwarding |
-| `cmd/gelm-settings` | a settings app: PreferencesView rows, the adaptive shell, typed persisted settings |
-| `cmd/gelm-columns` | ten thousand sorted, filtered rows; the tree view; drag-to-reorder |
-| `cmd/gelm-dialogs` | every dialog constructor: message, prompt, color, font, calendar, file, adaptive, about |
-| `cmd/gelm-dnd` | cross-window drag-and-drop: swatches that drag and drop between two toplevels |
-| `cmd/gelm-draw` | custom painting: a DrawingArea animating straight onto the Canvas |
-| `cmd/gelm-ime` | IME composition: preedit and commit mirrored from an entry and a text area |
-| `cmd/gelm-a11y` | a labeled form served over AT-SPI; builds with `-tags atspi` to force the bridge on |
-| `cmd/gelm-capture` | the capture consumer: list, screenshot, and monitor outputs and windows to PNG |
-| `cmd/gelm-gpu` | a GPUArea paced by its own frame callbacks, with gelm drawing over it |
-| `cmd/gelm-video` | a video with its controls: a file through ffmpeg, or a generated clip decoded in pure Go |
-| `cmd/gelm-i18n` | a gettext .po catalog (plurals included) localizing built-in and app strings |
-| `cmd/gelm-states` | the window-state client the headless suite drives: xdg state chords, mirrored from what the compositor confirms |
-| `cmd/gelm-multilist` | the multi-select client the headless suite drives: a multiple-selection list with keyboard and rubber-band selection |
-| `cmd/gelm-popover` | the popover client the headless suite drives: popup grabs, live repaints, nested menus |
+| `cmd/lys-ui-hello` | the showcase as a component: core widgets, a context menu on typed actions, tooltips, Tab focus, drag-to-move |
+| `cmd/lys-ui-bar` | a layer-shell top bar repainting only what changed each second |
+| `cmd/lys-ui-panel` | a right-anchored layer-shell panel with live widgets |
+| `cmd/lys-ui-launcher` | a launcher: a keyboard-exclusive overlay, a filtered app grid, live toplevel thumbnails through `capture` |
+| `cmd/lys-ui-osd` | an OSD: a transient layer-shell volume/brightness popup over the overlay layer |
+| `cmd/lys-ui-lock` | a lock screen: one ext-session-lock surface per output with an auth entry |
+| `cmd/lys-ui-multi` | one loop: per-output layer bars, on-demand windows, close-request veto |
+| `cmd/lys-ui-invoke` | a lifetime-bound spawned command and `Every` feeding a component |
+| `cmd/lys-ui-messages` | the typed messaging layer and single-instance forwarding |
+| `cmd/lys-ui-settings` | a settings app: PreferencesView rows, the adaptive shell, typed persisted settings |
+| `cmd/lys-ui-columns` | ten thousand sorted, filtered rows; the tree view; drag-to-reorder |
+| `cmd/lys-ui-dialogs` | every dialog constructor: message, prompt, color, font, calendar, file, adaptive, about |
+| `cmd/lys-ui-dnd` | cross-window drag-and-drop: swatches that drag and drop between two toplevels |
+| `cmd/lys-ui-draw` | custom painting: a DrawingArea animating straight onto the Canvas |
+| `cmd/lys-ui-ime` | IME composition: preedit and commit mirrored from an entry and a text area |
+| `cmd/lys-ui-a11y` | a labeled form served over AT-SPI; builds with `-tags atspi` to force the bridge on |
+| `cmd/lys-ui-capture` | the capture consumer: list, screenshot, and monitor outputs and windows to PNG |
+| `cmd/lys-ui-gpu` | a GPUArea paced by its own frame callbacks, with lys-ui drawing over it |
+| `cmd/lys-ui-video` | a video with its controls: a file through ffmpeg, or a generated clip decoded in pure Go |
+| `cmd/lys-ui-i18n` | a gettext .po catalog (plurals included) localizing built-in and app strings |
+| `cmd/lys-ui-states` | the window-state client the headless suite drives: xdg state chords, mirrored from what the compositor confirms |
+| `cmd/lys-ui-multilist` | the multi-select client the headless suite drives: a multiple-selection list with keyboard and rubber-band selection |
+| `cmd/lys-ui-popover` | the popover client the headless suite drives: popup grabs, live repaints, nested menus |
 | `cmd/wlpointer`, `cmd/zz-vpclick` | synthetic input for the headless suite |
 
 ## Dependencies

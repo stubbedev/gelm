@@ -12,8 +12,8 @@ import (
 
 	"github.com/godbus/dbus/v5"
 
-	"github.com/stubbedev/gelm/appearance"
-	"github.com/stubbedev/gelm/internal/logutil"
+	"github.com/stubbedev/lys-ui/appearance"
+	"github.com/stubbedev/lys-ui/internal/logutil"
 )
 
 // The portal: a well-known name, one object, one method, one signal
@@ -129,7 +129,7 @@ func newMonitor(dial func() (*dbus.Conn, error), retry time.Duration) *Monitor {
 	if err != nil {
 		// No session bus: no portal desktop. Fail silent — Unknown
 		// forever, no goroutines, nothing to leak (documented) — and
-		// say so at Debug for applications that opted into gelm's
+		// say so at Debug for applications that opted into lys-ui's
 		// logger.
 		logutil.L().Debug("appearance: no session bus; preference monitoring disabled", slog.Any("err", err))
 		return m

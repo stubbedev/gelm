@@ -1,5 +1,5 @@
-# gelm CI: the release gates plus the compositor-in-the-loop input
-# suite. The headless tests are required here - GELM_HEADLESS=1 makes
+# lys-ui CI: the release gates plus the compositor-in-the-loop input
+# suite. The headless tests are required here - LYS_UI_HEADLESS=1 makes
 # any skip a failure - so a change that breaks live input/protocol
 # behavior breaks CI before it can break a real desktop.
 #
@@ -84,4 +84,4 @@ jobs:
         with:
           github_access_token: ${{ secrets.GITHUB_TOKEN }}
       - name: Hyprland compositor-in-the-loop gate (private VM)
-        run: nix build -L .#checks.x86_64-linux.gelm-hyprland-vm
+        run: nix build -L .#checks.x86_64-linux.lys-ui-hyprland-vm

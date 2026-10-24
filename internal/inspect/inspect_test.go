@@ -7,9 +7,9 @@ import (
 
 	"golang.org/x/image/font/gofont/goregular"
 
-	"github.com/stubbedev/gelm/internal/wlsession"
-	"github.com/stubbedev/gelm/render"
-	"github.com/stubbedev/gelm/widget"
+	"github.com/stubbedev/lys-ui/internal/wlsession"
+	"github.com/stubbedev/lys-ui/render"
+	"github.com/stubbedev/lys-ui/widget"
 )
 
 // inspectTree builds the test tree: a column with a named button
@@ -187,9 +187,9 @@ func TestEnabled(t *testing.T) {
 		{"false", false},
 		{"garbage", false},
 	} {
-		t.Setenv("GELM_INSPECT", c.env)
+		t.Setenv("LYS_UI_INSPECT", c.env)
 		if got := Enabled(); got != c.want {
-			t.Errorf("GELM_INSPECT=%q: Enabled = %v, want %v", c.env, got, c.want)
+			t.Errorf("LYS_UI_INSPECT=%q: Enabled = %v, want %v", c.env, got, c.want)
 		}
 	}
 }
@@ -197,7 +197,7 @@ func TestEnabled(t *testing.T) {
 func TestDumpBanner(t *testing.T) {
 	root, r, _ := inspectTree(t)
 	dump := Dump(root, r)
-	if !strings.HasPrefix(dump, "gelm tree dump: ") {
+	if !strings.HasPrefix(dump, "lys-ui tree dump: ") {
 		t.Errorf("dump missing banner:\n%s", dump)
 	}
 	if !strings.Contains(dump, widget.DumpTree(root, r)) {
@@ -233,7 +233,7 @@ func TestDoctorLines(t *testing.T) {
 	got := DoctorFrom(doctorInfo(), DoctorOptions{Sans: "DejaVu Sans", Mono: "JetBrains Mono"})
 
 	for _, want := range []string{
-		"gelm doctor\n",
+		"lys-ui doctor\n",
 		"go: ",
 		"globals: wl_compositor v4, wl_output v2, wl_seat v7, wl_shm v1, wp_viewporter v1, zwlr_layer_shell_v1 v1",
 		"outputs: DP-1 mode 2560x1440 scale 2 logical 0,0+1280x720",

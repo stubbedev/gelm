@@ -5,9 +5,9 @@ import (
 	"os"
 	"testing"
 
-	"github.com/stubbedev/gelm/internal/wlsession"
-	"github.com/stubbedev/gelm/third_party/neurlang-wayland/wl"
-	"github.com/stubbedev/gelm/transfer"
+	"github.com/stubbedev/lys-ui/internal/wlsession"
+	"github.com/stubbedev/lys-ui/third_party/neurlang-wayland/wl"
+	"github.com/stubbedev/lys-ui/transfer"
 )
 
 func TestPickTextMime(t *testing.T) {
@@ -59,7 +59,7 @@ func TestSelectionSurvivesDragOffers(t *testing.T) {
 	drag := &wl.DataOffer{}
 	dragMimes := &offerMimes{mimes: make(map[string]bool)}
 	c.offers[drag] = dragMimes
-	dragMimes.HandleDataOfferOffer(wl.DataOfferOfferEvent{MimeType: "application/x-gelm-tile"})
+	dragMimes.HandleDataOfferOffer(wl.DataOfferOfferEvent{MimeType: "application/x-lys-ui-tile"})
 
 	// The selection is still the text one, with its own mimes intact.
 	if c.selection != sel {
@@ -68,7 +68,7 @@ func TestSelectionSurvivesDragOffers(t *testing.T) {
 	if got := pickTextMime(func(m string) bool { return c.selectionMimes[m] }); got != "text/plain;charset=utf-8" {
 		t.Errorf("selection mime = %q, want the utf-8 text type", got)
 	}
-	if c.selectionMimes["application/x-gelm-tile"] {
+	if c.selectionMimes["application/x-lys-ui-tile"] {
 		t.Error("the drag offer's mime leaked into the selection")
 	}
 

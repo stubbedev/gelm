@@ -1,6 +1,6 @@
-# gelm input model
+# lys-ui input model
 
-gelm's input semantics, modeled on GTK's event controllers and seat
+lys-ui's input semantics, modeled on GTK's event controllers and seat
 grabs: the contract behind `wlsession` -> `app` -> `widget.Router`.
 Change the code and this document together.
 
@@ -71,7 +71,7 @@ complete before proceeding (popup configure).
   the grabbing surface even if the compositor would move focus — drags
   keep feeding the widget the drag started on.
 - A **release** of the grabbing button ends the grab. Press/release
-  pairs of different buttons may nest conceptually; gelm tracks a
+  pairs of different buttons may nest conceptually; lys-ui tracks a
   single grab because its widgets act on the primary button.
 - This mirrors GTK: `gdk_seat_grab` semantics at the toolkit level,
   with the compositor's own popup grab (xdg_popup.grab) handling
@@ -273,7 +273,7 @@ shape goes to it as one `set_shape` per pointer enter or change: the
 compositor draws its own cursors, animated shapes included, with no
 theme lookup and no buffer. The client xcursor theme is the fallback -
 compositors without the protocol, the hidden cursor, and names the
-protocol does not carry - and `GELM_NO_CURSOR_SHAPE=1` forces it (the
+protocol does not carry - and `LYS_UI_NO_CURSOR_SHAPE=1` forces it (the
 headless suite runs both paths).
 
 ## Pointer lock, confinement, relative motion
@@ -299,7 +299,7 @@ the way out - by convention an accelerator (Escape) that calls
 
 ## Touch and gestures
 
-gelm binds wl_touch. Every contact routes to the surface it went
+lys-ui binds wl_touch. Every contact routes to the surface it went
 down on and holds its own implicit grab there, independent of the
 pointer's; a wl_touch.cancel ends every surface's contacts.
 
@@ -363,7 +363,7 @@ mode switches, and unplug-replug.
 
 ## Debug traces
 
-`internal/debug` (build tag `gelmdebug`, categories via GOELM_DEBUG)
+`internal/debug` (build tag `lysuidebug`, categories via GOELM_DEBUG)
 traces the path at its seams, and `app.Trace` lets an application
 trace its own events into the same timeline: `wire`-level pointer events with surface
 ids in `wlsession`, routing decisions and hit bounds in `app`, frame

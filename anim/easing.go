@@ -30,7 +30,7 @@ func EaseInOutQuad(t float64) float64 {
 // EaseInCubic starts slow and accelerates hard.
 func EaseInCubic(t float64) float64 { return t * t * t }
 
-// EaseOutCubic is gelm's default curve: fast start, gentle landing.
+// EaseOutCubic is lys-ui's default curve: fast start, gentle landing.
 func EaseOutCubic(t float64) float64 { return 1 - (1-t)*(1-t)*(1-t) }
 
 // EaseInOutCubic eases both ends of the tween.

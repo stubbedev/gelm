@@ -31,7 +31,7 @@ linters:
         - fmt.Fprintln
     gosec:
       excludes:
-        # Wayland wire values are int32 by protocol definition. gelm keeps
+        # Wayland wire values are int32 by protocol definition. lys-ui keeps
         # them as Go ints for math and converts back at the boundary, so
         # int -> int32 conversions round-trip protocol values.
         - G115 # integer overflow conversion
@@ -46,7 +46,7 @@ linters:
         - name: exported
   exclusions:
     generated: lax
-    # Upstream code carried verbatim (third_party/*/README.gelm.md).
+    # Upstream code carried verbatim (third_party/*/README.lys-ui.md).
     paths:
       - third_party/
     rules:
@@ -69,7 +69,7 @@ formatters:
       sections:
         - standard
         - default
-        - prefix(github.com/stubbedev/gelm)
+        - prefix(github.com/stubbedev/lys-ui)
   exclusions:
     generated: lax
     paths:

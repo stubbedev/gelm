@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stubbedev/gelm/internal/animclock"
+	"github.com/stubbedev/lys-ui/internal/animclock"
 )
 
 // typeClock steps past the type-ahead idle timeout without disturbing

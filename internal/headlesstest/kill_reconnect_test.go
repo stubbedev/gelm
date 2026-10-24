@@ -19,11 +19,11 @@ func TestHeadlessReconnectRebuildsWindows(t *testing.T) {
 	if !testEnv.CanRestartCompositor() {
 		t.Skip("the compositor driver cannot restart; the kill test after this one needs it alive")
 	}
-	bin, err := BuildClient(testEnv.Dir, "./cmd/gelm-states", "gelm-states")
+	bin, err := BuildClient(testEnv.Dir, "./cmd/lys-ui-states", "lys-ui-states")
 	if err != nil {
 		t.Fatal(err)
 	}
-	c, err := testEnv.StartClientEnv(bin, "client-"+t.Name(), "demo,wire", []string{"GELM_DEMO_RECONNECT=1"})
+	c, err := testEnv.StartClientEnv(bin, "client-"+t.Name(), "demo,wire", []string{"LYS_UI_DEMO_RECONNECT=1"})
 	if err != nil {
 		t.Fatal(err)
 	}

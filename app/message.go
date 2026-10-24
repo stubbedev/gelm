@@ -4,7 +4,7 @@ import (
 	"slices"
 	"sync"
 
-	"github.com/stubbedev/gelm/internal/mailbox"
+	"github.com/stubbedev/lys-ui/internal/mailbox"
 )
 
 // subscriberSet is the fan-out half of a messenger: callbacks added from

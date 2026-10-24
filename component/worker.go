@@ -3,7 +3,7 @@ package component
 import (
 	"sync"
 
-	"github.com/stubbedev/gelm/internal/mailbox"
+	"github.com/stubbedev/lys-ui/internal/mailbox"
 )
 
 // Worker is a typed background actor, relm4's Worker. Update runs on

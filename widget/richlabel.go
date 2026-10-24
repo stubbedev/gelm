@@ -5,9 +5,9 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/stubbedev/gelm/internal/style"
-	"github.com/stubbedev/gelm/internal/text"
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/internal/style"
+	"github.com/stubbedev/lys-ui/internal/text"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 // VariantFunc returns the face a bold or italic run shapes with. It
@@ -17,7 +17,7 @@ type VariantFunc func(bold, italic bool) *render.Typeface
 
 // BaseVariants serves base for every style. Use it when only one face
 // is loaded: markup bold and italic then render with the base face.
-// gelm never synthesizes faux bold or italic outlines. Apps that load
+// lys-ui never synthesizes faux bold or italic outlines. Apps that load
 // real variants wire them here, e.g. via internal/sysfont's Variant.
 func BaseVariants(base *render.Typeface) VariantFunc {
 	return func(bool, bool) *render.Typeface { return base }

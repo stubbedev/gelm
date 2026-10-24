@@ -3,8 +3,8 @@ package ui_test
 import (
 	"testing"
 
-	"github.com/stubbedev/gelm/ui"
-	"github.com/stubbedev/gelm/widget"
+	"github.com/stubbedev/lys-ui/ui"
+	"github.com/stubbedev/lys-ui/widget"
 )
 
 func TestListBoxBuilderBuildsTheSameTree(t *testing.T) {

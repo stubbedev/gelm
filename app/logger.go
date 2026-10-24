@@ -1,4 +1,4 @@
-// Logging convention for the application-facing package. gelm the
+// Logging convention for the application-facing package. lys-ui the
 // library is silent by default; the demo binaries and any embedder
 // that wants the library's protocol warnings install a logger once —
 // here or on wlsession directly — and everything routes through it
@@ -9,10 +9,10 @@ package app
 import (
 	"log/slog"
 
-	"github.com/stubbedev/gelm/internal/wlsession"
+	"github.com/stubbedev/lys-ui/internal/wlsession"
 )
 
-// SetLogger installs the library-wide logger: gelm's internals (session
+// SetLogger installs the library-wide logger: lys-ui's internals (session
 // protocol warnings, event-loop diagnostics, theme contrast warnings,
 // the appearance monitor) emit through it. Nothing logs per-frame or
 // per-keypress, and nothing logs at Info. A nil logger selects the

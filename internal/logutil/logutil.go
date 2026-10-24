@@ -1,4 +1,4 @@
-// Package logutil holds gelm's single injectable logger. Library code
+// Package logutil holds lys-ui's single injectable logger. Library code
 // is silent by default: failures come back as returned errors, and the
 // events that are not failures — event-loop diagnostics, protocol
 // warnings, protocol chatter — emit through the logger installed here,
@@ -23,7 +23,7 @@
 // Error — terminal conditions only: the compositor raised a fatal
 // protocol error against this client.
 //
-// The gelmdebug build-tag trace facility (internal/debug) is a
+// The lysuidebug build-tag trace facility (internal/debug) is a
 // different concern — compile-out traces, not runtime logging — and
 // stays independent of this package.
 package logutil

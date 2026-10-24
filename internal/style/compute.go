@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 // Env is the unit environment a compute resolves against.

@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 // testClock hands the undo stack a controllable clock so coalescing's

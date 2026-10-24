@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/stubbedev/gelm/widget"
+	"github.com/stubbedev/lys-ui/widget"
 )
 
 // FactoryView places a Factory's item widgets in a container, relm4's

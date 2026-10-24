@@ -3,7 +3,7 @@ package app
 import (
 	"time"
 
-	"github.com/stubbedev/gelm/internal/notify"
+	"github.com/stubbedev/lys-ui/internal/notify"
 )
 
 // Desktop notifications (#85): app.Notify sends a GNotification-class
@@ -11,7 +11,7 @@ import (
 // xdg-desktop-portal transport when the desktop owns it,
 // org.freedesktop.Notifications otherwise, inert without a session bus
 // (the appearance.md failure model: no error, no crash, a Debug log).
-// This is how a background gelm daemon reports to the user; the
+// This is how a background lys-ui daemon reports to the user; the
 // in-window toast (ShowToast) is a different, compositor-free surface.
 
 // NotifyAction is one desktop-notification action.
@@ -47,7 +47,7 @@ type NotifyOptions struct {
 // Notify sends a desktop notification and forgets it: the bus call
 // runs off the loop goroutine, action and close callbacks come back
 // onto it, and a desktop without a notification surface drops the
-// notification silently. The gelm-side id the transport works with is
+// notification silently. The lys-ui-side id the transport works with is
 // internal; withdrawing a notification is CloseNotification on the
 // returned handle.
 func (a *Application) Notify(title, body string, opts NotifyOptions) {

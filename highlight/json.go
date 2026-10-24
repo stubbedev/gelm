@@ -3,7 +3,7 @@ package highlight
 import (
 	"regexp"
 
-	"github.com/stubbedev/gelm/widget"
+	"github.com/stubbedev/lys-ui/widget"
 )
 
 // JSON highlights JSON as GtkSourceView's json.lang does: object keys

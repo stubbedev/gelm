@@ -21,9 +21,9 @@ import (
 	"cmp"
 	"slices"
 
-	"github.com/stubbedev/gelm/component"
-	"github.com/stubbedev/gelm/render"
-	"github.com/stubbedev/gelm/widget"
+	"github.com/stubbedev/lys-ui/component"
+	"github.com/stubbedev/lys-ui/render"
+	"github.com/stubbedev/lys-ui/widget"
 )
 
 // Node is a buildable piece of a widget tree.

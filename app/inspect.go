@@ -1,7 +1,7 @@
 // The inspector hookup: key chords, application state, and per-window
 // overlay application. The overlay itself lives in internal/inspect;
 // this file decides when it paints and what the chords do. The chords
-// fire only while the inspector is armed - GELM_INSPECT=1 at startup
+// fire only while the inspector is armed - LYS_UI_INSPECT=1 at startup
 // or an explicit SetInspect/ToggleInspect - so an app that never asks
 // for the inspector keeps ctrl+shift+i and ctrl+shift+d to itself.
 package app
@@ -13,9 +13,9 @@ import (
 
 	"github.com/unxed/xkb-go"
 
-	"github.com/stubbedev/gelm/internal/inspect"
-	"github.com/stubbedev/gelm/internal/wlsession"
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/internal/inspect"
+	"github.com/stubbedev/lys-ui/internal/wlsession"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 // inspectAction is what an inspector chord asks for.
@@ -27,9 +27,9 @@ const (
 )
 
 // doctorRequested reports whether the environment asked for the
-// diagnostics block at startup: GELM_DOCTOR=1 (or true/yes/on).
+// diagnostics block at startup: LYS_UI_DOCTOR=1 (or true/yes/on).
 func doctorRequested() bool {
-	switch strings.ToLower(strings.TrimSpace(os.Getenv("GELM_DOCTOR"))) {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("LYS_UI_DOCTOR"))) {
 	case "1", "true", "yes", "on":
 		return true
 	}

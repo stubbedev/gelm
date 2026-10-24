@@ -1,4 +1,4 @@
-# gelm threading model
+# lys-ui threading model
 
 Who may touch a widget, when, and how everything else gets in.
 
@@ -7,7 +7,7 @@ Who may touch a widget, when, and how everything else gets in.
 1. **One loop goroutine owns the UI.** `Application.Run` runs on one
    goroutine. Every widget mutation and every event callback
    (`OnClick`, `OnKey`, `OnSelect`, dnd hooks, IME delivery, `Invoke`
-   closures, `Every` ticks) runs there. gelm's widgets take no locks;
+   closures, `Every` ticks) runs there. lys-ui's widgets take no locks;
    the single-thread rule is the lock.
 2. **Other goroutines reach the tree only through
    `Application.Invoke(fn)`** (app/invoke.go). `Invoke` queues the
@@ -81,7 +81,7 @@ deliver as one ordered batch.
 Everything stops when `Run` returns (`Application.OnStop` hooks run in
 reverse registration order). Delivery is deferred: a `Send`
 from inside a subscriber or update runs on the next pass.
-`cmd/gelm-messages` shows both, with a component on the click path.
+`cmd/lys-ui-messages` shows both, with a component on the click path.
 
 The desktop-settings monitor is the background-worker shape: it
 watches the portal on its own dbus goroutine, and `Application`
@@ -94,7 +94,7 @@ component's input and output queues coalesce their wakes exactly like
 
 ## The relm4 mapping
 
-| relm4 | gelm |
+| relm4 | lys-ui |
 | --- | --- |
 | `Component`, `SimpleComponent` | `component.Component[In, Out]`, launched with `component.Launch`/`Window`/`Layer` or `Context.Launch` |
 | `ComponentSender::input`/`output` | `Context.Input`/`Output`, `Sender[M]` |

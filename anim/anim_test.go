@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stubbedev/gelm/internal/animclock"
+	"github.com/stubbedev/lys-ui/internal/animclock"
 )
 
 func TestTweenProgress(t *testing.T) {

@@ -4,8 +4,8 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/stubbedev/gelm/anim"
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/anim"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 // setupMultiList builds a 20-row multiple-mode list in a 100x100

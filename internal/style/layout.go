@@ -12,7 +12,7 @@ import (
 	"math"
 	"strings"
 
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 // Length is a computed <length-percentage>: Px logical pixels plus Pct
@@ -711,7 +711,7 @@ func factorInto(get func(v *Values) *float64) func([]token, *ctx, *Values) bool 
 // parseFlex parses the flex shorthand: none (0 0 auto), auto (1 1
 // auto), or `<grow> <shrink>? || <basis>`. An omitted grow is 1, an
 // omitted shrink 1, and an omitted basis zero — the spec's 0%, which
-// gelm's layout reads as the zero length it resolves to.
+// lys-ui's layout reads as the zero length it resolves to.
 func parseFlex(ts []token, cx *ctx, v *Values) bool {
 	comps := components(ts)
 	if s, ok := identOf(comps); ok {

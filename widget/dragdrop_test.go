@@ -3,8 +3,8 @@ package widget
 import (
 	"testing"
 
-	"github.com/stubbedev/gelm/render"
-	"github.com/stubbedev/gelm/transfer"
+	"github.com/stubbedev/lys-ui/render"
+	"github.com/stubbedev/lys-ui/transfer"
 )
 
 // dropPanel plays a drop target: it accepts a drag by mime, tracks the
@@ -50,7 +50,7 @@ func (p *dropPanel) Drop(mime string, data []byte, point Point) {
 
 // arrangeDropPanels lays two side-by-side drop panels on a row.
 func arrangeDropPanels() (root Widget, a, b *dropPanel) {
-	a = &dropPanel{nat: Size{W: 20, H: 20}, mime: "application/x-gelm-tile"}
+	a = &dropPanel{nat: Size{W: 20, H: 20}, mime: "application/x-lys-ui-tile"}
 	b = &dropPanel{nat: Size{W: 20, H: 20}, mime: ""}
 	root = NewBox(Row, 0, 0).Append(a, false).Append(b, false)
 	root.Measure(Constraints{Max: Size{W: 100, H: 100}})
@@ -63,11 +63,11 @@ func TestRouterDragEnterByMime(t *testing.T) {
 	r := &Router{Root: root}
 
 	t.Run("the panel decides by mime", func(t *testing.T) {
-		mime := r.DragEnter([]string{"application/x-gelm-tile", "text/plain"}, Point{X: 5, Y: 5})
-		if mime != "application/x-gelm-tile" {
+		mime := r.DragEnter([]string{"application/x-lys-ui-tile", "text/plain"}, Point{X: 5, Y: 5})
+		if mime != "application/x-lys-ui-tile" {
 			t.Fatalf("accepted = %q, want the tile mime", mime)
 		}
-		if a.enters != 1 || len(a.enteredMimes) != 2 || a.enteredMimes[0] != "application/x-gelm-tile" {
+		if a.enters != 1 || len(a.enteredMimes) != 2 || a.enteredMimes[0] != "application/x-lys-ui-tile" {
 			t.Errorf("panel saw enters=%d mimes=%v", a.enters, a.enteredMimes)
 		}
 		if a.enterPoint != (Point{X: 5, Y: 5}) {
@@ -123,7 +123,7 @@ func (l *plainLeaf) HitTest(point Point) Widget   { return l.HitLeaf(l, point) }
 func newBubbleRow() *dropRow {
 	p := &dropRow{}
 	p.nat = Size{W: 20, H: 20}
-	p.mime = "application/x-gelm-row"
+	p.mime = "application/x-lys-ui-row"
 	p.child = &plainLeaf{}
 	return p
 }
@@ -137,8 +137,8 @@ func TestRouterDragBubblesToAncestor(t *testing.T) {
 	r := &Router{Root: root}
 	// The hit lands on the plain leaf; the drop decision belongs to
 	// the panel above it.
-	mime := r.DragEnter([]string{"application/x-gelm-row"}, Point{X: 10, Y: 10})
-	if mime != "application/x-gelm-row" {
+	mime := r.DragEnter([]string{"application/x-lys-ui-row"}, Point{X: 10, Y: 10})
+	if mime != "application/x-lys-ui-row" {
 		t.Fatalf("mime = %q, want the row mime via the ancestor", mime)
 	}
 	if panel.enters != 1 || !panel.dragOver {
@@ -148,15 +148,15 @@ func TestRouterDragBubblesToAncestor(t *testing.T) {
 
 func TestRouterDragHoverRetargets(t *testing.T) {
 	root, a, b := arrangeDropPanels()
-	b.mime = "application/x-gelm-tile"
+	b.mime = "application/x-lys-ui-tile"
 	r := &Router{Root: root}
 
-	r.DragEnter([]string{"application/x-gelm-tile"}, Point{X: 5, Y: 5})
+	r.DragEnter([]string{"application/x-lys-ui-tile"}, Point{X: 5, Y: 5})
 	// Crossing into the second panel inside one surface: no new enter
 	// arrives from the compositor, the router retargets on hover.
 	mime := r.DragHover(Point{X: 25, Y: 5})
 
-	if mime != "application/x-gelm-tile" {
+	if mime != "application/x-lys-ui-tile" {
 		t.Fatalf("mime after retarget = %q, want the second panel's mime", mime)
 	}
 	if b.enters != 1 {
@@ -182,7 +182,7 @@ func TestRouterDragHoverRetargets(t *testing.T) {
 func TestRouterDragLeaveClears(t *testing.T) {
 	root, a, _ := arrangeDropPanels()
 	r := &Router{Root: root}
-	r.DragEnter([]string{"application/x-gelm-tile"}, Point{X: 5, Y: 5})
+	r.DragEnter([]string{"application/x-lys-ui-tile"}, Point{X: 5, Y: 5})
 
 	r.DragLeave()
 
@@ -197,14 +197,14 @@ func TestRouterDragLeaveClears(t *testing.T) {
 func TestRouterDropDeliversPayload(t *testing.T) {
 	root, a, _ := arrangeDropPanels()
 	r := &Router{Root: root}
-	r.DragEnter([]string{"application/x-gelm-tile"}, Point{X: 5, Y: 5})
+	r.DragEnter([]string{"application/x-lys-ui-tile"}, Point{X: 5, Y: 5})
 
-	r.Drop("application/x-gelm-tile", []byte("tile-7"), Point{X: 7, Y: 9})
+	r.Drop("application/x-lys-ui-tile", []byte("tile-7"), Point{X: 7, Y: 9})
 
 	if a.drops != 1 {
 		t.Fatalf("panel got %d drops, want 1", a.drops)
 	}
-	if a.dropMime != "application/x-gelm-tile" || string(a.dropData) != "tile-7" || a.dropPoint != (Point{X: 7, Y: 9}) {
+	if a.dropMime != "application/x-lys-ui-tile" || string(a.dropData) != "tile-7" || a.dropPoint != (Point{X: 7, Y: 9}) {
 		t.Errorf("drop = (%q, %q, %v)", a.dropMime, a.dropData, a.dropPoint)
 	}
 	// The drop ends the hover: no dangling highlight, no stale mime.

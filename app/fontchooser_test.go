@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/stubbedev/gelm/internal/sysfont"
+	"github.com/stubbedev/lys-ui/internal/sysfont"
 )
 
 // TestFontFilter pins the chooser's search and monospace narrowing

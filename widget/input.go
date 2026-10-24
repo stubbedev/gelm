@@ -5,9 +5,9 @@ import (
 
 	"github.com/unxed/xkb-go"
 
-	"github.com/stubbedev/gelm/internal/style"
-	"github.com/stubbedev/gelm/render"
-	"github.com/stubbedev/gelm/transfer"
+	"github.com/stubbedev/lys-ui/internal/style"
+	"github.com/stubbedev/lys-ui/render"
+	"github.com/stubbedev/lys-ui/transfer"
 )
 
 // doubleClickWindow is the maximum gap between the clicks of a

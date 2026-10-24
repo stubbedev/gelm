@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 // Grapheme cluster editing: the editing unit is the grapheme cluster

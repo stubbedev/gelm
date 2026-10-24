@@ -3,7 +3,7 @@ package xdg
 
 //go:generate ../../../../../bin/go-wayland-scanner -pkg xdg -i xdg-shell.xml -o xdg-shell.xml.go
 
-import "github.com/stubbedev/gelm/third_party/neurlang-wayland/wl"
+import "github.com/stubbedev/lys-ui/third_party/neurlang-wayland/wl"
 
 type (
 	WlSurface = wl.Surface

@@ -3,7 +3,7 @@ package component
 import (
 	"context"
 
-	"github.com/stubbedev/gelm/widget"
+	"github.com/stubbedev/lys-ui/widget"
 )
 
 // Context returns a context cancelled when the component shuts down,

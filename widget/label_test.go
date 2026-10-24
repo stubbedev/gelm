@@ -6,7 +6,7 @@ import (
 
 	"golang.org/x/image/font/gofont/goregular"
 
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 func testFace(t *testing.T) *render.Typeface {
@@ -22,7 +22,7 @@ func TestLabelMeasure(t *testing.T) {
 	face := testFace(t)
 
 	t.Run("nonempty text wants positive space", func(t *testing.T) {
-		got := NewLabel(face, 14, "gelm", render.RGB(255, 255, 255)).Measure(Constraints{Max: Size{W: 500, H: 100}})
+		got := NewLabel(face, 14, "lys-ui", render.RGB(255, 255, 255)).Measure(Constraints{Max: Size{W: 500, H: 100}})
 		if got.W <= 0 || got.H <= 0 {
 			t.Errorf("measure = %v, want positive", got)
 		}
@@ -40,14 +40,14 @@ func TestLabelMeasure(t *testing.T) {
 
 	t.Run("wider text wants more width", func(t *testing.T) {
 		short := NewLabel(face, 14, "g", render.RGB(255, 255, 255)).Measure(Constraints{Max: Size{W: 500, H: 100}})
-		long := NewLabel(face, 14, "gelmland", render.RGB(255, 255, 255)).Measure(Constraints{Max: Size{W: 500, H: 100}})
+		long := NewLabel(face, 14, "lysland", render.RGB(255, 255, 255)).Measure(Constraints{Max: Size{W: 500, H: 100}})
 		if long.W <= short.W {
 			t.Errorf("long %d <= short %d", long.W, short.W)
 		}
 	})
 
 	t.Run("clamps to the constraint ceiling", func(t *testing.T) {
-		got := NewLabel(face, 14, "gelm is great", render.RGB(255, 255, 255)).Measure(Constraints{Max: Size{W: 20, H: 8}})
+		got := NewLabel(face, 14, "lys-ui is great", render.RGB(255, 255, 255)).Measure(Constraints{Max: Size{W: 20, H: 8}})
 		if got.W != 20 || got.H != 8 {
 			t.Errorf("measure = %v, want clamped to 20x8", got)
 		}

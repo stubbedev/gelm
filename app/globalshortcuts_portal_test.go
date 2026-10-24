@@ -26,7 +26,7 @@ func TestPortalShortcutsDispatch(t *testing.T) {
 		Name: portalResponse,
 		Path: "/org/freedesktop/portal/desktop/request/:1.42/bind1",
 		Body: []any{uint32(0), map[string]dbus.Variant{
-			"session_handle": dbus.MakeVariant(dbus.ObjectPath("/org/freedesktop/portal/desktop/session/:1.42/gelm_s1")),
+			"session_handle": dbus.MakeVariant(dbus.ObjectPath("/org/freedesktop/portal/desktop/session/:1.42/lysui_s1")),
 		}},
 	})
 	select {
@@ -117,8 +117,8 @@ func TestPortalDeniedMapsResponseCode(t *testing.T) {
 // last slash of the request path.
 func TestPathTail(t *testing.T) {
 	cases := map[string]string{
-		"/org/freedesktop/portal/desktop/request/:1.42/gelm1": "gelm1",
-		"/org/freedesktop/portal/desktop/request/_1_42/gelm2": "gelm2",
+		"/org/freedesktop/portal/desktop/request/:1.42/lysui1": "lysui1",
+		"/org/freedesktop/portal/desktop/request/_1_42/lysui2": "lysui2",
 		"nopath": "",
 	}
 	for path, want := range cases {

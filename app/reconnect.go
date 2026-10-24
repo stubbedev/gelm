@@ -16,10 +16,10 @@ import (
 
 	"github.com/unxed/xkb-go"
 
-	"github.com/stubbedev/gelm/internal/debug"
-	"github.com/stubbedev/gelm/internal/dragdrop"
-	"github.com/stubbedev/gelm/internal/window"
-	"github.com/stubbedev/gelm/internal/wlsession"
+	"github.com/stubbedev/lys-ui/internal/debug"
+	"github.com/stubbedev/lys-ui/internal/dragdrop"
+	"github.com/stubbedev/lys-ui/internal/window"
+	"github.com/stubbedev/lys-ui/internal/wlsession"
 )
 
 // ReconnectOptions turn a lost compositor connection into a rebuild

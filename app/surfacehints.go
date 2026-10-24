@@ -1,10 +1,10 @@
 package app
 
 import (
-	"github.com/stubbedev/gelm/internal/window"
-	"github.com/stubbedev/gelm/internal/wlsession"
-	"github.com/stubbedev/gelm/third_party/neurlang-wayland/wl"
-	"github.com/stubbedev/gelm/widget"
+	"github.com/stubbedev/lys-ui/internal/window"
+	"github.com/stubbedev/lys-ui/internal/wlsession"
+	"github.com/stubbedev/lys-ui/third_party/neurlang-wayland/wl"
+	"github.com/stubbedev/lys-ui/widget"
 )
 
 // ContentType hints what a surface shows (wp_content_type_v1), so the

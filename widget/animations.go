@@ -14,9 +14,9 @@ import (
 	"math"
 	"time"
 
-	"github.com/stubbedev/gelm/anim"
-	"github.com/stubbedev/gelm/internal/animclock"
-	"github.com/stubbedev/gelm/internal/style"
+	"github.com/stubbedev/lys-ui/anim"
+	"github.com/stubbedev/lys-ui/internal/animclock"
+	"github.com/stubbedev/lys-ui/internal/style"
 )
 
 // animDriveSpan bounds one drive tween of an animation whose active

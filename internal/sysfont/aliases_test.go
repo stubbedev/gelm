@@ -156,9 +156,9 @@ func TestWeightedResolvesAFamilyByAnotherOfItsNames(t *testing.T) {
 	storeMu.Lock()
 	saved, savedBuilt := aliasIndex, aliasIndexBuilt
 	aliasIndex = map[string][]aliasFace{
-		"gelmtestaliasfamily": faces(aspect(400, font.StyleNormal)),
+		"lystestaliasfamily": faces(aspect(400, font.StyleNormal)),
 	}
-	aliasIndex["gelmtestaliasfamily"][0].loc = fontscan.Location{File: "../../render/testdata/Cantarell-Regular.ttf"}
+	aliasIndex["lystestaliasfamily"][0].loc = fontscan.Location{File: "../../render/testdata/Cantarell-Regular.ttf"}
 	aliasIndexBuilt = true
 	storeMu.Unlock()
 	t.Cleanup(func() {
@@ -167,14 +167,14 @@ func TestWeightedResolvesAFamilyByAnotherOfItsNames(t *testing.T) {
 		storeMu.Unlock()
 	})
 
-	tf, err := Weighted("Gelm Test Alias Family", 14, 400, false)
+	tf, err := Weighted("Lys Test Alias Family", 14, 400, false)
 	if err != nil {
 		t.Fatalf("Weighted: %v", err)
 	}
 	if got := font.NormalizeFamily(tf.Family()); got != "cantarell" {
 		t.Errorf("alias resolved to %q, want the aliased cantarell face", tf.Family())
 	}
-	tf, err = Weighted("Gelm Unknown Family", 14, 400, false)
+	tf, err = Weighted("lys-ui Unknown Family", 14, 400, false)
 	if err != nil {
 		t.Fatalf("Weighted(unknown): %v", err)
 	}

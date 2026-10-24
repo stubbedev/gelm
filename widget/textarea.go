@@ -4,9 +4,9 @@ import (
 	"math"
 	"strings"
 
-	"github.com/stubbedev/gelm/internal/style"
-	"github.com/stubbedev/gelm/internal/text"
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/internal/style"
+	"github.com/stubbedev/lys-ui/internal/text"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 // TextArea is a multi-line editor: logical lines split on newlines,

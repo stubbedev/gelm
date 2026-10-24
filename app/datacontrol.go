@@ -5,8 +5,8 @@
 package app
 
 import (
-	"github.com/stubbedev/gelm/internal/datacontrol"
-	"github.com/stubbedev/gelm/internal/xfer"
+	"github.com/stubbedev/lys-ui/internal/datacontrol"
+	"github.com/stubbedev/lys-ui/internal/xfer"
 )
 
 // DataControl is the seat's data-control device, over

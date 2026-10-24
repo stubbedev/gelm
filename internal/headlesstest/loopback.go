@@ -14,7 +14,7 @@ import (
 // away at cleanup.
 func RuntimeDir(t *testing.T) string {
 	t.Helper()
-	dir, err := os.MkdirTemp("", "gelm-rt-")
+	dir, err := os.MkdirTemp("", "lys-ui-rt-")
 	if err != nil {
 		t.Fatal(err)
 	}

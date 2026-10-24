@@ -12,7 +12,7 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/stubbedev/gelm/internal/headlesstest"
+	"github.com/stubbedev/lys-ui/internal/headlesstest"
 )
 
 const usage = "usage: zz-vpclick X Y [click | dclick | scroll DY | key CODE | type TEXT]"

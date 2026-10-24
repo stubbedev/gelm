@@ -10,10 +10,10 @@ import (
 	"github.com/unxed/xkb-go"
 	"golang.org/x/image/font/gofont/goregular"
 
-	"github.com/stubbedev/gelm/internal/inspect"
-	"github.com/stubbedev/gelm/internal/wlsession"
-	"github.com/stubbedev/gelm/render"
-	"github.com/stubbedev/gelm/widget"
+	"github.com/stubbedev/lys-ui/internal/inspect"
+	"github.com/stubbedev/lys-ui/internal/wlsession"
+	"github.com/stubbedev/lys-ui/render"
+	"github.com/stubbedev/lys-ui/widget"
 )
 
 // chordTree builds a small arranged tree for the chord tests.
@@ -108,20 +108,20 @@ func TestOverlayWrappingIsTransparent(t *testing.T) {
 }
 
 func TestDoctorRequested(t *testing.T) {
-	t.Setenv("GELM_DOCTOR", "1")
+	t.Setenv("LYS_UI_DOCTOR", "1")
 	if !doctorRequested() {
-		t.Error("GELM_DOCTOR=1 not requested")
+		t.Error("LYS_UI_DOCTOR=1 not requested")
 	}
-	t.Setenv("GELM_DOCTOR", "off")
+	t.Setenv("LYS_UI_DOCTOR", "off")
 	if doctorRequested() {
-		t.Error("GELM_DOCTOR=off requested the doctor")
+		t.Error("LYS_UI_DOCTOR=off requested the doctor")
 	}
 }
 
 // TestNewApplicationPrintsDoctorOnEnv runs the startup doctor against
 // a zero-value session through a pipe and pins the required lines.
 func TestNewApplicationPrintsDoctorOnEnv(t *testing.T) {
-	t.Setenv("GELM_DOCTOR", "1")
+	t.Setenv("LYS_UI_DOCTOR", "1")
 
 	old := os.Stdout
 	r, w, err := os.Pipe()
@@ -140,7 +140,7 @@ func TestNewApplicationPrintsDoctorOnEnv(t *testing.T) {
 	}
 	got := string(out)
 	for _, want := range []string{
-		"gelm doctor\n",
+		"lys-ui doctor\n",
 		"globals: (none bound)\n",
 		"outputs: (none)\n",
 		"cursor theme: unavailable",

@@ -1,6 +1,6 @@
 package component
 
-import "github.com/stubbedev/gelm/internal/mailbox"
+import "github.com/stubbedev/lys-ui/internal/mailbox"
 
 type outlet[Out any] struct {
 	loop    Loop

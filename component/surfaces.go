@@ -1,6 +1,6 @@
 package component
 
-import "github.com/stubbedev/gelm/app"
+import "github.com/stubbedev/lys-ui/app"
 
 // DialogResponder is implemented by components run as a dialog that
 // react to its response (a button, Esc, Enter): OnResponse runs on the

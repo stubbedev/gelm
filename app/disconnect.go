@@ -13,8 +13,8 @@ package app
 import (
 	"errors"
 
-	"github.com/stubbedev/gelm/internal/debug"
-	"github.com/stubbedev/gelm/internal/wlsession"
+	"github.com/stubbedev/lys-ui/internal/debug"
+	"github.com/stubbedev/lys-ui/internal/wlsession"
 )
 
 // ErrDisconnected reports the compositor ended the connection. Run

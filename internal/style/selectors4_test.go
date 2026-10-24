@@ -4,7 +4,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 // pseudoCompute is computeTree for one pseudo-element of n, inheriting

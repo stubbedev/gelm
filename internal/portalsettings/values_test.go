@@ -5,7 +5,7 @@ import (
 
 	"github.com/godbus/dbus/v5"
 
-	"github.com/stubbedev/gelm/appearance"
+	"github.com/stubbedev/lys-ui/appearance"
 )
 
 // TestAccentValue pins the accent mapping: a (ddd) triple inside a

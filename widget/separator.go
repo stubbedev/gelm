@@ -1,6 +1,6 @@
 package widget
 
-import "github.com/stubbedev/gelm/render"
+import "github.com/stubbedev/lys-ui/render"
 
 // Orientation is the main direction an oriented widget runs along.
 type Orientation uint8

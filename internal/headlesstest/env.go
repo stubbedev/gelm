@@ -16,7 +16,7 @@ import (
 // renderer inside a private XDG_RUNTIME_DIR, socket polled until it
 // appears) - so the test binary carries no boot knowledge and the env
 // outlives it, shared by every test in the run. Which compositor is
-// attached is the driver's business: GELM_TEST_COMPOSITOR names it
+// attached is the driver's business: LYS_UI_TEST_COMPOSITOR names it
 // ("sway" default, "hyprland" for the VM gate).
 type Env struct {
 	// Dir is the session's private XDG_RUNTIME_DIR (mode 0700). The
@@ -43,7 +43,7 @@ func Attach() (*Env, error) {
 	if _, err := os.Stat(filepath.Join(dir, display)); err != nil { //nolint:gosec // the dir is the recipe's private runtime dir, the display its socket name
 		return nil, fmt.Errorf("headlesstest: compositor socket %s/%s: %w", dir, display, err)
 	}
-	compositor, err := driverFor(os.Getenv("GELM_TEST_COMPOSITOR"))
+	compositor, err := driverFor(os.Getenv("LYS_UI_TEST_COMPOSITOR"))
 	if err != nil {
 		return nil, err
 	}

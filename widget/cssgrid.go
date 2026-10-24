@@ -16,8 +16,8 @@ import (
 	"math"
 	"slices"
 
-	"github.com/stubbedev/gelm/internal/style"
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/internal/style"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 // gridSizing is how a grid sizes one axis: into a definite extent, or

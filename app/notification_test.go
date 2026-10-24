@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stubbedev/gelm/internal/notify"
+	"github.com/stubbedev/lys-ui/internal/notify"
 )
 
 // TestNotifyRoutesActionsOntoLoop pins the loop bridge: an activation

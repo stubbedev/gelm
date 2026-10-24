@@ -5,12 +5,12 @@
 package widget
 
 import (
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 // Role classifies a widget for assistive technology. The names follow
 // the AT-SPI roles an out-of-process bridge would translate to, so
-// callers can switch on them without gelm gaining a dbus dependency.
+// callers can switch on them without lys-ui gaining a dbus dependency.
 type Role uint8
 
 // Semantic roles. RoleNone is zero: layout containers, spacers, and
@@ -205,7 +205,7 @@ func Describe(w Widget) A11yState {
 
 // a11yNamer is a widget whose accessible name derives from its own
 // content when no tooltip names it. The method is unexported, so only
-// gelm's widgets implement it - and every type embedding one.
+// lys-ui's widgets implement it - and every type embedding one.
 type a11yNamer interface{ a11yName() string }
 
 // A bare label's text is its accessible name.

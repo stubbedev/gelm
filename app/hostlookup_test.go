@@ -4,10 +4,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stubbedev/gelm/internal/layersurface"
-	"github.com/stubbedev/gelm/internal/window"
-	"github.com/stubbedev/gelm/internal/wlsession"
-	"github.com/stubbedev/gelm/widget"
+	"github.com/stubbedev/lys-ui/internal/layersurface"
+	"github.com/stubbedev/lys-ui/internal/window"
+	"github.com/stubbedev/lys-ui/internal/wlsession"
+	"github.com/stubbedev/lys-ui/widget"
 )
 
 func TestHandlesResolveToTheirWindows(t *testing.T) {

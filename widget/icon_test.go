@@ -10,8 +10,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/stubbedev/gelm/internal/icons"
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/internal/icons"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 const (

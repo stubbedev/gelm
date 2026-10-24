@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/stubbedev/gelm/widget"
+	"github.com/stubbedev/lys-ui/widget"
 )
 
 // show shows a line's spans as class:text pairs.

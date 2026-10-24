@@ -4,7 +4,7 @@ import (
 	"math"
 	"strings"
 
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 // space is one CSS Color 4 interpolation space: the component layout

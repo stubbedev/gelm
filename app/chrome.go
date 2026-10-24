@@ -6,8 +6,8 @@ import (
 	"slices"
 	"strconv"
 
-	"github.com/stubbedev/gelm/render"
-	"github.com/stubbedev/gelm/widget"
+	"github.com/stubbedev/lys-ui/render"
+	"github.com/stubbedev/lys-ui/widget"
 )
 
 // Client-side window chrome wiring (#91): the widgets live in the
@@ -20,7 +20,7 @@ import (
 // compositor offers server-side decoration the window asks for it and
 // keeps its passive edge handles; a HeaderBar in the tree is an app's
 // explicit opt into client-side chrome, the GTK4 default inverted:
-// gelm windows are undecorated unless the app draws chrome or the
+// lys-ui windows are undecorated unless the app draws chrome or the
 // compositor decorates them. Both can coexist (a compositor frame
 // around an app-drawn header); the app is always right about what it
 // draws.

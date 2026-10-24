@@ -3,8 +3,8 @@ package popup
 import (
 	"testing"
 
-	"github.com/stubbedev/gelm/render"
-	"github.com/stubbedev/gelm/third_party/neurlang-wayland/xdg"
+	"github.com/stubbedev/lys-ui/render"
+	"github.com/stubbedev/lys-ui/third_party/neurlang-wayland/xdg"
 )
 
 // A point anchors as a 1x1 rect the popup grows down-right of, free to

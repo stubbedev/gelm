@@ -10,8 +10,8 @@ package widget
 import (
 	"slices"
 
-	"github.com/stubbedev/gelm/internal/style"
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/internal/style"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 // cssInsets is one widget's resolved box: margin, border, and padding.

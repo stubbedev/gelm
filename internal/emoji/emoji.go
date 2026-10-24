@@ -1,4 +1,4 @@
-// Package emoji is gelm's emoji chooser data (#92): a curated table
+// Package emoji is lys-ui's emoji chooser data (#92): a curated table
 // of common Unicode emoji grouped by category with search keywords,
 // parsed once from a compact literal. This is a starter table - a few
 // hundred well-chosen emoji, not the full CLDR set - kept in one

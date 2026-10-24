@@ -10,19 +10,19 @@ import (
 
 // The compositor-in-the-loop suite: attaches to the private headless
 // sway session the just headless recipe booted (TestMain, only when
-// GELM_HEADLESS is set), runs the widget showcase inside it, and drives
+// LYS_UI_HEADLESS is set), runs the widget showcase inside it, and drives
 // a synthetic seat against it. Every
 // assertion lands on the client's own trace log - the input must have
 // traversed compositor, wire, session and widget tree for a trace to
 // appear, which is what makes this a regression net for live-input
 // bugs (#1) that widget-tree unit tests cannot see.
 
-// run gates the suite: without GELM_HEADLESS the integration tests
+// run gates the suite: without LYS_UI_HEADLESS the integration tests
 // skip (local dev has no compositor), with it set the env is required
 // and a missing compositor fails the package - a skip behind
-// GELM_HEADLESS would be a silent hole in CI.
+// LYS_UI_HEADLESS would be a silent hole in CI.
 func run(m *testing.M) int {
-	if os.Getenv("GELM_HEADLESS") == "" {
+	if os.Getenv("LYS_UI_HEADLESS") == "" {
 		return m.Run()
 	}
 	env, err := Attach()
@@ -72,8 +72,8 @@ const attemptTimeout = 3 * time.Second
 
 func requireEnv(t *testing.T) {
 	t.Helper()
-	if os.Getenv("GELM_HEADLESS") == "" {
-		t.Skip("GELM_HEADLESS is not set; compositor input tests run under just check-headless")
+	if os.Getenv("LYS_UI_HEADLESS") == "" {
+		t.Skip("LYS_UI_HEADLESS is not set; compositor input tests run under just check-headless")
 	}
 }
 
@@ -661,12 +661,12 @@ func TestHeadlessClipboardRoundtrip(t *testing.T) {
 	}
 }
 
-// startStatesClient launches the window-state client (cmd/gelm-states)
+// startStatesClient launches the window-state client (cmd/lys-ui-states)
 // with demo (the client's confirmed-state traces) and shell (the
 // window's own state-change traces) on, and attaches a watcher.
 func startStatesClient(t *testing.T) (*Client, *LogWatcher) {
 	t.Helper()
-	bin, err := BuildClient(testEnv.Dir, "./cmd/gelm-states", "gelm-states")
+	bin, err := BuildClient(testEnv.Dir, "./cmd/lys-ui-states", "lys-ui-states")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -805,11 +805,11 @@ func TestHeadlessWindowStates(t *testing.T) {
 }
 
 // startMultilistClient launches the multi-select list client
-// (cmd/gelm-multilist) and returns it with a trace watcher and the row
+// (cmd/lys-ui-multilist) and returns it with a trace watcher and the row
 // centers the client traced after mapping at the pinned size.
 func startMultilistClient(t *testing.T) (*Client, *LogWatcher, [][2]int) {
 	t.Helper()
-	bin, err := BuildClient(testEnv.Dir, "./cmd/gelm-multilist", "gelm-multilist")
+	bin, err := BuildClient(testEnv.Dir, "./cmd/lys-ui-multilist", "lys-ui-multilist")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1020,7 +1020,7 @@ func TestHeadlessDialogModality(t *testing.T) {
 // timer (no input arriving), and Esc dismisses it with focus inside.
 func TestHeadlessPopoverTakesTypingAndRepaints(t *testing.T) {
 	requireEnv(t)
-	bin, err := BuildClient(testEnv.Dir, "./cmd/gelm-popover", "gelm-popover")
+	bin, err := BuildClient(testEnv.Dir, "./cmd/lys-ui-popover", "lys-ui-popover")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1110,7 +1110,7 @@ func TestHeadlessPopoverTakesTypingAndRepaints(t *testing.T) {
 // lives on to open the menu again.
 func TestHeadlessNestedMenuPopover(t *testing.T) {
 	requireEnv(t)
-	bin, err := BuildClient(testEnv.Dir, "./cmd/gelm-popover", "gelm-popover")
+	bin, err := BuildClient(testEnv.Dir, "./cmd/lys-ui-popover", "lys-ui-popover")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1441,7 +1441,7 @@ func TestHeadlessCursorShapePaths(t *testing.T) {
 		want string
 	}{
 		{"protocol", nil, `cursor shape "xterm"`},
-		{"theme", []string{"GELM_NO_CURSOR_SHAPE=1"}, `cursor "xterm"`},
+		{"theme", []string{"LYS_UI_NO_CURSOR_SHAPE=1"}, `cursor "xterm"`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			_, w, centers := startShowcaseEnv(t, tc.env...)
@@ -1458,7 +1458,7 @@ func TestHeadlessCursorShapePaths(t *testing.T) {
 // requested quiet time, and input resumes it.
 func TestHeadlessIdleNotify(t *testing.T) {
 	requireEnv(t)
-	_, w, centers := startShowcaseEnv(t, "GELM_DEMO_IDLE_MS=400")
+	_, w, centers := startShowcaseEnv(t, "LYS_UI_DEMO_IDLE_MS=400")
 	if _, err := w.Wait("demo", "idle", traceTimeout); err != nil {
 		t.Fatalf("the seat never went idle: %v", err)
 	}
@@ -1501,7 +1501,7 @@ func commitsWithin(w *LogWatcher, d time.Duration) int {
 // quiet.
 func TestHeadlessVideoPlays(t *testing.T) {
 	requireEnv(t)
-	bin, err := BuildClient(testEnv.Dir, "./cmd/gelm-video", "gelm-video")
+	bin, err := BuildClient(testEnv.Dir, "./cmd/lys-ui-video", "lys-ui-video")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1540,7 +1540,7 @@ func TestHeadlessVideoPlays(t *testing.T) {
 // frame callbacks and presents each one.
 func TestHeadlessGPUAreaPaces(t *testing.T) {
 	requireEnv(t)
-	bin, err := BuildClient(testEnv.Dir, "./cmd/gelm-gpu", "gelm-gpu")
+	bin, err := BuildClient(testEnv.Dir, "./cmd/lys-ui-gpu", "lys-ui-gpu")
 	if err != nil {
 		t.Fatal(err)
 	}

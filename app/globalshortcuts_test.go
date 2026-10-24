@@ -4,7 +4,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/stubbedev/gelm/wlr"
+	"github.com/stubbedev/lys-ui/wlr"
 )
 
 func TestGlobalShortcutEventsReachTheCallback(t *testing.T) {

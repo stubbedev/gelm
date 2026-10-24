@@ -5,9 +5,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/stubbedev/gelm/internal/golden"
-	"github.com/stubbedev/gelm/render"
-	"github.com/stubbedev/gelm/widget"
+	"github.com/stubbedev/lys-ui/internal/golden"
+	"github.com/stubbedev/lys-ui/render"
+	"github.com/stubbedev/lys-ui/widget"
 )
 
 // lineCase is one line and its expected spans (show's notation).
@@ -78,8 +78,8 @@ func TestGoStateCarries(t *testing.T) {
 func TestJSONLines(t *testing.T) {
 	checkLines(t, JSON{}, []lineCase{
 		{
-			`{"name": "gelm", "n": -1.5e3, "ok": true, "none": null}`,
-			`type:"name" string:"gelm" type:"n" floating-point:-1.5e3 type:"ok" boolean:true type:"none" special-constant:null`,
+			`{"name": "lys-ui", "n": -1.5e3, "ok": true, "none": null}`,
+			`type:"name" string:"lys-ui" type:"n" floating-point:-1.5e3 type:"ok" boolean:true type:"none" special-constant:null`,
 		},
 		{`["a\n", 42, false]`, `string:"a special-char:\n string:" decimal:42 boolean:false`},
 		{`{"k" : 1}`, `type:"k" decimal:1`},
@@ -91,7 +91,7 @@ func TestYAMLLines(t *testing.T) {
 	checkLines(t, YAML{}, []lineCase{
 		{`# config`, `comment:# config`},
 		{`---`, `preprocessor:---`},
-		{`name: gelm # the toolkit`, `type:name comment:# the toolkit`},
+		{`name: lys-ui # the toolkit`, `type:name comment:# the toolkit`},
 		{`  enabled: yes`, `type:enabled boolean:yes`},
 		{`count: 42`, `type:count decimal:42`},
 		{`ratio: .5`, `type:ratio floating-point:.5`},

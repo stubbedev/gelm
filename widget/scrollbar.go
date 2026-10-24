@@ -1,8 +1,8 @@
 package widget
 
 import (
-	"github.com/stubbedev/gelm/internal/style"
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/internal/style"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 // ScrollRange is one axis of a scroll position (GTK Adjustment's

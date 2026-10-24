@@ -4,7 +4,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 // The Entry completion half of #92: an inline match list below the

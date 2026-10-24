@@ -1,4 +1,4 @@
-// Layout and paint benchmarks over the showcase tree - the gelm-hello
+// Layout and paint benchmarks over the showcase tree - the lys-ui-hello
 // window shape from damage_test.go. One benchmark per frame pass, all
 // with fixed sizes and no time-dependent content, so numbers stay
 // comparable across runs: CI archives them as an artifact for trend
@@ -8,7 +8,7 @@ package widget
 import (
 	"testing"
 
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 // BenchmarkShowcaseMeasure measures the cold layout pass: alternating

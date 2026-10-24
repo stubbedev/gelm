@@ -9,12 +9,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stubbedev/gelm/internal/animclock"
-	"github.com/stubbedev/gelm/internal/surfx"
-	"github.com/stubbedev/gelm/internal/wlsession"
-	"github.com/stubbedev/gelm/render"
-	"github.com/stubbedev/gelm/third_party/neurlang-wayland/xdg"
-	"github.com/stubbedev/gelm/widget"
+	"github.com/stubbedev/lys-ui/internal/animclock"
+	"github.com/stubbedev/lys-ui/internal/surfx"
+	"github.com/stubbedev/lys-ui/internal/wlsession"
+	"github.com/stubbedev/lys-ui/render"
+	"github.com/stubbedev/lys-ui/third_party/neurlang-wayland/xdg"
+	"github.com/stubbedev/lys-ui/widget"
 )
 
 // inkProbe is a leaf that fills its bounds — the paint-count hook.

@@ -5,9 +5,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/stubbedev/gelm/internal/debug"
-	"github.com/stubbedev/gelm/internal/recentfiles"
-	"github.com/stubbedev/gelm/widget"
+	"github.com/stubbedev/lys-ui/internal/debug"
+	"github.com/stubbedev/lys-ui/internal/recentfiles"
+	"github.com/stubbedev/lys-ui/widget"
 )
 
 // FileDialogConfig declares an open dialog: where it starts, what it
@@ -122,7 +122,7 @@ func (a *Application) fileDialog(parent *Window, mode widget.FileMode, defTitle,
 		}
 		manager := a.recentsManager()
 		for _, p := range chosen {
-			if err := manager.Add(p, "gelm"); err != nil {
+			if err := manager.Add(p, "lys-ui"); err != nil {
 				debug.Log("config", "recents add %s: %v", p, err)
 			}
 		}

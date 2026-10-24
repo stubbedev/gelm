@@ -6,8 +6,8 @@
 package touchinput
 
 import (
-	"github.com/stubbedev/gelm/internal/wlsession"
-	"github.com/stubbedev/gelm/widget"
+	"github.com/stubbedev/lys-ui/internal/wlsession"
+	"github.com/stubbedev/lys-ui/widget"
 )
 
 // Input routes one surface's touch contacts and touchpad gestures.

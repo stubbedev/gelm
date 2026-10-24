@@ -4,8 +4,8 @@ import (
 	"math"
 	"testing"
 
-	"github.com/stubbedev/gelm/internal/style"
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/internal/style"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 // The values group reads lengths through letter-spacing (a float px

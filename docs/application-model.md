@@ -1,6 +1,6 @@
-# gelm application model
+# lys-ui application model
 
-How gelm composes many windows in one process, and the relm4 and
+How lys-ui composes many windows in one process, and the relm4 and
 gtk4-layer-shell concepts it borrows.
 
 ## Pieces
@@ -24,7 +24,7 @@ gtk4-layer-shell concepts it borrows.
 
 Wayland has no reconnection: when the compositor restarts (crash,
 reload, upgrade), the kernel kills every client's socket and every
-proxy object on the connection dies with it. gelm turns that from
+proxy object on the connection dies with it. lys-ui turns that from
 "whatever a dead socket read does" into a defined story.
 
 **Detection.** Every dispatch surface — the loop's park
@@ -144,7 +144,7 @@ token - and exits with status 0 without ever connecting the session.
 
 ```go
 ins, primary, err := app.ClaimInstance(app.InstanceConfig{
-    AppID: "dev.stubbe.gelm.messages",
+    AppID: "dev.stubbe.lys.ui.messages",
     OnCommandLine: func(args []string, cwd string) { ... },
     OnOpen:       func(paths []string, cwd string) { ... },
 }, app.OSInvocation(os.Args[1:]))
@@ -167,7 +167,7 @@ socket; the next claim dials it, gets no answer, and reclaims it.
 `allow_multiple_instances`). The claim races safely between two
 simultaneous launches: the socket bind is atomic, the loser forwards.
 
-The worked example is `cmd/gelm-messages`: run it twice and the second
+The worked example is `cmd/lys-ui-messages`: run it twice and the second
 run toasts in the first's windows and exits. The compositor-in-the-loop
 test is `TestSingleInstanceForwardsToPrimary`
 (internal/headlesstest): two real processes, one wins, the loser's
@@ -184,7 +184,7 @@ dialog until the choice is valid (the `DialogConfig.ValidateResponse`
 veto). Save asks before replacing an existing file;
 choices land in `OnOpen`/`OnSave` on the loop goroutine, exactly once.
 
-**The picker is portal-free by decision.** gelm ships every widget the
+**The picker is portal-free by decision.** lys-ui ships every widget the
 picker needs, a portal FileChooser adds a D-Bus dependency and a
 second UI to keep honest, and portal-less sessions (lab machines,
 early boot, tests) get the same dialog. The seam is
@@ -215,7 +215,7 @@ action, and `OnDone` with the action the drop finished as
 (`ActionMove`: delete the source data; `ActionNone`: cancelled). A
 drop target picks among the offered actions through
 `widget.DropActionChooser`; an ask drop settles on that pick, since
-gelm shows no drop menu. Escape cancels the application's own drag
+lys-ui shows no drop menu. Escape cancels the application's own drag
 when the compositor delivers the key (most cancel on Escape
 themselves), and `Application.CancelDrag` does it from code.
 
@@ -243,7 +243,7 @@ window in one call - `Window.SetTitle`, `Minimize`, and
 
 **Decoration policy.** xdg-decoration stays as it is: a compositor
 offering server-side decoration gets asked for it. A HeaderBar in the
-tree is the app's explicit opt into client-side chrome - gelm windows
+tree is the app's explicit opt into client-side chrome - lys-ui windows
 ship undecorated otherwise, the GTK4 default inverted. The two can
 coexist (a compositor frame around an app-drawn header); the app is
 always right about what it draws itself, the compositor about what it
@@ -265,7 +265,7 @@ URI launch never trade tokens.
 
 ## Concept mapping
 
-| relm4 / GTK | gelm | note |
+| relm4 / GTK | lys-ui | note |
 | --- | --- | --- |
 | `relm4::RelmApp`, `gtk::Application` | `app.Application` | construct, hook, `Run`; there is no `startup`/`activate` split |
 | `ApplicationWindow` | `app.Window` from a `WindowConfig` | a declarative config instead of builder chains |

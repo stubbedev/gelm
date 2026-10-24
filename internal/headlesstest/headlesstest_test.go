@@ -13,7 +13,7 @@ import (
 func TestParseTraces(t *testing.T) {
 	log := "  0.512s input: wire button 272 state=1 serial=9\n" +
 		" 12.000s demo: button clicked 2 times\n" +
-		"gelm-hello: mapped at 640x470\n" + // plain log line, no category
+		"lys-ui-hello: mapped at 640x470\n" + // plain log line, no category
 		"\n" +
 		"panic: dead\n"
 	trs := ParseTraces([]byte(log))
@@ -27,7 +27,7 @@ func TestParseTraces(t *testing.T) {
 	if trs[1].Category != "demo" || trs[1].Message != "button clicked 2 times" {
 		t.Errorf("trace 1 = %+v", trs[1])
 	}
-	if trs[2].Category != "" || trs[2].Message != "gelm-hello: mapped at 640x470" {
+	if trs[2].Category != "" || trs[2].Message != "lys-ui-hello: mapped at 640x470" {
 		t.Errorf("plain line not preserved: %+v", trs[2])
 	}
 	if trs[3].Message != "panic: dead" {
@@ -212,8 +212,8 @@ func TestModuleDirFindsRepoRoot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(filepath.Join(root, "cmd", "gelm-hello")); err != nil {
-		t.Errorf("module root %s has no cmd/gelm-hello: %v", root, err)
+	if _, err := os.Stat(filepath.Join(root, "cmd", "lys-ui-hello")); err != nil {
+		t.Errorf("module root %s has no cmd/lys-ui-hello: %v", root, err)
 	}
 }
 

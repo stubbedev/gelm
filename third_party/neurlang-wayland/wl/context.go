@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	sys "github.com/stubbedev/gelm/third_party/neurlang-wayland/os"
+	sys "github.com/stubbedev/lys-ui/third_party/neurlang-wayland/os"
 )
 
 // Context wraps the wayland connection together with the map of all Context objects (proxies)

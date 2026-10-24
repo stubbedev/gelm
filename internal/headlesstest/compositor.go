@@ -2,7 +2,7 @@
 // compositor-agnostic; the pieces that differ - how to close a client
 // window through the compositor's own control channel, where the boot
 // recipe records the pid, what it named the config and log - live
-// behind this interface. GELM_TEST_COMPOSITOR picks the driver
+// behind this interface. LYS_UI_TEST_COMPOSITOR picks the driver
 // ("sway" default, "hyprland"), so the same test run works against
 // either the sway gate (just headless) or the Hyprland VM gate
 // (tests/hyprland-vm.nix).
@@ -22,7 +22,7 @@ import (
 // the compositor's own output to the log, so the driver only carries
 // the names and the control protocol.
 type Compositor interface {
-	// Name is the driver's GELM_TEST_COMPOSITOR value, also the
+	// Name is the driver's LYS_UI_TEST_COMPOSITOR value, also the
 	// substring the failure diagnostics grep procfs for.
 	Name() string
 	// ConfigName is the compositor config file the recipe writes into
@@ -48,7 +48,7 @@ type Compositor interface {
 	Restart(dir string) error
 }
 
-// driverFor picks the compositor driver named by GELM_TEST_COMPOSITOR;
+// driverFor picks the compositor driver named by LYS_UI_TEST_COMPOSITOR;
 // sway stays the default so existing recipes keep working.
 func driverFor(name string) (Compositor, error) {
 	switch name {
@@ -57,7 +57,7 @@ func driverFor(name string) (Compositor, error) {
 	case "hyprland":
 		return hyprlandCompositor{}, nil
 	default:
-		return nil, fmt.Errorf("headlesstest: unknown GELM_TEST_COMPOSITOR %q (want \"sway\" or \"hyprland\")", name)
+		return nil, fmt.Errorf("headlesstest: unknown LYS_UI_TEST_COMPOSITOR %q (want \"sway\" or \"hyprland\")", name)
 	}
 }
 

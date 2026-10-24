@@ -1,8 +1,8 @@
 package widget
 
 import (
-	"github.com/stubbedev/gelm/render"
-	"github.com/stubbedev/gelm/widget/css"
+	"github.com/stubbedev/lys-ui/render"
+	"github.com/stubbedev/lys-ui/widget/css"
 )
 
 // EditableLabel is a label that edits in place (GTK EditableLabel):

@@ -1,6 +1,6 @@
 package widget
 
-import "github.com/stubbedev/gelm/render"
+import "github.com/stubbedev/lys-ui/render"
 
 // WindowTitle is libadwaita's AdwWindowTitle: a title over a smaller,
 // muted subtitle, centered in a header bar, each ellipsized; an empty

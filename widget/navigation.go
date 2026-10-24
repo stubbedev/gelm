@@ -4,7 +4,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 // The navigation vocabulary of #94: NavigationView (a push/pop page

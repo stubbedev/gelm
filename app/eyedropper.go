@@ -4,10 +4,10 @@ import (
 	"errors"
 	"image"
 
-	"github.com/stubbedev/gelm/capture"
-	"github.com/stubbedev/gelm/internal/debug"
-	"github.com/stubbedev/gelm/render"
-	"github.com/stubbedev/gelm/widget"
+	"github.com/stubbedev/lys-ui/capture"
+	"github.com/stubbedev/lys-ui/internal/debug"
+	"github.com/stubbedev/lys-ui/render"
+	"github.com/stubbedev/lys-ui/widget"
 )
 
 // The eyedropper half of #84: ColorChooserDialog wires a

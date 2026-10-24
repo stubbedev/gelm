@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stubbedev/gelm/internal/window"
-	"github.com/stubbedev/gelm/internal/wlsession"
+	"github.com/stubbedev/lys-ui/internal/window"
+	"github.com/stubbedev/lys-ui/internal/wlsession"
 )
 
 // The disconnect policy plans a rebuild only when reconnect is on, the

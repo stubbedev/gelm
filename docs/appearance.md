@@ -1,7 +1,7 @@
 # System appearance
 
 How an app follows the desktop's color scheme, accent color and
-contrast preference, and why gelm never applies them on its own.
+contrast preference, and why lys-ui never applies them on its own.
 
 The preferences live in xdg-desktop-portal's
 `org.freedesktop.portal.Settings` (`org.freedesktop.appearance`
@@ -58,7 +58,7 @@ reason to keep the current theme.
 - **No session bus.** The monitor is inert: everything reads unknown
   forever, no events fire, and no goroutines run.
 - **No portal, or the key is unreadable.** The values read unknown. The
-  name-ownership probe is a fast bus call, so gelm never waits on dbus
+  name-ownership probe is a fast bus call, so lys-ui never waits on dbus
   activation at startup. A portal that appears later is picked up on
   the next start.
 - **The bus or portal restarts mid-session.** The monitor reconnects

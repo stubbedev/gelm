@@ -10,10 +10,10 @@ import (
 
 	"github.com/godbus/dbus/v5"
 
-	"github.com/stubbedev/gelm/internal/atomicfile"
-	"github.com/stubbedev/gelm/pdf"
-	"github.com/stubbedev/gelm/render"
-	"github.com/stubbedev/gelm/widget"
+	"github.com/stubbedev/lys-ui/internal/atomicfile"
+	"github.com/stubbedev/lys-ui/pdf"
+	"github.com/stubbedev/lys-ui/render"
+	"github.com/stubbedev/lys-ui/widget"
 )
 
 const (
@@ -211,7 +211,7 @@ func ExportPDF(path string, job PrintJob) error {
 
 // Print prints job through the xdg-desktop-portal Print portal (GTK's
 // GtkPrintDialog): the portal's dialog picks the printer and page
-// setup, gelm renders the pages on the loop into a PDF at that setup,
+// setup, lys-ui renders the pages on the loop into a PDF at that setup,
 // and the portal sends it to the printer. parent (nil for none) is the
 // window the dialog belongs to. done runs on the loop with nil once
 // the job is queued, ErrPortalDenied when the user cancels,
@@ -248,7 +248,7 @@ func (a *Application) Print(parent *Window, job PrintJob, done func(error)) {
 }
 
 func spoolPDF(job PrintJob, setup PageSetup) (*os.File, error) {
-	f, err := os.CreateTemp("", "gelm-print-*.pdf")
+	f, err := os.CreateTemp("", "lys-ui-print-*.pdf")
 	if err != nil {
 		return nil, fmt.Errorf("app: print %q: spool file: %w", job.Title, err)
 	}

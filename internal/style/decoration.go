@@ -3,7 +3,7 @@ package style
 import (
 	"strings"
 
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 // The icon, caret and text-decoration property parsers.

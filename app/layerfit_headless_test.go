@@ -5,11 +5,11 @@ import (
 	"image"
 	"testing"
 
-	"github.com/stubbedev/gelm/app"
-	"github.com/stubbedev/gelm/capture"
-	"github.com/stubbedev/gelm/internal/headlesstest/inproc"
-	"github.com/stubbedev/gelm/render"
-	"github.com/stubbedev/gelm/widget"
+	"github.com/stubbedev/lys-ui/app"
+	"github.com/stubbedev/lys-ui/capture"
+	"github.com/stubbedev/lys-ui/internal/headlesstest/inproc"
+	"github.com/stubbedev/lys-ui/render"
+	"github.com/stubbedev/lys-ui/widget"
 )
 
 var fitInk = render.Color(0xff30a050)
@@ -30,7 +30,7 @@ func TestHeadlessLayerSizesToItsContent(t *testing.T) {
 			Output:    out,
 			Layer:     app.LayerOverlay,
 			Anchor:    app.AnchorBottom,
-			Namespace: "gelm-layerfit-test",
+			Namespace: "lys-ui-layerfit-test",
 			Root:      content,
 		})
 		win = w
@@ -90,7 +90,7 @@ func TestHeadlessUnsizedWindowMaps(t *testing.T) {
 	content := widget.NewDrawingArea(240, 160)
 	content.OnDraw = func(cv *render.Canvas, r render.Rect) { cv.FillRect(r, ink) }
 	inproc.Show(t, func(a *app.Application, _ *app.Output) error {
-		_, err := a.NewWindow(app.WindowConfig{Title: "gelm-unsized", Root: content})
+		_, err := a.NewWindow(app.WindowConfig{Title: "lys-ui-unsized", Root: content})
 		return err
 	})
 	c := inproc.Capture(t)

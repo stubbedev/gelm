@@ -6,9 +6,9 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/stubbedev/gelm/internal/style"
-	"github.com/stubbedev/gelm/internal/text"
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/internal/style"
+	"github.com/stubbedev/lys-ui/internal/text"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 // EllipsizeMode names where an overflowing label truncates. It is

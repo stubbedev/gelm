@@ -5,10 +5,10 @@ import (
 	"log"
 	"strconv"
 
-	"github.com/stubbedev/gelm/app"
-	"github.com/stubbedev/gelm/component"
-	"github.com/stubbedev/gelm/ui"
-	"github.com/stubbedev/gelm/widget"
+	"github.com/stubbedev/lys-ui/app"
+	"github.com/stubbedev/lys-ui/component"
+	"github.com/stubbedev/lys-ui/ui"
+	"github.com/stubbedev/lys-ui/widget"
 )
 
 type Msg int

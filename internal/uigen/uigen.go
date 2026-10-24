@@ -20,7 +20,7 @@ import (
 	"unicode"
 )
 
-const widgetPath = "github.com/stubbedev/gelm/widget"
+const widgetPath = "github.com/stubbedev/lys-ui/widget"
 
 var mutators = []string{"Set", "Add", "Bind", "Attach", "Append", "Insert", "Pack", "Push", "Put"}
 
@@ -587,11 +587,11 @@ func (g *gen) emitBuilder(name string) {
 	fmt.Fprintf(&g.out, "// %sBuilder builds a widget.%s.\n", name, name)
 	fmt.Fprintf(&g.out, "type %sBuilder%s struct {\n\tbase[%s, *%s]\n", name, tp.decl, wt, bt)
 	if needs["face"] || needs["size"] {
-		g.used["render"] = "github.com/stubbedev/gelm/render"
+		g.used["render"] = "github.com/stubbedev/lys-ui/render"
 		g.out.WriteString("\tface render.Font\n\tsize float64\n")
 	}
 	if needs["ink"] {
-		g.used["render"] = "github.com/stubbedev/gelm/render"
+		g.used["render"] = "github.com/stubbedev/lys-ui/render"
 		g.out.WriteString("\tink render.Color\n")
 	}
 	g.out.WriteString("}\n\n")

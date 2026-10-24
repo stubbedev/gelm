@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 // capture swaps the warning sink for one test and returns the messages.

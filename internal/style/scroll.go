@@ -14,7 +14,7 @@ import (
 
 // SnapAxis is scroll-snap-type's axis half: which axes the container
 // snaps. Block and Inline map onto the vertical and horizontal axes of
-// gelm's horizontal-tb world.
+// lys-ui's horizontal-tb world.
 type SnapAxis uint8
 
 // The scroll-snap-type axes.

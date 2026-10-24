@@ -2,8 +2,8 @@
 package wlclient
 
 import (
-	"github.com/stubbedev/gelm/third_party/neurlang-wayland/wl"
-	"github.com/stubbedev/gelm/third_party/neurlang-wayland/xdg"
+	"github.com/stubbedev/lys-ui/third_party/neurlang-wayland/wl"
+	"github.com/stubbedev/lys-ui/third_party/neurlang-wayland/xdg"
 )
 
 func DisplayDispatch(d *wl.Display) error {

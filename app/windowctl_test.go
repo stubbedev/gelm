@@ -3,9 +3,9 @@ package app
 import (
 	"testing"
 
-	"github.com/stubbedev/gelm/internal/window"
-	"github.com/stubbedev/gelm/internal/wlsession"
-	"github.com/stubbedev/gelm/third_party/neurlang-wayland/wl"
+	"github.com/stubbedev/lys-ui/internal/window"
+	"github.com/stubbedev/lys-ui/internal/wlsession"
+	"github.com/stubbedev/lys-ui/third_party/neurlang-wayland/wl"
 )
 
 func TestBeginMoveUsesTheLatestInputSerial(t *testing.T) {

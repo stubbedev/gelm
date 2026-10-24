@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 // dumpFixture builds the golden tree: a column with a header, a named

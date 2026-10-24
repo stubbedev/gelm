@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/stubbedev/gelm/third_party/neurlang-wayland/wl"
-	"github.com/stubbedev/gelm/wlr"
+	"github.com/stubbedev/lys-ui/third_party/neurlang-wayland/wl"
+	"github.com/stubbedev/lys-ui/wlr"
 )
 
 // fakeXdgOutput records one xdg_output's requests and keeps the event

@@ -1,8 +1,8 @@
 package datacontrol
 
 import (
-	"github.com/stubbedev/gelm/internal/wlsession"
-	"github.com/stubbedev/gelm/wlr"
+	"github.com/stubbedev/lys-ui/internal/wlsession"
+	"github.com/stubbedev/lys-ui/wlr"
 )
 
 // The two data-control protocols are the same protocol under two

@@ -5,8 +5,8 @@ import (
 	"image"
 	"sync/atomic"
 
-	"github.com/stubbedev/gelm/dmabuf"
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/dmabuf"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 // ErrGPUAreaOffscreen reports a GPUArea call before the area is on

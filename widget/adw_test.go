@@ -5,8 +5,8 @@ import (
 	"image/color"
 	"testing"
 
-	"github.com/stubbedev/gelm/anim"
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/anim"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 // The swipeable widgets settle on the router's gesture interfaces; a

@@ -1,7 +1,7 @@
 // Package i18n is gettext in pure Go: GNU .mo and .po catalogs with
 // plural forms and message contexts, locale resolution from the
 // environment, and catalog lookup in a file system. A Catalog plugs
-// into widget.SetMessageCatalog, so gelm's built-in strings and an
+// into widget.SetMessageCatalog, so lys-ui's built-in strings and an
 // app's own translate through one table.
 //
 //	cat, err := i18n.LoadSystem("myapp", i18n.Locales())

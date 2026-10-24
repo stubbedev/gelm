@@ -17,9 +17,9 @@ import (
 	"github.com/godbus/dbus/v5"
 	"golang.org/x/image/font/gofont/goregular"
 
-	"github.com/stubbedev/gelm/internal/dbustest"
-	"github.com/stubbedev/gelm/render"
-	"github.com/stubbedev/gelm/widget"
+	"github.com/stubbedev/lys-ui/internal/dbustest"
+	"github.com/stubbedev/lys-ui/render"
+	"github.com/stubbedev/lys-ui/widget"
 )
 
 // ref mirrors the (so) object reference for Store targets.
@@ -201,7 +201,7 @@ func newFixture(t *testing.T) *fixture {
 	t.Helper()
 	address := startA11yBus(t)
 	bus := startFakeRegistry(t, address)
-	name := fmt.Sprintf("org.a11y.atspi.gelm.test.p%d", os.Getpid())
+	name := fmt.Sprintf("org.a11y.atspi.lysui.test.p%d", os.Getpid())
 
 	face := faceOf(t)
 	f := &fixture{bus: bus, name: name, face: face}
@@ -305,8 +305,8 @@ func TestRegistrationAndEmbed(t *testing.T) {
 	if err := f.obj(RootPath).Call("org.a11y.atspi.Application.GetToolkitName", 0).Store(&toolkit); err != nil {
 		t.Fatalf("GetToolkitName: %v", err)
 	}
-	if toolkit != "gelm" {
-		t.Errorf("toolkit = %q, want gelm", toolkit)
+	if toolkit != "lys-ui" {
+		t.Errorf("toolkit = %q, want lys-ui", toolkit)
 	}
 	var props map[string]dbus.Variant
 	if err := f.obj(RootPath).Call("org.freedesktop.DBus.Properties.GetAll", 0,
@@ -799,7 +799,7 @@ func TestBusDiscovery(t *testing.T) {
 
 	root := widget.NewBox(widget.Column, 0, 0)
 	scene := &testScene{roots: []widget.Widget{root}}
-	br, err := Serve(scene, Options{Name: fmt.Sprintf("org.a11y.atspi.gelm.disc.p%d", os.Getpid()), Poll: -1})
+	br, err := Serve(scene, Options{Name: fmt.Sprintf("org.a11y.atspi.lysui.disc.p%d", os.Getpid()), Poll: -1})
 	if err != nil {
 		t.Fatalf("Serve through discovery: %v", err)
 	}
@@ -818,7 +818,7 @@ func TestBusDiscovery(t *testing.T) {
 
 // TestServeDefaultNameIsValid pins the default bus name against the
 // D-Bus naming rule the reference daemon enforces: an element may not
-// start with a digit, so the raw pid (org.a11y.atspi.gelm.1234) is
+// start with a digit, so the raw pid (org.a11y.atspi.lysui.1234) is
 // rejected by a real bus and the bridge died on startup.
 func TestServeDefaultNameIsValid(t *testing.T) {
 	address := startA11yBus(t)
@@ -830,7 +830,7 @@ func TestServeDefaultNameIsValid(t *testing.T) {
 		t.Fatalf("Serve with the default name: %v", err)
 	}
 	t.Cleanup(br.Stop)
-	if !strings.HasPrefix(br.name, "org.a11y.atspi.gelm.p") {
+	if !strings.HasPrefix(br.name, "org.a11y.atspi.lysui.p") {
 		t.Fatalf("default name %q lacks the digit-safe prefix", br.name)
 	}
 	if _, err := br.conn.RequestName(br.name, dbus.NameFlagDoNotQueue); err != nil {

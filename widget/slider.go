@@ -3,8 +3,8 @@ package widget
 import (
 	"math"
 
-	"github.com/stubbedev/gelm/internal/style"
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/internal/style"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 // Slider is a slider over [min, max] with an optional step, horizontal

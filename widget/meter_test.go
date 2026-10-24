@@ -3,8 +3,8 @@ package widget
 import (
 	"testing"
 
-	"github.com/stubbedev/gelm/anim"
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/anim"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 // TestProgressBarPulse pins activity mode: Pulse steps and bounces the

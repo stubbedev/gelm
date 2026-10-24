@@ -8,7 +8,7 @@ import (
 	"slices"
 	"time"
 
-	"github.com/stubbedev/gelm/internal/animclock"
+	"github.com/stubbedev/lys-ui/internal/animclock"
 )
 
 // ErrNotSeekable reports a Seek on a Stream whose source cannot seek.

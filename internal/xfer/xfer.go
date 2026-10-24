@@ -35,7 +35,7 @@ const DefaultTimeout = 5 * time.Second
 var (
 	// ErrTooLarge reports that the peer streamed past MaxPayload; the
 	// bytes that fit were returned with it. Callers decide what a
-	// truncated payload is worth — gelm's app layer treats the error
+	// truncated payload is worth — lys-ui's app layer treats the error
 	// as a rejected paste.
 	ErrTooLarge = errors.New("xfer: peer streamed past the payload budget")
 
@@ -132,7 +132,7 @@ func DeadlineWriter(fd uintptr, timeout time.Duration) (*os.File, error) {
 		// The poller refused the descriptor. A descriptor flipped
 		// non-blocking but left outside the poller would misreport
 		// EAGAIN on every write, so restore the original blocking
-		// mode and hand back an unguarded writer: in a running gelm
+		// mode and hand back an unguarded writer: in a running lys-ui
 		// the Wayland socket itself needs the poller, so this is
 		// nearly unreachable, and an unbounded write still beats
 		// failing every send.

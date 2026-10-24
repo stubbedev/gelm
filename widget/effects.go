@@ -15,8 +15,8 @@ import (
 	"image/color"
 	"math"
 
-	"github.com/stubbedev/gelm/internal/style"
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/internal/style"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 // effects is the pushed effect state: the canvas to paint into (the

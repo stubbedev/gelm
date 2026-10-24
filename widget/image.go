@@ -13,10 +13,10 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/stubbedev/gelm/internal/imgcache"
-	"github.com/stubbedev/gelm/internal/style"
-	"github.com/stubbedev/gelm/render"
-	"github.com/stubbedev/gelm/transfer"
+	"github.com/stubbedev/lys-ui/internal/imgcache"
+	"github.com/stubbedev/lys-ui/internal/style"
+	"github.com/stubbedev/lys-ui/render"
+	"github.com/stubbedev/lys-ui/transfer"
 )
 
 // ImageScale picks how an Image fills its arranged box. It aliases the
@@ -125,7 +125,7 @@ func invoke(fn func()) {
 //
 // Pixels are resampled with the CatmullRom kernel to the device rect
 // the policy places them in, so fractional scales stay crisp
-// (stubbedev/gelm#14). Resamples are cached per (source, source rect,
+// (stubbedev/lys-ui#14). Resamples are cached per (source, source rect,
 // device size) in a shared LRU with a byte budget
 // (internal/imgcache): painting the same image at the same size hits
 // the cache and never rescales, and SetImage drops the old source's

@@ -4,8 +4,8 @@ import (
 	"math"
 	"testing"
 
-	"github.com/stubbedev/gelm/anim"
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/anim"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 // scrollRun computes css against one box and returns its values.

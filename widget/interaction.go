@@ -6,8 +6,8 @@ package widget
 import (
 	"strconv"
 
-	"github.com/stubbedev/gelm/internal/style"
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/internal/style"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 // cursorFilePrefix marks a cursor request that asks for a file cursor

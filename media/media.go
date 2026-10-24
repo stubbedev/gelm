@@ -1,4 +1,4 @@
-// Package media is gelm's playback framework, GTK's GtkMediaStream in
+// Package media is lys-ui's playback framework, GTK's GtkMediaStream in
 // pure Go: a Source decodes frames (and, when Audible, sound), and a
 // Stream plays one on the loop with play, pause, seek, loop, volume and
 // a clock that follows the audio when there is any. widget.Video paints

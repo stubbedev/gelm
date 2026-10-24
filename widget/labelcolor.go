@@ -1,6 +1,6 @@
 package widget
 
-import "github.com/stubbedev/gelm/render"
+import "github.com/stubbedev/lys-ui/render"
 
 // SetColor sets the label's programmatic ink, the dynamic counterpart
 // of NewLabel's color argument: modules that restyle per state (battery

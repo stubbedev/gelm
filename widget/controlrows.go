@@ -1,7 +1,7 @@
 package widget
 
 import (
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 // The control rows of #93 - libadwaita's settings vocabulary over

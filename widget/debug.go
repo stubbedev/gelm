@@ -3,7 +3,7 @@
 // always-available half of the inspector (see docs/inspector.md): the
 // dump only reads state, so it ships in prod binaries; the app-level
 // overlay and its keybindings live in internal/inspect and the app
-// package, gated behind GELM_INSPECT or an explicit opt-in.
+// package, gated behind LYS_UI_INSPECT or an explicit opt-in.
 package widget
 
 import (

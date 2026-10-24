@@ -7,7 +7,7 @@ package app
 import (
 	"errors"
 
-	"github.com/stubbedev/gelm/wlr"
+	"github.com/stubbedev/lys-ui/wlr"
 )
 
 // ErrGlobalShortcutsUnavailable reports a desktop with neither

@@ -10,9 +10,9 @@ import (
 	"os"
 	"slices"
 
-	"github.com/stubbedev/gelm/internal/atspi"
-	"github.com/stubbedev/gelm/internal/debug"
-	"github.com/stubbedev/gelm/widget"
+	"github.com/stubbedev/lys-ui/internal/atspi"
+	"github.com/stubbedev/lys-ui/internal/debug"
+	"github.com/stubbedev/lys-ui/widget"
 )
 
 // A11YOptions configures the AT-SPI bridge (ServeAccessibility).
@@ -21,7 +21,7 @@ type A11YOptions = atspi.Options
 // A11yMode chooses when the AT-SPI bridge serves.
 type A11yMode uint8
 
-// Accessibility modes. The GELM_A11Y environment variable overrides
+// Accessibility modes. The LYS_UI_A11Y environment variable overrides
 // the application's choice, like GTK_A11Y: "none" is A11yOff, "atspi"
 // A11yOn.
 const (
@@ -39,9 +39,9 @@ const (
 // SetAccessibility chooses when Run serves the bridge; call before Run.
 func (a *Application) SetAccessibility(mode A11yMode) { a.a11yMode = mode }
 
-// effectiveA11yMode is the mode after GELM_A11Y.
+// effectiveA11yMode is the mode after LYS_UI_A11Y.
 func (a *Application) effectiveA11yMode() A11yMode {
-	switch os.Getenv("GELM_A11Y") {
+	switch os.Getenv("LYS_UI_A11Y") {
 	case "none", "off", "0":
 		return A11yOff
 	case "atspi", "on", "1":

@@ -1,12 +1,12 @@
 { self, ... }: {
   perSystem = { buildGoModule, lib, pkgs, ... }:
     let
-      # Shared builder for every gelm derivation: pure Go (CGO off),
+      # Shared builder for every lys-ui derivation: pure Go (CGO off),
       # modules fetched through buildGoModule's standard flow with
       # vendorHash pinning go.sum, so no build reaches the network.
       # The test suite lives in CI (`just check` + `just headless`),
       # not in the build sandbox.
-      mkGelm = { pname, subPackages ? [ ], description ? "", mainProgram ? null }:
+      mkLysUI = { pname, subPackages ? [ ], description ? "", mainProgram ? null }:
         buildGoModule {
           inherit pname subPackages;
           version = self.shortRev or "dev";
@@ -23,7 +23,7 @@
           env.CGO_ENABLED = "0";
           vendorHash = "sha256-NH6lBAUZwa7nuoC7ftPnE9zQn4VH9xGDKf7ePS8px3c=";
           doCheck = false;
-          # third_party/ holds patched upstream packages gelm imports;
+          # third_party/ holds patched upstream packages lys-ui imports;
           # they build as dependencies, not as targets of their own.
           excludedPackages = [ "third_party" ];
 
@@ -36,11 +36,11 @@
 
       # The module itself: one build of every package in the repo -
       # all demo binaries plus the wlpointer test driver. Downstream
-      # nix Go builds can also reach gelm.goModules for the vendored
+      # nix Go builds can also reach lys-ui.goModules for the vendored
       # dependency tree; plain Go consumers pin this repo by semver
       # tag in go.mod (see README, Packaging).
-      gelm = mkGelm {
-        pname = "gelm";
+      lys-ui = mkLysUI {
+        pname = "lys-ui";
         description = "pure-Go Wayland widget toolkit (module and demos)";
       };
     in
@@ -48,30 +48,30 @@
       # A Wayland toolkit: the builds exist on Linux only, while the dev
       # shell stays available on every system.
       packages = lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
-        inherit gelm;
+        inherit lys-ui;
 
-        gelm-bar = mkGelm {
-          pname = "gelm-bar";
-          subPackages = [ "cmd/gelm-bar" ];
-          description = "gelm layer-shell status bar";
-          mainProgram = "gelm-bar";
+        lys-ui-bar = mkLysUI {
+          pname = "lys-ui-bar";
+          subPackages = [ "cmd/lys-ui-bar" ];
+          description = "lys-ui layer-shell status bar";
+          mainProgram = "lys-ui-bar";
         };
 
-        gelm-panel = mkGelm {
-          pname = "gelm-panel";
-          subPackages = [ "cmd/gelm-panel" ];
-          description = "gelm layer-shell panel";
-          mainProgram = "gelm-panel";
+        lys-ui-panel = mkLysUI {
+          pname = "lys-ui-panel";
+          subPackages = [ "cmd/lys-ui-panel" ];
+          description = "lys-ui layer-shell panel";
+          mainProgram = "lys-ui-panel";
         };
 
-        gelm-hello = mkGelm {
-          pname = "gelm-hello";
-          subPackages = [ "cmd/gelm-hello" ];
-          description = "gelm widget showcase";
-          mainProgram = "gelm-hello";
+        lys-ui-hello = mkLysUI {
+          pname = "lys-ui-hello";
+          subPackages = [ "cmd/lys-ui-hello" ];
+          description = "lys-ui widget showcase";
+          mainProgram = "lys-ui-hello";
         };
 
-        default = gelm;
+        default = lys-ui;
       };
     };
 }

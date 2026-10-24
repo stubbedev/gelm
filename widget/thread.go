@@ -7,7 +7,7 @@ import (
 	"sync/atomic"
 )
 
-// The loop-goroutine guard samples gelm's threading contract (see
+// The loop-goroutine guard samples lys-ui's threading contract (see
 // docs/threading.md): widget state belongs to the event-loop
 // goroutine, and every other goroutine reaches the tree only through
 // app.Invoke. The guard is a debugging aid, not a lock. Run arms it on
@@ -44,7 +44,7 @@ func UnmarkLoop() { loopGuard.armed.Store(false) }
 // SetOffLoopHook installs the debug hook fired with the sampled entry
 // point's name when a widget mutation runs off the loop goroutine; nil
 // disables. The hook runs on the offending goroutine and must not
-// touch widgets. Production code leaves it nil; tests and gelmdebug
+// touch widgets. Production code leaves it nil; tests and lysuidebug
 // builds use it to enforce the threading contract.
 func SetOffLoopHook(hook func(what string)) {
 	loopGuard.mu.Lock()

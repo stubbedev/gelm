@@ -4,7 +4,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/stubbedev/gelm/wlr"
+	"github.com/stubbedev/lys-ui/wlr"
 )
 
 // fakeSurface records the wl_surface scale requests.

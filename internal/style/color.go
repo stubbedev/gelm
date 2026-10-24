@@ -5,7 +5,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 // rgbaf is a straight-alpha color in [0,1] floats, the working space for

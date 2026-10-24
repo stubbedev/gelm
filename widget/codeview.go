@@ -4,7 +4,7 @@ import (
 	"slices"
 	"strconv"
 
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 // The TextArea's code-view features, GtkSourceView's: a line-number

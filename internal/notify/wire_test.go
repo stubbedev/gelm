@@ -110,17 +110,17 @@ func TestCapBody(t *testing.T) {
 }
 
 // TestClassicIDMapping pins the classic id routing: the daemon's
-// numeric id resolves to gelm's string id both ways.
+// numeric id resolves to lys-ui's string id both ways.
 func TestClassicIDMapping(t *testing.T) {
 	n := &Notifier{}
-	n.rememberClassic(7, "gelm-1")
-	if got := n.classicID(7); got != "gelm-1" {
+	n.rememberClassic(7, "lys-ui-1")
+	if got := n.classicID(7); got != "lys-ui-1" {
 		t.Errorf("classic 7 routed to %q", got)
 	}
 	if got := n.classicID(8); got != "" {
 		t.Errorf("unknown classic id routed to %q", got)
 	}
-	if got := n.classicOf["gelm-1"]; got != 7 {
+	if got := n.classicOf["lys-ui-1"]; got != 7 {
 		t.Errorf("reverse map = %d", got)
 	}
 }

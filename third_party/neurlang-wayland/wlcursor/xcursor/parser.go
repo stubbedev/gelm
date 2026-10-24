@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 
-	"github.com/stubbedev/gelm/third_party/neurlang-wayland/external/swizzle"
+	"github.com/stubbedev/lys-ui/third_party/neurlang-wayland/external/swizzle"
 )
 
 // Image represents an Xcursor cursor

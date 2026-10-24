@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"math"
 
-	"github.com/stubbedev/gelm/internal/logutil"
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/internal/logutil"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 // Theme holds the palette and metrics widgets paint with. Colors left at
@@ -65,7 +65,7 @@ type Theme struct {
 	// Animations gates the animated enter/exit (and open/reveal) motion:
 	// surface tweens, toast slides, dropdown lists. False collapses the
 	// durations to zero — the reduced-motion switch beside
-	// GELM_NO_ANIM=1 and surfx.SetEnabled(false); state machines run
+	// LYS_UI_NO_ANIM=1 and surfx.SetEnabled(false); state machines run
 	// unchanged, only the motion goes away.
 	Animations bool
 }
@@ -104,7 +104,7 @@ func SetTheme(t *Theme) {
 
 // themeWarn is the contrast-warning sink: warnings route to the
 // injected library logger at Warn level — the one app-facing event the
-// widget package emits, so an application that opts into gelm's
+// widget package emits, so an application that opts into lys-ui's
 // logging learns its palette is hard to read even in prod builds.
 // Tests swap it to capture warnings.
 var themeWarn = func(msg string) { logutil.L().Warn(msg) }
@@ -185,7 +185,7 @@ func HighContrastTheme() *Theme {
 func ParseColor(s string) (Color, error) {
 	c, ok := parseHexColor(s)
 	if !ok {
-		return 0, fmt.Errorf("gelm: invalid color %q: want #rgb, #rrggbb, or #rrggbbaa", s)
+		return 0, fmt.Errorf("lys-ui: invalid color %q: want #rgb, #rrggbb, or #rrggbbaa", s)
 	}
 	return c, nil
 }

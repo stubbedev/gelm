@@ -9,10 +9,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stubbedev/gelm/internal/xfer"
-	"github.com/stubbedev/gelm/third_party/neurlang-wayland/wl"
-	"github.com/stubbedev/gelm/transfer"
-	"github.com/stubbedev/gelm/wlr"
+	"github.com/stubbedev/lys-ui/internal/xfer"
+	"github.com/stubbedev/lys-ui/third_party/neurlang-wayland/wl"
+	"github.com/stubbedev/lys-ui/transfer"
+	"github.com/stubbedev/lys-ui/wlr"
 )
 
 // fakePeer plays the foreign client at the far end of a transfer pipe:

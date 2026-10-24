@@ -1,4 +1,4 @@
-// Package sessionlock maps ext-session-lock-v1 onto gelm: the lock
+// Package sessionlock maps ext-session-lock-v1 onto lys-ui: the lock
 // object's locked/finished lifecycle and the per-output lock surface
 // role with its configure handshake.
 //
@@ -22,9 +22,9 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/stubbedev/gelm/internal/debug"
-	"github.com/stubbedev/gelm/third_party/neurlang-wayland/wl"
-	"github.com/stubbedev/gelm/wlr"
+	"github.com/stubbedev/lys-ui/internal/debug"
+	"github.com/stubbedev/lys-ui/third_party/neurlang-wayland/wl"
+	"github.com/stubbedev/lys-ui/wlr"
 )
 
 // ErrNotLocked reports an unlock attempted before the compositor sent

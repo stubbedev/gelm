@@ -15,7 +15,7 @@ func TestRecentFilesRoundTrip(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "recently-used.xbel")
 	m := New(path)
 	for i := range 5 {
-		if err := m.Add(filepath.Join("/tmp", string(rune('a'+i))+".txt"), "gelm"); err != nil {
+		if err := m.Add(filepath.Join("/tmp", string(rune('a'+i))+".txt"), "lys-ui"); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -35,7 +35,7 @@ func TestRecentFilesRoundTrip(t *testing.T) {
 	if got[0].Path != "/tmp/e.txt" || got[4].Path != "/tmp/a.txt" {
 		t.Errorf("reload order = %v, want newest first", got)
 	}
-	if got[0].App != "gelm" {
+	if got[0].App != "lys-ui" {
 		t.Errorf("app attribution lost: %q", got[0].App)
 	}
 }
@@ -44,9 +44,9 @@ func TestRecentFilesRoundTrip(t *testing.T) {
 // existing path moves it, it does not duplicate.
 func TestRecentFilesReAddMovesToFront(t *testing.T) {
 	m := New(filepath.Join(t.TempDir(), "recently-used.xbel"))
-	_ = m.Add("/tmp/one", "gelm")
-	_ = m.Add("/tmp/two", "gelm")
-	_ = m.Add("/tmp/one", "gelm")
+	_ = m.Add("/tmp/one", "lys-ui")
+	_ = m.Add("/tmp/two", "lys-ui")
+	_ = m.Add("/tmp/one", "lys-ui")
 	list := m.List()
 	if len(list) != 2 || list[0].Path != "/tmp/one" {
 		t.Fatalf("list = %v, want one first without duplicates", list)
@@ -58,9 +58,9 @@ func TestRecentFilesReAddMovesToFront(t *testing.T) {
 func TestRecentFilesBounded(t *testing.T) {
 	m := New(filepath.Join(t.TempDir(), "recently-used.xbel"))
 	for i := range maxEntries + 5 {
-		_ = m.Add(fmt.Sprintf("/tmp/file-%03d", i), "gelm")
+		_ = m.Add(fmt.Sprintf("/tmp/file-%03d", i), "lys-ui")
 	}
-	_ = m.Add("/tmp/newest", "gelm")
+	_ = m.Add("/tmp/newest", "lys-ui")
 	if got := len(m.List()); got != maxEntries {
 		t.Errorf("list grew to %d, want the bound %d", got, maxEntries)
 	}
@@ -93,7 +93,7 @@ func TestRecentFilesCorruptAndMissing(t *testing.T) {
 	if len(corrupt.List()) != 0 {
 		t.Error("corrupt file yielded entries")
 	}
-	if err := corrupt.Add("/tmp/x", "gelm"); err != nil {
+	if err := corrupt.Add("/tmp/x", "lys-ui"); err != nil {
 		t.Fatal(err)
 	}
 	if err := New(path).Load(); err != nil {
@@ -107,9 +107,9 @@ func TestRecentFilesSkipsRemoteURIs(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "recently-used.xbel")
 	body := `<?xml version="1.0" encoding="UTF-8"?>
 <xbel version="1.0">
-  <bookmark href="file:///tmp/local.txt" modified="2026-10-07T10:00:00Z"><info><metadata owner="gelm"/></info></bookmark>
-  <bookmark href="sftp://host/remote.txt" modified="2026-10-07T11:00:00Z"><info><metadata owner="gelm"/></info></bookmark>
-  <bookmark href="file://otherhost/escaped.txt" modified="2026-10-07T12:00:00Z"><info><metadata owner="gelm"/></info></bookmark>
+  <bookmark href="file:///tmp/local.txt" modified="2026-10-07T10:00:00Z"><info><metadata owner="lys-ui"/></info></bookmark>
+  <bookmark href="sftp://host/remote.txt" modified="2026-10-07T11:00:00Z"><info><metadata owner="lys-ui"/></info></bookmark>
+  <bookmark href="file://otherhost/escaped.txt" modified="2026-10-07T12:00:00Z"><info><metadata owner="lys-ui"/></info></bookmark>
 </xbel>`
 	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
 		t.Fatal(err)

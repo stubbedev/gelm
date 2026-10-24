@@ -4,8 +4,8 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/stubbedev/gelm/appearance"
-	"github.com/stubbedev/gelm/internal/gtksettings"
+	"github.com/stubbedev/lys-ui/appearance"
+	"github.com/stubbedev/lys-ui/internal/gtksettings"
 )
 
 // ColorScheme returns the desktop's current dark/light preference,
@@ -43,7 +43,7 @@ func (a *Application) OnContrastChange(fn func(appearance.Contrast)) (off func()
 // app on this desktop uses - what 1rem is there: the desktop font's
 // size (the portal's font-name, else settings.ini's gtk-font-name, else
 // GTK's "Sans 10") at its text DPI (the portal's text-scaling-factor,
-// else gtk-xft-dpi, else 96). gelm keeps its own 16px rem unless the
+// else gtk-xft-dpi, else 96). lys-ui keeps its own 16px rem unless the
 // app applies this with widget.SetRootFontSize.
 func (a *Application) DesktopFontSize() float64 {
 	ini := a.gtkSettings()

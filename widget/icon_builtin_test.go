@@ -3,7 +3,7 @@ package widget
 import (
 	"testing"
 
-	"github.com/stubbedev/gelm/internal/icons"
+	"github.com/stubbedev/lys-ui/internal/icons"
 )
 
 // TestGoldenBuiltinIcons pins the bundled Lucide set as stock chrome

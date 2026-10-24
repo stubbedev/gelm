@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 // Every widget that records a parent is reachable from that parent by

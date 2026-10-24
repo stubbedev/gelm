@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 // newPanEntry builds a 80px-wide entry holding s: 64px of text viewport,

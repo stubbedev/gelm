@@ -104,7 +104,7 @@ func (c *portalClient) token(kind tokenKind) string {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.nextReq++
-	return fmt.Sprintf("gelm_%c%d", kind, c.nextReq)
+	return fmt.Sprintf("lysui_%c%d", kind, c.nextReq)
 }
 
 func (c *portalClient) dispatch(sig *dbus.Signal) {

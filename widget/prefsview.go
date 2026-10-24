@@ -4,7 +4,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 type searchable interface {

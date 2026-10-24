@@ -1,8 +1,8 @@
 package highlight
 
 import (
-	"github.com/stubbedev/gelm/render"
-	"github.com/stubbedev/gelm/widget"
+	"github.com/stubbedev/lys-ui/render"
+	"github.com/stubbedev/lys-ui/widget"
 )
 
 // Adwaita and AdwaitaDark are the style schemes for the def: ids every

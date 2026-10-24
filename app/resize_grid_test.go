@@ -3,7 +3,7 @@ package app
 import (
 	"testing"
 
-	"github.com/stubbedev/gelm/widget"
+	"github.com/stubbedev/lys-ui/widget"
 )
 
 // TestResizeSqueezesGrid is the window-level pin of the grid deficit

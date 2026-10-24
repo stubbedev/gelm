@@ -3,7 +3,7 @@ package style
 import (
 	"testing"
 
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 // The rendering-effect property set (#159): every new longhand parsed

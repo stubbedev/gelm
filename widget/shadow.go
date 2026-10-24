@@ -17,8 +17,8 @@
 package widget
 
 import (
-	"github.com/stubbedev/gelm/internal/style"
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/internal/style"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 // defaultShadowColor is the derived shadow paint for themes that set a

@@ -4,16 +4,16 @@
 // feature-detected: compositors without it keep the session running
 // with no toplevels and every request a no-op. The compositor sends a
 // handle for every toplevel surface, including our own windows, so a
-// gelm process that binds the manager sees itself in the list under
+// lys-ui process that binds the manager sees itself in the list under
 // its xdg-toplevel title and app-id.
 package wlsession
 
 import (
 	"slices"
 
-	"github.com/stubbedev/gelm/internal/debug"
-	"github.com/stubbedev/gelm/third_party/neurlang-wayland/wl"
-	"github.com/stubbedev/gelm/wlr"
+	"github.com/stubbedev/lys-ui/internal/debug"
+	"github.com/stubbedev/lys-ui/third_party/neurlang-wayland/wl"
+	"github.com/stubbedev/lys-ui/wlr"
 )
 
 // maxForeignToplevelVersion is the

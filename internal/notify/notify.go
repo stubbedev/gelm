@@ -20,7 +20,7 @@ import (
 
 	"github.com/godbus/dbus/v5"
 
-	"github.com/stubbedev/gelm/internal/logutil"
+	"github.com/stubbedev/lys-ui/internal/logutil"
 )
 
 // Action is one notification action: the key the daemon reports back
@@ -95,7 +95,7 @@ type Notifier struct {
 	mode   transport
 	nextID atomic.Int64
 	closed bool
-	// classicIDs maps the classic daemon's numeric ids to gelm's
+	// classicIDs maps the classic daemon's numeric ids to lys-ui's
 	// string ids (the portal transport uses the string id directly);
 	// classicOf is the reverse, for Close.
 	classicIDs map[uint32]string
@@ -229,7 +229,7 @@ func (n *Notifier) subscribe() {
 // transport it returns the id without sending. The body is capped at
 // maxBodyRunes runes.
 func (n *Notifier) Notify(nf Notification) string {
-	id := "gelm-" + time.Now().Format("20060102T150405.000000000") + "-" + itoa(n.nextID.Add(1))
+	id := "lys-ui-" + time.Now().Format("20060102T150405.000000000") + "-" + itoa(n.nextID.Add(1))
 	nf.Body = capBody(nf.Body)
 	if n.dial == nil {
 		return id
@@ -251,7 +251,7 @@ func (n *Notifier) Notify(nf Notification) string {
 	case transportClassic:
 		var classicID uint32
 		if err := conn.Object(classicName, classicPath).CallWithContext(
-			ctx, classicNotify, 0, "gelm", uint32(0), nf.Icon,
+			ctx, classicNotify, 0, "lys-ui", uint32(0), nf.Icon,
 			nf.Title, nf.Body, classicActions(nf), classicHints(nf),
 			classicTimeout(nf.Timeout)).Store(&classicID); err != nil {
 			logutil.L().Debug("notify: Notifications.Notify failed", "err", err)
@@ -330,7 +330,7 @@ func (n *Notifier) fireClosed(id string, reason CloseReason) {
 	}
 }
 
-// rememberClassic maps the daemon's numeric id to gelm's string id,
+// rememberClassic maps the daemon's numeric id to lys-ui's string id,
 // so classic signals route like portal ones.
 func (n *Notifier) rememberClassic(classic uint32, id string) {
 	n.mu.Lock()

@@ -1,5 +1,5 @@
 {
-  description = "gelm - pure-Go Wayland widget toolkit";
+  description = "lys-ui - pure-Go Wayland widget toolkit";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";

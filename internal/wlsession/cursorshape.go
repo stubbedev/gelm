@@ -3,9 +3,9 @@ package wlsession
 import (
 	"os"
 
-	"github.com/stubbedev/gelm/internal/debug"
-	"github.com/stubbedev/gelm/third_party/neurlang-wayland/wl"
-	"github.com/stubbedev/gelm/wlr"
+	"github.com/stubbedev/lys-ui/internal/debug"
+	"github.com/stubbedev/lys-ui/third_party/neurlang-wayland/wl"
+	"github.com/stubbedev/lys-ui/wlr"
 )
 
 // cursor-shape-v1: when the compositor offers it, cursors are its to
@@ -62,11 +62,11 @@ var cursorShapes = map[string]uint32{
 }
 
 // bindCursorShapeManager binds the shape manager global, unless
-// GELM_NO_CURSOR_SHAPE=1 keeps cursors on the client theme (debugging
+// LYS_UI_NO_CURSOR_SHAPE=1 keeps cursors on the client theme (debugging
 // a compositor's cursors, and the headless test of the fallback).
 func (s *Session) bindCursorShapeManager(ev wl.RegistryGlobalEvent) {
-	if os.Getenv("GELM_NO_CURSOR_SHAPE") == "1" {
-		debug.Log("shell", "cursor-shape-v1 disabled by GELM_NO_CURSOR_SHAPE")
+	if os.Getenv("LYS_UI_NO_CURSOR_SHAPE") == "1" {
+		debug.Log("shell", "cursor-shape-v1 disabled by LYS_UI_NO_CURSOR_SHAPE")
 		return
 	}
 	ctx := s.registry.Context()

@@ -12,8 +12,8 @@ import (
 	"math"
 	"sync"
 
-	"github.com/stubbedev/gelm/internal/style"
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/internal/style"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 // borderImageOutset is the outset's extent per side (top, right,

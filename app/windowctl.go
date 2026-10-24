@@ -1,8 +1,8 @@
 package app
 
 import (
-	"github.com/stubbedev/gelm/internal/wlsession"
-	"github.com/stubbedev/gelm/third_party/neurlang-wayland/xdg"
+	"github.com/stubbedev/lys-ui/internal/wlsession"
+	"github.com/stubbedev/lys-ui/third_party/neurlang-wayland/xdg"
 )
 
 // Window requests beyond state: interactive move and resize begun from

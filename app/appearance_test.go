@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stubbedev/gelm/appearance"
+	"github.com/stubbedev/lys-ui/appearance"
 )
 
 func TestOnLoopDeliversOnPumpAndDropsAfterOff(t *testing.T) {

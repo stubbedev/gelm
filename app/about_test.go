@@ -9,7 +9,7 @@ import (
 // absent blocks drop out entirely.
 func TestAboutSections(t *testing.T) {
 	cfg := AboutConfig{
-		Name:         "gelm",
+		Name:         "lys-ui",
 		Version:      "1.0",
 		ReleaseNotes: "Fourth pass.\nTyped messaging.\nFile dialogs.",
 		Credits: []AboutCredit{
@@ -45,7 +45,7 @@ func TestAboutSections(t *testing.T) {
 // TestAboutSectionsEmpty covers the title-card case: no notes, no
 // credits, no license means no scrolled body at all.
 func TestAboutSectionsEmpty(t *testing.T) {
-	if sections := aboutSections(AboutConfig{Name: "gelm", Version: "1.0"}); len(sections) != 0 {
+	if sections := aboutSections(AboutConfig{Name: "lys-ui", Version: "1.0"}); len(sections) != 0 {
 		t.Errorf("bare config produced sections: %+v", sections)
 	}
 }

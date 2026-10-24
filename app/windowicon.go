@@ -11,11 +11,11 @@ package app
 import (
 	"image"
 
-	"github.com/stubbedev/gelm/internal/buffer"
-	"github.com/stubbedev/gelm/internal/debug"
-	"github.com/stubbedev/gelm/internal/logutil"
-	"github.com/stubbedev/gelm/render"
-	"github.com/stubbedev/gelm/wlr"
+	"github.com/stubbedev/lys-ui/internal/buffer"
+	"github.com/stubbedev/lys-ui/internal/debug"
+	"github.com/stubbedev/lys-ui/internal/logutil"
+	"github.com/stubbedev/lys-ui/render"
+	"github.com/stubbedev/lys-ui/wlr"
 )
 
 // defaultIconSizes is the rasterization ladder when the compositor

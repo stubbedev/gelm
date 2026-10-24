@@ -7,7 +7,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 // propDef describes one property name: the longhands it sets and the
@@ -619,7 +619,7 @@ func parseOpacity(ts []token, cx *ctx, v *Values) bool {
 
 // backgroundImageURL parses url(...) — a quoted string — to a local
 // file path: a file:// URL strips the scheme, anything else is the
-// path itself. gelm loads no network images; a bare (unquoted) path
+// path itself. lys-ui loads no network images; a bare (unquoted) path
 // tokenizes piecemeal and is not accepted, the way producers write
 // quoted urls anyway.
 func backgroundImageURL(ts []token) (string, bool) {
@@ -957,7 +957,7 @@ func parseTextShadow(ts []token, cx *ctx, v *Values) bool {
 }
 
 // parseShadows parses a comma list of shadow layers, or none, into
-// out. box admits box-shadow's inset keyword, spread length and gelm's
+// out. box admits box-shadow's inset keyword, spread length and lys-ui's
 // legacy one-length `COLOR BLUR` glow; text-shadow takes neither.
 func parseShadows(ts []token, cx *ctx, out *Shadows, box bool) bool {
 	*out = Shadows{}
@@ -994,7 +994,7 @@ func parseShadows(ts []token, cx *ctx, out *Shadows, box bool) bool {
 		}
 		switch len(lens) {
 		case 1:
-			// gelm's pre-CSS-3 one-shadow form, `COLOR BLUR`: a centered
+			// lys-ui's pre-CSS-3 one-shadow form, `COLOR BLUR`: a centered
 			// glow. Kept for existing stylesheets; standard CSS always
 			// carries two offsets.
 			if !box || !haveC || lens[0] < 0 || len(layers) != 1 {

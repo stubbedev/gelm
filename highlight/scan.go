@@ -4,7 +4,7 @@ import (
 	"regexp"
 	"unicode"
 
-	"github.com/stubbedev/gelm/widget"
+	"github.com/stubbedev/lys-ui/widget"
 )
 
 // GtkSourceView def: style ids the languages share.

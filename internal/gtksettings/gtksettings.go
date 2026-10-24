@@ -17,10 +17,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/stubbedev/gelm/internal/logutil"
+	"github.com/stubbedev/lys-ui/internal/logutil"
 )
 
-// Settings are the settings.ini keys gelm honors.
+// Settings are the settings.ini keys lys-ui honors.
 type Settings struct {
 	// FontName is gtk-font-name, "" when no file sets it.
 	FontName string

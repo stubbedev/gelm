@@ -1,8 +1,8 @@
 package app
 
 import (
-	"github.com/stubbedev/gelm/render"
-	"github.com/stubbedev/gelm/widget"
+	"github.com/stubbedev/lys-ui/render"
+	"github.com/stubbedev/lys-ui/widget"
 )
 
 // App-level CSS surface names (docs/css.md): the element-name list's

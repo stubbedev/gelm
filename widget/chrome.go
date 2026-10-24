@@ -1,7 +1,7 @@
 package widget
 
 import (
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 // Client-side window chrome (#91): HeaderBar, ActionBar, and

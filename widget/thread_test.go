@@ -6,7 +6,7 @@ import (
 
 	"golang.org/x/image/font/gofont/goregular"
 
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 // TestOffLoopMutationTripsHook enforces the threading contract's
@@ -77,7 +77,7 @@ func TestOffLoopMutationTripsHook(t *testing.T) {
 }
 
 // TestMarkLoopReArms checks that marking a different goroutine moves
-// the guard: gelm-hello style tests mark whichever goroutine drives
+// the guard: lys-ui-hello style tests mark whichever goroutine drives
 // the tree.
 func TestMarkLoopReArms(t *testing.T) {
 	UnmarkLoop()

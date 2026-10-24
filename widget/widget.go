@@ -1,4 +1,4 @@
-// Package widget is gelm's retained-mode widget layer: a tree of widgets
+// Package widget is lys-ui's retained-mode widget layer: a tree of widgets
 // measured against constraints, arranged into pixel rects, and painted onto
 // a render.Canvas. Input handling arrives in M4; HitTest is already here so
 // event dispatch can hook into the same geometry.
@@ -36,9 +36,9 @@ import (
 	"slices"
 	"sync/atomic"
 
-	"github.com/stubbedev/gelm/anim"
-	"github.com/stubbedev/gelm/internal/style"
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/anim"
+	"github.com/stubbedev/lys-ui/internal/style"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 // Size is a width and height in pixels.

@@ -4,7 +4,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/stubbedev/gelm/i18n"
+	"github.com/stubbedev/lys-ui/i18n"
 )
 
 // TestMessageCatalog pins the catalog contract: Tr is the identity

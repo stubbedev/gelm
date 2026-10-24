@@ -3,9 +3,9 @@ package app
 import (
 	"testing"
 
-	"github.com/stubbedev/gelm/internal/layersurface"
-	"github.com/stubbedev/gelm/internal/wlsession"
-	"github.com/stubbedev/gelm/widget"
+	"github.com/stubbedev/lys-ui/internal/layersurface"
+	"github.com/stubbedev/lys-ui/internal/wlsession"
+	"github.com/stubbedev/lys-ui/widget"
 )
 
 // Only an automatic axis missing one of its anchors follows the

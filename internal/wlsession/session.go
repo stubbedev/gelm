@@ -13,20 +13,20 @@ import (
 
 	"github.com/unxed/xkb-go"
 
-	"github.com/stubbedev/gelm/internal/buffer"
-	"github.com/stubbedev/gelm/internal/compose"
-	"github.com/stubbedev/gelm/internal/debug"
-	"github.com/stubbedev/gelm/internal/keymapfd"
-	"github.com/stubbedev/gelm/internal/logutil"
-	text "github.com/stubbedev/gelm/third_party/neurlang-wayland/unstable/text-input-v3"
-	deco "github.com/stubbedev/gelm/third_party/neurlang-wayland/unstable/xdg-decoration-v1"
-	"github.com/stubbedev/gelm/third_party/neurlang-wayland/wl"
-	"github.com/stubbedev/gelm/third_party/neurlang-wayland/wlclient"
-	"github.com/stubbedev/gelm/third_party/neurlang-wayland/xdg"
-	"github.com/stubbedev/gelm/wlr"
+	"github.com/stubbedev/lys-ui/internal/buffer"
+	"github.com/stubbedev/lys-ui/internal/compose"
+	"github.com/stubbedev/lys-ui/internal/debug"
+	"github.com/stubbedev/lys-ui/internal/keymapfd"
+	"github.com/stubbedev/lys-ui/internal/logutil"
+	text "github.com/stubbedev/lys-ui/third_party/neurlang-wayland/unstable/text-input-v3"
+	deco "github.com/stubbedev/lys-ui/third_party/neurlang-wayland/unstable/xdg-decoration-v1"
+	"github.com/stubbedev/lys-ui/third_party/neurlang-wayland/wl"
+	"github.com/stubbedev/lys-ui/third_party/neurlang-wayland/wlclient"
+	"github.com/stubbedev/lys-ui/third_party/neurlang-wayland/xdg"
+	"github.com/stubbedev/lys-ui/wlr"
 )
 
-// requiredGlobals are the interfaces gelm cannot run without, in the order
+// requiredGlobals are the interfaces lys-ui cannot run without, in the order
 // they are reported as missing. The fractional-scale protocols
 // (wp_viewporter, wp_fractional_scale_manager_v1) are deliberately not
 // here: they are feature-detected and optional, and compositors without
@@ -89,7 +89,7 @@ const (
 	ModSuper Mods = 1 << 6
 )
 
-// Session is a connected display with the globals gelm needs bound.
+// Session is a connected display with the globals lys-ui needs bound.
 type Session struct {
 	Display *wl.Display
 

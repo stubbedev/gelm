@@ -3,8 +3,8 @@ package atspi
 import (
 	"time"
 
-	"github.com/stubbedev/gelm/render"
-	"github.com/stubbedev/gelm/widget"
+	"github.com/stubbedev/lys-ui/render"
+	"github.com/stubbedev/lys-ui/widget"
 )
 
 // The calls that reach widgets: AT-driven focus, the caret and
@@ -68,7 +68,7 @@ func (o *textIface) SetCaretOffset(offset int32) bool {
 	return true
 }
 
-// SetSelection replaces selection num (gelm widgets hold one).
+// SetSelection replaces selection num (lys-ui widgets hold one).
 func (o *textIface) SetSelection(num, start, end int32) bool {
 	s, _ := o.selector()
 	if s == nil || num != 0 {

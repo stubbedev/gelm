@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/stubbedev/gelm/internal/logutil"
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/internal/logutil"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 func paintSwitchTrack(t *testing.T) render.Color {
@@ -434,7 +434,7 @@ func TestThemeContrastGuard(t *testing.T) {
 
 // TestThemeContrastWarnsThroughLogger: the default themeWarn sink is
 // the injected library logger at Warn — visible only when the
-// application opted into gelm's logging, silent otherwise (the
+// application opted into lys-ui's logging, silent otherwise (the
 // discarding default).
 func TestThemeContrastWarnsThroughLogger(t *testing.T) {
 	defer SetTheme(DarkTheme())

@@ -6,7 +6,7 @@ import (
 
 	"github.com/yalue/native_endian"
 
-	"github.com/stubbedev/gelm/third_party/neurlang-wayland/os"
+	"github.com/stubbedev/lys-ui/third_party/neurlang-wayland/os"
 )
 
 // Event is the Wayland event (e.g. a response) from the compositor
@@ -65,7 +65,7 @@ func (ctx *Context) readEvent() (*Event, error) {
 		if err != nil {
 			return nil, combinedError{ErrControlMsgParseError, err}
 		}
-		// gelm patch: the parsed messages' Data slices point into
+		// lys-ui patch: the parsed messages' Data slices point into
 		// control, which goes back to bytePool below and is reused by
 		// the next read - a queued fd would then decode from whatever
 		// bytes landed there (an "fd" of 1162944558). Keep copies.

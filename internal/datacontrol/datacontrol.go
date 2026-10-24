@@ -21,8 +21,8 @@ import (
 	"os"
 	"slices"
 
-	"github.com/stubbedev/gelm/internal/debug"
-	"github.com/stubbedev/gelm/internal/xfer"
+	"github.com/stubbedev/lys-ui/internal/debug"
+	"github.com/stubbedev/lys-ui/internal/xfer"
 )
 
 // Selection names one of the seat's two selections.

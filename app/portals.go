@@ -92,7 +92,7 @@ func (a *Application) Inhibit(flags InhibitFlags, reason string) (release func()
 // OnSessionStateChange watches the login session's state through the
 // Inhibit portal's monitor. fn runs on the loop goroutine with the
 // state and whether the screensaver is active. When the state is
-// SessionQueryEnd, gelm answers the portal's query after fn returns, so
+// SessionQueryEnd, lys-ui answers the portal's query after fn returns, so
 // an Inhibit(InhibitLogout, ...) made inside fn objects to the logout.
 func (a *Application) OnSessionStateChange(fn func(state SessionState, screensaver bool)) error {
 	d := a.desktop()

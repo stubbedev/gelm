@@ -3,9 +3,9 @@ package widget
 import (
 	"testing"
 
-	"github.com/stubbedev/gelm/internal/style"
-	"github.com/stubbedev/gelm/render"
-	"github.com/stubbedev/gelm/widget/css"
+	"github.com/stubbedev/lys-ui/internal/style"
+	"github.com/stubbedev/lys-ui/render"
+	"github.com/stubbedev/lys-ui/widget/css"
 )
 
 // TestThemeSheetParsesClean pins the generated layer: every named

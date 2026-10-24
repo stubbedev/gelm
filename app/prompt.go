@@ -1,7 +1,7 @@
 package app
 
 import (
-	"github.com/stubbedev/gelm/widget"
+	"github.com/stubbedev/lys-ui/widget"
 )
 
 // PromptDialog opens a one-entry question dialog - the rename-prompt

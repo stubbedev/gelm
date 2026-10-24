@@ -112,14 +112,14 @@ func TestHyprControlCommandRoundTripsOneRequest(t *testing.T) {
 		requests <- string(buf[:n])
 		_, _ = conn.Write([]byte("ok\n"))
 	}()
-	reply, err := hyprControlCommand(sock, "dispatch closewindow class:dev.stubbe.gelm.states")
+	reply, err := hyprControlCommand(sock, "dispatch closewindow class:dev.stubbe.lys.ui.states")
 	if err != nil {
 		t.Fatalf("hyprControlCommand: %v", err)
 	}
 	if reply != "ok" {
 		t.Errorf("reply = %q, want %q", reply, "ok")
 	}
-	if got := <-requests; got != "dispatch closewindow class:dev.stubbe.gelm.states" {
+	if got := <-requests; got != "dispatch closewindow class:dev.stubbe.lys.ui.states" {
 		t.Errorf("request = %q", got)
 	}
 }
@@ -136,7 +136,7 @@ func TestHyprCloseWindowTargetsTheLiveInstance(t *testing.T) {
 		t.Fatal(err)
 	}
 	e := &Env{Dir: dir, Display: "wayland-1", compositor: hyprlandCompositor{}}
-	err := e.CloseWindow("dev.stubbe.gelm.states")
+	err := e.CloseWindow("dev.stubbe.lys.ui.states")
 	if err == nil {
 		t.Fatal("CloseWindow dialed a dead control socket without error")
 	}

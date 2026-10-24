@@ -8,13 +8,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stubbedev/gelm/app"
-	"github.com/stubbedev/gelm/capture"
-	"github.com/stubbedev/gelm/dmabuf"
-	"github.com/stubbedev/gelm/internal/headlesstest/inproc"
-	"github.com/stubbedev/gelm/internal/udmabuf"
-	"github.com/stubbedev/gelm/render"
-	"github.com/stubbedev/gelm/widget"
+	"github.com/stubbedev/lys-ui/app"
+	"github.com/stubbedev/lys-ui/capture"
+	"github.com/stubbedev/lys-ui/dmabuf"
+	"github.com/stubbedev/lys-ui/internal/headlesstest/inproc"
+	"github.com/stubbedev/lys-ui/internal/udmabuf"
+	"github.com/stubbedev/lys-ui/render"
+	"github.com/stubbedev/lys-ui/widget"
 )
 
 var (
@@ -49,7 +49,7 @@ func showGPUArea(t *testing.T, onFrame func(area *widget.GPUArea, f widget.GPUFr
 			Output:     out,
 			Layer:      app.LayerOverlay,
 			Anchor:     app.AnchorTop | app.AnchorBottom | app.AnchorLeft | app.AnchorRight,
-			Namespace:  "gelm-gpuarea-test",
+			Namespace:  "lys-ui-gpuarea-test",
 			Root:       root,
 			Background: gpuBackground,
 		})

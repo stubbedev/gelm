@@ -25,8 +25,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/stubbedev/gelm/third_party/neurlang-wayland/wl"
-	"github.com/stubbedev/gelm/third_party/neurlang-wayland/wlclient"
+	"github.com/stubbedev/lys-ui/third_party/neurlang-wayland/wl"
+	"github.com/stubbedev/lys-ui/third_party/neurlang-wayland/wlclient"
 )
 
 // btnLeft is the linux-evdev code wl_pointer uses for the primary button.
@@ -84,7 +84,7 @@ func (r *registry) HandleOutputDone(wl.OutputDoneEvent)         {}
 func (r *registry) HandleOutputScale(wl.OutputScaleEvent)       {}
 
 // roundtrip dispatches until the display's sync callback completes,
-// retrying past proxies destroyed mid-queue the way gelm's session
+// retrying past proxies destroyed mid-queue the way lys-ui's session
 // does.
 func roundtrip(d *wl.Display) error {
 	cb, err := d.Sync()

@@ -4,7 +4,7 @@ import (
 	"image"
 	"strings"
 
-	"github.com/stubbedev/gelm/widget"
+	"github.com/stubbedev/lys-ui/widget"
 )
 
 // AboutConfig declares an about dialog, the AdwAboutWindow content:

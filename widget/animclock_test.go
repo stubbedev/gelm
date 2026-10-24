@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stubbedev/gelm/internal/animclock"
+	"github.com/stubbedev/lys-ui/internal/animclock"
 )
 
 // animClock is the injected animation clock the anim-driven widget

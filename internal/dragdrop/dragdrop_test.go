@@ -6,9 +6,9 @@ import (
 	"os"
 	"testing"
 
-	"github.com/stubbedev/gelm/internal/wlsession"
-	"github.com/stubbedev/gelm/third_party/neurlang-wayland/wl"
-	"github.com/stubbedev/gelm/transfer"
+	"github.com/stubbedev/lys-ui/internal/wlsession"
+	"github.com/stubbedev/lys-ui/third_party/neurlang-wayland/wl"
+	"github.com/stubbedev/lys-ui/transfer"
 )
 
 // fakeOffer records the requests the controller sends to one offer.
@@ -143,10 +143,10 @@ func newTestController() *Controller {
 
 func TestOfferMimesCollectInOrder(t *testing.T) {
 	m := &offerMimes{}
-	m.HandleDataOfferOffer(wl.DataOfferOfferEvent{MimeType: "application/x-gelm-row"})
+	m.HandleDataOfferOffer(wl.DataOfferOfferEvent{MimeType: "application/x-lys-ui-row"})
 	m.HandleDataOfferOffer(wl.DataOfferOfferEvent{MimeType: "text/plain"})
 	got := m.mimes
-	if len(got) != 2 || got[0] != "application/x-gelm-row" || got[1] != "text/plain" {
+	if len(got) != 2 || got[0] != "application/x-lys-ui-row" || got[1] != "text/plain" {
 		t.Errorf("mimes = %v, want advertised order", got)
 	}
 }
@@ -357,7 +357,7 @@ func TestStartDragHappyPath(t *testing.T) {
 	err := c.StartDrag(StartConfig{
 		Origin: origin, Icon: icon, GrabSerial: 1234,
 		Content: transfer.Drag{
-			Content: transfer.Content{Mimes: []string{"application/x-gelm-tile", "text/plain"}, Write: fakeWriter},
+			Content: transfer.Content{Mimes: []string{"application/x-lys-ui-tile", "text/plain"}, Write: fakeWriter},
 			OnDone:  func(transfer.Action) { done++ },
 		},
 	})
@@ -366,7 +366,7 @@ func TestStartDragHappyPath(t *testing.T) {
 	}
 
 	// The offered mimes, best first.
-	if len(src.offers) != 2 || src.offers[0] != "application/x-gelm-tile" || src.offers[1] != "text/plain" {
+	if len(src.offers) != 2 || src.offers[0] != "application/x-lys-ui-tile" || src.offers[1] != "text/plain" {
 		t.Errorf("offered %v, want the content's mimes in order", src.offers)
 	}
 	// Version 3 declares the copy action on the source.
@@ -495,22 +495,22 @@ func TestReadPayloadShortCircuitsSelfDrops(t *testing.T) {
 	c := newTestController()
 	offer := &fakeOffer{}
 	c.dragOffer = offer
-	c.accepted = "application/x-gelm-tile"
+	c.accepted = "application/x-lys-ui-tile"
 	src := &fakeSource{}
 	c.src, c.srcReq = &wl.DataSource{}, src
 	done := -1
 	c.srcData = transfer.Drag{
-		Mimes: []string{"application/x-gelm-tile"}, Write: fakeWriter,
+		Mimes: []string{"application/x-lys-ui-tile"}, Write: fakeWriter,
 		OnDone: func(a transfer.Action) {
 			done = boolInt(a == transfer.ActionCopy)
 		},
 	}
 
-	data, err := c.ReadPayload("application/x-gelm-tile")
+	data, err := c.ReadPayload("application/x-lys-ui-tile")
 	if err != nil {
 		t.Fatalf("ReadPayload: %v", err)
 	}
-	if string(data) != "payload:application/x-gelm-tile" {
+	if string(data) != "payload:application/x-lys-ui-tile" {
 		t.Errorf("payload = %q, want the provider's bytes", data)
 	}
 	// The wire transfer never starts for a self-drop…

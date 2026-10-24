@@ -7,7 +7,7 @@ package widget
 import (
 	"testing"
 
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 // warmDamage drains a fresh tree's theme stamps, mirroring the first
@@ -280,7 +280,7 @@ func TestThemeChangeDamagesTree(t *testing.T) {
 	}
 }
 
-// showcase builds a tree shaped like the gelm-hello window: header,
+// showcase builds a tree shaped like the lys-ui-hello window: header,
 // controls, text fields, and a 48-row scrollable list.
 type showcase struct {
 	root     Widget
@@ -325,7 +325,7 @@ func buildShowcase(tb testing.TB) showcase {
 	}
 
 	header := NewBox(Column, 2, 0)
-	header.Append(NewLabel(face, 18, "gelm showcase", th.Accent), false)
+	header.Append(NewLabel(face, 18, "lys-ui showcase", th.Accent), false)
 	header.Append(NewLabel(face, 11, "every widget in one window", th.TextMuted), false)
 
 	left := NewBox(Column, 10, 0)

@@ -5,7 +5,7 @@ import (
 
 	"github.com/unxed/xkb-go"
 
-	"github.com/stubbedev/gelm/internal/wlsession"
+	"github.com/stubbedev/lys-ui/internal/wlsession"
 )
 
 func TestCaptureKey(t *testing.T) {

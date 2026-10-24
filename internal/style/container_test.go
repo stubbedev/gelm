@@ -3,7 +3,7 @@ package style
 import (
 	"testing"
 
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 // computeContainer computes n's chain like computeTree, with the

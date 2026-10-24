@@ -19,7 +19,7 @@ import (
 	"github.com/go-text/typesetting/fontscan"
 	"github.com/go-text/typesetting/language"
 
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 // quietLogger discards fontscan warnings.

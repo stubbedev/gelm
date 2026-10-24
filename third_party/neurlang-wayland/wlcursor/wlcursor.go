@@ -6,9 +6,9 @@ import (
 	"os"
 	"strconv"
 
-	sys "github.com/stubbedev/gelm/third_party/neurlang-wayland/os"
-	"github.com/stubbedev/gelm/third_party/neurlang-wayland/wl"
-	"github.com/stubbedev/gelm/third_party/neurlang-wayland/wlcursor/xcursor"
+	sys "github.com/stubbedev/lys-ui/third_party/neurlang-wayland/os"
+	"github.com/stubbedev/lys-ui/third_party/neurlang-wayland/wl"
+	"github.com/stubbedev/lys-ui/third_party/neurlang-wayland/wlcursor/xcursor"
 )
 
 // Image is a wlCursor cursor image

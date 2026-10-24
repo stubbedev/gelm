@@ -10,10 +10,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stubbedev/gelm/internal/headlesstest"
-	"github.com/stubbedev/gelm/third_party/neurlang-wayland/wl"
-	"github.com/stubbedev/gelm/third_party/neurlang-wayland/xdg"
-	"github.com/stubbedev/gelm/wlr"
+	"github.com/stubbedev/lys-ui/internal/headlesstest"
+	"github.com/stubbedev/lys-ui/third_party/neurlang-wayland/wl"
+	"github.com/stubbedev/lys-ui/third_party/neurlang-wayland/xdg"
+	"github.com/stubbedev/lys-ui/wlr"
 )
 
 // xdg_toplevel request opcodes the tests match on.

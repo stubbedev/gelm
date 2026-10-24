@@ -1,4 +1,4 @@
-// Package style is gelm's CSS engine: a tokenizer and parser for the
+// Package style is lys-ui's CSS engine: a tokenizer and parser for the
 // GTK-flavored subset docs/css.md scopes, the rule index, and the
 // matcher/cascader that computes one widget's style — custom properties
 // with var() substitution, calc(), color-mix(), and per-longhand
@@ -21,7 +21,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/stubbedev/gelm/internal/logutil"
+	"github.com/stubbedev/lys-ui/internal/logutil"
 )
 
 // parseWarn is the parse-warning sink: warnings route to the injected

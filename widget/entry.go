@@ -3,9 +3,9 @@ package widget
 import (
 	"math"
 
-	"github.com/stubbedev/gelm/internal/style"
-	"github.com/stubbedev/gelm/internal/text"
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/internal/style"
+	"github.com/stubbedev/lys-ui/internal/text"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 // Entry is a single-line text field. Its editing state machine (insert,

@@ -5,7 +5,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 func newTestBuffer(w, h int) *Buffer {

@@ -1,8 +1,8 @@
 package xdg
 
 import (
-	"github.com/stubbedev/gelm/third_party/neurlang-wayland/wl"
-	xdgshell "github.com/stubbedev/gelm/third_party/neurlang-wayland/xdg"
+	"github.com/stubbedev/lys-ui/third_party/neurlang-wayland/wl"
+	xdgshell "github.com/stubbedev/lys-ui/third_party/neurlang-wayland/xdg"
 )
 
 type (

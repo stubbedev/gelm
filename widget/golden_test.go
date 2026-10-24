@@ -23,9 +23,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stubbedev/gelm/anim"
-	"github.com/stubbedev/gelm/internal/golden"
-	"github.com/stubbedev/gelm/render"
+	"github.com/stubbedev/lys-ui/anim"
+	"github.com/stubbedev/lys-ui/internal/golden"
+	"github.com/stubbedev/lys-ui/render"
 )
 
 // goldenPad is the margin between the widget and its shot's edge, so
@@ -224,7 +224,7 @@ func TestGoldenLabelModes(t *testing.T) {
 	const status = "server-02.example.com: syncing"
 	ellipsize(EllipsizeEnd, status, "label-ellipsize-end", dark)
 	ellipsize(EllipsizeEnd, status, "label-ellipsize-end-light", light)
-	const path = "/var/lib/gelm/cache/sessions.bin"
+	const path = "/var/lib/lys-ui/cache/sessions.bin"
 	ellipsize(EllipsizeMiddle, path, "label-ellipsize-middle", dark)
 	ellipsize(EllipsizeMiddle, path, "label-ellipsize-middle-light", light)
 
