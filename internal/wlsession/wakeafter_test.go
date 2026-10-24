@@ -32,12 +32,13 @@ func syncCompositor(c net.Conn, answered *atomic.Int32) {
 			continue
 		}
 		id := binary.NativeEndian.Uint32(body[0:4])
-		var ev [24]byte
+		const eventSize, doneOpcode, deleteIDOpcode = 12, 0, 1
+		var ev [2 * eventSize]byte
 		binary.NativeEndian.PutUint32(ev[0:], id)
-		binary.NativeEndian.PutUint32(ev[4:], 12<<16|0)
+		binary.NativeEndian.PutUint32(ev[4:], eventSize<<16+doneOpcode)
 		binary.NativeEndian.PutUint32(ev[8:], 1)
 		binary.NativeEndian.PutUint32(ev[12:], 1)
-		binary.NativeEndian.PutUint32(ev[16:], 12<<16|1)
+		binary.NativeEndian.PutUint32(ev[16:], eventSize<<16+deleteIDOpcode)
 		binary.NativeEndian.PutUint32(ev[20:], id)
 		if _, err := c.Write(ev[:]); err != nil {
 			return
