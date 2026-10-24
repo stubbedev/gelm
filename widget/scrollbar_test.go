@@ -3,6 +3,7 @@ package widget
 import (
 	"testing"
 
+	"github.com/stubbedev/lys-ui/internal/style"
 	"github.com/stubbedev/lys-ui/render"
 )
 
@@ -70,6 +71,19 @@ func TestScrollbar(t *testing.T) {
 	bar.PressEnd()
 	if _, y := s.Offset(); y != 300 {
 		t.Errorf("dragging the thumb to the end scrolled to %d, want 300", y)
+	}
+}
+
+// TestScrollbarFadeAlpha pins the fade as one premultiplication: a
+// solid thumb at half alpha paints half its channels, not a quarter.
+func TestScrollbarFadeAlpha(t *testing.T) {
+	const n = 8
+	buf := make([]byte, render.Stride(n)*n)
+	cv := render.New(buf, render.Stride(n), n, n)
+	r := render.Rect{W: n, H: n}
+	paintScrollbar(cv, r, r, 0.5, barSpec{thumb: render.RGB(200, 100, 50), width: style.BarWidthAuto})
+	if got := render.ColorFromBytes(buf[4*render.Stride(n)+4*4:]); got.A() != 128 || got.R() != 100 || got.B() != 25 {
+		t.Errorf("half-faded thumb %#x, want alpha 128 over channels 100/50/25", uint32(got))
 	}
 }
 

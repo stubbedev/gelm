@@ -40,8 +40,8 @@ func TestProgressBarUnstyledDefaults(t *testing.T) {
 		t.Errorf("bar %v, want the 160x10 default", got)
 	}
 	th := Current()
-	if got := p.troughFill(th); got != th.Surface {
-		t.Errorf("trough fallback %v, want the theme surface", got)
+	if got := p.troughFill(th.Accent); got != progressTrack(th.Accent) {
+		t.Errorf("trough fallback %v, want the faded accent", got)
 	}
 	if got := p.fillFill(th); got != th.Accent {
 		t.Errorf("progress fallback %v, want the theme accent", got)
@@ -50,7 +50,7 @@ func TestProgressBarUnstyledDefaults(t *testing.T) {
 	if got := p.fillFill(th); got != render.RGB(1, 2, 3) {
 		t.Errorf("programmatic fill %v, want the set color", got)
 	}
-	if got := p.troughFill(th); got != render.RGB(4, 5, 6) {
+	if got := p.troughFill(th.Accent); got != render.RGB(4, 5, 6) {
 		t.Errorf("programmatic trough %v, want the set color", got)
 	}
 }

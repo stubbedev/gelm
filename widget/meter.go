@@ -17,9 +17,11 @@ type meter struct {
 	// self is the embedding widget, for reading its own cascade
 	// (accent-color) where the meter paints the fill.
 	self Widget
-	// troughFill and fillFill color the parts the cascade gives no
-	// background; nil leaves them cascade-only.
-	troughFill, fillFill func(*Theme) Color
+	// fillFill colors the fill the cascade gives no background, and
+	// troughFill the trough from that fill (accent-color applied); nil
+	// leaves them cascade-only.
+	fillFill   func(*Theme) Color
+	troughFill func(fill Color) Color
 	// roundTrough defaults the trough's radius to half its height.
 	roundTrough bool
 }
@@ -92,8 +94,16 @@ func (m *meter) paintMeter(cv *render.Canvas, from, to float64) {
 	if m.roundTrough {
 		tr = m.bounds.H / 2
 	}
+	fill := fallback(m.fillFill, t)
+	if m.self != nil {
+		fill = accentOf(m.style(m.self), fill)
+	}
+	trough := Color(0)
+	if m.troughFill != nil {
+		trough = m.troughFill(fill)
+	}
 	_, inner := boxRects(boxOf(tv, render.Insets{}), m.bounds)
-	paintBoxBehind(cv, tv, m.bounds, radiusOr(tv, tr), borderOf(tv), pickc(0, tv, style.PropBackgroundColor, fallback(m.troughFill, t)))
+	paintBoxBehind(cv, tv, m.bounds, radiusOr(tv, tr), borderOf(tv), pickc(0, tv, style.PropBackgroundColor, trough))
 	x0, x1 := int(float64(inner.W)*from), int(float64(inner.W)*to)
 	if x1 <= x0 {
 		return
@@ -101,10 +111,6 @@ func (m *meter) paintMeter(cv *render.Canvas, from, to float64) {
 	fr := render.Rect{X: inner.X + x0, Y: inner.Y, W: x1 - x0, H: inner.H}
 	m.trough.fill.Arrange(fr)
 	fv := m.trough.fill.style(&m.trough.fill)
-	fill := fallback(m.fillFill, t)
-	if m.self != nil {
-		fill = accentOf(m.style(m.self), fill)
-	}
 	fxp := pushEffects(cv, &m.trough.fill.node, fv, fr, radiusOr(fv, inner.H/2))
 	cv = fxp.cv
 	paintBoxBehind(cv, fv, fr, radiusOr(fv, inner.H/2), borderOf(fv), pickc(0, fv, style.PropBackgroundColor, fill))

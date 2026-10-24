@@ -23,8 +23,9 @@ const (
 // SetValue returns to the fraction.
 type ProgressBar struct {
 	meter
-	// Fill and Trough color the bar; zero is the theme's accent and
-	// surface, under the trough and progress rules.
+	// Fill and Trough color the bar; zero is the theme's accent (or
+	// the accent-color) and, shadcn's Progress track, the fill at a
+	// fifth of its opacity, under the trough and progress rules.
 	Fill, Trough render.Color
 	// PulseStep is how far one Pulse moves the block (GTK pulse-step).
 	PulseStep float64
@@ -39,7 +40,7 @@ func NewProgressBar(value float64) *ProgressBar {
 	p := &ProgressBar{PulseStep: 0.1, dir: 1}
 	p.initMeter(p, value, "progress")
 	p.roundTrough = true
-	p.troughFill = func(t *Theme) Color { return orColor(p.Trough, t.Surface) }
+	p.troughFill = func(fill Color) Color { return orColor(p.Trough, progressTrack(fill)) }
 	p.fillFill = func(t *Theme) Color { return orColor(p.Fill, t.Accent) }
 	p.pulse = loop{period: pulsePeriod, step: func(t float64) {
 		// A triangle wave: across and back once per period.
@@ -48,6 +49,10 @@ func NewProgressBar(value float64) *ProgressBar {
 	}}
 	return p
 }
+
+// progressTrack is the trough's fallback: the fill at a fifth of its
+// opacity.
+func progressTrack(fill Color) Color { return scaleAlpha(fill, 0.2) }
 
 // orColor is c, or def when c is unset.
 func orColor(c, def Color) Color {

@@ -7,7 +7,7 @@ import (
 )
 
 // The fill and trough colors paint when set and fall back to the
-// theme's accent and surface when zero.
+// theme's accent and the faded accent track when zero.
 func TestProgressBarColors(t *testing.T) {
 	const w, h = 20, 4
 	paint := func(p *ProgressBar) []byte {
@@ -27,7 +27,12 @@ func TestProgressBarColors(t *testing.T) {
 	}
 	theme := Current()
 	buf = paint(NewProgressBar(0.5))
-	if at(buf, 5) != theme.Accent || at(buf, 15) != theme.Surface {
+	if at(buf, 5) != theme.Accent || at(buf, 15) != progressTrack(theme.Accent) {
 		t.Error("unset colors did not fall back to the theme")
+	}
+	loadCSS(t, `progressbar { accent-color: #ff0000; }`)
+	buf = paint(NewProgressBar(0.5))
+	if at(buf, 5) != red || at(buf, 15) != progressTrack(red) {
+		t.Errorf("accent-color fill %#x trough %#x, want the accent and its faded track", uint32(at(buf, 5)), uint32(at(buf, 15)))
 	}
 }
