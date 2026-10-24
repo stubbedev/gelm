@@ -5,6 +5,7 @@
 package animclock
 
 import (
+	"slices"
 	"sync"
 	"time"
 )
@@ -34,10 +35,21 @@ type group struct {
 	dead bool
 }
 
+// driver is an open-ended animation: fn steps it to now and reports
+// whether it still runs - a physics spring, which settles when it
+// settles, not at a fixed end.
+type driver struct {
+	fn   func(now time.Time) bool
+	dead bool
+}
+
 var (
-	mu       sync.Mutex
-	clock    = time.Now
-	active   []*step
+	mu      sync.Mutex
+	clock   = time.Now
+	active  []*step
+	drivers []*driver
+	// running is Tick's reused snapshot of the drivers it steps.
+	running  []*driver
 	lastTick time.Time
 )
 
@@ -77,10 +89,29 @@ func Launch(pieces []Piece) (cancel func()) {
 	return cancel
 }
 
+// Drive runs fn once per frame with the frame's instant until it
+// reports false (settled) or the returned cancel runs.
+func Drive(fn func(now time.Time) bool) (cancel func()) {
+	d := &driver{fn: fn}
+	mu.Lock()
+	drivers = append(drivers, d)
+	mu.Unlock()
+	return func() {
+		mu.Lock()
+		d.dead = true
+		mu.Unlock()
+	}
+}
+
 // Active reports whether any piece is still running or scheduled.
 func Active() bool {
 	mu.Lock()
 	defer mu.Unlock()
+	for _, d := range drivers {
+		if !d.dead {
+			return true
+		}
+	}
 	for _, s := range active {
 		if !s.done && !s.grp.dead {
 			return true
@@ -109,6 +140,12 @@ func Next() (time.Time, bool) {
 	}
 	var next time.Time
 	found := false
+	for _, d := range drivers {
+		if !d.dead {
+			next, found = nextFrame, true
+			break
+		}
+	}
 	for _, s := range active {
 		if s.done || s.grp.dead {
 			continue
@@ -162,6 +199,7 @@ func Tick(now time.Time) bool {
 	clear(active[len(keep):])
 	active = keep
 	lastTick = now
+	running = append(running[:0], drivers...)
 	mu.Unlock()
 	ran := false
 	for _, f := range due {
@@ -174,6 +212,23 @@ func Tick(now time.Time) bool {
 		f.fn(f.eased)
 		ran = true
 	}
+	for _, d := range running {
+		mu.Lock()
+		dead := d.dead
+		mu.Unlock()
+		if dead {
+			continue
+		}
+		ran = true
+		if !d.fn(now) {
+			mu.Lock()
+			d.dead = true
+			mu.Unlock()
+		}
+	}
+	mu.Lock()
+	drivers = slices.DeleteFunc(drivers, func(d *driver) bool { return d.dead })
+	mu.Unlock()
 	return ran
 }
 
@@ -194,10 +249,11 @@ func SetClock(fn func() time.Time) (restore func()) {
 	}
 }
 
-// Reset drops every scheduled piece.
+// Reset drops every scheduled piece and driver.
 func Reset() {
 	mu.Lock()
 	defer mu.Unlock()
 	active = nil
+	drivers = nil
 	lastTick = clock()
 }

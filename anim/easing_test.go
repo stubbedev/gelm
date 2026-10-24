@@ -15,7 +15,7 @@ func TestEasingEndpoints(t *testing.T) {
 		"EaseOutCubic":   EaseOutCubic,
 		"EaseInOutCubic": EaseInOutCubic,
 		"EaseOutBack":    EaseOutBack,
-		"Spring":         Spring(0.4, 8),
+		"SpringEasing":   SpringEasing(0.4, 8),
 	}
 	for name, e := range curves {
 		if got := e(0); got != 0 {
@@ -101,7 +101,7 @@ func TestEasingShapes(t *testing.T) {
 	})
 	t.Run("critically damped spring never overshoots", func(t *testing.T) {
 		prev := 0.0
-		for i, v := range sample(Spring(1, 2*math.Pi), 100) {
+		for i, v := range sample(SpringEasing(1, 2*math.Pi), 100) {
 			if v < prev {
 				t.Fatalf("Spring(zeta 1) dipped at %d/100: %v after %v", i, v, prev)
 			}
@@ -109,7 +109,7 @@ func TestEasingShapes(t *testing.T) {
 		}
 	})
 	t.Run("underdamped spring wobbles and settles", func(t *testing.T) {
-		e := Spring(0.2, 8)
+		e := SpringEasing(0.2, 8)
 		peak := 0.0
 		for _, v := range sample(e, 200) {
 			peak = max(peak, v)
@@ -119,7 +119,7 @@ func TestEasingShapes(t *testing.T) {
 		}
 	})
 	t.Run("overdamped spring crawls without crossing", func(t *testing.T) {
-		e := Spring(2, 2*math.Pi)
+		e := SpringEasing(2, 2*math.Pi)
 		prev := 0.0
 		for i, v := range sample(e, 100) {
 			if v < prev || v > 1 {

@@ -1,6 +1,7 @@
 // Package anim declares time-based animations: tweens with easing
 // curves, combined into timelines with Sequence, Parallel and Delay,
-// and launched with Play. The application loop advances them once per
+// and launched with Play; and physics springs (Spring), which run until
+// they settle and keep their velocity when retargeted. The application loop advances them once per
 // frame and parks when none run. Callbacks run on the loop goroutine,
 // so a tween may mutate widgets directly.
 package anim

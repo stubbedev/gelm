@@ -246,32 +246,24 @@ func PiecewiseAt(pts []LinearPt, t float64) float64 {
 	return pa.Value + (t-pa.Pos)/(pb.Pos-pa.Pos)*(pb.Value-pa.Value)
 }
 
-// Spring returns a damped-spring easing: the value leaves 0 with zero
-// velocity and settles at 1, oscillating on the way when underdamped.
-// zeta is the damping ratio - below 1 overshoots (0.3 to 0.6 give a
-// lively wobble, 1 is critically damped with none), above 1 is
-// overdamped and sluggish. omega is the undamped angular frequency in
-// radians across the normalized tween: 2*pi crosses one full
-// oscillation over the duration, so popovers want roughly 6 to 12.
-func Spring(zeta, omega float64) Easing {
+// SpringEasing returns a damped-spring easing: the value leaves 0 with
+// zero velocity and settles at 1, oscillating on the way when
+// underdamped. zeta is the damping ratio - below 1 overshoots (0.3 to
+// 0.6 give a lively wobble, 1 is critically damped with none), above 1
+// is overdamped and sluggish. omega is the undamped angular frequency
+// in radians across the normalized tween: 2*pi crosses one full
+// oscillation over the duration, so popovers want roughly 6 to 12. It
+// is the fixed-duration curve; Spring is the physics spring that keeps
+// its velocity across retargets.
+func SpringEasing(zeta, omega float64) Easing {
 	return func(t float64) float64 {
 		switch {
 		case t <= 0:
 			return 0
 		case t >= 1:
 			return 1
-		case zeta < 1:
-			wd := omega * math.Sqrt(1-zeta*zeta)
-			e := math.Exp(-zeta * omega * t)
-			return 1 - e*(math.Cos(wd*t)+(zeta*omega/wd)*math.Sin(wd*t))
-		case zeta == 1:
-			return 1 - (1+omega*t)*math.Exp(-omega*t)
-		default:
-			// Overdamped: two real decay rates, no oscillation.
-			s := math.Sqrt(zeta*zeta - 1)
-			r1 := omega * (-zeta + s)
-			r2 := omega * (-zeta - s)
-			return 1 + (r2*math.Exp(r1*t)-r1*math.Exp(r2*t))/(r1-r2)
 		}
+		x, _ := springStep(omega, zeta, -1, 0, t)
+		return 1 + x
 	}
 }
