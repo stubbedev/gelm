@@ -235,11 +235,11 @@ func (sc *Scratch) computeProp(p Prop, v, parent *Values, cx *ctx) PropSet {
 }
 
 // setInitial writes p's initial value. Border and outline colors start
-// as currentColor. A layout longhand stays undeclared instead
-// (layoutWideProps): its initial value is the widget's programmatic
-// layout.
+// as currentColor. A layout longhand or a widget-set text longhand
+// stays undeclared instead (layoutWideProps, textWideProps): its
+// initial value is the widget's programmatic setting.
 func (sc *Scratch) setInitial(p Prop, v *Values, cx *ctx) {
-	if layoutWideProps.Has(p) {
+	if layoutWideProps.Has(p) || textWideProps.Has(p) {
 		return
 	}
 	init := initialValues()

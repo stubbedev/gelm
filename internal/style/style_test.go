@@ -1052,3 +1052,24 @@ func TestAllUnsetLeavesTheTransformIdentity(t *testing.T) {
 		t.Errorf("all: unset opacity = %v, want 1", v.Opacity)
 	}
 }
+
+// A CSS-wide keyword leaves text-overflow and line-clamp undeclared, as
+// it does the layout longhands: their initial value is the label's own
+// ellipsize and line limit, so `* { all: unset }` keeps them. An
+// explicit value still declares them.
+func TestWideKeywordsLeaveWidgetTextSettingsUndeclared(t *testing.T) {
+	s := parseOne(t, `
+		* { all: unset; }
+		a { text-overflow: initial; line-clamp: unset; }
+		b { text-overflow: clip; line-clamp: 2; }
+	`)
+	for _, name := range []string{"label", "a"} {
+		v := computeTree(s, el(name))
+		if v.Has(PropTextOverflow) || v.Has(PropLineClamp) {
+			t.Errorf("%s: a wide keyword declared text-overflow %v / line-clamp %v", name, v.Has(PropTextOverflow), v.Has(PropLineClamp))
+		}
+	}
+	if v := computeTree(s, el("b")); !v.Has(PropTextOverflow) || v.Overflow != TextOverflowClip || !v.Has(PropLineClamp) || v.LineClamp != 2 {
+		t.Errorf("explicit values: overflow set=%v %v, clamp set=%v %d", v.Has(PropTextOverflow), v.Overflow, v.Has(PropLineClamp), v.LineClamp)
+	}
+}

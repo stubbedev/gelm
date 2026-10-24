@@ -308,6 +308,12 @@ var LayoutProps = setOf(PropDisplay, PropPosition, PropTop, PropRight, PropBotto
 // floor.
 var layoutWideProps = LayoutProps.AndNot(setOf(PropVisibility, PropMinWidth, PropMinHeight))
 
+// textWideProps are the text longhands whose initial value is likewise
+// a widget's own setting (Label.SetEllipsize, SetMaxLines; GTK keeps
+// both off CSS): a CSS-wide keyword returns them to undeclared, so a
+// `* { all: unset; }` reset keeps a label's ellipsizing.
+var textWideProps = setOf(PropTextOverflow, PropLineClamp)
+
 // copyLayoutProp copies the layout longhand p from src to dst; any
 // other longhand is copyProp's.
 func copyLayoutProp(dst, src *Layout, p Prop) {

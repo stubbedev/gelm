@@ -632,7 +632,8 @@ box spacing for `gap`, Append's expand (or SetHExpand/SetVExpand) for
 `align-self` when `align-items` is not declared either. The CSS-wide
 keywords (`initial`, `unset`, `revert`, and `all`) return a layout
 longhand to undeclared, so a GTK-style `* { all: unset; }` reset keeps
-the toolkit's layout; `min-width`/`min-height` keep their reading of
+the toolkit's layout (and likewise `text-overflow` and `line-clamp`,
+whose initial value is a label's own ellipsizing and line limit); `min-width`/`min-height` keep their reading of
 it as a zero floor, and `visibility` inherits as CSS says.
 
 **display.** `block`, `inline`, `inline-block`, `flow-root`, `flex`,
