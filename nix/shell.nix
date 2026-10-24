@@ -57,6 +57,11 @@
         # to the pinned one, as the package builds do.
         GOTOOLCHAIN = "local";
 
+        # `just race` runs the suite under the race detector, which needs
+        # cgo: only that recipe points CC here and turns cgo on, so the
+        # shell keeps no C compiler on PATH.
+        LYS_UI_RACE_CC = "${pkgs.gcc}/bin/gcc";
+
         # `just atspi-verify` runs the bridge against real at-spi2-core: its
         # bus launcher and registry daemon live in libexec, off PATH.
         ATSPI_LIBEXEC = "${pkgs.at-spi2-core}/libexec";

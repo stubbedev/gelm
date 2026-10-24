@@ -17,6 +17,7 @@ import (
 // sweep the frame measures 1 alloc/op (the harness's own rect append),
 // so the budget is ceil(1*1.2).
 func TestAllocBudgetGalleryFrame(t *testing.T) {
+	skipBudgetUnderRace(t)
 	show := buildShowcase(t)
 	cv := render.New(make([]byte, render.Stride(showW)*showH), render.Stride(showW), showW, showH)
 	stale := render.Rect{W: showW, H: showH}
@@ -35,6 +36,7 @@ func TestAllocBudgetGalleryFrame(t *testing.T) {
 // snapshot buffers (walkTree, styleKids), matching the
 // StyleGalleryFullRestyle benchmark's 0 allocs/op.
 func TestAllocBudgetStyleFullRestyle(t *testing.T) {
+	skipBudgetUnderRace(t)
 	show := buildShowcase(t)
 	LoadStylesheet(galleryCSS)
 	t.Cleanup(func() { LoadStylesheet("") })
@@ -62,6 +64,7 @@ func TestAllocBudgetStyleFullRestyle(t *testing.T) {
 // with the filtered sibling list memoized on the parent per damage
 // generation instead of rebuilt per restyled widget.
 func TestAllocBudgetSiblingRestyle(t *testing.T) {
+	skipBudgetUnderRace(t)
 	LoadStylesheet(`spacer + spacer { min-width: 7px; } spacer:first-child { min-height: 5px; }`)
 	t.Cleanup(func() { LoadStylesheet("") })
 	row := NewBox(Row, 0, 0)
@@ -96,6 +99,7 @@ func TestAllocBudgetSiblingRestyle(t *testing.T) {
 // string are memoized across the several reads a frame makes, instead
 // of spliced and converted per read.
 func TestAllocBudgetComposingDisplay(t *testing.T) {
+	skipBudgetUnderRace(t)
 	e := NewEntry(entryFace(t), 14, 0)
 	e.Insert("hello")
 	arrangeTree(t, e, 200, 32)
@@ -110,5 +114,14 @@ func TestAllocBudgetComposingDisplay(t *testing.T) {
 	allocs := testing.AllocsPerRun(100, read)
 	if allocs > budget {
 		t.Errorf("composing display allocates %v allocs/read, budget %d", allocs, budget)
+	}
+}
+
+// skipBudgetUnderRace skips an allocation budget under -race, whose
+// instrumentation allocates.
+func skipBudgetUnderRace(t *testing.T) {
+	t.Helper()
+	if raceEnabled {
+		t.Skip("allocation budgets do not hold under -race")
 	}
 }

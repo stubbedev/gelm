@@ -30,6 +30,13 @@ hyprland-vm:
 atspi:
     go test ./internal/atspi/
 
+# Run the suite under the race detector. It needs cgo, so only this
+# recipe enables it, with the dev shell's pinned C compiler
+# (LYS_UI_RACE_CC); allocation budgets skip under -race, whose
+# instrumentation allocates.
+race:
+    CC="$LYS_UI_RACE_CC" CGO_ENABLED=1 go test -race ./...
+
 # The bridge against real at-spi2-core (#114) - the scripted
 # accerciser pass: at-spi-bus-launcher on a private session bus, the
 # real registryd, and a client that finds the application under the

@@ -159,8 +159,11 @@ func TestRealAtSpi2Core(t *testing.T) {
 		t.Errorf("GetText = %q, %v", text, err)
 	}
 	var ok bool
-	if err := obj.Call(ifaceText+".SetCaretOffset", 0, int32(3)).Store(&ok); err != nil || !ok || entry.Cursor() != 3 {
-		t.Errorf("SetCaretOffset: ok %v err %v caret %d", ok, err, entry.Cursor())
+	err = obj.Call(ifaceText+".SetCaretOffset", 0, int32(3)).Store(&ok)
+	var caret int
+	scene.Invoke(func() { caret = entry.Cursor() })
+	if err != nil || !ok || caret != 3 {
+		t.Errorf("SetCaretOffset: ok %v err %v caret %d", ok, err, caret)
 	}
 }
 
