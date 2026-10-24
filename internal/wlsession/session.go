@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -248,6 +249,9 @@ type Session struct {
 	// closed is set by Close, before the connection goes; WakeAfter
 	// timers still pending then stand down instead of writing to it.
 	closed atomic.Bool
+	// wakeMu makes a WakeAfter timer's closed check and its request
+	// atomic with respect to Close.
+	wakeMu sync.Mutex
 
 	// protoErr carries the compositor's fatal wl_display.error, if one
 	// arrived, so dispatch failures name the compositor's verdict
@@ -1367,40 +1371,35 @@ func (s *Session) withProtoErr(err error) error {
 	return err
 }
 
-// kickHandler unregisters its sync callback once the wakeup fired, so
-// parked-loop kicks do not leak proxies. (wlclient.CallbackDestroy is a
-// no-op in the binding; Unregister is the real teardown - done is a
-// destructor event, so no wire request is needed.)
-type kickHandler struct{ cb *wl.Callback }
+// wakeup is the wl_display.sync callback a WakeAfter sends: its own
+// proxy, registered before the request goes out, so the timer
+// goroutine writes no handler the loop reads, and a done that arrives
+// at once still finds it. Dispatching the done ends the parked Step;
+// done is a destructor event, so the proxy unregisters itself.
+type wakeup struct{ wl.BaseProxy }
 
-// HandleCallbackDone implements wl.CallbackDoneHandler.
-func (k kickHandler) HandleCallbackDone(wl.CallbackDoneEvent) {
-	k.cb.Unregister()
-}
+// Dispatch implements wl.Dispatcher.
+func (w *wakeup) Dispatch(*wl.Event) { w.Context().Unregister(w.Id()) }
 
 // WakeAfter arranges for a loop parked in Step to return by waiting d:
-// a timer sends a wl_display.sync, and its done event ends the blocking
-// read. If the event is dispatched before the listener attaches, the
-// callback's registration leaks - the wake itself is unaffected because
-// dispatching the event is what ends Step.
+// a timer sends a wl_display.sync, and dispatching its done ends the
+// blocking read. A timer that fires after Close does nothing.
 func (s *Session) WakeAfter(d time.Duration) {
-	if d < 0 {
-		d = 0
-	}
-	time.AfterFunc(d, func() {
-		// A timer outliving the session must not touch the closed
-		// connection: its proxy map is gone and registering the
-		// sync callback would panic.
+	time.AfterFunc(max(d, 0), func() {
+		s.wakeMu.Lock()
+		defer s.wakeMu.Unlock()
 		if s.closed.Load() {
 			return
 		}
-		cb, err := s.Display.Sync()
-		if err != nil {
-			return
-		}
-		wlclient.CallbackAddListener(cb, kickHandler{cb: cb})
+		ctx := s.Display.Context()
+		w := &wakeup{}
+		ctx.Register(w)
+		_ = ctx.SendRequest(s.Display, displaySyncOpcode, w)
 	})
 }
+
+// displaySyncOpcode is wl_display.sync's request opcode.
+const displaySyncOpcode = 0
 
 // Closed reports whether Close ran.
 func (s *Session) Closed() bool { return s.closed.Load() }
@@ -1408,6 +1407,8 @@ func (s *Session) Closed() bool { return s.closed.Load() }
 // Close disconnects from the display and releases the session's shared
 // buffer arena: the pool proxy, mapping, and the session's one fd.
 func (s *Session) Close() {
+	s.wakeMu.Lock()
+	defer s.wakeMu.Unlock()
 	if s.closed.Swap(true) {
 		return // idempotent: the disconnect teardown and a deferred Close both run
 	}
