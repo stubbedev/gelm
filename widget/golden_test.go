@@ -408,18 +408,20 @@ func TestGoldenColorChooser(t *testing.T) {
 
 func TestGoldenPaned(t *testing.T) {
 	face := goldenFace(t)
-	th := DarkTheme()
-	row := NewPaned(Row,
-		NewLabel(face, 13, "start pane", th.Text),
-		NewLabel(face, 13, "end pane", th.Text))
-	NewGolden(t, row, "paned-row", goldenTheme(th), goldenFrame(220, 60),
-		goldenAfterArrange(func() { row.SetPosition(120) }))
+	for i, shot := range bothPalettes("paned-row") {
+		th := shot.th
+		row := NewPaned(Row,
+			NewLabel(face, 13, "start pane", th.Text),
+			NewLabel(face, 13, "end pane", th.Text))
+		NewGolden(t, row, shot.name, goldenTheme(th), goldenFrame(220, 60),
+			goldenAfterArrange(func() { row.SetPosition(120) }))
 
-	col := NewPaned(Column,
-		NewLabel(face, 13, "top pane", th.Text),
-		NewLabel(face, 13, "bottom pane", th.Text))
-	NewGolden(t, col, "paned-column", goldenTheme(th), goldenFrame(220, 90),
-		goldenAfterArrange(func() { col.SetPosition(40) }))
+		col := NewPaned(Column,
+			NewLabel(face, 13, "top pane", th.Text),
+			NewLabel(face, 13, "bottom pane", th.Text))
+		NewGolden(t, col, bothPalettes("paned-column")[i].name, goldenTheme(th), goldenFrame(220, 90),
+			goldenAfterArrange(func() { col.SetPosition(40) }))
+	}
 }
 
 // TestGoldenGridSqueeze pins the deficit negotiation (#67): tracks

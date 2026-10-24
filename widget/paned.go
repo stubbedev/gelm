@@ -5,11 +5,12 @@ import (
 	"github.com/stubbedev/lys-ui/render"
 )
 
-// panedHandleW is the divider's width along the paned's axis;
-// panedHandleSlop is how far beyond it a press still grabs, so the
-// handle is easy to hit without being easy to see.
+// panedHandleW is the divider's width along the paned's axis, shadcn's
+// one-pixel Resizable handle; panedHandleSlop is how far beyond it a
+// press still grabs, so the handle is easy to hit without being easy
+// to see.
 const (
-	panedHandleW    = 6
+	panedHandleW    = 1
 	panedHandleSlop = 6
 )
 
