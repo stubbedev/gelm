@@ -126,3 +126,27 @@ func TestSpinnerPaint(t *testing.T) {
 		s.Paint(cv)
 	})
 }
+
+// TestSpinnerRing pins Loader2's open ring: the stroke runs clockwise
+// from the angle in the spinner's color, and the fifth of the turn
+// before it is the gap.
+func TestSpinnerRing(t *testing.T) {
+	loadCSS(t, `spinner { color: #ff0000; }`)
+	s := NewSpinner(24)
+	data := paintPixels(t, s, 24, 24)
+	at := func(a float64) Color {
+		return pxAt(data, 24, int(12+9*math.Cos(a)), int(12+9*math.Sin(a)))
+	}
+	if got := at(math.Pi / 2); got.A() < 0xf0 || got.R() != got.A() || got.G() != 0 {
+		t.Errorf("ring at six o'clock %#x, want the spinner's red", uint32(got))
+	}
+	if got := at(-math.Pi / 5); got.A() != 0 {
+		t.Errorf("gap before the angle painted %#x", uint32(got))
+	}
+}
+
+func TestGoldenSpinner(t *testing.T) {
+	for _, shot := range bothPalettes("spinner") {
+		NewGolden(t, NewSpinner(24), shot.name, goldenTheme(shot.th))
+	}
+}

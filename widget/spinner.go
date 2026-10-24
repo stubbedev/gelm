@@ -4,22 +4,25 @@ import (
 	"math"
 	"time"
 
+	"github.com/stubbedev/lys-ui/internal/style"
 	"github.com/stubbedev/lys-ui/render"
 )
 
 const (
 	// spinnerPeriod is the time per full revolution.
 	spinnerPeriod = time.Second
-	// spinnerArc paints the leading quarter-turn; the muted ring shows
-	// the track underneath.
-	spinnerArc   = math.Pi / 2
-	spinnerWidth = 2
-	// spinnerStep is the chord length of the painted arc segments.
-	spinnerStep = math.Pi / 18
+	// spinnerArc is the painted sweep, lucide's Loader2: four fifths of
+	// the circle, the gap leading the turn.
+	spinnerArc = 2 * math.Pi * 0.8
+	// spinnerRadius and spinnerWidth are Loader2's 9 and 2 in its 24px
+	// box, as fractions of the spinner's size.
+	spinnerRadius = 9.0 / 24
+	spinnerWidth  = 2.0 / 24
 )
 
-// Spinner is an indeterminate activity indicator: a rotating arc on a
-// muted ring. The rotation is animation-clock driven — one frame
+// Spinner is an indeterminate activity indicator (shadcn/ui's Spinner,
+// lucide's Loader2): a rotating open ring in the text color, the
+// `spinner` element's color. The rotation is animation-clock driven — one frame
 // invalidation per step, and no timer at all unless the spinner is
 // both spinning and visible. A hidden or stopped spinner schedules no
 // wake, so an idle app with a parked spinner costs nothing.
@@ -64,38 +67,15 @@ func (s *Spinner) Measure(con Constraints) Size {
 	return s.measureStore(con, clampSize(Size{W: s.size, H: s.size}, con))
 }
 
-// Paint draws the muted track ring and the leading arc at the current
-// angle.
+// Paint draws the open ring at the current angle.
 func (s *Spinner) Paint(cv *render.Canvas) {
 	b := s.bounds
 	if b.Empty() {
 		return
 	}
-	th := Current()
-	radius := float64(min(b.W, b.H))/2 - spinnerWidth
-	if radius <= 0 {
-		return
-	}
-	cx := float64(b.X + b.W/2)
-	cy := float64(b.Y + b.H/2)
-	strokeArc(cv, cx, cy, radius, 0, 2*math.Pi, spinnerWidth, scaleAlpha(th.TextMuted, 0.35))
-	strokeArc(cv, cx, cy, radius, s.angle, s.angle+spinnerArc, spinnerWidth, th.Accent)
-}
-
-// strokeArc paints an arc as short chords; the canvas has no curve
-// primitive and at spinner sizes the segments read as a smooth ring.
-func strokeArc(cv *render.Canvas, cx, cy, radius, from, to float64, width int, col render.Color) {
-	pt := func(a float64) (int, int) {
-		return int(cx + radius*math.Cos(a) + 0.5), int(cy + radius*math.Sin(a) + 0.5)
-	}
-	x0, y0 := pt(from)
-	for a := from + spinnerStep; a < to; a += spinnerStep {
-		x1, y1 := pt(a)
-		cv.Line(x0, y0, x1, y1, width, col)
-		x0, y0 = x1, y1
-	}
-	x1, y1 := pt(to)
-	cv.Line(x0, y0, x1, y1, width, col)
+	d := float64(min(b.W, b.H))
+	col := pickc(0, s.style(s), style.PropColor, Current().Text)
+	cv.Arc(float64(b.X)+float64(b.W)/2, float64(b.Y)+float64(b.H)/2, d*spinnerRadius, d*spinnerWidth, s.angle, spinnerArc, col)
 }
 
 // HitTest returns the spinner when p is inside its bounds.
