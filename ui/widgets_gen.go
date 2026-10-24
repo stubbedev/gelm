@@ -447,6 +447,68 @@ func (b *ActionRowBuilder) OnActivate(fn func()) *ActionRowBuilder {
 	return b
 }
 
+// AlertBuilder builds a widget.Alert.
+type AlertBuilder struct {
+	base[*widget.Alert, *AlertBuilder]
+	face render.Font
+	size float64
+}
+
+// Alert builds a widget.Alert with widget.NewAlert.
+func Alert(title string, description string) *AlertBuilder {
+	b := &AlertBuilder{}
+	b.init(b, func(s *Scope) *widget.Alert { return widget.NewAlert(s.face(b.face), title, description) })
+	return b
+}
+
+// Font overrides the environment's typeface and size for this widget; zero values keep the environment's.
+func (b *AlertBuilder) Font(face render.Font, sizePx float64) *AlertBuilder {
+	b.face, b.size = face, sizePx
+	return b
+}
+
+// Description calls (*widget.Alert).SetDescription.
+func (b *AlertBuilder) Description(text string) *AlertBuilder {
+	b.do(func(s *Scope, w *widget.Alert) { w.SetDescription(text) })
+	return b
+}
+
+// WatchDescription re-applies SetDescription with get's value after every update.
+func (b *AlertBuilder) WatchDescription(get func() string) *AlertBuilder {
+	b.watch(func(w *widget.Alert) { w.SetDescription(get()) })
+	return b
+}
+
+// Icon calls (*widget.Alert).SetIcon.
+func (b *AlertBuilder) Icon(child Node) *AlertBuilder {
+	b.do(func(s *Scope, w *widget.Alert) { w.SetIcon(build(s, child)) })
+	return b
+}
+
+// Title calls (*widget.Alert).SetTitle.
+func (b *AlertBuilder) Title(text string) *AlertBuilder {
+	b.do(func(s *Scope, w *widget.Alert) { w.SetTitle(text) })
+	return b
+}
+
+// WatchTitle re-applies SetTitle with get's value after every update.
+func (b *AlertBuilder) WatchTitle(get func() string) *AlertBuilder {
+	b.watch(func(w *widget.Alert) { w.SetTitle(get()) })
+	return b
+}
+
+// Variant calls (*widget.Alert).SetVariant.
+func (b *AlertBuilder) Variant(v widget.AlertVariant) *AlertBuilder {
+	b.do(func(s *Scope, w *widget.Alert) { w.SetVariant(v) })
+	return b
+}
+
+// WatchVariant re-applies SetVariant with get's value after every update.
+func (b *AlertBuilder) WatchVariant(get func() widget.AlertVariant) *AlertBuilder {
+	b.watch(func(w *widget.Alert) { w.SetVariant(get()) })
+	return b
+}
+
 // AspectFrameBuilder builds a widget.AspectFrame.
 type AspectFrameBuilder struct {
 	base[*widget.AspectFrame, *AspectFrameBuilder]
@@ -704,6 +766,12 @@ func (b *BoxBuilder) Append(child Node, expand bool) *BoxBuilder {
 // AppendAligned calls (*widget.Box).AppendAligned.
 func (b *BoxBuilder) AppendAligned(child Node, expand bool, cross widget.Align) *BoxBuilder {
 	b.do(func(s *Scope, w *widget.Box) { w.AppendAligned(build(s, child), expand, cross) })
+	return b
+}
+
+// InsertAligned calls (*widget.Box).InsertAligned.
+func (b *BoxBuilder) InsertAligned(i int, child Node, expand bool, cross widget.Align) *BoxBuilder {
+	b.do(func(s *Scope, w *widget.Box) { w.InsertAligned(i, build(s, child), expand, cross) })
 	return b
 }
 
@@ -5815,6 +5883,12 @@ func (b *StatusPageBuilder) Font(face render.Font, sizePx float64) *StatusPageBu
 // Child calls (*widget.StatusPage).SetChild.
 func (b *StatusPageBuilder) Child(child Node) *StatusPageBuilder {
 	b.do(func(s *Scope, w *widget.StatusPage) { w.SetChild(build(s, child)) })
+	return b
+}
+
+// Icon calls (*widget.StatusPage).SetIcon.
+func (b *StatusPageBuilder) Icon(child Node) *StatusPageBuilder {
+	b.do(func(s *Scope, w *widget.StatusPage) { w.SetIcon(build(s, child)) })
 	return b
 }
 

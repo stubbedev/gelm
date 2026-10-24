@@ -29,6 +29,9 @@ const (
 	Circular = "circular"
 	// DestructiveAction marks a button whose action loses data.
 	DestructiveAction = "destructive-action"
+	// Destructive is the destructive variant of a non-button widget
+	// (a badge, an alert); buttons take DestructiveAction.
+	Destructive = "destructive"
 	// DimLabel fades text to secondary emphasis.
 	DimLabel = "dim-label"
 	// Error paints text in the error color.

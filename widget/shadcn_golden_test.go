@@ -228,3 +228,35 @@ func TestGoldenShadcnDisplay(t *testing.T) {
 		})
 	}
 }
+
+// TestGoldenShadcnAlertEmpty pins the Alert variants - with an icon,
+// destructive, title only - and the status page as shadcn's Empty, in
+// both palettes.
+func TestGoldenShadcnAlertEmpty(t *testing.T) {
+	face := goldenFace(t)
+	for _, tc := range []struct {
+		name string
+		th   *Theme
+	}{{"dark", DarkTheme()}, {"light", LightTheme()}} {
+		t.Run(tc.name, func(t *testing.T) {
+			SetTheme(tc.th)
+			defer SetTheme(nil)
+			col := NewBox(Column, 12, 0)
+			info := NewAlert(face, "Heads up!", "You can add components to your app using the cli.")
+			info.SetIcon(NewSymbol(SymbolCrosshair, 16))
+			col.Append(info, false)
+			bad := NewAlert(face, "Unable to process your payment.", "Please verify your billing information and try again.")
+			bad.SetIcon(NewSymbol(SymbolClose, 16))
+			bad.SetVariant(AlertDestructive)
+			col.Append(bad, false)
+			col.Append(NewAlert(face, "Your session has expired.", ""), false)
+			empty := NewStatusPage(face, "", "No projects yet", "You haven't created any projects yet. Get started by creating your first project.")
+			empty.SetIcon(NewSymbol(SymbolMaximize, 24))
+			create := NewButton(NewLabel(face, 14, "Create project", 0), 0, 0)
+			create.AddClass(css.SuggestedAction)
+			empty.SetChild(create)
+			col.Append(empty, true)
+			NewGolden(t, col, "shadcn-alert-empty-"+tc.name, goldenTheme(tc.th), goldenFrame(420, 520))
+		})
+	}
+}

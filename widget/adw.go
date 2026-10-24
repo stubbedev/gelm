@@ -158,45 +158,82 @@ func (c *ButtonContent) rebuild() {
 	c.InvalidateLayout()
 }
 
-// StatusPage is the empty/error state page (adw StatusPage): a large
-// icon, a title, a wrapped description, and an optional child (a
-// button), centered in whatever space it gets.
+// StatusPage is the empty/error state page (adw StatusPage, shadcn/ui's
+// Empty): an icon on a muted tile, a title, a wrapped description, and
+// an optional content area (a call-to-action button), centered in
+// whatever space it gets. It styles as the `statuspage` element with
+// .icon, .title and .description parts.
 type StatusPage struct {
 	composite
-	column *Box
-	title  *Label
-	desc   *Label
+	column  *Box
+	media   *Box
+	icon    Widget
+	title   *Label
+	desc    *Label
+	content *Box
 }
+
+// statusPageWidth is the column's widest, shadcn's max-w-sm.
+const statusPageWidth = 384
 
 // NewStatusPage returns the page; empty icon or description drops it.
 func NewStatusPage(face render.Font, iconName, title, description string) *StatusPage {
 	face = requireFace("widget.NewStatusPage", face)
-	th := Current()
 	p := &StatusPage{}
-	p.column = NewBox(Column, 12, 24)
+	p.SetElement("statuspage")
+	p.column = NewBox(Column, 8, 24)
 	p.column.Append(NewSpacer(0, 0), true)
-	if iconName != "" {
-		p.column.AppendAligned(NewThemeIcon(iconName, 96), false, AlignCenter)
-	}
-	p.title = NewLabel(face, 26, title, th.Text)
+	p.media = NewBox(Column, 0, 0)
+	p.media.AddClass("icon")
+	p.media.SetSizeRequest(40, 40)
+	p.title = NewLabel(face, 18, title, 0)
+	p.title.AddClass("title")
 	p.title.SetAlignment(render.AlignCenter)
 	p.column.AppendAligned(p.title, false, AlignCenter)
-	p.desc = NewLabel(face, 14, description, th.TextMuted)
+	p.desc = NewLabel(face, 14, description, 0)
+	p.desc.AddClass("description")
 	p.desc.SetWrap(true)
 	p.desc.SetAlignment(render.AlignCenter)
 	if description != "" {
 		p.column.AppendAligned(p.desc, false, AlignFill)
 	}
+	p.content = NewBox(Column, 16, 0)
+	p.content.SetPadding(render.Insets{Top: 16})
 	p.column.Append(NewSpacer(0, 0), true)
-	p.initComposite(p, NewClamp(560, p.column))
+	if iconName != "" {
+		p.SetIcon(NewThemeIcon(iconName, 24))
+	}
+	p.initComposite(p, NewClamp(statusPageWidth, p.column))
 	return p
 }
 
-// SetChild places w (a call-to-action button, typically) under the
-// description.
+// SetIcon shows w (an icon, typically 24px) centered on the muted
+// tile above the title; nil drops the tile.
+func (p *StatusPage) SetIcon(w Widget) {
+	p.media.Clear()
+	switch {
+	case w != nil && p.icon == nil:
+		p.column.InsertAligned(1, p.media, false, AlignCenter)
+	case w == nil && p.icon != nil:
+		p.column.Remove(p.media)
+	}
+	p.icon = w
+	if w != nil {
+		p.media.Append(NewSpacer(0, 0), true)
+		p.media.AppendAligned(w, false, AlignCenter)
+		p.media.Append(NewSpacer(0, 0), true)
+	}
+	p.InvalidateLayout()
+}
+
+// SetChild adds w (a call-to-action button, typically) to the content
+// area under the description; successive children stack.
 func (p *StatusPage) SetChild(w Widget) {
-	n := len(p.column.Children())
-	p.column.InsertAt(n-1, w, false)
+	if len(p.content.Children()) == 0 {
+		n := len(p.column.Children())
+		p.column.InsertAligned(n-1, p.content, false, AlignCenter)
+	}
+	p.content.AppendAligned(w, false, AlignCenter)
 	p.InvalidateLayout()
 }
 

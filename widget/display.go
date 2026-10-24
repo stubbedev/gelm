@@ -21,7 +21,7 @@ const (
 )
 
 // badgeClasses are the variants' style classes on the badge element.
-var badgeClasses = [...]string{BadgeDefault: "", BadgeSecondary: css.Secondary, BadgeDestructive: "destructive", BadgeOutline: css.Outline}
+var badgeClasses = [...]string{BadgeDefault: "", BadgeSecondary: css.Secondary, BadgeDestructive: css.Destructive, BadgeOutline: css.Outline}
 
 // Badge is a small inline pill label - a status, a count, a tag - with
 // an optional leading icon (shadcn/ui's Badge). It styles as the
@@ -73,7 +73,7 @@ func (b *Badge) SetIcon(w Widget) {
 	}
 	b.icon = w
 	if w != nil {
-		b.row.InsertAt(0, w, false)
+		b.row.InsertAligned(0, w, false, AlignCenter)
 	}
 	b.InvalidateLayout()
 }

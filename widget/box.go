@@ -208,9 +208,12 @@ func (b *Box) AppendAligned(w Widget, expand bool, cross Align) *Box {
 // InsertAt puts w at index i with Append's expand meaning, so dynamic
 // UIs can reorder without a rebuild. Out-of-range indexes clamp to the
 // ends; the measure cache drops like every other mutation.
-func (b *Box) InsertAt(i int, w Widget, expand bool) {
+func (b *Box) InsertAt(i int, w Widget, expand bool) { b.InsertAligned(i, w, expand, AlignFill) }
+
+// InsertAligned is InsertAt with AppendAligned's cross placement.
+func (b *Box) InsertAligned(i int, w Widget, expand bool, cross Align) {
 	i = min(max(i, 0), len(b.child))
-	b.child = slices.Insert(b.child, i, &childEntry{w: w, expand: expand})
+	b.child = slices.Insert(b.child, i, &childEntry{w: w, expand: expand, cross: cross})
 	b.InvalidateLayout()
 	restyleChildren(b)
 }

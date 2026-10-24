@@ -39,6 +39,9 @@ const (
 	// RoleToggleButton is a button that stays pressed (GTK's
 	// toggle-button role); A11yState.Pressed carries its state.
 	RoleToggleButton
+	// RoleAlert is an inline callout assistive technology announces
+	// (an Alert).
+	RoleAlert
 )
 
 // String returns the lowercase role name.
@@ -82,6 +85,8 @@ func (r Role) String() string {
 		return "scroll-bar"
 	case RoleToggleButton:
 		return "toggle-button"
+	case RoleAlert:
+		return "alert"
 	default:
 		return "none"
 	}

@@ -3,6 +3,7 @@ package widget
 import (
 	"image"
 	"image/color"
+	"slices"
 	"testing"
 
 	"github.com/stubbedev/lys-ui/anim"
@@ -129,8 +130,20 @@ func TestBannerAndStatusPage(t *testing.T) {
 	btn := NewButton(NewLabel(face, 14, "Add", DarkTheme().Text), 8, 4)
 	p.SetChild(btn)
 	kids := p.column.Children()
-	if len(kids) != before+1 || kids[len(kids)-2] != Widget(btn) {
-		t.Error("SetChild did not land above the trailing spacer")
+	if len(kids) != before+1 || kids[len(kids)-2] != Widget(p.content) || p.content.Children()[0] != Widget(btn) {
+		t.Error("SetChild did not land in the content area above the trailing spacer")
+	}
+	p.SetChild(NewLabel(face, 14, "Learn more", 0))
+	if len(p.column.Children()) != before+1 || len(p.content.Children()) != 2 {
+		t.Error("a second child did not stack in the content area")
+	}
+	p.SetIcon(NewSymbol(SymbolClose, 24))
+	if p.column.Children()[1] != Widget(p.media) {
+		t.Error("SetIcon did not put the tile above the title")
+	}
+	p.SetIcon(nil)
+	if slices.Contains(p.column.Children(), Widget(p.media)) {
+		t.Error("SetIcon(nil) kept the tile")
 	}
 }
 
