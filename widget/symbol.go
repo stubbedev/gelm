@@ -85,7 +85,7 @@ func (s *Symbol) Paint(cv *render.Canvas) {
 	col := pickc(0, s.style(s), style.PropColor, Current().TextMuted)
 	b := s.bounds
 	cx, cy := b.X+b.W/2, b.Y+b.H/2
-	r := min(b.W, b.H) / 3
+	r := min(b.W, b.H, s.size) / 3
 	if ang, ok := chevronAngle[s.kind]; ok {
 		strokeChevron(cv, cx, cy, r, ang, col)
 		return
