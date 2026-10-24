@@ -40,6 +40,7 @@ func run() error {
 		return err
 	}
 	application := app.NewApplication(sess)
+	widget.LoadStylesheet(galleryCSS)
 	var ctrl *component.Controller[galleryMsg, struct{}]
 	var win *app.Window
 	ctrl, win, err = component.Window(application, app.WindowConfig{
@@ -125,6 +126,13 @@ func (g *gallery) datePickers() ui.Node {
 	).Spacing(12)
 }
 
+// galleryCSS styles the gallery's own pieces: the context menu's
+// dashed drop zone, the hover card's width.
+const galleryCSS = `
+.drop-zone { border: 1px dashed @borders; border-radius: 8px; padding: 48px; }
+.hovercard-content { min-width: 280px; padding: 16px; }
+`
+
 // form is the Field and Form section: two required entries and a
 // switch, validated on blur and on submit.
 func (g *gallery) form(cx *component.Context[galleryMsg, struct{}]) ui.Node {
@@ -195,11 +203,27 @@ func (g *gallery) Init(cx *component.Context[galleryMsg, struct{}]) widget.Widge
 			widget.ComboboxOption[string]{Value: "astro", Label: "Astro"},
 		), widget.AlignStart)),
 		section("Command", ui.Command("Type a command or search...", commandGroups(func() {})...).Classes(css.Card)),
+		section("Context Menu", ui.ContextMenu(
+			ui.Label("Right click here").Classes(css.Muted),
+			widget.MenuItem{Label: "Back", Accel: "Alt+Left", OnClick: func() {}},
+			widget.MenuItem{Label: "Forward", Accel: "Alt+Right", Disabled: true},
+			widget.MenuItem{Label: "Reload", Accel: "Ctrl+R", OnClick: func() {}},
+			widget.MenuSeparator(),
+			widget.MenuItem{Label: "Show Bookmarks", Kind: widget.ItemCheck, Checked: true, OnClick: func() {}},
+		).Classes("drop-zone")),
 		section("Date Picker", g.datePickers()),
 		section("Empty", ui.StatusPage("", "No projects yet", "You haven't created any projects yet. Get started by creating your first project.").
 			Icon(ui.Symbol(widget.SymbolMaximize, 24)).
 			Child(ui.Button(ui.Label("Create project"), 0, 0).Classes(css.SuggestedAction))),
 		section("Field and Form", g.form(cx)),
+		section("Hover Card", ui.Aligned(ui.HoverCard(
+			ui.Button(ui.Label("@nextjs"), 0, 0).Classes(css.Link),
+			ui.Column(
+				ui.Label("@nextjs").Classes(css.H4),
+				ui.Label("The React Framework - created and maintained by @vercel.").Wrap(true),
+				ui.Label("Joined December 2021").Classes(css.Muted),
+			).Spacing(8),
+		), widget.AlignStart)),
 		section("Input Group",
 			ui.InputGroup(ui.Entry().Placeholder("Search...")).
 				Prepend(ui.Symbol(widget.SymbolCrosshair, 16)).Append(ui.Label("12 results")),

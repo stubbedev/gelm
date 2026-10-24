@@ -367,6 +367,9 @@ const (
 	KeyNextPage
 	KeyDismiss
 	KeySpace
+	// KeyContextMenu opens the focused widget's context menu: the Menu
+	// key, or Shift+F10.
+	KeyContextMenu
 )
 
 // KeyActionForSym maps a keysym to an editing or activation action.
@@ -400,6 +403,8 @@ func KeyActionForSym(sym xkb.Keysym) (KeyAction, bool) {
 		return KeyDismiss, true
 	case xkb.KeySpace, xkb.KeyKPSpace:
 		return KeySpace, true
+	case xkb.KeyMenu:
+		return KeyContextMenu, true
 	}
 	return 0, false
 }
@@ -542,6 +547,10 @@ func (r *Router) Press(button uint32, p Point) {
 		}
 		if h, ok := hit.(PointerButtonHandler); ok {
 			h.PointerButton(button)
+			return
+		}
+		if o := contextMenuOpener(hit); button == BTNRight && o != nil {
+			o.OpenContextMenu(p)
 		}
 		return
 	}
@@ -883,6 +892,15 @@ func (r *Router) applyDragTarget(w Widget, accepted bool) {
 // may move focus instead.
 func (r *Router) KeyAction(a KeyAction, mods Mods) {
 	target := r.keyboardTarget()
+	if o := contextMenuOpener(target); a == KeyContextMenu && o != nil {
+		at := Point{}
+		if b, ok := target.(Boundser); ok {
+			rect := b.Bounds()
+			at = Point{X: rect.X + rect.W/2, Y: rect.Y + rect.H/2}
+		}
+		o.OpenContextMenu(at)
+		return
+	}
 	for w := target; w != nil; w = parentOf(w) {
 		if ic, ok := w.(KeyInterceptor); ok && ic.InterceptKey(target, a, mods) {
 			return
@@ -911,6 +929,25 @@ type KeyInterceptor interface {
 // keyboard focus to it (GTK's focus-on-click, on by default): a
 // command palette's rows leave it in the search entry.
 func (n *node) SetFocusOnClick(on bool) { n.noFocusOnClick = !on }
+
+// ContextMenuOpener is a widget that opens a context menu for itself
+// and its descendants: a right click on one of them, a long press, or
+// the Menu key (Shift+F10) while one has the focus. at is where the
+// menu opens, the pointer or the focused widget's center.
+type ContextMenuOpener interface {
+	OpenContextMenu(at Point)
+}
+
+// contextMenuOpener is w's or its nearest ancestor's context menu, nil
+// for none.
+func contextMenuOpener(w Widget) ContextMenuOpener {
+	for ; w != nil; w = parentOf(w) {
+		if o, ok := w.(ContextMenuOpener); ok && IsEnabled(w) {
+			return o
+		}
+	}
+	return nil
+}
 
 // FocusNavigator is an ancestor that moves focus among its own
 // focusable descendants on navigation keys: the roving focus of an

@@ -2134,6 +2134,34 @@ func (b *CommandBuilder) WatchQuery(get func() string) *CommandBuilder {
 	return b
 }
 
+// ContextMenuBuilder builds a widget.ContextMenu.
+type ContextMenuBuilder struct {
+	base[*widget.ContextMenu, *ContextMenuBuilder]
+	face render.Font
+	size float64
+}
+
+// ContextMenu builds a widget.ContextMenu with widget.NewContextMenu.
+func ContextMenu(child Node, items ...widget.MenuItem) *ContextMenuBuilder {
+	b := &ContextMenuBuilder{}
+	b.init(b, func(s *Scope) *widget.ContextMenu {
+		return widget.NewContextMenu(s.face(b.face), build(s, child), items...)
+	})
+	return b
+}
+
+// Font overrides the environment's typeface and size for this widget; zero values keep the environment's.
+func (b *ContextMenuBuilder) Font(face render.Font, sizePx float64) *ContextMenuBuilder {
+	b.face, b.size = face, sizePx
+	return b
+}
+
+// Items calls (*widget.ContextMenu).SetItems.
+func (b *ContextMenuBuilder) Items(items ...widget.MenuItem) *ContextMenuBuilder {
+	b.do(func(s *Scope, w *widget.ContextMenu) { w.SetItems(items...) })
+	return b
+}
+
 // DatePickerBuilder builds a widget.DatePicker.
 type DatePickerBuilder struct {
 	base[*widget.DatePicker, *DatePickerBuilder]
@@ -3891,6 +3919,18 @@ func (b *HeaderBarBuilder) OnDoubleClick(fn func()) *HeaderBarBuilder {
 	return b
 }
 
+// HoverCardBuilder builds a widget.HoverCard.
+type HoverCardBuilder struct {
+	base[*widget.HoverCard, *HoverCardBuilder]
+}
+
+// HoverCard builds a widget.HoverCard with widget.NewHoverCard.
+func HoverCard(trigger Node, content Node) *HoverCardBuilder {
+	b := &HoverCardBuilder{}
+	b.init(b, func(s *Scope) *widget.HoverCard { return widget.NewHoverCard(build(s, trigger), build(s, content)) })
+	return b
+}
+
 // IconBuilder builds a widget.Icon.
 type IconBuilder struct {
 	base[*widget.Icon, *IconBuilder]
@@ -4722,6 +4762,18 @@ func (b *MenuBuilder) WatchDirection(get func() widget.Direction) *MenuBuilder {
 // Items calls (*widget.Menu).SetItems.
 func (b *MenuBuilder) Items(items ...widget.MenuItem) *MenuBuilder {
 	b.do(func(s *Scope, w *widget.Menu) { w.SetItems(items...) })
+	return b
+}
+
+// MnemonicsVisible calls (*widget.Menu).SetMnemonicsVisible.
+func (b *MenuBuilder) MnemonicsVisible(on bool) *MenuBuilder {
+	b.do(func(s *Scope, w *widget.Menu) { w.SetMnemonicsVisible(on) })
+	return b
+}
+
+// WatchMnemonicsVisible re-applies SetMnemonicsVisible with get's value after every update.
+func (b *MenuBuilder) WatchMnemonicsVisible(get func() bool) *MenuBuilder {
+	b.watch(func(w *widget.Menu) { w.SetMnemonicsVisible(get()) })
 	return b
 }
 

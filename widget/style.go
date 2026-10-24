@@ -2168,19 +2168,31 @@ func setHoverChain(old, new Widget) {
 		if n := nodeOf(w); n != nil && n.hoverChain && !in[n] {
 			n.hoverChain = false
 			n.restyleState(style.Hover)
-			if n.onHoverWithin != nil {
-				n.onHoverWithin(false)
-			}
+			notifyHoverWithin(w, n, false)
 		}
 	}
 	for w := new; w != nil; w = parentOf(w) {
 		if n := nodeOf(w); n != nil && !n.hoverChain {
 			n.hoverChain = true
 			n.restyleState(style.Hover)
-			if n.onHoverWithin != nil {
-				n.onHoverWithin(true)
-			}
+			notifyHoverWithin(w, n, true)
 		}
+	}
+}
+
+// hoverWithiner is a widget the hover chain tells, as it tells
+// SetOnHoverWithin's hook, without taking that hook from the app: a
+// hover card opening over its trigger.
+type hoverWithiner interface{ hoverWithin(on bool) }
+
+// notifyHoverWithin tells w, whose node is n, that the pointer entered
+// (on) or left its subtree.
+func notifyHoverWithin(w Widget, n *node, on bool) {
+	if h, ok := w.(hoverWithiner); ok {
+		h.hoverWithin(on)
+	}
+	if n.onHoverWithin != nil {
+		n.onHoverWithin(on)
 	}
 }
 

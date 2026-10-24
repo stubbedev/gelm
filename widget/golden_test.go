@@ -351,6 +351,7 @@ func TestGoldenMenuMnemonics(t *testing.T) {
 		MenuItem{Label: "Sort by", Mnemonic: 's', OnClick: func() {}},    // explicit s
 		MenuItem{Label: "Second", Mnemonic: 's'},                         // conflict: no underline
 	)
+	m.SetMnemonicsVisible(true)
 	NewGolden(t, m, "menu-mnemonics", goldenTheme(th),
 		goldenAfterArrange(func() { hoverMenuRow(m, face.Shape("lg", 14).LineHeight()+12, 1) }))
 }

@@ -124,8 +124,7 @@ func (s *Symbol) Paint(cv *render.Canvas) {
 		cv.Line(cx-r, cy, cx+r, cy, 1, col)
 		cv.Line(cx, cy-r, cx, cy+r, 1, col)
 	case SymbolCheck:
-		cv.Line(cx-r, cy, cx-r/3, cy+2*r/3, 1, col)
-		cv.Line(cx-r/3, cy+2*r/3, cx+r, cy-2*r/3, 1, col)
+		strokeCheck(cv, cx, cy, r, col)
 	case SymbolChevronsUpDown:
 		strokeChevron(cv, cx, cy-r/2-1, r/2, -math.Pi/2, col)
 		strokeChevron(cv, cx, cy+r/2+1, r/2, math.Pi/2, col)
@@ -158,6 +157,13 @@ func (s *Symbol) HitTest(p Point) Widget { return s.HitLeaf(s, p) }
 func strokeCross(cv *render.Canvas, cx, cy, r int, col render.Color) {
 	cv.Line(cx-r, cy-r, cx+r, cy+r, 1, col)
 	cv.Line(cx-r, cy+r, cx+r, cy-r, 1, col)
+}
+
+// strokeCheck draws a check mark of half-span r centered on (cx, cy):
+// SymbolCheck and a menu's checked row share it.
+func strokeCheck(cv *render.Canvas, cx, cy, r int, col render.Color) {
+	cv.Line(cx-r, cy, cx-r/3, cy+2*r/3, 1, col)
+	cv.Line(cx-r/3, cy+2*r/3, cx+r, cy-2*r/3, 1, col)
 }
 
 // strokeChevron draws a v-shaped chevron centered on (cx, cy) with arm

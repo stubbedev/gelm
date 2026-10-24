@@ -82,7 +82,7 @@ type fakeSurfaceHost struct {
 
 func (h *fakeSurfaceHost) Focus(Widget) {}
 
-func (h *fakeSurfaceHost) OpenPopover(_ Boundser, content, _ Widget) func() {
+func (h *fakeSurfaceHost) OpenPopover(_ Boundser, content Widget, _ PopoverOptions) func() {
 	h.popovers = append(h.popovers, content)
 	return func() { h.closed++ }
 }

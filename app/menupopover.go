@@ -20,7 +20,8 @@ type MenuPopoverConfig struct {
 	// room.
 	SubmenuSide SubmenuSide
 	// AccelLabel formats every row's Accel for display at every level
-	// (widget.Menu.AccelLabel).
+	// (widget.Menu.AccelLabel); nil writes it the canonical way,
+	// "<Control>r" as Ctrl+R.
 	AccelLabel func(accel string) string
 	// Face and SizePx paint every level.
 	Face   render.Font
@@ -80,6 +81,9 @@ type menuLevel struct {
 // OpenMenuPopover opens the root level over host.
 func (a *Application) OpenMenuPopover(host Host, cfg MenuPopoverConfig) (*MenuPopover, error) {
 	cfg.Items = a.withAccels(cfg.Items)
+	if cfg.AccelLabel == nil {
+		cfg.AccelLabel = displayAccel
+	}
 	return openMenuPopover(cfg, func(parent *Popover, anchor widget.Boundser, content widget.Widget, onClosed func()) (*Popover, error) {
 		pc := PopoverConfig{Anchor: anchor, Content: content, OnClosed: onClosed, Parent: parent}
 		if parent == nil {
@@ -274,4 +278,14 @@ func (a *Application) withAccels(items []widget.MenuItem) []widget.MenuItem {
 		}
 	}
 	return out
+}
+
+// displayAccel writes an accelerator the canonical way, Ctrl+R; a
+// string that does not parse shows as it is.
+func displayAccel(accel string) string {
+	a, err := ParseAccel(accel)
+	if err != nil {
+		return accel
+	}
+	return a.String()
 }

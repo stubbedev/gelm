@@ -153,3 +153,21 @@ func TestActivateMnemonicWalksTheTree(t *testing.T) {
 		t.Error("an unmatched mnemonic reported firing")
 	}
 }
+
+// A menu hides its mnemonic underlines until Alt is pressed in it, and
+// the Alt-letters work either way.
+func TestMenuMnemonicsShowOnAlt(t *testing.T) {
+	fired := 0
+	m := NewMenu(goldenFace(t), 14, MenuItem{Label: "Open", OnClick: func() { fired++ }})
+	if m.showMnemonics {
+		t.Fatal("a fresh menu shows its mnemonics")
+	}
+	m.RawKey(0, ModAlt, xkb.Keysym('o'))
+	if fired != 1 {
+		t.Error("a hidden mnemonic did not fire")
+	}
+	m.RawKey(0, 0, xkb.KeyAltL)
+	if !m.showMnemonics {
+		t.Error("Alt did not reveal the mnemonics")
+	}
+}

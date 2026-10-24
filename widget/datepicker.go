@@ -237,7 +237,7 @@ func (p *DatePicker) timeRow() Widget {
 // open shows the calendar in a popover under the trigger.
 func (p *DatePicker) open() {
 	body, cal := p.content()
-	p.close = OpenPopover(p, p.trigger, body, cal)
+	p.close = OpenPopover(p, p.trigger, body, PopoverOptions{Focus: cal})
 }
 
 // dismiss closes the open popover.

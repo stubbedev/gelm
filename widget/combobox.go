@@ -125,7 +125,7 @@ func (c *Combobox[T]) open() {
 	list := NewCommand(c.face, "Search...", CommandGroup{Items: items})
 	list.SetSizeRequest(max(comboboxWidth, c.trigger.Bounds().W), 0)
 	c.sync()
-	c.close = OpenPopover(c, c.trigger, list, list.Entry())
+	c.close = OpenPopover(c, c.trigger, list, PopoverOptions{Focus: list.Entry()})
 }
 
 // pick applies the user's choice of v.

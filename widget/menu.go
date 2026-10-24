@@ -172,6 +172,21 @@ type Menu struct {
 	// when the row has no mnemonic). Resolved once at construction.
 	mnemonics map[rune]int
 	mnemRunes []int
+	// showMnemonics underlines the Alt-letters: in a menu the keyboard
+	// opened, or once Alt is pressed in it (GTK's auto-mnemonics);
+	// they work either way.
+	showMnemonics bool
+}
+
+// menuDisabledAlpha fades a disabled row's text, shadcn's opacity-50.
+const menuDisabledAlpha = 0.5
+
+// SetMnemonicsVisible underlines the rows' Alt-letters, as a menu the
+// keyboard opened shows them; a menu the pointer opened hides them
+// until Alt is pressed.
+func (m *Menu) SetMnemonicsVisible(on bool) {
+	m.showMnemonics = on
+	m.Invalidate()
 }
 
 // menuRow is one row node of a menu: a `modelbutton` (or a
@@ -461,7 +476,7 @@ func (m *Menu) Paint(cv *render.Canvas) {
 		rfx := pushEffects(cv, &rp.node, rv, row, rradii)
 		var hoverBg render.Color
 		if i == m.hovered && m.selectable(i) {
-			hoverBg = t.HoverAccent()
+			hoverBg = t.MutedColor()
 		}
 		paintBoxBehind(rfx.cv, rv, row, rradii, borderOf(rv), pickc(0, rv, style.PropBackgroundColor, hoverBg))
 		rfx.pop()
@@ -471,17 +486,16 @@ func (m *Menu) Paint(cv *render.Canvas) {
 			continue
 		}
 		x := rowContent.X
+		indicator := pickc(0, rv, style.PropColor, t.Text)
 		switch it.Kind {
 		case ItemCheck:
-			cv.FillRect(render.Rect{X: x, Y: row.Y + (row.H-12)/2, W: 12, H: 12}, t.Border)
 			if it.IsChecked() {
-				cv.FillRect(render.Rect{X: x + 2, Y: row.Y + (row.H-12)/2 + 2, W: 8, H: 8}, t.Accent)
+				strokeCheck(cv, x+6, row.Y+row.H/2, 5, indicator)
 			}
 			x += 18
 		case ItemRadio:
-			cv.FillRect(render.Rect{X: x, Y: row.Y + (row.H-12)/2, W: 12, H: 12}, t.Border)
 			if it.IsChecked() {
-				cv.FillRect(render.Rect{X: x + 3, Y: row.Y + (row.H-12)/2 + 3, W: 6, H: 6}, t.Accent)
+				cv.RoundedRect(render.Rect{X: x + 3, Y: row.Y + row.H/2 - 3, W: 6, H: 6}, 3, indicator)
 			}
 			x += 18
 		}
@@ -494,14 +508,13 @@ func (m *Menu) Paint(cv *render.Canvas) {
 			PaintChild(cv, it.Icon)
 		}
 		x += slot
-		col := t.Text
+		col := pickc(0, rv, style.PropColor, t.Text)
 		switch {
 		case it.Kind == ItemHeader:
 			col = t.DisabledText() // the muted ink (TextMuted when set)
 		case it.inert() || !IsEnabled(m):
-			col = t.DisabledText()
+			col = scaleAlpha(col, menuDisabledAlpha)
 		}
-		col = pickc(0, rv, style.PropColor, col)
 		baseline := row.Y + (row.H-lineH)/2 + int(m.face.Shape("lg", m.sizePx).Ascent()+0.5)
 		sh := m.face.ShapeDir(it.Label, m.sizePx, m.dir)
 		if text.RTL(it.Label, m.dir) {
@@ -516,7 +529,7 @@ func (m *Menu) Paint(cv *render.Canvas) {
 			}
 		}
 		m.face.Draw(cv, sh, x, baseline, col)
-		if ri := m.mnemRunes[i]; ri >= 0 {
+		if ri := m.mnemRunes[i]; ri >= 0 && m.showMnemonics {
 			// The mnemonic underline: a strip under the claimed letter,
 			// the same 2px underline idiom the composing and link ranges
 			// use.
@@ -530,7 +543,7 @@ func (m *Menu) Paint(cv *render.Canvas) {
 			m.face.Draw(cv, sh, rowContent.X+rowContent.W-4-aw, baseline, t.TextMuted)
 		}
 		if len(it.Items) > 0 {
-			m.face.Draw(cv, m.face.Shape(">", m.sizePx), rowContent.X+rowContent.W-12, baseline, t.TextMuted)
+			strokeChevron(cv, rowContent.X+rowContent.W-8, row.Y+row.H/2, 4, 0, t.TextMuted)
 		}
 	}
 }
@@ -757,6 +770,10 @@ func (m *Menu) ActivateMnemonic(sym xkb.Keysym) bool {
 // RawKey implements RawKeyHandler: Alt+letter (no ctrl) activates the
 // matching row mnemonic; every other raw key is not the menu's.
 func (m *Menu) RawKey(code uint32, mods Mods, sym xkb.Keysym) bool {
+	if sym == xkb.KeyAltL || sym == xkb.KeyAltR {
+		m.SetMnemonicsVisible(true)
+		return true
+	}
 	if mods&ModAlt != 0 && mods&ModCtrl == 0 {
 		return m.ActivateMnemonic(sym)
 	}

@@ -15,9 +15,9 @@ type SurfaceHost interface {
 	// OpenMenu opens items as a popup menu beside anchor, whose bounds
 	// are in the tree's coordinates, painted with face at sizePx.
 	OpenMenu(anchor Boundser, face render.Font, sizePx float64, items []MenuItem)
-	// OpenPopover opens content in a popover beside anchor with focus
-	// focused, and returns what closes it.
-	OpenPopover(anchor Boundser, content, focus Widget) (close func())
+	// OpenPopover opens content in a popover beside anchor, and returns
+	// what closes it.
+	OpenPopover(anchor Boundser, content Widget, opts PopoverOptions) (close func())
 	// Focus moves the surface's keyboard focus to w.
 	Focus(w Widget)
 }
@@ -48,12 +48,24 @@ func OpenMenu(from Widget, anchor Boundser, face render.Font, sizePx float64, it
 	hostOf(from, "OpenMenu").OpenMenu(anchor, face, sizePx, items)
 }
 
+// PopoverOptions shape a widget-opened popover.
+type PopoverOptions struct {
+	// Focus takes the keyboard focus as the popover opens.
+	Focus Widget
+	// NoGrab leaves the keyboard and pointer with the window: a hover
+	// card shows beside what the user is pointing at instead of taking
+	// the input, and closes only when told.
+	NoGrab bool
+	// OnClosed runs once the popover is gone, however it closed.
+	OnClosed func()
+}
+
 // OpenPopover opens content in a popover beside anchor through the
-// host of from's tree, with focus focused, and returns what closes it.
-// The popover's own node is a box around content, so content keeps its
-// element and style.
-func OpenPopover(from Widget, anchor Boundser, content, focus Widget) (close func()) {
-	return hostOf(from, "OpenPopover").OpenPopover(anchor, NewBox(Column, 0, 0).Append(content, true), focus)
+// host of from's tree, and returns what closes it. The popover's own
+// node is a box around content, so content keeps its element and
+// style.
+func OpenPopover(from Widget, anchor Boundser, content Widget, opts PopoverOptions) (close func()) {
+	return hostOf(from, "OpenPopover").OpenPopover(anchor, NewBox(Column, 0, 0).Append(content, true), opts)
 }
 
 // GrabFocus moves the keyboard focus of w's surface to w (GTK's

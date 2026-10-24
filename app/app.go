@@ -624,6 +624,11 @@ func routeKey(sess keyTranslator, router *widget.Router, keycode uint32, mods wl
 		}
 	case isCtrl && noShift && (sym == xkb.Keysym('y') || sym == xkb.Keysym('Y')):
 		handled = redoFocused(router)
+	case !isCtrl && !noShift && sym == xkb.KeyF10:
+		// Shift+F10 opens the focused widget's context menu, as the
+		// Menu key does (GTK's binding).
+		router.KeyAction(widget.KeyContextMenu, widget.Mods(mods))
+		handled = true
 	case !isCtrl && mods&(wlsession.ModAlt|wlsession.ModSuper) == 0 && sym == xkb.KeyTab:
 		// Tab trap: inside a widget that absorbs tabs (a multi-line
 		// text area) a plain Tab indents; ctrl+Tab and shift+Tab move
