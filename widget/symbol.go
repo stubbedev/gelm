@@ -37,6 +37,8 @@ const (
 	SymbolDoubleRight
 	// SymbolEllipsis is three dots in a row (more, collapsed items).
 	SymbolEllipsis
+	// SymbolMinus is a centered horizontal bar (a separator, less).
+	SymbolMinus
 )
 
 // chevronAngle is each chevron kind's rotation from right-pointing.
@@ -112,6 +114,8 @@ func (s *Symbol) Paint(cv *render.Canvas) {
 	case SymbolCrosshair:
 		cv.Line(cx-r, cy, cx+r, cy, 1, col)
 		cv.Line(cx, cy-r, cx, cy+r, 1, col)
+	case SymbolMinus:
+		cv.Line(cx-r, cy, cx+r, cy, 1, col)
 	case SymbolEllipsis:
 		d := max(2, s.size/8)
 		for _, x := range [...]int{cx - r, cx, cx + r} {

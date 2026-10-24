@@ -132,9 +132,10 @@ type hostWindow struct {
 	// tree wraps in; nil only in wire-free tests that build hostWindow
 	// by hand. The app toggles it through setInspect.
 	inspector *inspect.Overlay
-	// lastFocus is the widget the focus ring was last drawn around; a
-	// change adds both rings' rects to the damage union.
-	lastFocus widget.Widget
+	// lastRing is the rect the focus ring last covered: a ring that
+	// moved - another widget focused, or one that steers its ring (a
+	// code input's active slot) - repaints both rects.
+	lastRing render.Rect
 	// pendingRects accumulates drained invalidations until they are
 	// painted into an acquired buffer; it survives pool-busy retries.
 	pendingRects []render.Rect
@@ -898,23 +899,23 @@ func (w *hostWindow) focusRingWidget() widget.Widget {
 	return f
 }
 
-// focusChangeRects returns both rings' rects when the focused widget
-// changed since the last frame: the old ring's area must be repainted
-// to erase it, the new one to draw it.
+// focusChangeRects returns both rings' rects when the focus ring
+// moved since the last frame: the old ring's area must be repainted to
+// erase it, the new one to draw it.
 func (w *hostWindow) focusChangeRects() []render.Rect {
-	f := w.router.Focused()
-	if f == w.lastFocus {
+	var ring render.Rect
+	if f := w.router.Focused(); f != nil {
+		ring = widget.FocusRingRect(f)
+	}
+	if ring == w.lastRing {
 		return nil
 	}
 	var rects []render.Rect
-	for _, fw := range []widget.Widget{w.lastFocus, f} {
-		if fw == nil {
-			continue
-		}
-		if r := widget.FocusRingRect(fw); !r.Empty() {
+	for _, r := range [...]render.Rect{w.lastRing, ring} {
+		if !r.Empty() {
 			rects = append(rects, r)
 		}
 	}
-	w.lastFocus = f
+	w.lastRing = ring
 	return rects
 }

@@ -3804,6 +3804,56 @@ func (b *InputGroupBuilder) Prepend(child Node) *InputGroupBuilder {
 	return b
 }
 
+// InputOTPBuilder builds a widget.InputOTP.
+type InputOTPBuilder struct {
+	base[*widget.InputOTP, *InputOTPBuilder]
+	face render.Font
+	size float64
+}
+
+// InputOTP builds a widget.InputOTP with widget.NewInputOTP.
+func InputOTP(charset widget.OTPCharset, groups ...int) *InputOTPBuilder {
+	b := &InputOTPBuilder{}
+	b.init(b, func(s *Scope) *widget.InputOTP { return widget.NewInputOTP(s.face(b.face), charset, groups...) })
+	return b
+}
+
+// Font overrides the environment's typeface and size for this widget; zero values keep the environment's.
+func (b *InputOTPBuilder) Font(face render.Font, sizePx float64) *InputOTPBuilder {
+	b.face, b.size = face, sizePx
+	return b
+}
+
+// Insert calls (*widget.InputOTP).Insert.
+func (b *InputOTPBuilder) Insert(text string) *InputOTPBuilder {
+	b.do(func(s *Scope, w *widget.InputOTP) { w.Insert(text) })
+	return b
+}
+
+// Code calls (*widget.InputOTP).SetCode.
+func (b *InputOTPBuilder) Code(text string) *InputOTPBuilder {
+	b.do(func(s *Scope, w *widget.InputOTP) { w.SetCode(text) })
+	return b
+}
+
+// WatchCode re-applies SetCode with get's value after every update.
+func (b *InputOTPBuilder) WatchCode(get func() string) *InputOTPBuilder {
+	b.watch(func(w *widget.InputOTP) { w.SetCode(get()) })
+	return b
+}
+
+// OnChanged sets the widget's OnChanged field.
+func (b *InputOTPBuilder) OnChanged(fn func(code string)) *InputOTPBuilder {
+	b.do(func(_ *Scope, w *widget.InputOTP) { w.OnChanged = fn })
+	return b
+}
+
+// OnComplete sets the widget's OnComplete field.
+func (b *InputOTPBuilder) OnComplete(fn func(code string)) *InputOTPBuilder {
+	b.do(func(_ *Scope, w *widget.InputOTP) { w.OnComplete = fn })
+	return b
+}
+
 // InscriptionBuilder builds a widget.Inscription.
 type InscriptionBuilder struct {
 	base[*widget.Inscription, *InscriptionBuilder]

@@ -159,16 +159,17 @@ const FocusRingWidth = 3
 // ring color: a soft halo, not a hard frame.
 const focusRingAlpha = 0.5
 
-// focusRingClaimer is a widget that draws its descendants' focus ring
-// around itself: an input group around its entry.
-type focusRingClaimer interface{ claimsFocusRing() }
+// focusRingClaimer is a widget that decides where the focus ring of
+// itself or a focused descendant goes: an input group around the whole
+// group, a code input around its active slot.
+type focusRingClaimer interface{ focusRingTarget() Widget }
 
 // FocusRingOwner is the widget the focus ring of a focused w goes
-// around: the nearest ancestor that claims it, else w.
+// around: what w or its nearest claiming ancestor names, else w.
 func FocusRingOwner(w Widget) Widget {
 	for p := w; p != nil; p = parentOf(p) {
-		if _, ok := p.(focusRingClaimer); ok {
-			return p
+		if c, ok := p.(focusRingClaimer); ok {
+			return c.focusRingTarget()
 		}
 	}
 	return w

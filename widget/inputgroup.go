@@ -38,5 +38,5 @@ func (g *InputGroup) Append(w Widget) {
 	g.row.AppendAligned(w, false, AlignCenter)
 }
 
-// claimsFocusRing draws the entry's focus ring around the group.
-func (g *InputGroup) claimsFocusRing() {}
+// focusRingTarget draws the entry's focus ring around the group.
+func (g *InputGroup) focusRingTarget() Widget { return g }

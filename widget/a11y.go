@@ -197,6 +197,10 @@ func Describe(w Widget) A11yState {
 		st.Multiline = true
 		st.Text = v.Text()
 		st.Caret, st.SelStart, st.SelEnd, st.HasSelection = textAreaOffsets(v)
+	case *InputOTP:
+		st.Editable = IsEnabled(v)
+		st.Text = v.Code()
+		st.Caret = v.caret
 	case *Slider:
 		st.Min, st.Max, st.Value, st.Step = v.min, v.max, v.value, v.step
 	case *Switch:
