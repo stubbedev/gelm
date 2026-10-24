@@ -2134,6 +2134,116 @@ func (b *CommandBuilder) WatchQuery(get func() string) *CommandBuilder {
 	return b
 }
 
+// DatePickerBuilder builds a widget.DatePicker.
+type DatePickerBuilder struct {
+	base[*widget.DatePicker, *DatePickerBuilder]
+	face render.Font
+	size float64
+}
+
+// DatePicker builds a widget.DatePicker with widget.NewDatePicker.
+func DatePicker(placeholder string) *DatePickerBuilder {
+	b := &DatePickerBuilder{}
+	b.init(b, func(s *Scope) *widget.DatePicker { return widget.NewDatePicker(s.face(b.face), placeholder) })
+	return b
+}
+
+// Font overrides the environment's typeface and size for this widget; zero values keep the environment's.
+func (b *DatePickerBuilder) Font(face render.Font, sizePx float64) *DatePickerBuilder {
+	b.face, b.size = face, sizePx
+	return b
+}
+
+// Date calls (*widget.DatePicker).SetDate.
+func (b *DatePickerBuilder) Date(d widget.Date) *DatePickerBuilder {
+	b.do(func(s *Scope, w *widget.DatePicker) { w.SetDate(d) })
+	return b
+}
+
+// WatchDate re-applies SetDate with get's value after every update.
+func (b *DatePickerBuilder) WatchDate(get func() widget.Date) *DatePickerBuilder {
+	b.watch(func(w *widget.DatePicker) { w.SetDate(get()) })
+	return b
+}
+
+// Mode calls (*widget.DatePicker).SetMode.
+func (b *DatePickerBuilder) Mode(m widget.CalendarMode) *DatePickerBuilder {
+	b.do(func(s *Scope, w *widget.DatePicker) { w.SetMode(m) })
+	return b
+}
+
+// WatchMode re-applies SetMode with get's value after every update.
+func (b *DatePickerBuilder) WatchMode(get func() widget.CalendarMode) *DatePickerBuilder {
+	b.watch(func(w *widget.DatePicker) { w.SetMode(get()) })
+	return b
+}
+
+// Names calls (*widget.DatePicker).SetNames.
+func (b *DatePickerBuilder) Names(names widget.CalendarNames) *DatePickerBuilder {
+	b.do(func(s *Scope, w *widget.DatePicker) { w.SetNames(names) })
+	return b
+}
+
+// WatchNames re-applies SetNames with get's value after every update.
+func (b *DatePickerBuilder) WatchNames(get func() widget.CalendarNames) *DatePickerBuilder {
+	b.watch(func(w *widget.DatePicker) { w.SetNames(get()) })
+	return b
+}
+
+// Presets calls (*widget.DatePicker).SetPresets.
+func (b *DatePickerBuilder) Presets(presets ...widget.DatePreset) *DatePickerBuilder {
+	b.do(func(s *Scope, w *widget.DatePicker) { w.SetPresets(presets...) })
+	return b
+}
+
+// Range calls (*widget.DatePicker).SetRange.
+func (b *DatePickerBuilder) Range(from widget.Date, to widget.Date) *DatePickerBuilder {
+	b.do(func(s *Scope, w *widget.DatePicker) { w.SetRange(from, to) })
+	return b
+}
+
+// Time calls (*widget.DatePicker).SetTime.
+func (b *DatePickerBuilder) Time(t widget.TimeOfDay) *DatePickerBuilder {
+	b.do(func(s *Scope, w *widget.DatePicker) { w.SetTime(t) })
+	return b
+}
+
+// WatchTime re-applies SetTime with get's value after every update.
+func (b *DatePickerBuilder) WatchTime(get func() widget.TimeOfDay) *DatePickerBuilder {
+	b.watch(func(w *widget.DatePicker) { w.SetTime(get()) })
+	return b
+}
+
+// TimeInput calls (*widget.DatePicker).SetTimeInput.
+func (b *DatePickerBuilder) TimeInput(on bool) *DatePickerBuilder {
+	b.do(func(s *Scope, w *widget.DatePicker) { w.SetTimeInput(on) })
+	return b
+}
+
+// WatchTimeInput re-applies SetTimeInput with get's value after every update.
+func (b *DatePickerBuilder) WatchTimeInput(get func() bool) *DatePickerBuilder {
+	b.watch(func(w *widget.DatePicker) { w.SetTimeInput(get()) })
+	return b
+}
+
+// OnDate sets the widget's OnDate field.
+func (b *DatePickerBuilder) OnDate(fn func(widget.Date)) *DatePickerBuilder {
+	b.do(func(_ *Scope, w *widget.DatePicker) { w.OnDate = fn })
+	return b
+}
+
+// OnRange sets the widget's OnRange field.
+func (b *DatePickerBuilder) OnRange(fn func(from widget.Date, to widget.Date)) *DatePickerBuilder {
+	b.do(func(_ *Scope, w *widget.DatePicker) { w.OnRange = fn })
+	return b
+}
+
+// OnTime sets the widget's OnTime field.
+func (b *DatePickerBuilder) OnTime(fn func(widget.TimeOfDay)) *DatePickerBuilder {
+	b.do(func(_ *Scope, w *widget.DatePicker) { w.OnTime = fn })
+	return b
+}
+
 // DrawSurfaceBuilder builds a widget.DrawSurface.
 type DrawSurfaceBuilder struct {
 	base[*widget.DrawSurface, *DrawSurfaceBuilder]

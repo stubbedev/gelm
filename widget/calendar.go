@@ -17,8 +17,8 @@ const (
 )
 
 // CalendarNames supplies a Calendar's localized pieces. A nil
-// interface (the default) uses the en-US names below; supply your own
-// to localize.
+// interface (the default) reads them through the message catalog
+// (CalendarCatalog); supply your own to localize otherwise.
 type CalendarNames interface {
 	// MonthName is the full month name for the title.
 	MonthName(time.Month) string
@@ -26,11 +26,92 @@ type CalendarNames interface {
 	WeekdayName(time.Weekday) string
 	// FirstWeekday is the week's first column (Sunday for en-US).
 	FirstWeekday() time.Weekday
+	// FormatDate writes a day the way the locale does: "October 24,
+	// 2026" in en-US.
+	FormatDate(Date) string
 }
 
-// CalendarENUS is the built-in en-US name set: full English month
-// names, two-letter weekday abbreviations, weeks starting Sunday.
+// CalendarENUS is the en-US name set: full English month names,
+// two-letter weekday abbreviations, weeks starting Sunday, dates as
+// "October 24, 2026".
 type CalendarENUS struct{}
+
+// FormatDate implements CalendarNames.
+func (n CalendarENUS) FormatDate(d Date) string { return formatDate(n, enUSDateLayout, d) }
+
+// enUSDateLayout is the en-US date layout (see formatDate).
+const enUSDateLayout = "%B %-d, %Y"
+
+// CalendarCatalog is the default name set, read through the installed
+// message catalog (SetCatalog) the GTK way, English without one: the
+// month and weekday names translate as themselves, the week's first
+// day is the translation of "calendar:week_start:0" (a translator
+// writes calendar:week_start:1 for Monday), and dates follow the
+// translation of the layout "%B %-d, %Y" (see formatDate).
+type CalendarCatalog struct{}
+
+// MonthName implements CalendarNames.
+func (CalendarCatalog) MonthName(m time.Month) string { return TrCtx("month", m.String()) }
+
+// WeekdayName implements CalendarNames.
+func (CalendarCatalog) WeekdayName(w time.Weekday) string {
+	return TrCtx("weekday", w.String()[:2])
+}
+
+// FirstWeekday implements CalendarNames.
+func (CalendarCatalog) FirstWeekday() time.Weekday {
+	const key = "calendar:week_start:"
+	v := Tr(key + "0")
+	if len(v) == len(key)+1 && v[:len(key)] == key && v[len(key)] >= '0' && v[len(key)] <= '6' {
+		return time.Weekday(v[len(key)] - '0')
+	}
+	return time.Sunday
+}
+
+// FormatDate implements CalendarNames.
+func (n CalendarCatalog) FormatDate(d Date) string {
+	return formatDate(n, TrCtx("date format", enUSDateLayout), d)
+}
+
+// formatDate writes d by layout: %B the month name, %Y the year, %d
+// the day of the month (%-d unpadded), %m the month number; other
+// text stays as it is.
+func formatDate(names CalendarNames, layout string, d Date) string {
+	var b []byte
+	for i := 0; i < len(layout); i++ {
+		if layout[i] != '%' || i+1 >= len(layout) {
+			b = append(b, layout[i])
+			continue
+		}
+		i++
+		pad := true
+		if layout[i] == '-' && i+1 < len(layout) {
+			pad = false
+			i++
+		}
+		switch layout[i] {
+		case 'B':
+			b = append(b, names.MonthName(d.Month)...)
+		case 'Y':
+			b = append(b, itoa(d.Year)...)
+		case 'd':
+			b = appendTwo(b, d.Day, pad)
+		case 'm':
+			b = appendTwo(b, int(d.Month), pad)
+		default:
+			b = append(b, '%', layout[i])
+		}
+	}
+	return string(b)
+}
+
+// appendTwo appends v, zero-padded to two digits when pad.
+func appendTwo(b []byte, v int, pad bool) []byte {
+	if pad && v < 10 {
+		b = append(b, '0')
+	}
+	return append(b, itoa(v)...)
+}
 
 // MonthName implements CalendarNames.
 func (CalendarENUS) MonthName(m time.Month) string { return m.String() }
@@ -122,7 +203,7 @@ func NewCalendar(face render.Font, sizePx float64, initial Date) *Calendar {
 	c.titleH = c.cell + 8
 	c.headerH = lineH + 8
 	for i, kind := range [2]SymbolKind{SymbolChevronLeft, SymbolChevronRight} {
-		b := NewButton(NewSymbol(kind, 16), 0, 0)
+		b := NewButton(NewSymbol(kind, 20), 0, 0)
 		b.AddClass("nav")
 		b.SetSizeRequest(c.cell-4, c.cell-4)
 		c.nav[i] = b
@@ -135,7 +216,7 @@ func NewCalendar(face render.Font, sizePx float64, initial Date) *Calendar {
 	return c
 }
 
-// SetNames swaps the locale's names; nil restores the en-US set.
+// SetNames swaps the locale's names; nil restores CalendarCatalog.
 func (c *Calendar) SetNames(names CalendarNames) {
 	c.names = names
 	c.Invalidate()
@@ -146,7 +227,7 @@ func (c *Calendar) namesOf() CalendarNames {
 	if c.names != nil {
 		return c.names
 	}
-	return CalendarENUS{}
+	return CalendarCatalog{}
 }
 
 // SetMode switches between picking a day and a range; the picks of

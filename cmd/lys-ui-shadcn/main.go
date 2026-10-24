@@ -109,6 +109,22 @@ type gallery struct {
 	status string
 }
 
+// datePickers is the Date Picker section: a date, a date with a time,
+// and a range with presets relative to today.
+func (g *gallery) datePickers() ui.Node {
+	today := widget.Today()
+	start := func(n ui.Node) ui.Node { return ui.Aligned(n, widget.AlignStart) }
+	return ui.Column(
+		start(ui.DatePicker("Pick a date")),
+		start(ui.DatePicker("Pick a date and time").TimeInput(true)),
+		start(ui.DatePicker("Pick a range").Mode(widget.CalendarRange).Presets(
+			widget.DatePreset{Label: "Today", From: today, To: today},
+			widget.DatePreset{Label: "Last 7 days", From: today.AddDays(-6), To: today},
+			widget.DatePreset{Label: "Last 30 days", From: today.AddDays(-29), To: today},
+		)),
+	).Spacing(12)
+}
+
 // form is the Field and Form section: two required entries and a
 // switch, validated on blur and on submit.
 func (g *gallery) form(cx *component.Context[galleryMsg, struct{}]) ui.Node {
@@ -179,6 +195,7 @@ func (g *gallery) Init(cx *component.Context[galleryMsg, struct{}]) widget.Widge
 			widget.ComboboxOption[string]{Value: "astro", Label: "Astro"},
 		), widget.AlignStart)),
 		section("Command", ui.Command("Type a command or search...", commandGroups(func() {})...).Classes(css.Card)),
+		section("Date Picker", g.datePickers()),
 		section("Empty", ui.StatusPage("", "No projects yet", "You haven't created any projects yet. Get started by creating your first project.").
 			Icon(ui.Symbol(widget.SymbolMaximize, 24)).
 			Child(ui.Button(ui.Label("Create project"), 0, 0).Classes(css.SuggestedAction))),
