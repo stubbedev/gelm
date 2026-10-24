@@ -80,16 +80,20 @@ func namedColors(t *Theme) [][2]string {
 		{css.HeaderbarBgColor, t.Surface},
 		{css.HeaderbarFgColor, t.Text},
 		{css.HeaderbarBorderColor, t.Border},
-		{css.CardBgColor, t.Surface},
+		{css.CardBgColor, t.CardColor()},
 		{css.CardFgColor, t.Text},
 		{css.DialogBgColor, t.Bg},
 		{css.DialogFgColor, t.Text},
-		{css.PopoverBgColor, t.Surface},
+		{css.PopoverBgColor, t.PopoverColor()},
 		{css.PopoverFgColor, t.Text},
 		{css.SidebarBgColor, t.Surface},
 		{css.SidebarFgColor, t.Text},
 		{css.ShadeColor, shade},
 		{css.BordersColor, t.Border},
+		{css.MutedBgColor, t.MutedColor()},
+		{css.MutedFgColor, t.DisabledText()},
+		{css.InputBorderColor, t.InputColor()},
+		{css.RingColor, t.RingColor()},
 	}
 	out := make([][2]string, len(pairs))
 	for i, p := range pairs {

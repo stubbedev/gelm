@@ -40,6 +40,20 @@ type Theme struct {
 	OnAccent Color
 	// Border strokes control outlines.
 	Border Color
+	// Card fills cards and Popover floating surfaces (menus,
+	// popovers, dropdown lists). Leave them unset and CardColor and
+	// PopoverColor derive them from Surface.
+	Card, Popover Color
+	// Muted fills quiet regions: tab lists, skeletons, table headers,
+	// code spans. Leave it unset and MutedColor derives it from
+	// Surface.
+	Muted Color
+	// Input strokes the borders of text fields and other inputs.
+	// Leave it unset and InputColor derives it from Border.
+	Input Color
+	// Ring paints the focus ring around the focused control. Leave it
+	// unset and RingColor derives it from Accent.
+	Ring Color
 	// Destructive, Success, Warning, and Error are the status fills
 	// (destructive-action buttons, banners, the @*_bg_color names).
 	// Leave them unset to derive the Adwaita defaults for the
@@ -109,21 +123,28 @@ func SetTheme(t *Theme) {
 // Tests swap it to capture warnings.
 var themeWarn = func(msg string) { logutil.L().Warn(msg) }
 
-// DarkTheme returns the default dark palette.
+// DarkTheme returns the default dark palette: shadcn/ui's zinc,
+// a near-white primary on near-black, quiet hairline surfaces.
 func DarkTheme() *Theme {
 	return &Theme{
-		Bg:             render.RGB(0x1E, 0x1E, 0x2E),
-		Surface:        render.RGB(0x18, 0x18, 0x24),
-		SurfaceHover:   render.RGB(0x22, 0x22, 0x33),
-		SurfacePressed: render.RGB(0x11, 0x11, 0x1B),
-		Text:           render.RGB(0xCD, 0xD6, 0xF4),
-		TextMuted:      render.RGB(0xA6, 0xAD, 0xC3),
-		Accent:         render.RGB(0x89, 0xB4, 0xFA),
-		OnAccent:       render.RGB(0x11, 0x11, 0x1B),
-		Border:         render.RGB(0x58, 0x5B, 0x70),
-		ShadowColor:    render.RGBA(0, 0, 0, 120),
+		Bg:             render.RGB(0x09, 0x09, 0x0B),
+		Surface:        render.RGB(0x27, 0x27, 0x2A),
+		SurfaceHover:   render.RGB(0x21, 0x21, 0x24),
+		SurfacePressed: render.RGB(0x1C, 0x1C, 0x1F),
+		Text:           render.RGB(0xFA, 0xFA, 0xFA),
+		TextMuted:      render.RGB(0xA1, 0xA1, 0xAA),
+		Accent:         render.RGB(0xFA, 0xFA, 0xFA),
+		OnAccent:       render.RGB(0x18, 0x18, 0x1B),
+		Border:         render.RGB(0x27, 0x27, 0x2A),
+		Card:           render.RGB(0x09, 0x09, 0x0B),
+		Popover:        render.RGB(0x09, 0x09, 0x0B),
+		Muted:          render.RGB(0x27, 0x27, 0x2A),
+		Input:          render.RGB(0x27, 0x27, 0x2A),
+		Ring:           render.RGB(0xD4, 0xD4, 0xD8),
+		Destructive:    render.RGB(0x7F, 0x1D, 0x1D),
+		ShadowColor:    render.RGBA(0, 0, 0, 100),
 		ShadowBlur:     16,
-		Radius:         6,
+		Radius:         8,
 		Spacing:        8,
 		Padding:        8,
 		TextSize:       14,
@@ -131,21 +152,28 @@ func DarkTheme() *Theme {
 	}
 }
 
-// LightTheme returns a light palette.
+// LightTheme returns the default light palette: shadcn/ui's zinc, a
+// near-black primary on white.
 func LightTheme() *Theme {
 	return &Theme{
-		Bg:             render.RGB(0xEF, 0xF1, 0xF5),
-		Surface:        render.RGB(0xFF, 0xFF, 0xFF),
-		SurfaceHover:   render.RGB(0xE8, 0xEC, 0xF4),
-		SurfacePressed: render.RGB(0xD3, 0xDA, 0xE8),
-		Text:           render.RGB(0x2A, 0x2C, 0x38),
-		TextMuted:      render.RGB(0x5C, 0x63, 0x76),
-		Accent:         render.RGB(0x1E, 0x66, 0xF5),
-		OnAccent:       render.RGB(0xFF, 0xFF, 0xFF),
-		Border:         render.RGB(0xB8, 0xC0, 0xD4),
-		ShadowColor:    render.RGBA(0, 0, 0, 70),
+		Bg:             render.RGB(0xFF, 0xFF, 0xFF),
+		Surface:        render.RGB(0xF4, 0xF4, 0xF5),
+		SurfaceHover:   render.RGB(0xF6, 0xF6, 0xF7),
+		SurfacePressed: render.RGB(0xE4, 0xE4, 0xE7),
+		Text:           render.RGB(0x09, 0x09, 0x0B),
+		TextMuted:      render.RGB(0x71, 0x71, 0x7A),
+		Accent:         render.RGB(0x18, 0x18, 0x1B),
+		OnAccent:       render.RGB(0xFA, 0xFA, 0xFA),
+		Border:         render.RGB(0xE4, 0xE4, 0xE7),
+		Card:           render.RGB(0xFF, 0xFF, 0xFF),
+		Popover:        render.RGB(0xFF, 0xFF, 0xFF),
+		Muted:          render.RGB(0xF4, 0xF4, 0xF5),
+		Input:          render.RGB(0xE4, 0xE4, 0xE7),
+		Ring:           render.RGB(0x18, 0x18, 0x1B),
+		Destructive:    render.RGB(0xEF, 0x44, 0x44),
+		ShadowColor:    render.RGBA(0, 0, 0, 40),
 		ShadowBlur:     16,
-		Radius:         6,
+		Radius:         8,
 		Spacing:        8,
 		Padding:        8,
 		TextSize:       14,
@@ -262,6 +290,21 @@ func (t *Theme) WithOnAccent(c Color) *Theme { return t.with(func(n *Theme) { n.
 // WithBorder returns a copy with the outline color set.
 func (t *Theme) WithBorder(c Color) *Theme { return t.with(func(n *Theme) { n.Border = c }) }
 
+// WithCard returns a copy with the card fill set.
+func (t *Theme) WithCard(c Color) *Theme { return t.with(func(n *Theme) { n.Card = c }) }
+
+// WithPopover returns a copy with the floating-surface fill set.
+func (t *Theme) WithPopover(c Color) *Theme { return t.with(func(n *Theme) { n.Popover = c }) }
+
+// WithMuted returns a copy with the quiet-region fill set.
+func (t *Theme) WithMuted(c Color) *Theme { return t.with(func(n *Theme) { n.Muted = c }) }
+
+// WithInput returns a copy with the input border color set.
+func (t *Theme) WithInput(c Color) *Theme { return t.with(func(n *Theme) { n.Input = c }) }
+
+// WithRing returns a copy with the focus ring color set.
+func (t *Theme) WithRing(c Color) *Theme { return t.with(func(n *Theme) { n.Ring = c }) }
+
 // WithShadowColor returns a copy with the box-shadow color set. The
 // zero color means unset (derive the default), the theme-wide
 // convention.
@@ -315,6 +358,25 @@ func (t *Theme) HoverSurface() Color {
 	}
 	return mix(t.Surface, t.Text, 0.08)
 }
+
+// CardColor returns the card fill: Card when set, otherwise Surface.
+func (t *Theme) CardColor() Color { return t.or(t.Card, t.Surface) }
+
+// PopoverColor returns the floating-surface fill: Popover when set,
+// otherwise Surface.
+func (t *Theme) PopoverColor() Color { return t.or(t.Popover, t.Surface) }
+
+// MutedColor returns the quiet-region fill: Muted when set, otherwise
+// Surface.
+func (t *Theme) MutedColor() Color { return t.or(t.Muted, t.Surface) }
+
+// InputColor returns the input border color: Input when set,
+// otherwise Border.
+func (t *Theme) InputColor() Color { return t.or(t.Input, t.Border) }
+
+// RingColor returns the focus ring color: Ring when set, otherwise
+// Accent.
+func (t *Theme) RingColor() Color { return t.or(t.Ring, t.Accent) }
 
 // IsDark reports the palette's polarity: a background darker than
 // mid-grey luminance.

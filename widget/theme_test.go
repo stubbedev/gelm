@@ -95,36 +95,48 @@ func TestThemePresetsPinned(t *testing.T) {
 	// value change would restyle every existing user.
 	dark, light := DarkTheme(), LightTheme()
 	wantDark := Theme{
-		Bg:             render.RGB(0x1E, 0x1E, 0x2E),
-		Surface:        render.RGB(0x18, 0x18, 0x24),
-		SurfaceHover:   render.RGB(0x22, 0x22, 0x33),
-		SurfacePressed: render.RGB(0x11, 0x11, 0x1B),
-		Text:           render.RGB(0xCD, 0xD6, 0xF4),
-		TextMuted:      render.RGB(0xA6, 0xAD, 0xC3),
-		Accent:         render.RGB(0x89, 0xB4, 0xFA),
-		OnAccent:       render.RGB(0x11, 0x11, 0x1B),
-		Border:         render.RGB(0x58, 0x5B, 0x70),
-		ShadowColor:    render.RGBA(0, 0, 0, 120),
+		Bg:             render.RGB(0x09, 0x09, 0x0B),
+		Surface:        render.RGB(0x27, 0x27, 0x2A),
+		SurfaceHover:   render.RGB(0x21, 0x21, 0x24),
+		SurfacePressed: render.RGB(0x1C, 0x1C, 0x1F),
+		Text:           render.RGB(0xFA, 0xFA, 0xFA),
+		TextMuted:      render.RGB(0xA1, 0xA1, 0xAA),
+		Accent:         render.RGB(0xFA, 0xFA, 0xFA),
+		OnAccent:       render.RGB(0x18, 0x18, 0x1B),
+		Border:         render.RGB(0x27, 0x27, 0x2A),
+		Card:           render.RGB(0x09, 0x09, 0x0B),
+		Popover:        render.RGB(0x09, 0x09, 0x0B),
+		Muted:          render.RGB(0x27, 0x27, 0x2A),
+		Input:          render.RGB(0x27, 0x27, 0x2A),
+		Ring:           render.RGB(0xD4, 0xD4, 0xD8),
+		Destructive:    render.RGB(0x7F, 0x1D, 0x1D),
+		ShadowColor:    render.RGBA(0, 0, 0, 100),
 		ShadowBlur:     16,
-		Radius:         6,
+		Radius:         8,
 		Spacing:        8,
 		Padding:        8,
 		TextSize:       14,
 		Animations:     true,
 	}
 	wantLight := Theme{
-		Bg:             render.RGB(0xEF, 0xF1, 0xF5),
-		Surface:        render.RGB(0xFF, 0xFF, 0xFF),
-		SurfaceHover:   render.RGB(0xE8, 0xEC, 0xF4),
-		SurfacePressed: render.RGB(0xD3, 0xDA, 0xE8),
-		Text:           render.RGB(0x2A, 0x2C, 0x38),
-		TextMuted:      render.RGB(0x5C, 0x63, 0x76),
-		Accent:         render.RGB(0x1E, 0x66, 0xF5),
-		OnAccent:       render.RGB(0xFF, 0xFF, 0xFF),
-		Border:         render.RGB(0xB8, 0xC0, 0xD4),
-		ShadowColor:    render.RGBA(0, 0, 0, 70),
+		Bg:             render.RGB(0xFF, 0xFF, 0xFF),
+		Surface:        render.RGB(0xF4, 0xF4, 0xF5),
+		SurfaceHover:   render.RGB(0xF6, 0xF6, 0xF7),
+		SurfacePressed: render.RGB(0xE4, 0xE4, 0xE7),
+		Text:           render.RGB(0x09, 0x09, 0x0B),
+		TextMuted:      render.RGB(0x71, 0x71, 0x7A),
+		Accent:         render.RGB(0x18, 0x18, 0x1B),
+		OnAccent:       render.RGB(0xFA, 0xFA, 0xFA),
+		Border:         render.RGB(0xE4, 0xE4, 0xE7),
+		Card:           render.RGB(0xFF, 0xFF, 0xFF),
+		Popover:        render.RGB(0xFF, 0xFF, 0xFF),
+		Muted:          render.RGB(0xF4, 0xF4, 0xF5),
+		Input:          render.RGB(0xE4, 0xE4, 0xE7),
+		Ring:           render.RGB(0x18, 0x18, 0x1B),
+		Destructive:    render.RGB(0xEF, 0x44, 0x44),
+		ShadowColor:    render.RGBA(0, 0, 0, 40),
 		ShadowBlur:     16,
-		Radius:         6,
+		Radius:         8,
 		Spacing:        8,
 		Padding:        8,
 		TextSize:       14,
@@ -323,6 +335,31 @@ func TestThemeDerivations(t *testing.T) {
 		explicit := render.RGB(9, 8, 7)
 		if got := dark.WithSurfaceDisabled(explicit).DisabledSurface(); got != explicit {
 			t.Errorf("DisabledSurface = %v, want the explicit %v", got, explicit)
+		}
+	})
+
+	t.Run("surface tokens fall back to their source", func(t *testing.T) {
+		th := &Theme{Surface: render.RGB(1, 2, 3), Border: render.RGB(4, 5, 6), Accent: render.RGB(7, 8, 9)}
+		for name, tc := range map[string]struct{ got, want Color }{
+			"CardColor":    {th.CardColor(), th.Surface},
+			"PopoverColor": {th.PopoverColor(), th.Surface},
+			"MutedColor":   {th.MutedColor(), th.Surface},
+			"InputColor":   {th.InputColor(), th.Border},
+			"RingColor":    {th.RingColor(), th.Accent},
+		} {
+			if tc.got != tc.want {
+				t.Errorf("%s = %v, want %v", name, tc.got, tc.want)
+			}
+		}
+		set := render.RGB(10, 11, 12)
+		th = th.WithCard(set).WithPopover(set).WithMuted(set).WithInput(set).WithRing(set)
+		for name, got := range map[string]Color{
+			"CardColor": th.CardColor(), "PopoverColor": th.PopoverColor(), "MutedColor": th.MutedColor(),
+			"InputColor": th.InputColor(), "RingColor": th.RingColor(),
+		} {
+			if got != set {
+				t.Errorf("%s = %v, want the explicit %v", name, got, set)
+			}
 		}
 	})
 

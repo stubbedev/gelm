@@ -98,4 +98,10 @@ const (
 	SidebarFgColor       = "sidebar_fg_color"
 	ShadeColor           = "shade_color"
 	BordersColor         = "borders"
+
+	// The shadcn tokens libadwaita has no name for.
+	MutedBgColor     = "muted_bg_color"
+	MutedFgColor     = "muted_fg_color"
+	InputBorderColor = "input_border_color"
+	RingColor        = "ring_color"
 )
