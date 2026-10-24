@@ -9,10 +9,14 @@ import (
 
 // Timing is a transition or animation timing function (CSS Easing 2):
 // the named curves and cubic-bezier control points, steps() with its
-// jump position, or the linear() piecewise list. Exactly one form is
-// live: LinN > 0 is linear(), else Steps > 0 is steps(), else the
+// jump position, the linear() piecewise list, or lys-ui's
+// -lys-spring(). Exactly one form is live: Zeta > 0 is the spring,
+// else LinN > 0 is linear(), else Steps > 0 is steps(), else the
 // bezier.
 type Timing struct {
+	// Zeta and Omega are -lys-spring()'s damping ratio and angular
+	// frequency over the normalized duration (anim.BounceSpring).
+	Zeta, Omega    float64
 	X1, Y1, X2, Y2 float64
 	// Steps is non-zero for steps(n); the bezier is then unused.
 	Steps int
@@ -47,12 +51,21 @@ var timingKeywords = map[string]Timing{
 	"ease-in-out": TimingEaseInOut,
 	"step-start":  {Steps: 1, StepPos: anim.JumpStart},
 	"step-end":    {Steps: 1, StepPos: anim.JumpEnd},
+	"-lys-bounce": springTiming(0.35),
+}
+
+// springTiming is -lys-spring(bounce): a spring filling the duration.
+func springTiming(bounce float64) Timing {
+	z, w := anim.BounceSpring(bounce)
+	return Timing{Zeta: z, Omega: w}
 }
 
 // At evaluates the timing function at input progress t; before is the
 // before flag the step functions read (CSS Easing 2 §2.3.1).
 func (tm *Timing) At(t float64, before bool) float64 {
 	switch {
+	case tm.Zeta > 0:
+		return anim.SpringEasingAt(tm.Zeta, tm.Omega, t)
 	case tm.LinN > 0:
 		return anim.PiecewiseAt(tm.Lin[:tm.LinN], t)
 	case tm.Steps > 0:
@@ -87,6 +100,21 @@ func timingOf(ts []token, cx *ctx) (Timing, bool) {
 		return parseSteps(args, cx)
 	case "linear":
 		return parseLinearPoints(args, cx)
+	case "-lys-spring":
+		// lys-ui's spring easing: -lys-spring(<bounce>?), the bounce a
+		// number in [0, 1), 0 when omitted (no overshoot).
+		bounce := 0.0
+		switch {
+		case len(args) > 1:
+			return Timing{}, false
+		case len(args) == 1 && len(trimWS(args[0])) > 0:
+			n, ok := evalNumeric(trimWS(args[0]), cx)
+			if !ok || n.kind != numNumber || n.v < 0 || n.v >= 1 {
+				return Timing{}, false
+			}
+			bounce = n.v
+		}
+		return springTiming(bounce), true
 	}
 	return Timing{}, false
 }

@@ -1,6 +1,9 @@
 package anim
 
-import "math"
+import (
+	"math"
+	"time"
+)
 
 // Easing maps linear progress t in [0, 1] to eased progress. Most
 // curves keep the result inside [0, 1]; springs may overshoot past 1
@@ -256,26 +259,59 @@ func PiecewiseAt(pts []LinearPt, t float64) float64 {
 // is the fixed-duration curve; Spring is the physics spring that keeps
 // its velocity across retargets.
 func SpringEasing(zeta, omega float64) Easing {
-	return func(t float64) float64 {
-		switch {
-		case t <= 0:
-			return 0
-		case t >= 1:
-			return 1
-		}
-		x, _ := springStep(omega, zeta, -1, 0, t)
-		return 1 + x
-	}
+	return func(t float64) float64 { return SpringEasingAt(zeta, omega, t) }
 }
+
+// SpringEasingAt evaluates SpringEasing(zeta, omega) at t without
+// building the curve.
+func SpringEasingAt(zeta, omega, t float64) float64 {
+	switch {
+	case t <= 0:
+		return 0
+	case t >= 1:
+		return 1
+	}
+	x, _ := springStep(omega, zeta, -1, 0, t)
+	return 1 + x
+}
+
+// BounceSpring is the damping ratio and angular frequency of a
+// duration-filling spring with the given bounce (0 none, toward 1 a
+// lot): damping 1 - bounce, and a frequency whose envelope has decayed
+// to a thousandth by the end of the duration, so the curve lands.
+func BounceSpring(bounce float64) (zeta, omega float64) {
+	zeta = max(0.05, 1-bounce)
+	return zeta, 7 / zeta
+}
+
+// Bezier is a cubic-bezier curve's control points (x1, y1, x2, y2), as
+// data: the theme hands the same curves to stylesheets.
+type Bezier [4]float64
+
+// Easing is the curve as an easing function.
+func (b Bezier) Easing() Easing { return CubicBezier(b[0], b[1], b[2], b[3]) }
 
 // The emphasized curves, the Material 3 motion pair, and its standard
 // curve: an entrance decelerates hard into place, an exit accelerates
 // away, and a transform between two resting states eases both ends.
 var (
+	BezierEmphasizedDecelerate = Bezier{0.05, 0.7, 0.1, 1}
+	BezierEmphasizedAccelerate = Bezier{0.3, 0, 0.8, 0.15}
+	BezierStandard             = Bezier{0.2, 0, 0, 1}
+
 	// EmphasizedDecelerate brings content in fast and settles it long.
-	EmphasizedDecelerate = CubicBezier(0.05, 0.7, 0.1, 1)
+	EmphasizedDecelerate = BezierEmphasizedDecelerate.Easing()
 	// EmphasizedAccelerate starts slow and leaves fast: exits.
-	EmphasizedAccelerate = CubicBezier(0.3, 0, 0.8, 0.15)
+	EmphasizedAccelerate = BezierEmphasizedAccelerate.Easing()
 	// Standard eases a change between two resting states.
-	Standard = CubicBezier(0.2, 0, 0, 1)
+	Standard = BezierStandard.Easing()
+)
+
+// The motion durations every surface and control share: short for
+// state changes (hover, press, a toggle), medium for surfaces opening
+// and closing, long for large moves across the screen.
+const (
+	DurationShort  = 120 * time.Millisecond
+	DurationMedium = 220 * time.Millisecond
+	DurationLong   = 360 * time.Millisecond
 )

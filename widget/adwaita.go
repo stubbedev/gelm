@@ -2,8 +2,12 @@ package widget
 
 import (
 	"fmt"
+	"math"
+	"strconv"
 	"strings"
+	"time"
 
+	"github.com/stubbedev/lys-ui/anim"
 	"github.com/stubbedev/lys-ui/internal/style"
 	"github.com/stubbedev/lys-ui/internal/uifont"
 	"github.com/stubbedev/lys-ui/render"
@@ -191,9 +195,40 @@ var partRules = [][2]string{
 	{"controls .volume trough", "min-width: 80px;"},
 }
 
+// motionTokens are the motion values the theme layer defines
+// (@-lys-define), which stylesheets read as var(--lys-duration-short)
+// and friends to share one motion language: the durations, the
+// standard and emphasized curves, and the springs the surfaces use as
+// duration-filling -lys-spring() easings.
+func motionTokens(t *Theme) [][2]string {
+	short, medium, long := t.MotionDurations()
+	ms := func(d time.Duration) string { return strconv.FormatInt(d.Milliseconds(), 10) + "ms" }
+	bez := func(b anim.Bezier) string {
+		f := func(v float64) string { return strconv.FormatFloat(v, 'g', -1, 64) }
+		return "cubic-bezier(" + f(b[0]) + ", " + f(b[1]) + ", " + f(b[2]) + ", " + f(b[3]) + ")"
+	}
+	spring := func(p anim.SpringParams) string {
+		return "-lys-spring(" + strconv.FormatFloat(math.Max(0, 1-p.Damping), 'g', 3, 64) + ")"
+	}
+	return [][2]string{
+		{"lys-duration-short", ms(short)},
+		{"lys-duration-medium", ms(medium)},
+		{"lys-duration-long", ms(long)},
+		{"lys-ease-standard", bez(anim.BezierStandard)},
+		{"lys-ease-emphasized-decelerate", bez(anim.BezierEmphasizedDecelerate)},
+		{"lys-ease-emphasized-accelerate", bez(anim.BezierEmphasizedAccelerate)},
+		{"lys-spring-smooth", spring(anim.SpringSmooth)},
+		{"lys-spring-snappy", spring(anim.SpringSnappy)},
+		{"lys-spring-bouncy", spring(anim.SpringBouncy)},
+	}
+}
+
 // themeCSS renders the theme layer for t.
 func themeCSS(t *Theme) string {
 	var b strings.Builder
+	for _, tok := range motionTokens(t) {
+		fmt.Fprintf(&b, "@-lys-define %s %s;\n", tok[0], tok[1])
+	}
 	for _, nc := range namedColors(t) {
 		fmt.Fprintf(&b, "@define-color %s %s;\n", nc[0], nc[1])
 	}

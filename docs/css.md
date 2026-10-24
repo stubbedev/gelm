@@ -1029,6 +1029,38 @@ budget tests pin it).
   paint straight onto the canvas, and blending one layer over the next
   needs a layer group per box.
 
+## lys-ui extensions
+
+Beyond CSS and GTK's `-gtk-` vocabulary, lys-ui adds a few properties,
+functions and at-rules of its own, prefixed `-lys-`:
+
+- **`backdrop-filter: -lys-refract(<bezel> <displacement>)`** bends the
+  backdrop through a glass bezel along the box's rounded edge: inside
+  the bezel, pixels sample the backdrop displaced outward along the edge
+  normal, strongest at the edge. The liquid-glass bend (`.liquid-glass`).
+- **`background-image: -lys-grain(<opacity>)`** is a fine luminance
+  noise anchored to the box, the etching of frosted glass (`.frosted`).
+  Not valid as a border image.
+- **`-lys-layout-motion: none | smooth | snappy | bouncy`** springs the
+  box from its old laid-out rect to a new one instead of jumping, laid
+  out once at the destination (`widget.SetLayoutMotion`).
+- **`-lys-spring(<bounce>?)`** and **`-lys-bounce`** are timing
+  functions: a spring filling the duration, damped 1 - bounce, landing
+  exactly at its end.
+- **`@-lys-define <name> <value>;`** names any value sheet-wide, read
+  as `var(--<name>)`, like GTK's `@define-color` for colors.
+
+The theme layer defines the shared motion tokens with it:
+`--lys-duration-short`, `--lys-duration-medium` and
+`--lys-duration-long` (the `Theme` motion durations, zero under reduced
+motion), `--lys-ease-standard`, `--lys-ease-emphasized-decelerate`,
+`--lys-ease-emphasized-accelerate`, and `--lys-spring-smooth`,
+`--lys-spring-snappy` and `--lys-spring-bouncy`:
+
+```css
+.card { transition: transform var(--lys-duration-medium) var(--lys-spring-snappy); }
+```
+
 ## Cascade
 
 The origins, from highest to lowest precedence:

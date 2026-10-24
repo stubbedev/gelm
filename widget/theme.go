@@ -1,9 +1,12 @@
 package widget
 
 import (
+	"cmp"
 	"fmt"
 	"math"
+	"time"
 
+	"github.com/stubbedev/lys-ui/anim"
 	"github.com/stubbedev/lys-ui/internal/logutil"
 	"github.com/stubbedev/lys-ui/render"
 )
@@ -76,6 +79,12 @@ type Theme struct {
 	Padding int
 	// TextSize is the default label size in pixels.
 	TextSize float64
+	// MotionShort, MotionMedium and MotionLong are the motion tokens:
+	// the durations of a state change (hover, press), a surface opening
+	// or closing, and a large move. Stylesheets read them as
+	// var(--lys-duration-short) and friends. Leave them unset for the
+	// toolkit's (anim.DurationShort and friends).
+	MotionShort, MotionMedium, MotionLong time.Duration
 	// Animations gates the animated enter/exit (and open/reveal) motion:
 	// surface tweens, toast slides, dropdown lists. False collapses the
 	// durations to zero — the reduced-motion switch beside
@@ -329,6 +338,21 @@ func (t *Theme) WithPadding(px int) *Theme { return t.with(func(n *Theme) { n.Pa
 
 // WithTextSize returns a copy with the default label size set.
 func (t *Theme) WithTextSize(px float64) *Theme { return t.with(func(n *Theme) { n.TextSize = px }) }
+
+// WithMotion returns a copy with the motion tokens set; zero keeps a
+// token at the toolkit's duration.
+func (t *Theme) WithMotion(short, medium, long time.Duration) *Theme {
+	return t.with(func(n *Theme) { n.MotionShort, n.MotionMedium, n.MotionLong = short, medium, long })
+}
+
+// MotionDurations returns the motion tokens in effect: the theme's, the
+// toolkit's where unset, and zero throughout when Animations is off.
+func (t *Theme) MotionDurations() (short, medium, long time.Duration) {
+	if !t.Animations {
+		return 0, 0, 0
+	}
+	return cmp.Or(t.MotionShort, anim.DurationShort), cmp.Or(t.MotionMedium, anim.DurationMedium), cmp.Or(t.MotionLong, anim.DurationLong)
+}
 
 // WithAnimations returns a copy with the animated-motion gate set;
 // false is the theme-level reduced-motion switch (see Animations).

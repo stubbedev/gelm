@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stubbedev/lys-ui/internal/logutil"
 	"github.com/stubbedev/lys-ui/render"
@@ -536,5 +537,32 @@ func TestHighContrastThemePassesItsOwnGuard(t *testing.T) {
 	SetTheme(HighContrastTheme())
 	if len(warns) != 0 {
 		t.Errorf("high-contrast warnings = %v", warns)
+	}
+}
+
+// The theme's motion tokens reach stylesheets as var(--lys-duration-*)
+// and the curves beside them; reduced motion zeroes the durations
+// (#203).
+func TestMotionTokensReachStylesheets(t *testing.T) {
+	defer SetTheme(nil)
+	loadCSS(t, `.x { transition: opacity var(--lys-duration-medium) var(--lys-ease-standard); }`)
+	dur := func(th *Theme) float64 {
+		SetTheme(th)
+		b := NewBox(Column, 0, 0)
+		b.AddClass("x")
+		v := b.style(b)
+		if len(v.Transition.Durations) != 1 || len(v.Transition.Timings) != 1 {
+			t.Fatalf("transition %+v did not take the tokens", v.Transition)
+		}
+		return v.Transition.Durations[0]
+	}
+	if got := dur(DarkTheme()); got != 0.22 {
+		t.Errorf("medium token = %vs, want the toolkit's 0.22s", got)
+	}
+	if got := dur(DarkTheme().WithMotion(0, 300*time.Millisecond, 0)); got != 0.3 {
+		t.Errorf("medium token = %vs, want the theme's 0.3s", got)
+	}
+	if got := dur(DarkTheme().WithAnimations(false)); got != 0 {
+		t.Errorf("reduced motion medium token = %vs, want 0", got)
 	}
 }

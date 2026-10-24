@@ -107,31 +107,31 @@ type Style struct {
 var Defaults = map[Kind]Style{
 	KindMenu: {
 		Enter: Spec{Spring: &anim.SpringSnappy},
-		Exit:  Spec{Duration: 110 * time.Millisecond, Easing: anim.EmphasizedAccelerate},
+		Exit:  Spec{Duration: anim.DurationShort, Easing: anim.EmphasizedAccelerate},
 		Morph: true,
 	},
 	KindTooltip: {
-		Enter: Spec{Duration: 90 * time.Millisecond, Easing: anim.EmphasizedDecelerate},
-		Exit:  Spec{Duration: 60 * time.Millisecond, Easing: anim.EmphasizedAccelerate},
+		Enter: Spec{Duration: anim.DurationShort * 3 / 4, Easing: anim.EmphasizedDecelerate},
+		Exit:  Spec{Duration: anim.DurationShort / 2, Easing: anim.EmphasizedAccelerate},
 	},
 	KindToast: {
 		Enter: Spec{Spring: &anim.SpringBouncy},
-		Exit:  Spec{Duration: 160 * time.Millisecond, Easing: anim.EmphasizedAccelerate},
+		Exit:  Spec{Duration: anim.DurationMedium, Easing: anim.EmphasizedAccelerate},
 		Morph: true,
 	},
 	KindDropdown: {
 		Enter: Spec{Spring: &anim.SpringSnappy},
-		Exit:  Spec{Duration: 90 * time.Millisecond, Easing: anim.EmphasizedAccelerate},
+		Exit:  Spec{Duration: anim.DurationShort, Easing: anim.EmphasizedAccelerate},
 		Morph: true,
 	},
 	KindDialog: {
 		Enter: Spec{Spring: &anim.SpringSmooth},
-		Exit:  Spec{Duration: 130 * time.Millisecond, Easing: anim.EmphasizedAccelerate},
+		Exit:  Spec{Duration: anim.DurationShort, Easing: anim.EmphasizedAccelerate},
 		Morph: true,
 	},
 	KindOverlay: {
 		Enter: Spec{Spring: &anim.SpringSmooth},
-		Exit:  Spec{Duration: 150 * time.Millisecond, Easing: anim.EmphasizedAccelerate},
+		Exit:  Spec{Duration: anim.DurationMedium, Easing: anim.EmphasizedAccelerate},
 		Morph: true,
 	},
 }
@@ -139,8 +139,8 @@ var Defaults = map[Kind]Style{
 // reducedMotion is the profile every kind degrades to when the theme
 // turns motion off: a short fade, no movement.
 var reducedMotion = Style{
-	Enter: Spec{Duration: 90 * time.Millisecond, Easing: anim.Linear},
-	Exit:  Spec{Duration: 70 * time.Millisecond, Easing: anim.Linear},
+	Enter: Spec{Duration: anim.DurationShort * 3 / 4, Easing: anim.Linear},
+	Exit:  Spec{Duration: anim.DurationShort / 2, Easing: anim.Linear},
 }
 
 var (

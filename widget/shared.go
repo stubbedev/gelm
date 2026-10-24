@@ -2,7 +2,6 @@ package widget
 
 import (
 	"math"
-	"time"
 
 	"github.com/stubbedev/lys-ui/anim"
 	"github.com/stubbedev/lys-ui/render"
@@ -108,7 +107,7 @@ func (n *node) startShared(from sharedShot) {
 }
 
 // sharedFade is the reduced-motion cross-fade's length.
-const sharedFade = 150 * time.Millisecond
+const sharedFade = anim.DurationShort
 
 func (tr *sharedTransition) stop() {
 	if tr.spring != nil {

@@ -394,7 +394,10 @@ func (p *parser) atRule(ts []token, i int) int {
 	switch name {
 	case "keyframes", "-gtk-keyframes":
 		return p.keyframes(ts, i)
-	case "define-color":
+	case "define-color", "-lys-define":
+		// GTK's @define-color names a color; lys-ui's @-lys-define
+		// names any value (a duration, a curve) the same way: a
+		// sheet-wide var() fallback, declared on no element.
 		return p.defineColor(ts, i)
 	case "media":
 		return p.mediaRule(ts, i)
