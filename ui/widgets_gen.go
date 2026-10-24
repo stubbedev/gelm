@@ -31,6 +31,7 @@ type nodeProps interface {
 	SetOnClickWithin(fn func())
 	SetOnFocusChanged(fn func(focused bool))
 	SetOnHoverWithin(fn func(on bool))
+	SetSharedElement(tag string)
 	SetSizeRequest(w int, h int)
 	SetState(flags widget.StateFlags, on bool)
 	SetTooltip(s string)
@@ -205,6 +206,18 @@ func (b *base[W, B]) OnFocusChanged(arg func(focused bool)) B {
 // OnHoverWithin calls SetOnHoverWithin on the widget.
 func (b *base[W, B]) OnHoverWithin(arg func(on bool)) B {
 	b.do(func(s *Scope, w W) { w.SetOnHoverWithin(arg) })
+	return b.self
+}
+
+// SharedElement calls SetSharedElement on the widget.
+func (b *base[W, B]) SharedElement(tag string) B {
+	b.do(func(s *Scope, w W) { w.SetSharedElement(tag) })
+	return b.self
+}
+
+// WatchSharedElement re-applies SetSharedElement with get's value after every update.
+func (b *base[W, B]) WatchSharedElement(get func() string) B {
+	b.watch(func(w W) { w.SetSharedElement(get()) })
 	return b.self
 }
 

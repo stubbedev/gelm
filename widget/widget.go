@@ -105,7 +105,11 @@ type node struct {
 	layoutMotion LayoutMotion
 	motion       *layoutMotionState
 	shownWalk    uint64
-	tooltip      string
+	// sharedTag is the shared-element tag (SetSharedElement) and shared
+	// the morph running into this widget.
+	sharedTag string
+	shared    *sharedTransition
+	tooltip   string
 	// fx, fxb, fxf and fxmask cache the effect pipeline's offscreen
 	// layers across frames: the widget's own filtered layer, the
 	// backdrop snapshot, the filtered backdrop, and the mask-image.
@@ -839,9 +843,12 @@ func PaintChild(cv *render.Canvas, w Widget) {
 			return
 		}
 	}
-	if n := nodeOf(w); n != nil && n.moving(w) {
+	switch n := nodeOf(w); {
+	case n != nil && n.sharedTag != "":
+		n.paintShared(cv, w)
+	case n != nil && n.moving(w):
 		n.paintMoving(cv, w)
-	} else {
+	default:
 		w.Paint(cv)
 	}
 	cv.Painted(w)
