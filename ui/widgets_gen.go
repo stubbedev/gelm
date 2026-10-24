@@ -1386,6 +1386,68 @@ func (b *CenterBoxBuilder) WatchOrientation(get func() widget.Axis) *CenterBoxBu
 	return b
 }
 
+// ChartBuilder builds a widget.Chart.
+type ChartBuilder struct {
+	base[*widget.Chart, *ChartBuilder]
+	face render.Font
+	size float64
+}
+
+// Chart builds a widget.Chart with widget.NewChart.
+func Chart(kind widget.ChartKind, labels []string, series ...widget.ChartSeries) *ChartBuilder {
+	b := &ChartBuilder{}
+	b.init(b, func(s *Scope) *widget.Chart { return widget.NewChart(s.face(b.face), kind, labels, series...) })
+	return b
+}
+
+// Font overrides the environment's typeface and size for this widget; zero values keep the environment's.
+func (b *ChartBuilder) Font(face render.Font, sizePx float64) *ChartBuilder {
+	b.face, b.size = face, sizePx
+	return b
+}
+
+// Data calls (*widget.Chart).SetData.
+func (b *ChartBuilder) Data(labels []string, series ...widget.ChartSeries) *ChartBuilder {
+	b.do(func(s *Scope, w *widget.Chart) { w.SetData(labels, series...) })
+	return b
+}
+
+// Donut calls (*widget.Chart).SetDonut.
+func (b *ChartBuilder) Donut(on bool) *ChartBuilder {
+	b.do(func(s *Scope, w *widget.Chart) { w.SetDonut(on) })
+	return b
+}
+
+// WatchDonut re-applies SetDonut with get's value after every update.
+func (b *ChartBuilder) WatchDonut(get func() bool) *ChartBuilder {
+	b.watch(func(w *widget.Chart) { w.SetDonut(get()) })
+	return b
+}
+
+// Legend calls (*widget.Chart).SetLegend.
+func (b *ChartBuilder) Legend(on bool) *ChartBuilder {
+	b.do(func(s *Scope, w *widget.Chart) { w.SetLegend(on) })
+	return b
+}
+
+// WatchLegend re-applies SetLegend with get's value after every update.
+func (b *ChartBuilder) WatchLegend(get func() bool) *ChartBuilder {
+	b.watch(func(w *widget.Chart) { w.SetLegend(get()) })
+	return b
+}
+
+// Stacked calls (*widget.Chart).SetStacked.
+func (b *ChartBuilder) Stacked(on bool) *ChartBuilder {
+	b.do(func(s *Scope, w *widget.Chart) { w.SetStacked(on) })
+	return b
+}
+
+// WatchStacked re-applies SetStacked with get's value after every update.
+func (b *ChartBuilder) WatchStacked(get func() bool) *ChartBuilder {
+	b.watch(func(w *widget.Chart) { w.SetStacked(get()) })
+	return b
+}
+
 // CheckButtonBuilder builds a widget.CheckButton.
 type CheckButtonBuilder struct {
 	base[*widget.CheckButton, *CheckButtonBuilder]

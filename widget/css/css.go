@@ -148,9 +148,16 @@ const (
 	ShadeColor           = "shade_color"
 	BordersColor         = "borders"
 
-	// The shadcn tokens libadwaita has no name for.
+	// The shadcn tokens libadwaita has no name for: the muted fill,
+	// input borders, the focus ring and the five chart colors
+	// (--chart-1 to --chart-5).
 	MutedBgColor     = "muted_bg_color"
 	MutedFgColor     = "muted_fg_color"
 	InputBorderColor = "input_border_color"
 	RingColor        = "ring_color"
+	Chart1Color      = "chart_1"
+	Chart2Color      = "chart_2"
+	Chart3Color      = "chart_3"
+	Chart4Color      = "chart_4"
+	Chart5Color      = "chart_5"
 )

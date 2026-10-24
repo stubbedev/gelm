@@ -48,6 +48,7 @@ const (
 	roleList         uint32 = 31
 	roleMenu         uint32 = 33
 	roleNotification uint32 = 101
+	roleChart        uint32 = 80
 	roleProgressBar  uint32 = 42
 	rolePushButton   uint32 = 43
 	roleScrollBar    uint32 = 48
@@ -106,6 +107,7 @@ var atspiRoles = [...]atspiRoleInfo{
 	widget.RoleScrollBar:    {roleScrollBar, "scroll bar"},
 	widget.RoleToggleButton: {roleToggleButton, "toggle button"},
 	widget.RoleAlert:        {roleNotification, "notification"},
+	widget.RoleChart:        {roleChart, "chart"},
 }
 
 // atspiRoleOf is r's AT-SPI role: its table entry, FILLER for RoleNone.

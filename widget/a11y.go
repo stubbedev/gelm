@@ -42,6 +42,8 @@ const (
 	// RoleAlert is an inline callout assistive technology announces
 	// (an Alert).
 	RoleAlert
+	// RoleChart is a chart, named by a summary of its data.
+	RoleChart
 )
 
 // String returns the lowercase role name.
@@ -87,6 +89,8 @@ func (r Role) String() string {
 		return "toggle-button"
 	case RoleAlert:
 		return "alert"
+	case RoleChart:
+		return "chart"
 	default:
 		return "none"
 	}

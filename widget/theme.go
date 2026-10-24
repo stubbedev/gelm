@@ -54,6 +54,9 @@ type Theme struct {
 	// Sidebar fills an application sidebar. Leave it unset and
 	// SidebarColor derives it from Surface.
 	Sidebar Color
+	// Chart colors a chart's series, shadcn's chart-1 to chart-5; an
+	// unset one is ChartColor's fallback (Accent).
+	Chart [5]Color
 	// Input strokes the borders of text fields and other inputs.
 	// Leave it unset and InputColor derives it from Border.
 	Input Color
@@ -152,16 +155,20 @@ func DarkTheme() *Theme {
 		Popover:        render.RGB(0x09, 0x09, 0x0B),
 		Muted:          render.RGB(0x27, 0x27, 0x2A),
 		Sidebar:        render.RGB(0x18, 0x18, 0x1B),
-		Input:          render.RGB(0x27, 0x27, 0x2A),
-		Ring:           render.RGB(0xD4, 0xD4, 0xD8),
-		Destructive:    render.RGB(0x7F, 0x1D, 0x1D),
-		ShadowColor:    render.RGBA(0, 0, 0, 100),
-		ShadowBlur:     16,
-		Radius:         8,
-		Spacing:        8,
-		Padding:        8,
-		TextSize:       14,
-		Animations:     true,
+		Chart: [5]Color{
+			render.RGB(0x26, 0x62, 0xD9), render.RGB(0x2E, 0xB8, 0x8A), render.RGB(0xE8, 0x8C, 0x30),
+			render.RGB(0xAF, 0x57, 0xDB), render.RGB(0xE2, 0x36, 0x70),
+		},
+		Input:       render.RGB(0x27, 0x27, 0x2A),
+		Ring:        render.RGB(0xD4, 0xD4, 0xD8),
+		Destructive: render.RGB(0x7F, 0x1D, 0x1D),
+		ShadowColor: render.RGBA(0, 0, 0, 100),
+		ShadowBlur:  16,
+		Radius:      8,
+		Spacing:     8,
+		Padding:     8,
+		TextSize:    14,
+		Animations:  true,
 	}
 }
 
@@ -182,16 +189,20 @@ func LightTheme() *Theme {
 		Popover:        render.RGB(0xFF, 0xFF, 0xFF),
 		Muted:          render.RGB(0xF4, 0xF4, 0xF5),
 		Sidebar:        render.RGB(0xFA, 0xFA, 0xFA),
-		Input:          render.RGB(0xE4, 0xE4, 0xE7),
-		Ring:           render.RGB(0x18, 0x18, 0x1B),
-		Destructive:    render.RGB(0xEF, 0x44, 0x44),
-		ShadowColor:    render.RGBA(0, 0, 0, 40),
-		ShadowBlur:     16,
-		Radius:         8,
-		Spacing:        8,
-		Padding:        8,
-		TextSize:       14,
-		Animations:     true,
+		Chart: [5]Color{
+			render.RGB(0xE7, 0x6E, 0x50), render.RGB(0x2A, 0x9D, 0x90), render.RGB(0x27, 0x47, 0x54),
+			render.RGB(0xE8, 0xC4, 0x68), render.RGB(0xF4, 0xA4, 0x62),
+		},
+		Input:       render.RGB(0xE4, 0xE4, 0xE7),
+		Ring:        render.RGB(0x18, 0x18, 0x1B),
+		Destructive: render.RGB(0xEF, 0x44, 0x44),
+		ShadowColor: render.RGBA(0, 0, 0, 40),
+		ShadowBlur:  16,
+		Radius:      8,
+		Spacing:     8,
+		Padding:     8,
+		TextSize:    14,
+		Animations:  true,
 	}
 }
 
@@ -401,6 +412,10 @@ func (t *Theme) PopoverColor() Color { return t.or(t.Popover, t.Surface) }
 // MutedColor returns the quiet-region fill: Muted when set, otherwise
 // Surface.
 func (t *Theme) MutedColor() Color { return t.or(t.Muted, t.Surface) }
+
+// ChartColor returns series i's color, cycling through the five chart
+// colors; an unset one is Accent.
+func (t *Theme) ChartColor(i int) Color { return t.or(t.Chart[i%len(t.Chart)], t.Accent) }
 
 // SidebarColor returns the sidebar fill: Sidebar when set, otherwise
 // Surface.
