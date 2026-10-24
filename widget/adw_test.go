@@ -17,10 +17,10 @@ var (
 	_ PressAter  = (*Carousel)(nil)
 	_ DragMover  = (*Carousel)(nil)
 	_ PressEnder = (*Carousel)(nil)
-	_ PressAter  = (*BottomSheet)(nil)
-	_ DragMover  = (*BottomSheet)(nil)
-	_ PressEnder = (*BottomSheet)(nil)
-	_ Clicker    = (*BottomSheet)(nil)
+	_ PressAter  = (*Sheet)(nil)
+	_ DragMover  = (*Sheet)(nil)
+	_ PressEnder = (*Sheet)(nil)
+	_ Clicker    = (*Sheet)(nil)
 )
 
 // TestToggleGroup pins the segmented control: one active toggle, the

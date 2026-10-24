@@ -14,7 +14,7 @@ import (
 // The libadwaita miscellany of #95, each composed from the shared
 // shapes: ToggleGroup (the segmented control ViewSwitcher is built
 // on), ButtonContent, StatusPage, Banner, Avatar, and SplitButton.
-// BottomSheet lives in bottomsheet.go, WrapBox is FlowBox's justify
+// BottomSheet lives in sheet.go, WrapBox is FlowBox's justify
 // option.
 
 // ToggleGroup is the segmented control (adw 1.7): a pill of

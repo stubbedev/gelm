@@ -27,7 +27,7 @@ func TestAdaptiveDialogAsABottomSheetWrapsAndRestoresTheParent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sheet, ok := hw.router.Root.(*widget.BottomSheet)
+	sheet, ok := hw.router.Root.(*widget.Sheet)
 	if !ok || !sheet.Open() || sheet.Content() != widget.Widget(root) {
 		t.Fatalf("the parent's tree is not wrapped in an open sheet: %T", hw.router.Root)
 	}
@@ -45,7 +45,7 @@ func TestAdaptiveDialogAsABottomSheetWrapsAndRestoresTheParent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	hw.router.Root.(*widget.BottomSheet).KeyAction(widget.KeyDismiss, 0)
+	hw.router.Root.(*widget.Sheet).KeyAction(widget.KeyDismiss, 0)
 	if !d2.Closed() || len(responses) != 2 || responses[1] != "cancel" {
 		t.Errorf("Esc on the sheet: closed=%v responses %v, want the cancel response", d2.Closed(), responses)
 	}

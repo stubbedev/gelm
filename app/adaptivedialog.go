@@ -42,7 +42,7 @@ type AdaptiveDialog struct {
 	app       *Application
 	cfg       AdaptiveDialogConfig
 	floating  *Dialog
-	sheet     *widget.BottomSheet
+	sheet     *widget.Sheet
 	host      *hostWindow
 	presented DialogPresentation
 	responded bool

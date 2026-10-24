@@ -787,36 +787,6 @@ func (b *BannerBuilder) OnButton(fn func()) *BannerBuilder {
 	return b
 }
 
-// BottomSheetBuilder builds a widget.BottomSheet.
-type BottomSheetBuilder struct {
-	base[*widget.BottomSheet, *BottomSheetBuilder]
-}
-
-// BottomSheet builds a widget.BottomSheet with widget.NewBottomSheet.
-func BottomSheet(content Node, sheet Node) *BottomSheetBuilder {
-	b := &BottomSheetBuilder{}
-	b.init(b, func(s *Scope) *widget.BottomSheet { return widget.NewBottomSheet(build(s, content), build(s, sheet)) })
-	return b
-}
-
-// Open calls (*widget.BottomSheet).SetOpen.
-func (b *BottomSheetBuilder) Open(on bool) *BottomSheetBuilder {
-	b.do(func(s *Scope, w *widget.BottomSheet) { w.SetOpen(on) })
-	return b
-}
-
-// WatchOpen re-applies SetOpen with get's value after every update.
-func (b *BottomSheetBuilder) WatchOpen(get func() bool) *BottomSheetBuilder {
-	b.watch(func(w *widget.BottomSheet) { w.SetOpen(get()) })
-	return b
-}
-
-// OnClosed sets the widget's OnClosed field.
-func (b *BottomSheetBuilder) OnClosed(fn func()) *BottomSheetBuilder {
-	b.do(func(_ *Scope, w *widget.BottomSheet) { w.OnClosed = fn })
-	return b
-}
-
 // BoxBuilder builds a widget.Box.
 type BoxBuilder struct {
 	base[*widget.Box, *BoxBuilder]
@@ -5927,6 +5897,55 @@ type SeparatorBuilder struct {
 func Separator(orientation widget.Orientation) *SeparatorBuilder {
 	b := &SeparatorBuilder{}
 	b.init(b, func(s *Scope) *widget.Separator { return widget.NewSeparator(orientation) })
+	return b
+}
+
+// SheetBuilder builds a widget.Sheet.
+type SheetBuilder struct {
+	base[*widget.Sheet, *SheetBuilder]
+}
+
+// BottomSheet builds a widget.Sheet with widget.NewBottomSheet.
+func BottomSheet(content Node, sheet Node) *SheetBuilder {
+	b := &SheetBuilder{}
+	b.init(b, func(s *Scope) *widget.Sheet { return widget.NewBottomSheet(build(s, content), build(s, sheet)) })
+	return b
+}
+
+// Sheet builds a widget.Sheet with widget.NewSheet.
+func Sheet(content Node, body Node, side widget.SheetSide) *SheetBuilder {
+	b := &SheetBuilder{}
+	b.init(b, func(s *Scope) *widget.Sheet { return widget.NewSheet(build(s, content), build(s, body), side) })
+	return b
+}
+
+// Footer calls (*widget.Sheet).SetFooter.
+func (b *SheetBuilder) Footer(child Node) *SheetBuilder {
+	b.do(func(s *Scope, w *widget.Sheet) { w.SetFooter(build(s, child)) })
+	return b
+}
+
+// Header calls (*widget.Sheet).SetHeader.
+func (b *SheetBuilder) Header(face render.Font, title string, description string) *SheetBuilder {
+	b.do(func(s *Scope, w *widget.Sheet) { w.SetHeader(face, title, description) })
+	return b
+}
+
+// Open calls (*widget.Sheet).SetOpen.
+func (b *SheetBuilder) Open(on bool) *SheetBuilder {
+	b.do(func(s *Scope, w *widget.Sheet) { w.SetOpen(on) })
+	return b
+}
+
+// WatchOpen re-applies SetOpen with get's value after every update.
+func (b *SheetBuilder) WatchOpen(get func() bool) *SheetBuilder {
+	b.watch(func(w *widget.Sheet) { w.SetOpen(get()) })
+	return b
+}
+
+// OnClosed sets the widget's OnClosed field.
+func (b *SheetBuilder) OnClosed(fn func()) *SheetBuilder {
+	b.do(func(_ *Scope, w *widget.Sheet) { w.OnClosed = fn })
 	return b
 }
 

@@ -1089,7 +1089,7 @@ func (r *Router) FocusPrev() { r.focusStep(-1) }
 func (r *Router) focusStep(dir int) {
 	r.dropUnfocusable()
 	var order []Widget
-	focusWalker(r.Root, func(w Widget) {
+	focusWalker(r.focusScope(), func(w Widget) {
 		if isFocusable(w) {
 			order = append(order, w)
 		}
@@ -1112,6 +1112,27 @@ func (r *Router) focusStep(dir int) {
 	r.focus = order[idx]
 	// Keyboard focus scrolls into view (GtkViewport scroll-to-focus).
 	RevealRect(r.focus, boundsOf(r.focus))
+}
+
+// FocusTrapper is a widget that can hold Tab traversal inside a part
+// of itself: a modal sheet over the content. FocusTrap returns that
+// part while it traps, nil otherwise.
+type FocusTrapper interface {
+	FocusTrap() Widget
+}
+
+// focusScope is the subtree Tab traverses: the last active trap in
+// paint order - the topmost - or the whole tree.
+func (r *Router) focusScope() Widget {
+	scope := r.Root
+	focusWalker(r.Root, func(w Widget) {
+		if ft, ok := w.(FocusTrapper); ok {
+			if trap := ft.FocusTrap(); trap != nil {
+				scope = trap
+			}
+		}
+	})
+	return scope
 }
 
 // dropUnfocusable moves focus off a widget that stopped accepting it

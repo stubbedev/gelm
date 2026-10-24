@@ -106,8 +106,9 @@ func (togglePalette) galleryMsg() {}
 func (submitted) galleryMsg()     {}
 
 type gallery struct {
-	env    ui.Env
-	status string
+	env       ui.Env
+	status    string
+	openSheet func()
 }
 
 // datePickers is the Date Picker section: a date, a date with a time,
@@ -175,7 +176,8 @@ func (g *gallery) Init(cx *component.Context[galleryMsg, struct{}]) widget.Widge
 		ui.Button(ui.Label("Toggle palette"), 0, 0).Classes(css.Outline).
 			OnClick(func() { cx.Input(togglePalette{}) }),
 	).Spacing(16)
-	return ui.Mount(cx, g.env, ui.Scroll(ui.Clamp(680, ui.Column(
+	var sheet *widget.Sheet
+	page := ui.Scroll(ui.Clamp(680, ui.Column(
 		header,
 		section("Accordion", ui.Accordion(widget.AccordionSingle).Collapsible(true).
 			Append(ui.AccordionItem("Is it accessible?", text("Yes. The triggers take focus, and Up, Down, Home and End move between them."))).
@@ -233,6 +235,7 @@ func (g *gallery) Init(cx *component.Context[galleryMsg, struct{}]) widget.Widge
 		section("Input OTP", ui.InputOTP(widget.OTPDigits, 3, 3)),
 		section("Kbd", ui.Row(ui.KbdGroup("Ctrl", "Shift", "P"), ui.Label("opens the command palette")).Spacing(12)),
 		section("Pagination", ui.Pagination(10, 5)),
+		section("Sheet", ui.Aligned(ui.Button(ui.Label("Open"), 0, 0).Classes(css.Outline).OnClick(func() { g.openSheet() }), widget.AlignStart)),
 		section("Skeleton", ui.Row(
 			ui.Skeleton(48, 48),
 			ui.Column(ui.Skeleton(240, 14), ui.Skeleton(180, 14)).Spacing(8),
@@ -246,7 +249,12 @@ func (g *gallery) Init(cx *component.Context[galleryMsg, struct{}]) widget.Widge
 			ui.Aligned(ui.Label("ui.Label(text).Classes(css.InlineCode)").Classes(css.InlineCode), widget.AlignStart),
 			ui.Label("Enter your email address.").Classes(css.Muted),
 		),
-	).Spacing(40).Padding(render.UniformInsets(32)))).VerticalOnly(true).Classes(css.Background))
+	).Spacing(40).Padding(render.UniformInsets(32)))).VerticalOnly(true).Classes(css.Background)
+	g.openSheet = func() { sheet.SetOpen(true) }
+	return ui.Mount(cx, g.env, ui.Sheet(page, ui.Field("Name", ui.Entry().Text("Pedro Duarte")), widget.SheetRight).
+		Header(g.env.Face, "Edit profile", "Make changes to your profile here. Click save when you're done.").
+		Footer(ui.Button(ui.Label("Save changes"), 0, 0).Classes(css.SuggestedAction).OnClick(func() { sheet.SetOpen(false) })).
+		Ref(&sheet))
 }
 
 func (g *gallery) Update(_ *component.Context[galleryMsg, struct{}], msg galleryMsg) {
