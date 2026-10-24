@@ -30,6 +30,9 @@
           # the accessibility bus and skip when it is missing; shipping it
           # keeps that gate honest wherever the dev shell runs.
           pkgs.dbus
+          # `just svg-refs` rasterizes the SVG references render.LoadSVG
+          # is compared against with rsvg-convert.
+          pkgs.librsvg
         ]
         # Editor tooling (gopls, delve, and the tools vscode-go and
         # vim-go install), built against the pinned Go: vscode-go

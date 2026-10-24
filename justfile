@@ -90,6 +90,16 @@ bench:
 goldens:
     UPDATE_GOLDEN=1 go test ./render ./widget
 
+# Rasterize the SVG references (render/testdata/svgref) with
+# rsvg-convert, the independent renderer render.LoadSVG is held to; the
+# PNG's size is the size the test renders at.
+svg-refs:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    for svg in render/testdata/svgref/*.svg; do
+        rsvg-convert -w 64 -h 64 "$svg" -o "${svg%.svg}.png"
+    done
+
 # Compile-check the bar binary; the output is discarded.
 build:
     go build -o /dev/null ./cmd/lys-ui-bar
