@@ -165,7 +165,7 @@ func finishEffects(cv *render.Canvas, n *node, v *style.Values, bounds render.Re
 	layer *render.Layer, region render.Rect, mode render.BlendMode,
 ) {
 	if !v.Filter.Empty() {
-		render.ApplyFilters(layer, region, &v.Filter)
+		render.ApplyFilters(layer, region, &v.Filter, render.FilterShape{Box: bounds, Radii: radii})
 	}
 	if v.Has(style.PropClipPath) && !v.Clip.Empty() {
 		if p, ok := clipShapePath(&v.Clip, bounds, radii); ok {
@@ -197,7 +197,7 @@ func paintBackdrop(cv *render.Canvas, n *node, v *style.Values, bounds render.Re
 	filt := cv.Layer(n.fxf, region)
 	n.fxf = filt
 	filt.Canvas().DrawCanvasDevice(snap.Canvas(), 0, 0)
-	render.ApplyFilters(filt, region, &v.Backdrop)
+	render.ApplyFilters(filt, region, &v.Backdrop, render.FilterShape{Box: bounds, Radii: radii})
 	p := &render.Path{}
 	render.RoundedRectPath(p, bounds, radii)
 	filt.ApplyPathMask(p, region)

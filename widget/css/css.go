@@ -42,6 +42,9 @@ const (
 	// to blur behind it while no blur is in effect, so its style can
 	// turn opaque instead of showing the unblurred desktop.
 	BlurUnavailable = "blur-unavailable"
+	// LiquidGlass is liquid glass: a nearly clear surface whose rim
+	// bends the backdrop like a lens, under a specular edge.
+	LiquidGlass = "liquid-glass"
 	// Heading is bold body text.
 	Heading = "heading"
 	// Keycap draws a label as a key on a keyboard (a shortcut's keys).

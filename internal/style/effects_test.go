@@ -63,6 +63,22 @@ func TestBackdropFilterParses(t *testing.T) {
 	}
 }
 
+// -lys-refract(<bezel> <displacement>) is lys-ui's liquid-glass bend:
+// two non-negative lengths, nothing else (#197).
+func TestRefractFilterParses(t *testing.T) {
+	s := parseOne(t, `a { backdrop-filter: -lys-refract(14px 6px) blur(4px); }`)
+	v := computeTree(s, el("a"))
+	if op := v.Backdrop.Ops[0]; v.Backdrop.N != 2 || op.Kind != render.FilterRefract || op.Bezel != 14 || op.Amount != 6 {
+		t.Errorf("refract: %+v", v.Backdrop)
+	}
+	for _, bad := range []string{`-lys-refract(14px)`, `-lys-refract(14px 6px 2px)`, `-lys-refract(-1px 6px)`, `-lys-refract(14px red)`} {
+		s := parseWarns(t, `a { backdrop-filter: `+bad+`; }`)
+		if v := computeTree(s, el("a")); v.Has(PropBackdropFilter) {
+			t.Errorf("%s parsed: %+v", bad, v.Backdrop)
+		}
+	}
+}
+
 func TestMixBlendModeAndIsolation(t *testing.T) {
 	s := parseOne(t, `a { mix-blend-mode: color-dodge; } b { mix-blend-mode: screen; isolation: isolate; }`)
 	v := computeTree(s, el("a"))

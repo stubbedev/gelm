@@ -1,6 +1,7 @@
 // Command lys-ui-glass shows the theme's glass surfaces over busy,
 // moving content: a sidebar, a floating card and a bottom bar carry the
-// .glass class over a striped backdrop whose bands keep sliding, so
+// .glass class, and a pill .liquid-glass, over a striped backdrop
+// whose bands keep sliding, so
 // the backdrop blur re-samples every frame. w opens a translucent
 // window that asks the compositor to blur the desktop behind it
 // (ext_background_effect_v1; opaque where no compositor blur is in
@@ -73,12 +74,17 @@ func run(blurWindow bool) error {
 	sidebar := panel("min-width: 180px;", "Library", "Recent", "Favorites", "Shared", "Trash")
 	card := panel("min-width: 260px;", "Clear glass", "The backdrop blurs and saturates", "under a translucent card.")
 	bar := panel("min-height: 40px;", "Playing - the bands keep moving underneath")
+	pill := widget.NewBox(widget.Column, 4, 18)
+	pill.AddClass(css.LiquidGlass)
+	pill.Append(widget.NewLabel(face, 16, "Liquid glass", 0), false).
+		Append(widget.NewLabel(face, 13, "the rim bends the bands behind it", 0), false)
 
 	stage := widget.NewOverlay().
 		Append(backdrop).
 		AppendAligned(sidebar, widget.AlignStart, widget.AlignFill).
 		AppendAligned(card, widget.AlignCenter, widget.AlignCenter).
-		AppendAligned(bar, widget.AlignFill, widget.AlignEnd)
+		AppendAligned(bar, widget.AlignFill, widget.AlignEnd).
+		AppendAligned(pill, widget.AlignEnd, widget.AlignStart)
 
 	phase := 45
 	application.Every(33*time.Millisecond, func() {

@@ -844,7 +844,7 @@ func (l *Label) drawShadows(cv *render.Canvas, sh *render.ShapedText, x, baselin
 		}
 		l.shadow = cv.Layer(l.shadow, region)
 		drawShaped(l.shadow.Canvas(), sh, x+s.X, baseline+s.Y, s.Color, justify)
-		render.ApplyFilters(l.shadow, region, &blur)
+		render.ApplyFilters(l.shadow, region, &blur, render.FilterShape{})
 		cv.DrawLayer(l.shadow, region, render.BlendNormal)
 	}
 }

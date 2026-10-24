@@ -118,3 +118,25 @@ func TestGlassBlurUnavailableIsOpaque(t *testing.T) {
 		t.Errorf("fallback background %08x, want the opaque card color %08x", uint32(v.Background), uint32(Current().CardColor()))
 	}
 }
+
+// .liquid-glass over a busy backdrop, in both palettes: the stripes
+// bend through the rim and run straight through the middle (#197).
+func TestGoldenLiquidGlass(t *testing.T) {
+	face := goldenFace(t)
+	for _, tc := range []struct {
+		name string
+		th   *Theme
+	}{{"dark", DarkTheme()}, {"light", LightTheme()}} {
+		t.Run(tc.name, func(t *testing.T) {
+			backdrop := NewBox(Column, 0, 0)
+			backdrop.AddClass("stripes")
+			pill := NewBox(Column, 4, 18)
+			pill.AddClass(css.LiquidGlass)
+			pill.Append(NewLabel(face, 15, "Liquid glass", 0), false).
+				Append(NewLabel(face, 13, "the rim bends what is behind it", 0), false)
+			stage := NewOverlay().Append(backdrop).AppendAligned(pill, AlignCenter, AlignCenter)
+			cssShot(t, `.stripes { background-image: repeating-linear-gradient(90deg, #e05561 0px, #e05561 10px, #3fb68b 10px, #3fb68b 20px, #4f7cff 20px, #4f7cff 30px); }`,
+				stage, "liquid-glass-"+tc.name, goldenTheme(tc.th), goldenFrame(300, 150))
+		})
+	}
+}

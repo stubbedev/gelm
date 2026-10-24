@@ -107,7 +107,7 @@ func parseFilterList(ts []token, cx *ctx, v *Values, out *render.Filters) bool {
 		}
 		name := c[0].s
 		var args [][]token
-		if name == "drop-shadow" {
+		if name == "drop-shadow" || name == "-lys-refract" {
 			args = splitTop(funcArgs(c), tkWS)
 		} else {
 			args = splitTop(funcArgs(c), tkComma)
@@ -177,6 +177,24 @@ func parseFilterList(ts []token, cx *ctx, v *Values, out *render.Filters) bool {
 				return false
 			}
 			out.Append(render.FilterOp{Kind: render.FilterHueRotate, Amount: n.v})
+		case "-lys-refract":
+			// lys-ui's liquid-glass bend: the bezel width along the edge
+			// and the displacement at the edge, both lengths.
+			var lens []float64
+			for _, a := range args {
+				if len(trimWS(a)) == 0 {
+					continue
+				}
+				l, ok := lengthArg([][]token{a}, cx, 0)
+				if !ok || l < 0 {
+					return false
+				}
+				lens = append(lens, l)
+			}
+			if len(lens) != 2 {
+				return false
+			}
+			out.Append(render.FilterOp{Kind: render.FilterRefract, Bezel: lens[0], Amount: lens[1]})
 		case "drop-shadow":
 			sh, ok := parseDropShadow(args, cx)
 			if !ok {
