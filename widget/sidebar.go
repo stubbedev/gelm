@@ -295,6 +295,16 @@ func (s *Sidebar) setNarrow(narrow bool) {
 	s.applyCollapse()
 }
 
+// SetNarrowWidth moves the breakpoint below which the sidebar is off
+// canvas (shadcn's md, 768px, by default): the sidebar measures its
+// own width, so one inside a narrower region of a wide window wants a
+// lower one.
+func (s *Sidebar) SetNarrowWidth(w int) {
+	s.bps.points[0].Max = w - 1
+	s.bps.seen = false
+	s.InvalidateLayout()
+}
+
 // Narrow reports the sidebar off canvas below the narrow width.
 func (s *Sidebar) Narrow() bool { return s.narrow }
 

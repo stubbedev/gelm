@@ -122,7 +122,7 @@ func (g *gallery) sidebarDemo() ui.Node {
 		ui.Label("Dashboard").Classes(css.H4),
 		ui.Label("Toggle the sidebar with Ctrl+B.").Classes(css.Muted),
 	).Spacing(8).Padding(render.UniformInsets(16))).
-		Collapse(widget.SidebarIcon).
+		Collapse(widget.SidebarIcon).NarrowWidth(480).
 		Header(ui.Label("Acme Inc").Classes(css.H4)).
 		AddGroup("Platform",
 			widget.SidebarItem{Label: "Home", Icon: icon(widget.SymbolMaximize), Active: true},
@@ -260,6 +260,19 @@ func (g *gallery) Init(cx *component.Context[galleryMsg, struct{}]) widget.Widge
 				Append(ui.Button(ui.Label("Copy"), 0, 0).Classes(css.Ghost, css.Small))),
 		section("Input OTP", ui.InputOTP(widget.OTPDigits, 3, 3)),
 		section("Kbd", ui.Row(ui.KbdGroup("Ctrl", "Shift", "P"), ui.Label("opens the command palette")).Spacing(12)),
+		section("Navigation Menu", ui.Aligned(ui.NavigationMenu(
+			widget.NavigationMenuItem{Label: "Getting started", Content: widget.NewNavigationLinks(g.env.Face, 2,
+				widget.NavigationLink{Title: "Introduction", Description: "Re-usable components built on lys-ui's widgets."},
+				widget.NavigationLink{Title: "Installation", Description: "How to add lys-ui to a Go module."},
+				widget.NavigationLink{Title: "Typography", Description: "Styles for headings, paragraphs and lists."},
+				widget.NavigationLink{Title: "Theming", Description: "The dark and light palettes and their tokens."},
+			)},
+			widget.NavigationMenuItem{Label: "Components", Content: widget.NewNavigationLinks(g.env.Face, 1,
+				widget.NavigationLink{Title: "Alert", Description: "An inline callout for the user's attention."},
+				widget.NavigationLink{Title: "Hover Card", Description: "Preview content behind a link."},
+			)},
+			widget.NavigationMenuItem{Label: "Docs", OnActivate: func() {}},
+		), widget.AlignStart)),
 		section("Pagination", ui.Pagination(10, 5)),
 		section("Sheet", ui.Aligned(ui.Button(ui.Label("Open"), 0, 0).Classes(css.Outline).OnClick(func() { g.openSheet() }), widget.AlignStart)),
 		section("Sidebar", g.sidebarDemo()),

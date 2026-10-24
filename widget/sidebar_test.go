@@ -90,6 +90,11 @@ func TestSidebarNarrow(t *testing.T) {
 	if s.sheet.Open() {
 		t.Error("a pick left the sheet open")
 	}
+	s.SetNarrowWidth(400)
+	arrangeTree(t, s, 500, 400)
+	if s.Narrow() || !s.dock.Visible() {
+		t.Error("a lower narrow width did not dock the sidebar at 500px")
+	}
 }
 
 // TestGoldenShadcnSidebar pins the expanded sidebar and the icon rail,

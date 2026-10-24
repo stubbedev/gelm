@@ -3650,12 +3650,27 @@ func (b *GPUAreaBuilder) OnFrame(fn func(f widget.GPUFrame)) *GPUAreaBuilder {
 // GridBuilder builds a widget.Grid.
 type GridBuilder struct {
 	base[*widget.Grid, *GridBuilder]
+	face render.Font
+	size float64
 }
 
 // Grid builds a widget.Grid with widget.NewGrid.
 func Grid(colSpacing int, rowSpacing int) *GridBuilder {
 	b := &GridBuilder{}
 	b.init(b, func(s *Scope) *widget.Grid { return widget.NewGrid(colSpacing, rowSpacing) })
+	return b
+}
+
+// NavigationLinks builds a widget.Grid with widget.NewNavigationLinks.
+func NavigationLinks(cols int, links ...widget.NavigationLink) *GridBuilder {
+	b := &GridBuilder{}
+	b.init(b, func(s *Scope) *widget.Grid { return widget.NewNavigationLinks(s.face(b.face), cols, links...) })
+	return b
+}
+
+// Font overrides the environment's typeface and size for this widget; zero values keep the environment's.
+func (b *GridBuilder) Font(face render.Font, sizePx float64) *GridBuilder {
+	b.face, b.size = face, sizePx
 	return b
 }
 
@@ -4871,6 +4886,26 @@ func (b *MorphBuilder) Reveal(reveal float64, morph bool) *MorphBuilder {
 	return b
 }
 
+// NavigationMenuBuilder builds a widget.NavigationMenu.
+type NavigationMenuBuilder struct {
+	base[*widget.NavigationMenu, *NavigationMenuBuilder]
+	face render.Font
+	size float64
+}
+
+// NavigationMenu builds a widget.NavigationMenu with widget.NewNavigationMenu.
+func NavigationMenu(items ...widget.NavigationMenuItem) *NavigationMenuBuilder {
+	b := &NavigationMenuBuilder{}
+	b.init(b, func(s *Scope) *widget.NavigationMenu { return widget.NewNavigationMenu(s.face(b.face), items...) })
+	return b
+}
+
+// Font overrides the environment's typeface and size for this widget; zero values keep the environment's.
+func (b *NavigationMenuBuilder) Font(face render.Font, sizePx float64) *NavigationMenuBuilder {
+	b.face, b.size = face, sizePx
+	return b
+}
+
 // NavigationSplitViewBuilder builds a widget.NavigationSplitView.
 type NavigationSplitViewBuilder struct {
 	base[*widget.NavigationSplitView, *NavigationSplitViewBuilder]
@@ -6070,6 +6105,18 @@ func (b *SidebarBuilder) Footer(child Node) *SidebarBuilder {
 // Header calls (*widget.Sidebar).SetHeader.
 func (b *SidebarBuilder) Header(child Node) *SidebarBuilder {
 	b.do(func(s *Scope, w *widget.Sidebar) { w.SetHeader(build(s, child)) })
+	return b
+}
+
+// NarrowWidth calls (*widget.Sidebar).SetNarrowWidth.
+func (b *SidebarBuilder) NarrowWidth(arg int) *SidebarBuilder {
+	b.do(func(s *Scope, w *widget.Sidebar) { w.SetNarrowWidth(arg) })
+	return b
+}
+
+// WatchNarrowWidth re-applies SetNarrowWidth with get's value after every update.
+func (b *SidebarBuilder) WatchNarrowWidth(get func() int) *SidebarBuilder {
+	b.watch(func(w *widget.Sidebar) { w.SetNarrowWidth(get()) })
 	return b
 }
 

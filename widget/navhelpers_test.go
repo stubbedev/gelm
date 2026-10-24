@@ -77,13 +77,15 @@ func TestPaginationRejectsBadPages(t *testing.T) {
 type fakeSurfaceHost struct {
 	menus    [][]MenuItem
 	popovers []Widget
+	opts     []PopoverOptions
 	closed   int
 }
 
 func (h *fakeSurfaceHost) Focus(Widget) {}
 
-func (h *fakeSurfaceHost) OpenPopover(_ Boundser, content Widget, _ PopoverOptions) func() {
+func (h *fakeSurfaceHost) OpenPopover(_ Boundser, content Widget, opts PopoverOptions) func() {
 	h.popovers = append(h.popovers, content)
+	h.opts = append(h.opts, opts)
 	return func() { h.closed++ }
 }
 
