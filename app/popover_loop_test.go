@@ -49,7 +49,7 @@ func newLoopPopover(content widget.Widget) (*openPopover, *fakePopSurface, *fake
 	op := &openPopover{
 		host: &fakeHost{w: 100, h: 100}, pop: surf, painter: painter,
 		router: &widget.Router{Root: root}, keyRoot: root,
-		popover: &Popover{}, detach: func() {}, fireClosed: func() { closed++ },
+		popover: &Popover{}, detach: func() {}, fireClosed: func() { closed++ }, unanchor: func() {},
 	}
 	return op, surf, painter, &closed
 }

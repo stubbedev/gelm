@@ -1014,6 +1014,20 @@ func StyleBackground(w Widget) render.Color {
 	return 0
 }
 
+// StylesBackground reports whether the stylesheet declares w's
+// background - a color (transparent included), an image, or another
+// box layer - so a host that paints a default plate behind w (a
+// popover's) can yield to it, as GTK leaves a popover's look to its
+// CSS.
+func StylesBackground(w Widget) bool {
+	n := nodeOf(w)
+	if n == nil {
+		return false
+	}
+	v := n.style(w)
+	return v.Has(style.PropBackgroundColor) || hasBoxLayers(v)
+}
+
 // CascadeColor resolves the widget's computed color: the CSS `color`,
 // inherited down the tree, which the canvas-drawn primitives take as
 // their ink (the progress ring's stroke). Zero paints nothing — the
@@ -1126,8 +1140,8 @@ func (s *styleTargeter) StyleID() any { return s.n }
 func (s *styleTargeter) StyleTarget(t *style.Target) { s.n.fillTarget(t, s.w) }
 
 func (s *styleTargeter) StyleParent() style.Node {
-	p := s.n.parent
-	if p == nil || s.n.styleRoot {
+	p := styleParentOf(s.n)
+	if p == nil {
 		return nil
 	}
 	pn := nodeOf(p)
@@ -1227,10 +1241,7 @@ func (s *styleTargeter) StyleChildren() []style.Node {
 // cached — a descendant computes after its ancestors — so this walk
 // never reenters the matcher). Containers stop at a style root.
 func (s *styleTargeter) StyleContainers(buf []style.Container) []style.Container {
-	if s.n.styleRoot {
-		return buf
-	}
-	for pw := s.n.parent; pw != nil; {
+	for pw := styleParentOf(s.n); pw != nil; {
 		pn := nodeOf(pw)
 		if pn == nil {
 			return buf
@@ -1243,10 +1254,7 @@ func (s *styleTargeter) StyleContainers(buf []style.Container) []style.Container
 				Names: v.ContainerNames,
 			})
 		}
-		if pn.styleRoot {
-			return buf
-		}
-		pw = pn.parent
+		pw = styleParentOf(pn)
 	}
 	return buf
 }
@@ -1391,12 +1399,56 @@ func textStateOf(w Widget) style.State {
 	return s
 }
 
-// styleParentNodeOf is n's parent for styling: none past a style root.
-func styleParentNodeOf(n *node) *node {
-	if n.styleRoot {
+// styleParentOf is n's parent for styling: its layout parent, or for
+// a parentless tree the widget it is anchored to (SetStyleAnchor);
+// none past a style root.
+func styleParentOf(n *node) Widget {
+	switch {
+	case n.styleRoot:
 		return nil
+	case n.parent != nil:
+		return n.parent
 	}
-	return parentNodeOf(n)
+	return n.styleAnchor
+}
+
+// styleParentNodeOf is the node behind styleParentOf.
+func styleParentNodeOf(n *node) *node {
+	if p := styleParentOf(n); p != nil {
+		return nodeOf(p)
+	}
+	return nil
+}
+
+// StyleAnchor is the widget w's tree is anchored to (SetStyleAnchor),
+// nil when none.
+func StyleAnchor(w Widget) Widget {
+	if n := nodeOf(w); n != nil {
+		return n.styleAnchor
+	}
+	return nil
+}
+
+// SetStyleAnchor styles w's tree as a child of anchor while w has no
+// layout parent: inheritance, selector ancestry, :root and the scoped
+// sheets continue up anchor's chain, as a GTK popover's CSS node is a
+// child of the widget it pops from. A change anchor's descendants
+// would inherit restyles the tree too. nil unanchors it; a new anchor
+// replaces the old.
+func SetStyleAnchor(w, anchor Widget) {
+	n := nodeOf(w)
+	if n == nil || n.styleAnchor == anchor {
+		return
+	}
+	if old := nodeOf(n.styleAnchor); old != nil {
+		old.anchored = slices.DeleteFunc(old.anchored, func(k Widget) bool { return k == w })
+	}
+	n.styleAnchor = anchor
+	if an := nodeOf(anchor); an != nil {
+		an.anchored = append(an.anchored, w)
+	}
+	n.styleDirty = true
+	restyleSubtree(w)
 }
 
 // SetStyleRoot makes w the root of its tree for styling: :root matches
@@ -1530,7 +1582,7 @@ func (n *node) style(w Widget) *style.Values {
 func (n *node) restyle(w Widget) *style.Values {
 	firstStyle := n.styleSeen == 0
 	var parent *style.Values
-	if pw := n.parent; pw != nil && !n.styleRoot {
+	if pw := styleParentOf(n); pw != nil {
 		if pn := nodeOf(pw); pn != nil {
 			// The chain above must be fresh before it inherits: a stale
 			// ancestor recomputes first, recursively. It runs before the
@@ -1971,6 +2023,9 @@ func restyleInto(w Widget, depth int) {
 		styleStack = append(styleStack, nil)
 	}
 	styleStack[depth] = appendStyleKids(w, styleStack[depth][:0])
+	if n := nodeOf(w); n != nil {
+		styleStack[depth] = append(styleStack[depth], n.anchored...)
+	}
 	for _, k := range styleStack[depth] {
 		if n := nodeOf(k); n != nil {
 			n.styleDirty = true

@@ -173,8 +173,7 @@ func (a *Application) planRebuild() []*hostWindow {
 		}
 	}
 	for _, op := range a.openPopovers {
-		op.painter.Close()
-		op.detach()
+		op.release()
 		op.fireClosed()
 	}
 	a.openPopovers = nil

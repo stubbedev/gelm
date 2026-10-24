@@ -213,6 +213,14 @@ box.AttachStylesheet(widget.NewStylesheet(css, widget.StylePriorityApplication))
   `popover.menu` with `modelbutton` rows. The app surfaces are
   `dialog`, `popover`, `tooltip` and `toast`. `TestCSSElementNames`
   pins the list.
+- **Popovers style as GTK's.** A popover's content is the `popover`
+  node with GtkPopover's `.background` class, styled as a child of the
+  widget it opens from (`widget.SetStyleAnchor`): it inherits that
+  window's fonts and colors, `:root` is that window's root, and
+  descendant selectors see the anchor's ancestry. The theme's plate
+  (fill and shadow) yields to a stylesheet that declares the
+  popover's background, so `popover.background { background:
+  transparent; }` leaves the surface to the content's own card.
 
 ### Syntax and selector limits
 

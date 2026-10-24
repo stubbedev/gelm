@@ -30,6 +30,7 @@ type Painter struct {
 	surf    *wl.Surface
 	frac120 uint32
 	bg      render.Color
+	noPlate bool          // Config.NoPlate: the content paints its own look
 	gutter  int           // the shadow margin the content is inset by
 	visual  widget.Widget // the slide wrapper around the fader-wrapped content
 	// create allocates a buffer at the popup's current size; w, h is
@@ -64,6 +65,7 @@ func (p *Popup) NewPainter(sess *wlsession.Session, frac120 uint32, root widget.
 		surf:    p.WLSurface,
 		frac120: frac120,
 		bg:      bg,
+		noPlate: p.cfg.NoPlate,
 		gutter:  p.gutter,
 		visual:  p.anim.slide,
 		create:  create,
@@ -196,10 +198,13 @@ func (pc *Painter) Close() { pc.pool.Close() }
 
 // paintPlate fills the content rect with the popup background and,
 // when the theme reserves a shadow gutter, paints the elevation around
-// it first — the shared elevation look every popup carries, content
+// it first - unless the content paints its own (Config.NoPlate) — the shared elevation look every popup carries, content
 // kind aside. The plate rounds at the theme radius, matching the
 // shadow silhouette and the menu plates painted on top of it.
 func (pc *Painter) paintPlate(cv *render.Canvas, content render.Rect) {
+	if pc.noPlate {
+		return
+	}
 	t := widget.Current()
 	if pc.gutter > 0 {
 		t.DrawShadow(cv, content, t.Radius)

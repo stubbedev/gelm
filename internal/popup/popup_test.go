@@ -204,6 +204,19 @@ func TestPaintPlateShadowGutter(t *testing.T) {
 		return render.ColorFromBytes(data[y*stride+x*4:])
 	}
 
+	t.Run("a content-painted popup gets no plate", func(t *testing.T) {
+		for _, gutter := range []int{0, 6} {
+			pc := &Painter{bg: bg, gutter: gutter, noPlate: true}
+			data := make([]byte, render.Stride(72)*52)
+			pc.paintPlate(render.New(data, render.Stride(72), 72, 52), render.Rect{X: 6, Y: 6, W: 60, H: 40})
+			for _, pt := range [][2]int{{36, 26}, {2, 26}} {
+				if got := at(data, render.Stride(72), pt[0], pt[1]); got != 0 {
+					t.Errorf("gutter %d: pixel %v = %#08x, want transparent", gutter, pt, uint32(got))
+				}
+			}
+		}
+	})
+
 	t.Run("gutter carries the shadow, corner stays transparent", func(t *testing.T) {
 		pc := &Painter{bg: bg, gutter: 6}
 		data := make([]byte, render.Stride(72)*52)

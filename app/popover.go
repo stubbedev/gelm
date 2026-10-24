@@ -342,9 +342,25 @@ func (a *Application) OpenPopover(host Host, cfg PopoverConfig) (*Popover, error
 	}
 
 	anchor := cfg.Anchor.Bounds()
-	// The popover's content styles as the `popover` element (css.md):
-	// whatever widget tree the app hands over IS the card.
+	// The popover's content styles as the `popover` element (css.md)
+	// with GtkPopover's .background class: whatever widget tree the app
+	// hands over IS the card, and as a child of the widget it opens
+	// from, like GTK's popover CSS node: it inherits that window's fonts
+	// and colors and its selectors see the anchor's ancestry. Anchored
+	// before the measure, which reads the inherited font.
 	nameSurfaceElement(cfg.Content, elemPopover)
+	if c, ok := cfg.Content.(interface{ AddClass(...string) }); ok {
+		c.AddClass(popoverClass)
+	}
+	styleAnchor, _ := cfg.Anchor.(widget.Widget)
+	if styleAnchor != nil {
+		widget.SetStyleAnchor(cfg.Content, styleAnchor)
+	}
+	unanchor := func() {
+		if styleAnchor != nil && widget.StyleAnchor(cfg.Content) == styleAnchor {
+			widget.SetStyleAnchor(cfg.Content, nil)
+		}
+	}
 	size := cfg.Content.Measure(widget.Constraints{Max: popoverCeiling(host, cfg.MaxWidth, cfg.MaxHeight)})
 	// The positioner anchors to the anchor widget's rect on the gravity
 	// side and the compositor flips or slides it against the output (a
@@ -377,6 +393,9 @@ func (a *Application) OpenPopover(host Host, cfg PopoverConfig) (*Popover, error
 		Gutter:  gutter,
 		Gravity: cfg.Gravity,
 		NoGrab:  cfg.NoAutohide && parent == nil,
+		// The theme's plate yields to a stylesheet that styles the
+		// popover's background, as GTK leaves a popover's look to CSS.
+		NoPlate: widget.StylesBackground(cfg.Content),
 	}
 	switch {
 	case parent != nil:
@@ -405,6 +424,7 @@ func (a *Application) OpenPopover(host Host, cfg PopoverConfig) (*Popover, error
 	pop, err := popup.New(a.sess, pcfg)
 	if err != nil {
 		restoreKeys()
+		unanchor()
 		return nil, err
 	}
 	// Dismiss, not Close: the programmatic path takes the same two-
@@ -446,6 +466,7 @@ func (a *Application) OpenPopover(host Host, cfg PopoverConfig) (*Popover, error
 		keyRoot:    keyRoot,
 		popover:    p,
 		fireClosed: fireClosed,
+		unanchor:   unanchor,
 	}
 	if cfg.Focus != nil {
 		router.SetFocus(cfg.Focus)
@@ -519,6 +540,17 @@ type openPopover struct {
 	popover    *Popover
 	detach     func()
 	fireClosed func()
+	// unanchor ends the content's style anchoring, unless a newer open
+	// re-anchored it.
+	unanchor func()
+}
+
+// release frees what the open popover holds once its surface is gone:
+// the painter, the input, and the content's style anchor.
+func (op *openPopover) release() {
+	op.painter.Close()
+	op.detach()
+	op.unanchor()
 }
 
 // drivePopovers runs one loop pass over the open popovers: a destroyed
@@ -532,8 +564,7 @@ func (a *Application) drivePopovers(all bool) error {
 	kept := make([]*openPopover, 0, len(a.openPopovers))
 	for _, op := range slices.Backward(a.openPopovers) {
 		if op.pop.Destroyed() {
-			op.painter.Close()
-			op.detach()
+			op.release()
 			if a.popovers.get(op.host) == op.popover {
 				a.popovers.take(op.host)
 			}

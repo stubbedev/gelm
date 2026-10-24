@@ -161,6 +161,11 @@ type node struct {
 	// parent, but :root, inheritance and scoped-sheet lookup stop at it
 	// (SetStyleRoot).
 	styleRoot bool
+	// styleAnchor continues a parentless tree's style chain at another
+	// widget (SetStyleAnchor); anchored lists the trees anchored here,
+	// which inherit from this node like its children.
+	styleAnchor Widget
+	anchored    []Widget
 	// viewport is the @media viewport a style root's window reported
 	// (SetMediaViewportFor); zero falls back to the global one.
 	viewport struct{ w, h int }

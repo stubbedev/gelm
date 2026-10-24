@@ -16,6 +16,11 @@ const (
 	elemTooltip = "tooltip"
 )
 
+// popoverClass is the style class GtkPopover's node carries; a
+// stylesheet styling `popover.background` takes over the popover's
+// plate.
+const popoverClass = "background"
+
 // nameSurfaceElement names w's card for the stylesheet. Content a
 // caller hands over (a popover's, a tooltip's) is node-backed in
 // practice; anything else simply never matches surface selectors.

@@ -111,6 +111,11 @@ type Config struct {
 	// Gravity picks which side of the anchor the popup opens on; zero
 	// is below.
 	Gravity Gravity
+	// NoPlate skips the theme's plate (fill and shadow) behind the
+	// content: the content paints its own look, its stylesheet
+	// declaring the background, and the rest of the surface stays
+	// transparent.
+	NoPlate bool
 	// NoGrab skips the seat grab: the popup tracks hover without
 	// taking input, which tooltips need. A grabbing popup anchors its
 	// grab to the session's latest input event (Session.InputSerial).
