@@ -56,8 +56,8 @@ func TestBuildAppliesPropsHooksAndRefs(t *testing.T) {
 	if label.Text() != "hello" || !widget.HasClass(label, "title") || label.TooltipText() != "greeting" {
 		t.Errorf("label text=%q class=%v tooltip=%q", label.Text(), widget.HasClass(label, "title"), label.TooltipText())
 	}
-	if label.Color() != widget.Current().Text {
-		t.Errorf("label ink = %v, want the theme text color", label.Color())
+	if label.Color() != 0 {
+		t.Errorf("label ink = %v, want none: an unset Ink leaves the color to the cascade", label.Color())
 	}
 	button.OnClick()
 	if clicks != 1 {

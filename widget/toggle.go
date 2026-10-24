@@ -73,15 +73,21 @@ func (s *Switch) Arrange(r render.Rect) {
 	setParents(s, &s.knob)
 }
 
-// Paint draws the track and knob. The knob sits at the right when on.
+// Paint draws the track and knob. The knob sits at the right when on,
+// in the accent's foreground over the accent track; off, the track is
+// the input color under a knob that contrasts it (the window background
+// on a light palette, the text color on a dark one).
 // Disabled, the theme's on-track and knob fade through the derived
 // disabled colors (a stylesheet fades with its own :disabled rules).
 func (s *Switch) Paint(cv *render.Canvas) {
 	t := Current()
-	track, knob := t.Surface, t.Text
+	track, knob := t.InputColor(), t.Bg
+	if t.IsDark() {
+		knob = t.Text
+	}
 	v := s.style(s)
 	if s.on {
-		track = accentOf(v, t.Accent)
+		track, knob = accentOf(v, t.Accent), t.OnAccent
 	}
 	if !IsEnabled(s) {
 		track, knob = t.DisabledSurface(), t.DisabledText()

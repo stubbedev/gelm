@@ -223,7 +223,7 @@ func (s *Slider) Measure(con Constraints) Size {
 // :disabled rules).
 func (s *Slider) Paint(cv *render.Canvas) {
 	t := Current()
-	troughCol, fillCol, knobCol := t.Border, t.Accent, t.Text
+	troughCol, fillCol, knobCol := t.MutedColor(), t.Accent, t.Text
 	v := s.style(s)
 	if !IsEnabled(s) {
 		troughCol, fillCol, knobCol = t.DisabledText(), t.DisabledAccent(), t.DisabledText()

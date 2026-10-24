@@ -64,6 +64,22 @@ const (
 	Warning = "warning"
 )
 
+// Button variants and sizes, the shadcn/ui names: a plain button is
+// the secondary variant, SuggestedAction the default (primary) one.
+const (
+	// Secondary is the quiet filled button, the plain button's look.
+	Secondary = "secondary"
+	// Outline is a bordered button on the window background.
+	Outline = "outline"
+	// Ghost is a borderless button that fills only under the pointer.
+	Ghost = "ghost"
+	// Link is a button drawn as a text link.
+	Link = "link"
+	// Small and Large step the control height down and up.
+	Small = "small"
+	Large = "large"
+)
+
 // Named colors, referenced in stylesheets as @name.
 const (
 	AccentBgColor        = "accent_bg_color"

@@ -32,12 +32,6 @@ import (
 // focus rings and hover washes have room and nothing clips.
 const goldenPad = 12
 
-// goldenRingPad is how far the keyboard focus ring extends beyond the
-// focused widget, mirroring app's focusRingPad — the ring is drawn by
-// the window around the focused widget, and the harness reproduces it
-// so snapshots cover it.
-const goldenRingPad = FocusRingWidth
-
 // goldenShot carries the per-snapshot options.
 type goldenShot struct {
 	// theme is pinned for the shot; nil means DarkTheme.
@@ -120,26 +114,20 @@ func NewGolden(t *testing.T, w Widget, name string, opts ...goldenOption) {
 	}
 	bw, bh := frame.W+2*goldenPad, frame.H+2*goldenPad
 	stride := render.Stride(bw)
-	ring := render.Rect{}
 	if cfg.focus != nil {
-		fb, ok := cfg.focus.(Boundser)
-		if !ok {
+		if _, ok := cfg.focus.(Boundser); !ok {
 			t.Fatalf("golden focus target %T does not report Bounds", cfg.focus)
-		}
-		bounds := fb.Bounds()
-		ring = render.Rect{
-			X: bounds.X - goldenRingPad, Y: bounds.Y - goldenRingPad,
-			W: bounds.W + 2*goldenRingPad, H: bounds.H + 2*goldenRingPad,
 		}
 	}
 	paint := func() []byte {
 		buf := make([]byte, stride*bh)
 		cv := render.New(buf, stride, bw, bh)
 		cv.Clear(cv.Rect(), bg)
-		w.Paint(cv)
-		if !ring.Empty() {
-			cv.BorderRect(ring, goldenRingPad, theme.Accent)
+		if cfg.focus != nil {
+			cv.MarkFocus(cfg.focus, func(cv *render.Canvas) { PaintFocusRing(cv, cfg.focus) })
 		}
+		w.Paint(cv)
+		cv.FinishFocus()
 		return buf
 	}
 

@@ -116,7 +116,7 @@ func TestEntryPartsStyleOnlyWhatTheirRulesName(t *testing.T) {
 	if _, n := inked(data, stride, sz, render.RGB(0xff, 0, 0)); n != 0 {
 		t.Errorf("the placeholder took the field's color (%d px)", n)
 	}
-	if first, _ := inked(data, stride, sz, Current().Border); first < 8 {
+	if first, _ := inked(data, stride, sz, Current().DisabledText()); first < 8 {
 		t.Errorf("unstyled placeholder at x=%d, want inside the 8px padding", first)
 	}
 	if in := e.textInsets(); in != entryPad {

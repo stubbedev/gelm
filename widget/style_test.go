@@ -303,6 +303,15 @@ func TestLayoutAffectingChangeRelayouts(t *testing.T) {
 	}
 }
 
+// themeOnlyButtonSet is the properties a button has under the theme
+// layer alone, the baseline an emptied application stylesheet returns
+// to.
+func themeOnlyButtonSet(t *testing.T) style.PropSet {
+	t.Helper()
+	b := NewButton(NewLabel(goldenFace(t), 14, "x", 0), 4, 4)
+	return b.style(b).Set
+}
+
 func TestLoadStylesheetFileRoundTrip(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "theme.css")
@@ -334,8 +343,8 @@ func TestLoadStylesheetFileRoundTrip(t *testing.T) {
 	}
 	LoadStylesheet("")
 	CollectDamage(b)
-	if v := b.style(b); !v.Set.Empty() {
-		t.Errorf("empty stylesheet left %b set", v.Set)
+	if v := b.style(b); v.Set != themeOnlyButtonSet(t) {
+		t.Errorf("empty stylesheet left %b set, want the theme layer's %b", v.Set, themeOnlyButtonSet(t))
 	}
 
 	// A missing file errors instead of half-loading.
@@ -608,8 +617,8 @@ func TestLoadStylesheetFileUsesTheFilePath(t *testing.T) {
 	}
 	LoadStylesheet("")
 	CollectDamage(b)
-	if v := b.style(b); !v.Set.Empty() {
-		t.Errorf("empty stylesheet left %b set", v.Set)
+	if v := b.style(b); v.Set != themeOnlyButtonSet(t) {
+		t.Errorf("empty stylesheet left %b set, want the theme layer's %b", v.Set, themeOnlyButtonSet(t))
 	}
 	watchMu.Lock()
 	left := len(watches)

@@ -262,8 +262,8 @@ func TestSliderScaleNodes(t *testing.T) {
 	}
 	s.SetHovered(true)
 	data = paint()
-	if px(data, 80, 3) != render.RGB(0xff, 0xff, 0xff) {
-		t.Errorf("hovered knob %v, want it shown", px(data, 80, 3))
+	if px(data, 80, 10) != render.RGB(0xff, 0xff, 0xff) {
+		t.Errorf("hovered knob %v, want it shown", px(data, 80, 10))
 	}
 	// The value maps across the styled trough's full width.
 	if v := s.ValueAt(Point{X: 40}); v != 25 {

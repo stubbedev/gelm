@@ -299,7 +299,7 @@ func (l *Label) styleRestyled(old, new style.Values) {
 // stylesheet's (direct or inherited), else the constructor value —
 // zero paints nothing, the no-stylesheet behavior.
 func (l *Label) textColor(v *style.Values) render.Color {
-	return pickc(l.color, v, style.PropColor, l.color)
+	return pickc(l.color, v, style.PropColor, inkOr(l.color))
 }
 
 // shown is the text as painted: the stylesheet's text-transform

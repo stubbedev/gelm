@@ -731,7 +731,7 @@ func (l *RichLabel) Paint(cv *render.Canvas) {
 func (l *RichLabel) paintLine(cv *render.Canvas, runs []*richRun, lineX float64, baseline int) {
 	v := l.style(l)
 	css := cssDecoration(v)
-	ink := pickc(l.color, v, style.PropColor, l.color)
+	ink := pickc(l.color, v, style.PropColor, inkOr(l.color))
 	x := lineX
 	for _, r := range runs {
 		dx := int(math.Round(x))

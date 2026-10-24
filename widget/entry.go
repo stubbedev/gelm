@@ -1116,7 +1116,7 @@ func (e *Entry) Paint(cv *render.Canvas) {
 	bg = pickc(0, v, style.PropBackgroundColor, bg)
 	radii := radiusOr(v, t.Radius)
 	// The text node's color, its own or the field's it inherits.
-	textCol := pickc(e.color, e.text.style(&e.text), style.PropColor, pickc(0, v, style.PropColor, e.color))
+	textCol := pickc(e.color, e.text.style(&e.text), style.PropColor, pickc(0, v, style.PropColor, inkOr(e.color)))
 	caretCol := textCol
 	if v.Has(style.PropCaretColor) {
 		caretCol = v.CaretColor
@@ -1133,7 +1133,7 @@ func (e *Entry) Paint(cv *render.Canvas) {
 	c := e.contentRect()
 	disp := e.displayText()
 	if len(e.runes) == 0 && !e.composing() && e.placeholder != "" {
-		col := t.Border
+		col := t.DisabledText()
 		if pv := e.text.placeholder.style(&e.text.placeholder); pv.Declares(style.PropColor) {
 			col = pv.Color
 		}

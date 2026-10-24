@@ -41,7 +41,10 @@ type Of[W widget.Widget] interface {
 
 // Env is what builders read when a widget constructor needs a value the
 // description leaves out: the typeface, the text size, and the text
-// color. A zero Ink uses the theme's text color at build time.
+// color. A zero Ink leaves the color to the cascade: the text inherits
+// its container's color (the theme's text color at the root, the
+// accent foreground on a suggested-action button) and follows theme
+// switches.
 type Env struct {
 	Face render.Font
 	Size float64
@@ -92,7 +95,7 @@ func (s *Scope) size(px float64) float64 {
 }
 
 func (s *Scope) ink(c render.Color) render.Color {
-	return cmp.Or(c, s.env.Ink, widget.Current().Text)
+	return cmp.Or(c, s.env.Ink)
 }
 
 func (s *Scope) watch(fn func()) { s.refresh.Watch(fn) }

@@ -22,11 +22,11 @@ func TestFocusRingFollowsFocusVisible(t *testing.T) {
 	if w.router.Focused() != widget.Widget(a) {
 		t.Fatalf("a click focused %v, want the first switch", w.router.Focused())
 	}
-	if r := w.focusRingRect(); !r.Empty() {
-		t.Errorf("pointer focus shows a ring at %v", r)
+	if f := w.focusRingWidget(); f != nil {
+		t.Errorf("pointer focus shows a ring around %v", f)
 	}
 	w.router.FocusNext()
-	if r := w.focusRingRect(); r.Empty() || widget.FocusVisible(a) || !widget.FocusVisible(b) {
-		t.Errorf("keyboard focus ring %v (a visible %v, b visible %v)", r, widget.FocusVisible(a), widget.FocusVisible(b))
+	if f := w.focusRingWidget(); f != widget.Widget(b) || widget.FocusVisible(a) || !widget.FocusVisible(b) {
+		t.Errorf("keyboard focus ring around %v (a visible %v, b visible %v)", f, widget.FocusVisible(a), widget.FocusVisible(b))
 	}
 }

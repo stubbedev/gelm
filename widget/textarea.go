@@ -1069,7 +1069,7 @@ func (t *TextArea) Paint(cv *render.Canvas) {
 	radii := radiusOr(v, th.Radius)
 	// The text node's color, its own or the area's it inherits; a
 	// scheme's text and cursor styles color it over both.
-	textCol := pickc(t.color, t.text.style(&t.text), style.PropColor, pickc(0, v, style.PropColor, t.color))
+	textCol := pickc(t.color, t.text.style(&t.text), style.PropColor, pickc(0, v, style.PropColor, inkOr(t.color)))
 	if st, ok := t.scheme["text"]; ok && st.Color != 0 {
 		textCol = st.Color
 	}

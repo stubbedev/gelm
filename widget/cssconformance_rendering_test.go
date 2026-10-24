@@ -405,7 +405,7 @@ var confRendering = []confCase{
 			#b { outline: 1px auto #0000ff; }`,
 		tree: nCol("", nBox("#a"), nBox("#b")),
 		want: []confCheck{
-			wantPixel(15, 15, renRed), wantPixel(8, 20, 0xff00ff00), wantPixel(9, 20, 0xff00ff00), wantPixel(7, 20, renWhite),
+			wantPixel(15, 15, renRed), wantPixel(10-FocusRingWidth, 20, 0xff00ff00), wantPixel(9, 20, 0xff00ff00), wantPixel(9-FocusRingWidth, 20, renWhite),
 			wantPixel(9, 60, renBlue), wantPixel(8, 60, renWhite),
 		},
 	},

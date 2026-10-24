@@ -18,3 +18,13 @@ func (l *Label) SetColor(c render.Color) {
 // Color returns the label's current programmatic ink, or 0 when the
 // label inherits.
 func (l *Label) Color() render.Color { return l.color }
+
+// inkOr is a text widget's ink when nothing in the cascade colors it:
+// its programmatic color, else the theme's text color at paint time,
+// so a text widget built without a color follows theme switches.
+func inkOr(c render.Color) render.Color {
+	if c != 0 {
+		return c
+	}
+	return Current().Text
+}

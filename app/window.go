@@ -196,10 +196,6 @@ func opaqueFor(background render.Color, opaque bool) bool {
 	return opaque || background.A() == 255
 }
 
-// focusRingPad is how far the keyboard focus ring extends beyond the
-// focused widget's bounds: the ring's width.
-const focusRingPad = widget.FocusRingWidth
-
 func newHostWindow(sess *wlsession.Session, host Host, initialScale int, root widget.Widget, hooks windowHooks, dnd *dragdrop.Controller, primary *primarySelection, animKind surfx.Kind, destroy func()) *hostWindow {
 	if initialScale < 1 {
 		initialScale = 1
@@ -765,10 +761,8 @@ func (w *hostWindow) draw() bool {
 	cv.ClearDevice(region, w.cfg.background)
 	// The focus ring draws right after its widget, in tree order, so
 	// what paints later (a card over the list) covers it.
-	if ring := w.focusRingRect(); !ring.Empty() {
-		cv.MarkFocus(w.router.Focused(), func(cv *render.Canvas) {
-			cv.BorderRect(ring, focusRingPad, widget.Current().Accent)
-		})
+	if f := w.focusRingWidget(); f != nil {
+		cv.MarkFocus(f, func(cv *render.Canvas) { widget.PaintFocusRing(cv, f) })
 	}
 	cv.BeginOverlays()
 	w.router.Root.Paint(cv)
@@ -811,23 +805,15 @@ func (w *hostWindow) draw() bool {
 	return true
 }
 
-// focusRingRect returns the rect the keyboard focus ring occupies, or
-// an empty rect when nothing is focused or the focus came from the
+// focusRingWidget returns the widget the keyboard focus ring is drawn
+// around, or nil when nothing is focused or the focus came from the
 // pointer (GTK's :focus-visible rule: a click focuses without a ring).
-func (w *hostWindow) focusRingRect() render.Rect {
+func (w *hostWindow) focusRingWidget() widget.Widget {
 	f := w.router.Focused()
 	if f == nil || !widget.FocusVisible(f) {
-		return render.Rect{}
+		return nil
 	}
-	bs, ok := f.(widget.Boundser)
-	if !ok {
-		return render.Rect{}
-	}
-	fb := bs.Bounds()
-	if fb.W <= 0 || fb.H <= 0 {
-		return render.Rect{}
-	}
-	return ringRect(fb)
+	return f
 }
 
 // focusChangeRects returns both rings' rects when the focused widget
@@ -840,19 +826,13 @@ func (w *hostWindow) focusChangeRects() []render.Rect {
 	}
 	var rects []render.Rect
 	for _, fw := range []widget.Widget{w.lastFocus, f} {
-		bs, ok := fw.(widget.Boundser)
-		if !ok {
+		if fw == nil {
 			continue
 		}
-		if fb := bs.Bounds(); fb.W > 0 && fb.H > 0 {
-			rects = append(rects, ringRect(fb))
+		if r := widget.FocusRingRect(fw); !r.Empty() {
+			rects = append(rects, r)
 		}
 	}
 	w.lastFocus = f
 	return rects
-}
-
-// ringRect is the focus ring's rect around a widget's bounds.
-func ringRect(fb render.Rect) render.Rect {
-	return render.Rect{X: fb.X - focusRingPad, Y: fb.Y - focusRingPad, W: fb.W + 2*focusRingPad, H: fb.H + 2*focusRingPad}
 }

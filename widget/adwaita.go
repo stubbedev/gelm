@@ -124,12 +124,56 @@ var classRules = [][2]string{
 	{css.DestructiveAction, "background-color: @destructive_bg_color; color: @destructive_fg_color;"},
 	{css.Pill, "border-radius: 9999px; padding: 10px 32px;"},
 	{css.Circular, "border-radius: 9999px;"},
-	{css.Card, "background-color: @card_bg_color; color: @card_fg_color; border-radius: 12px;"},
+	{css.Card, "background-color: @card_bg_color; color: @card_fg_color; border: 1px solid @borders; border-radius: 12px; box-shadow: 0px 1px 2px alpha(black, 0.05);"},
 	{css.BoxedList, "background-color: @card_bg_color; border-radius: 12px;"},
 	{css.OSD, "background-color: #000000b3; color: #ffffff;"},
 	{css.View, "background-color: @view_bg_color; color: @view_fg_color;"},
 	{css.Toolbar, "padding: 6px;"},
 	{css.Keycap, "font-size: 12px; padding: 2px 6px; border: 1px solid @borders; border-radius: 6px; background-color: @card_bg_color;"},
+}
+
+// variants are the button classes that take shadcn/ui's full button
+// shape; a plain button keeps the padding and radius its constructor
+// was given, so internal buttons (calendar navigation, column headers,
+// window controls) keep theirs.
+var variants = []string{css.SuggestedAction, css.DestructiveAction, css.Secondary, css.Outline, css.Ghost, css.Link}
+
+// controlRules give the controls shadcn/ui's look: hairline input
+// borders, the button variants and sizes, and the floating surfaces.
+// Every color is a named color, so a palette switch restyles them.
+func controlRules() [][2]string {
+	var all strings.Builder
+	for i, v := range variants {
+		if i > 0 {
+			all.WriteString(", ")
+		}
+		all.WriteString("button." + v)
+	}
+	return [][2]string{
+		{"button", "font-weight: 500;"},
+		{all.String(), "min-height: 36px; padding: 0px 16px; border-radius: 8px;"},
+		{"button." + css.Small, "min-height: 32px; padding: 0px 12px; border-radius: 8px;"},
+		{"button." + css.Large, "min-height: 40px; padding: 0px 32px; border-radius: 8px;"},
+		{"button." + css.SuggestedAction + ":hover", "background-color: mix(@accent_bg_color, @window_bg_color, 0.1);"},
+		{"button." + css.SuggestedAction + ":active", "background-color: mix(@accent_bg_color, @window_bg_color, 0.2);"},
+		{"button." + css.SuggestedAction + ":disabled", "background-color: alpha(@accent_bg_color, 0.5);"},
+		{"button." + css.DestructiveAction + ":hover", "background-color: mix(@destructive_bg_color, @window_bg_color, 0.1);"},
+		{"button." + css.DestructiveAction + ":active", "background-color: mix(@destructive_bg_color, @window_bg_color, 0.2);"},
+		{"button." + css.DestructiveAction + ":disabled", "background-color: alpha(@destructive_bg_color, 0.5);"},
+		{"button." + css.Outline, "background-color: @window_bg_color; border: 1px solid @input_border_color; box-shadow: 0px 1px 2px alpha(black, 0.05);"},
+		{"button." + css.Outline + ":hover, button." + css.Ghost + ":hover", "background-color: @muted_bg_color;"},
+		{"button." + css.Ghost + ", button." + css.Link, "background-color: transparent;"},
+		{"button." + css.Ghost + ":disabled, button." + css.Link + ":disabled, button." + css.Outline + ":disabled", "background-color: transparent;"},
+		{"button." + css.Link, "color: @accent_color;"},
+		{"button." + css.Link + ":hover label", "text-decoration-line: underline;"},
+		{"dropdown > button", "background-color: transparent; box-shadow: inset 0px 0px 0px 1px @input_border_color; border-radius: 8px;"},
+		{"dropdown > button:hover", "background-color: @muted_bg_color;"},
+		{"checkbutton:checked check", "border-color: @accent_bg_color;"},
+		{"scale slider", "background-color: @window_bg_color; box-shadow: inset 0px 0px 0px 1px @accent_bg_color;"},
+		{"entry, spinbutton, textview", "box-shadow: inset 0px 0px 0px 1px @input_border_color; border-radius: 8px; background-color: transparent;"},
+		{"entry:focus, spinbutton:focus, textview:focus", "box-shadow: inset 0px 0px 0px 1px @ring_color;"},
+		{"popover, menu", "background-color: @popover_bg_color; color: @popover_fg_color; border: 1px solid @borders; border-radius: 8px;"},
+	}
 }
 
 // partRules style widget parts: the level bar's trough and offset
@@ -150,6 +194,9 @@ func themeCSS(t *Theme) string {
 	}
 	for _, r := range classRules {
 		fmt.Fprintf(&b, ".%s { %s }\n", r[0], r[1])
+	}
+	for _, r := range controlRules() {
+		fmt.Fprintf(&b, "%s { %s }\n", r[0], r[1])
 	}
 	for _, r := range partRules {
 		fmt.Fprintf(&b, "%s { %s }\n", r[0], r[1])

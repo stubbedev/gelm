@@ -153,7 +153,45 @@ func paintOutline(cv *render.Canvas, v *style.Values, border render.Rect, radii 
 // FocusRingWidth is the width of the keyboard focus ring: the window's
 // ring around the focused widget, and an outline-style: auto outline
 // that declares no width of its own.
-const FocusRingWidth = 2
+const FocusRingWidth = 3
+
+// focusRingAlpha is the opacity of the focus ring over the theme's
+// ring color: a soft halo, not a hard frame.
+const focusRingAlpha = 0.5
+
+// FocusRingRect is the rect the keyboard focus ring around w covers:
+// w's border box grown by FocusRingWidth on every side. It is empty
+// when w reports no bounds.
+func FocusRingRect(w Widget) render.Rect {
+	bs, ok := w.(Boundser)
+	if !ok {
+		return render.Rect{}
+	}
+	b := bs.Bounds()
+	if b.W <= 0 || b.H <= 0 {
+		return render.Rect{}
+	}
+	return render.UniformInsets(FocusRingWidth).Grow(b)
+}
+
+// PaintFocusRing draws the keyboard focus ring around w: FocusRingWidth
+// wide outside its border box, following its corner radii, in the
+// theme's ring color at focusRingAlpha.
+func PaintFocusRing(cv *render.Canvas, w Widget) {
+	r := FocusRingRect(w)
+	if r.Empty() {
+		return
+	}
+	var radii render.Corners
+	if n := nodeOf(w); n != nil {
+		radii = radiusOr(n.style(w), 0)
+	}
+	outer := render.Corners{
+		TopLeft: radii.TopLeft + FocusRingWidth, TopRight: radii.TopRight + FocusRingWidth,
+		BottomRight: radii.BottomRight + FocusRingWidth, BottomLeft: radii.BottomLeft + FocusRingWidth,
+	}
+	cv.RoundedBorder(r, outer, render.UniformInsets(FocusRingWidth), scaleAlpha(Current().RingColor(), focusRingAlpha))
+}
 
 // outlineWidth is the used outline width: zero without a visible
 // style, the focus ring's width for an auto outline declaring none.

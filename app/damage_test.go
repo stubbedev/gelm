@@ -266,10 +266,7 @@ func TestFocusChangeDamagesBothRings(t *testing.T) {
 	if float64(painted)/float64(320*200) >= 0.25 {
 		t.Errorf("focus change repainted the window: %d px", painted)
 	}
-	ring := render.Rect{
-		X: focus1.Bounds().X - 2, Y: focus1.Bounds().Y - 2,
-		W: focus1.Bounds().W + 4, H: focus1.Bounds().H + 4,
-	}
+	ring := render.UniformInsets(widget.FocusRingWidth).Grow(focus1.Bounds())
 	if got := render.UnionAll(damage); got != ring {
 		t.Errorf("damage %v, want exactly the new focus ring %v", damage, ring)
 	}
@@ -279,10 +276,7 @@ func TestFocusChangeDamagesBothRings(t *testing.T) {
 	h.wnd.router.FocusNext()
 	_, damage = h.frame()
 	oldRing := ring
-	newRing := render.Rect{
-		X: focus2.Bounds().X - 2, Y: focus2.Bounds().Y - 2,
-		W: focus2.Bounds().W + 4, H: focus2.Bounds().H + 4,
-	}
+	newRing := render.UniformInsets(widget.FocusRingWidth).Grow(focus2.Bounds())
 	got := render.UnionAll(damage)
 	if got != oldRing.Union(newRing) {
 		t.Errorf("focus move damage %v, want old ring %v ∪ new ring %v", got, oldRing, newRing)

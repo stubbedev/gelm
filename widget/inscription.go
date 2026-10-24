@@ -4,6 +4,7 @@ import (
 	"math"
 	"strings"
 
+	"github.com/stubbedev/lys-ui/internal/style"
 	"github.com/stubbedev/lys-ui/render"
 )
 
@@ -112,6 +113,7 @@ func (in *Inscription) Paint(cv *render.Canvas) {
 		return
 	}
 	r := in.bounds
+	ink := pickc(in.color, in.style(in), style.PropColor, inkOr(in.color))
 	lines := strings.Split(in.text, "\n")
 	fit := max(1, r.H/in.lineH)
 	for i, line := range lines {
@@ -125,7 +127,7 @@ func (in *Inscription) Paint(cv *render.Canvas) {
 			line = render.EllipsizeText(in.face, line, render.EllipsizeEnd, float64(r.W), in.sizePx)
 		}
 		box := render.Rect{X: r.X, Y: r.Y + i*in.lineH, W: r.W, H: in.lineH}
-		in.face.DrawAlignedDir(cv, line, box, in.sizePx, in.color, in.align, DirectionAuto)
+		in.face.DrawAlignedDir(cv, line, box, in.sizePx, ink, in.align, DirectionAuto)
 	}
 }
 
