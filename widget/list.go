@@ -104,6 +104,10 @@ type List struct {
 	gestureRow int
 	dragPoint  Point
 	dragMoved  bool
+	// dragOut reports a gesture that began on a selected row of a list
+	// with DragContent: it offers the selection to other apps instead
+	// of moving the selection.
+	dragOut bool
 
 	// drag auto-scroll: direction and the running tween's cancel.
 	scrollDir  int
@@ -112,6 +116,15 @@ type List struct {
 	OnSelect           func(i int)
 	OnActivate         func(i int)
 	OnSelectionChanged func(rows []int)
+
+	// DragContent, when set, lets the selection be dragged out to other
+	// applications, the way a file manager's is: a press on a selected
+	// row that moves past the drag threshold offers DragContent of the
+	// rows dragged - the whole selection in multiple mode, the pressed
+	// row otherwise - instead of moving the selection. A press on an
+	// unselected row still selects, rubber-bands and motion-selects;
+	// nil (or a nil return) drags nothing.
+	DragContent func(rows []int) *DragContent
 }
 
 // Edge bands that engage auto-scroll during a drag, and the time one
@@ -545,6 +558,7 @@ func (l *List) gestureStart(row int) {
 	l.dragging = true
 	l.dragMoved = false
 	l.gestureRow = row
+	l.dragOut = l.DragContent != nil && l.mode != SelectionNone && row >= 0 && l.isSelected(row)
 	l.kin.stop()
 	l.hold()
 }
@@ -863,6 +877,9 @@ func (r *listRow) DoubleClickAt(p Point) { r.list.rowDoubleClick(r, p) }
 // DragMove applies the list's drag selection; in none mode the row's
 // own drag handling runs instead.
 func (r *listRow) DragMove(p Point) {
+	if r.list.dragOut {
+		return
+	}
 	if r.list.mode == SelectionNone {
 		if d, ok := r.row.(DragMover); ok {
 			d.DragMove(p)
@@ -870,6 +887,37 @@ func (r *listRow) DragMove(p Point) {
 		return
 	}
 	r.list.dragApply(p)
+}
+
+// dragRows are the rows a drag-out from row idx carries: the whole
+// selection in multiple mode, the row otherwise.
+func (l *List) dragRows(idx int) []int {
+	if l.mode == SelectionMultiple {
+		return l.Selection()
+	}
+	return []int{idx}
+}
+
+// DragContent implements DragSource: a drag-out of the selection when
+// the gesture began on a selected row of a list with DragContent, else
+// the row's own content when it is a DragSource, else nothing.
+func (r *listRow) DragContent() *DragContent {
+	if r.list.dragOut {
+		return r.list.DragContent(r.list.dragRows(r.idx))
+	}
+	if s, ok := r.row.(DragSource); ok {
+		return s.DragContent()
+	}
+	return nil
+}
+
+// DragIcon implements DragIconer: a drag of several rows shows the
+// pressed row on a stack with their count.
+func (r *listRow) DragIcon() Widget {
+	if n := len(r.list.dragRows(r.idx)); r.list.dragOut && n > 1 {
+		return newDragStack(r, n)
+	}
+	return r
 }
 
 // SetPressed tracks the row's own pressed state and opens the list's

@@ -469,3 +469,35 @@ func TestListSingleClickActivate(t *testing.T) {
 		t.Errorf("single-click activate: %v selected %d", acted, l.Selected())
 	}
 }
+
+// Dragging several rows out shows a stack with their count, and
+// painting the icon leaves the live row where the list put it.
+func TestListDragIconStacksTheRows(t *testing.T) {
+	l := NewList(newCountingModel(3), 20)
+	l.SetSelectionMode(SelectionMultiple)
+	l.DragContent = func([]int) *DragContent { return &DragContent{} }
+	l.Measure(Constraints{Max: Size{W: 100, H: 60}})
+	l.Arrange(render.Rect{W: 100, H: 60})
+	l.Paint(render.New(make([]byte, render.Stride(100)*60), render.Stride(100), 100, 60))
+	l.SelectAll()
+	r := l.rows[1]
+	r.SetPressed(true)
+	defer r.PressEnd()
+	icon, ok := r.DragIcon().(*dragStack)
+	if !ok || icon.count != "3" {
+		t.Fatalf("icon %T, want a stack of 3", r.DragIcon())
+	}
+	was := r.Bounds()
+	sz := icon.Measure(Constraints{Max: Size{W: 200, H: 200}})
+	icon.Arrange(render.Rect{W: sz.W, H: sz.H})
+	icon.Paint(render.New(make([]byte, render.Stride(sz.W)*sz.H), render.Stride(sz.W), sz.W, sz.H))
+	if r.Bounds() != was {
+		t.Errorf("painting the icon moved the row to %v from %v", r.Bounds(), was)
+	}
+	l.Select(0)
+	r.PressEnd()
+	r.SetPressed(true)
+	if r.DragIcon() != Widget(r) {
+		t.Error("a press on an unselected row arms a stacked drag icon")
+	}
+}

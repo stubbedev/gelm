@@ -182,6 +182,13 @@ type DragSource interface {
 	DragContent() *DragContent
 }
 
+// DragIconer is a DragSource that names the widget its drag icon
+// renders, instead of itself: a list dragging several rows shows a
+// stack of them.
+type DragIconer interface {
+	DragIcon() Widget
+}
+
 // DragEnterer decides whether a widget accepts a drag hovering it,
 // by mime. mimes lists the offered types best first; return the mime
 // to receive on drop, or "" to reject the drag.

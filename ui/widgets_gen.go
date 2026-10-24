@@ -3665,6 +3665,12 @@ func (b *GridViewBuilder) OnSelectionChanged(fn func(rows []int)) *GridViewBuild
 	return b
 }
 
+// DragContent sets the widget's DragContent field.
+func (b *GridViewBuilder) DragContent(fn func(rows []int) *widget.DragContent) *GridViewBuilder {
+	b.do(func(_ *Scope, w *widget.GridView) { w.DragContent = fn })
+	return b
+}
+
 // HeaderBarBuilder builds a widget.HeaderBar.
 type HeaderBarBuilder struct {
 	base[*widget.HeaderBar, *HeaderBarBuilder]
@@ -4355,6 +4361,12 @@ func (b *ListBuilder) OnActivate(fn func(i int)) *ListBuilder {
 // OnSelectionChanged sets the widget's OnSelectionChanged field.
 func (b *ListBuilder) OnSelectionChanged(fn func(rows []int)) *ListBuilder {
 	b.do(func(_ *Scope, w *widget.List) { w.OnSelectionChanged = fn })
+	return b
+}
+
+// DragContent sets the widget's DragContent field.
+func (b *ListBuilder) DragContent(fn func(rows []int) *widget.DragContent) *ListBuilder {
+	b.do(func(_ *Scope, w *widget.List) { w.DragContent = fn })
 	return b
 }
 
@@ -7346,6 +7358,12 @@ func (b *TypedGridBuilder[T]) OnSelect(fn func(i int)) *TypedGridBuilder[T] {
 	return b
 }
 
+// DragContent sets the widget's DragContent field.
+func (b *TypedGridBuilder[T]) DragContent(fn func(rows []int) *widget.DragContent) *TypedGridBuilder[T] {
+	b.do(func(_ *Scope, w *widget.TypedGrid[T]) { w.DragContent = fn })
+	return b
+}
+
 // TypedListBuilder builds a widget.TypedList.
 type TypedListBuilder[T any] struct {
 	base[*widget.TypedList[T], *TypedListBuilder[T]]
@@ -7451,6 +7469,12 @@ func (b *TypedListBuilder[T]) OnActivate(fn func(item T)) *TypedListBuilder[T] {
 // OnSelect sets the widget's OnSelect field.
 func (b *TypedListBuilder[T]) OnSelect(fn func(i int)) *TypedListBuilder[T] {
 	b.do(func(_ *Scope, w *widget.TypedList[T]) { w.OnSelect = fn })
+	return b
+}
+
+// DragContent sets the widget's DragContent field.
+func (b *TypedListBuilder[T]) DragContent(fn func(rows []int) *widget.DragContent) *TypedListBuilder[T] {
+	b.do(func(_ *Scope, w *widget.TypedList[T]) { w.DragContent = fn })
 	return b
 }
 

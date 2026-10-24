@@ -54,9 +54,13 @@ func (in *surfaceInput) startDrag() {
 	if content == nil {
 		return
 	}
+	icon := in.router.Pressed()
+	if ic, ok := src.(widget.DragIconer); ok {
+		icon = ic.DragIcon()
+	}
 	err := in.dnd.StartDrag(dragdrop.StartConfig{
 		Origin:     in.surf,
-		Icon:       renderDragIcon(in.sess, in.router.Pressed(), in.deviceScale()),
+		Icon:       renderDragIcon(in.sess, icon, in.deviceScale()),
 		GrabSerial: in.pressSerial,
 		Content:    *content,
 	})
@@ -90,6 +94,11 @@ func renderDragIcon(sess *wlsession.Session, w widget.Widget, frac120 uint32) *w
 	if err != nil {
 		debug.Log("frame", "dnd icon buffer: %v", err)
 		return nil
+	}
+	// The icon paints a live widget of the tree: it is laid out at the
+	// icon's origin for the paint and put back where the window has it.
+	if bs, ok := w.(widget.Boundser); ok {
+		defer w.Arrange(bs.Bounds())
 	}
 	w.Arrange(render.Rect{X: 0, Y: 0, W: size.W, H: size.H})
 	cv := render.NewScaled(b.Data, b.Stride, b.Width, b.Height, int(frac120), scale.Denom)
