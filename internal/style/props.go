@@ -468,9 +468,8 @@ func parseBorderColors(ts []token, cx *ctx, v *Values) bool {
 // values: width 0 (GTK's initial border width), style none, color
 // currentColor.
 func lineParts(ts []token, cx *ctx, styleOf func([]token) (BorderStyle, bool)) (width int, style BorderStyle, color render.Color, haveC, ok bool) {
-	color = cx.cur()
 	var haveW, haveS bool
-	for _, c := range components(ts) {
+	for c := range eachComponent(ts) {
 		if !haveS {
 			if st, ok := styleOf(c); ok {
 				style, haveS = st, true
@@ -503,6 +502,11 @@ func lineParts(ts []token, cx *ctx, styleOf func([]token) (BorderStyle, bool)) (
 			}
 		}
 		return 0, 0, 0, false, false
+	}
+	if !haveC {
+		// Read only when the color is omitted: currentColor makes the
+		// declaration node-dependent, which costs it the parse cache.
+		color = cx.cur()
 	}
 	return width, style, color, haveC, haveW || haveS || haveC
 }
@@ -961,23 +965,27 @@ func parseTextShadow(ts []token, cx *ctx, v *Values) bool {
 // legacy one-length `COLOR BLUR` glow; text-shadow takes neither.
 func parseShadows(ts []token, cx *ctx, out *Shadows, box bool) bool {
 	*out = Shadows{}
-	layers := splitTop(ts, tkComma)
-	if len(layers) == 1 {
-		if comps := components(layers[0]); len(comps) == 1 && comps[0][0].ident("none") {
-			return true
-		}
+	nLayers := 0
+	for range eachTop(ts, tkComma) {
+		nLayers++
 	}
-	for _, layer := range layers {
+	if t := trimWS(ts); nLayers == 1 && len(t) == 1 && t[0].ident("none") {
+		return true
+	}
+	for layer := range eachTop(ts, tkComma) {
 		var sh Shadow
-		sh.Color = cx.cur()
-		var lens []int
+		var lenBuf [4]int
+		lens := lenBuf[:0]
 		haveC := false
-		for _, c := range components(layer) {
+		for c := range eachComponent(layer) {
 			if box && c[0].ident("inset") && !sh.Inset {
 				sh.Inset = true
 				continue
 			}
 			if l, ok := lengthOf(c, cx); ok {
+				if len(lens) == cap(lens) {
+					return false
+				}
 				lens = append(lens, px(l))
 				continue
 			}
@@ -992,12 +1000,18 @@ func parseShadows(ts []token, cx *ctx, out *Shadows, box bool) bool {
 		if !box && len(lens) > 3 {
 			return false
 		}
+		if !haveC {
+			// currentColor, read only when the color is omitted: it makes
+			// the declaration node-dependent, which costs it the parse
+			// cache.
+			sh.Color = cx.cur()
+		}
 		switch len(lens) {
 		case 1:
 			// lys-ui's pre-CSS-3 one-shadow form, `COLOR BLUR`: a centered
 			// glow. Kept for existing stylesheets; standard CSS always
 			// carries two offsets.
-			if !box || !haveC || lens[0] < 0 || len(layers) != 1 {
+			if !box || !haveC || lens[0] < 0 || nLayers != 1 {
 				return false
 			}
 			sh.Blur = lens[0]

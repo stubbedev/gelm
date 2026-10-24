@@ -1,6 +1,8 @@
 package style
 
 import (
+	"iter"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -309,41 +311,54 @@ func blockEnd(ts []token, i int) int {
 }
 
 // splitTop splits ts on the separator kind at nesting depth zero.
-func splitTop(ts []token, sep tokKind) [][]token {
-	var out [][]token
-	start := 0
-	for i := 0; i < len(ts); {
-		if closer(ts[i].kind) != 0 {
-			i = blockEnd(ts, i)
-			continue
+func splitTop(ts []token, sep tokKind) [][]token { return slices.Collect(eachTop(ts, sep)) }
+
+// eachTop yields splitTop's parts without collecting them: the parsers
+// that run per node (a value with a var() or a named color) iterate
+// instead of allocating.
+func eachTop(ts []token, sep tokKind) iter.Seq[[]token] {
+	return func(yield func([]token) bool) {
+		start := 0
+		for i := 0; i < len(ts); {
+			if closer(ts[i].kind) != 0 {
+				i = blockEnd(ts, i)
+				continue
+			}
+			if ts[i].kind == sep {
+				if !yield(ts[start:i]) {
+					return
+				}
+				start = i + 1
+			}
+			i++
 		}
-		if ts[i].kind == sep {
-			out = append(out, ts[start:i])
-			start = i + 1
-		}
-		i++
+		yield(ts[start:])
 	}
-	return append(out, ts[start:])
 }
 
 // components splits a value into its top-level component values,
 // dropping the whitespace between them: `1px solid calc(2 * 3px)`
 // yields three components, the function kept whole.
-func components(ts []token) [][]token {
-	var out [][]token
-	for i := 0; i < len(ts); {
-		if ts[i].kind == tkWS {
-			i++
-			continue
+func components(ts []token) [][]token { return slices.Collect(eachComponent(ts)) }
+
+// eachComponent yields components' values without collecting them.
+func eachComponent(ts []token) iter.Seq[[]token] {
+	return func(yield func([]token) bool) {
+		for i := 0; i < len(ts); {
+			if ts[i].kind == tkWS {
+				i++
+				continue
+			}
+			end := i + 1
+			if closer(ts[i].kind) != 0 {
+				end = blockEnd(ts, i)
+			}
+			if !yield(ts[i:end]) {
+				return
+			}
+			i = end
 		}
-		end := i + 1
-		if closer(ts[i].kind) != 0 {
-			end = blockEnd(ts, i)
-		}
-		out = append(out, ts[i:end])
-		i = end
 	}
-	return out
 }
 
 // funcArgs returns the tokens between a function token at ts[0] and

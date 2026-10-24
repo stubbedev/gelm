@@ -313,7 +313,8 @@ func (sc *Scratch) parse(d *decl, vars *Vars, cx *ctx) (*Values, bool) {
 	ts := d.val
 	ok := true
 	if d.hasVar {
-		ts, ok = substitute(d.val, func(name string) ([]token, bool) { return sc.lookup(vars, name) }, 0)
+		ts, ok = substitute(sc.subBuf[:0], d.val, func(name string) ([]token, bool) { return sc.lookup(vars, name) }, 0)
+		sc.subBuf = ts[:0]
 		ts = trimWS(ts)
 		ok = ok && len(ts) > 0
 	}
@@ -389,7 +390,7 @@ func (sc *Scratch) metaTokens(d *decl, vars *Vars) ([]token, bool) {
 	if !d.hasVar {
 		return d.val, true
 	}
-	ts, ok := substitute(d.val, func(name string) ([]token, bool) { return sc.lookup(vars, name) }, 0)
+	ts, ok := substitute(nil, d.val, func(name string) ([]token, bool) { return sc.lookup(vars, name) }, 0)
 	ts = trimWS(ts)
 	return ts, ok && len(ts) > 0
 }
@@ -730,7 +731,7 @@ func (sc *Scratch) define(name string, depth int) ([]token, bool) {
 	if !containsVar(ts) {
 		return ts, true
 	}
-	out, ok := substitute(ts, func(n string) ([]token, bool) { return sc.define(n, depth+1) }, depth)
+	out, ok := substitute(nil, ts, func(n string) ([]token, bool) { return sc.define(n, depth+1) }, depth)
 	return trimWS(out), ok
 }
 
@@ -777,7 +778,7 @@ func (sc *Scratch) resolveVars(parent *Vars) *Vars {
 		default:
 			ts = d.val
 			if d.hasVar {
-				ts, ok = substitute(d.val, func(n string) ([]token, bool) { return resolve(n, depth+1) }, depth)
+				ts, ok = substitute(nil, d.val, func(n string) ([]token, bool) { return resolve(n, depth+1) }, depth)
 				ts = trimWS(ts)
 			}
 			// A registered property's value must match its syntax; one
@@ -850,15 +851,14 @@ func (sc *Scratch) seedRegistrations() {
 	}
 }
 
-// substitute replaces every var(--name[, fallback]) in ts with the named
-// value (or the substituted fallback). ok is false when a reference
-// cannot resolve: the declaration is then invalid at computed-value
-// time.
-func substitute(ts []token, lookup func(string) ([]token, bool), depth int) ([]token, bool) {
+// substitute appends ts to out with every var(--name[, fallback])
+// replaced by the named value (or the substituted fallback). ok is false
+// when a reference cannot resolve: the declaration is then invalid at
+// computed-value time.
+func substitute(out, ts []token, lookup func(string) ([]token, bool), depth int) ([]token, bool) {
 	if depth > maxVarDepth {
 		return nil, false
 	}
-	var out []token
 	for i := 0; i < len(ts); i++ {
 		t := ts[i]
 		if t.kind != tkFunc || t.s != "var" {
@@ -877,7 +877,7 @@ func substitute(ts []token, lookup func(string) ([]token, bool), depth int) ([]t
 		case found:
 			out = append(out, val...)
 		case len(rest) > 0 && rest[0].kind == tkComma:
-			fb, ok := substitute(rest[1:], lookup, depth+1)
+			fb, ok := substitute(nil, rest[1:], lookup, depth+1)
 			if !ok {
 				return nil, false
 			}

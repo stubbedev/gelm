@@ -235,6 +235,9 @@ type Scratch struct {
 	metaByName map[string]int
 
 	parsed []parsedDecl
+	// subBuf is the var() substitution buffer the per-node parse
+	// reuses: a parse reads the substituted tokens and keeps none.
+	subBuf []token
 	cx     ctx
 	// layers is the compute's cascade input, kept for the define
 	// fallback of var() lookups.
