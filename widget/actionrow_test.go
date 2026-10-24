@@ -222,3 +222,26 @@ func TestGoldenRows(t *testing.T) {
 	group.Add(exp)
 	NewGolden(t, group, "preferences-group", goldenTheme(th), goldenFrame(320, 240))
 }
+
+// Tab and the accessibility tree reach the widgets a composite is
+// built from: a switch packed into an action row.
+func TestCompositeContentTakesFocus(t *testing.T) {
+	face := goldenFace(t)
+	row := NewActionRow(face, 14, "Wi-Fi", "")
+	sw := NewSwitch(false)
+	row.PackEnd(sw)
+	arrangeTree(t, row, 300, 60)
+	r := &Router{Root: row}
+	r.SetFocus(row)
+	r.FocusNext()
+	if r.Focused() != Widget(sw) {
+		t.Errorf("Tab from the row focused %T, want its switch", r.Focused())
+	}
+	found := false
+	for _, st := range DescribeTree(row) {
+		found = found || st.Role == RoleSwitch
+	}
+	if !found {
+		t.Error("the accessibility tree misses the row's switch")
+	}
+}

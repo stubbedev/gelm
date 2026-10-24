@@ -110,6 +110,13 @@ func (c *composite) HitTest(p Point) Widget {
 	return c.self
 }
 
+// Children is the root, so focus traversal, the damage walk and the
+// accessibility tree reach the widgets a composite is built from.
+func (c *composite) Children() []Widget { return []Widget{c.root} }
+
+// appendChildren appends the root, matching Children.
+func (c *composite) appendChildren(buf []Widget) []Widget { return append(buf, c.root) }
+
 // appendStyleKids is the root (styleKids).
 func (c *composite) appendStyleKids(buf []Widget) []Widget { return append(buf, c.root) }
 
