@@ -44,7 +44,7 @@ var (
 	// directFaces caches the faces loaded outside the matcher's
 	// coverage filter (see lookup); a nil value marks an unreadable
 	// file so failures are not retried on every lookup.
-	directFaces = map[string]*render.Typeface{}
+	directFaces = map[fontscan.Location]*render.Typeface{}
 )
 
 // fontmap builds the shared store once; the first error sticks.
@@ -84,31 +84,45 @@ func lookup(family string, aspect font.Aspect, script language.Script, r rune) (
 	// candidates by the probe rune's coverage - a filter that symbol
 	// faces (color emoji, icon fonts, no latin glyphs) can never
 	// pass. When such a lookup fell through to another family and
-	// the exact family is installed, load its face directly.
+	// the exact family is installed, load its face directly; a family
+	// the store knows only by another of its names (see aliasIndex)
+	// loads its closest face to the aspect.
 	if script == 0 && font.NormalizeFamily(face.Describe().Family) != font.NormalizeFamily(family) {
 		if direct := faceForFamily(family); direct != nil {
 			return direct, nil
+		}
+		if faces := aliasFaces(family); len(faces) > 0 {
+			if direct := directFace(closestFace(faces, aspect).loc); direct != nil {
+				return direct, nil
+			}
 		}
 	}
 	return typeface(face)
 }
 
 // faceForFamily loads the first system face of family outside the
-// matcher's coverage filter, caching per file. Caller holds storeMu.
+// matcher's coverage filter. Caller holds storeMu.
 // nil when the family is not installed or its file is unreadable.
 func faceForFamily(family string) *render.Typeface {
 	loc, ok := storeFM.FindSystemFont(family)
 	if !ok {
 		return nil
 	}
-	if tf, ok := directFaces[loc.File]; ok {
+	return directFace(loc)
+}
+
+// directFace loads the system face at loc, caching per location (a
+// collection's faces share a file). Caller holds storeMu. nil when
+// the file is unreadable.
+func directFace(loc fontscan.Location) *render.Typeface {
+	if tf, ok := directFaces[loc]; ok {
 		return tf
 	}
 	tf, err := loadFaceFile(loc.File, loc.Index)
 	if err != nil {
 		tf = nil // cache the failure
 	}
-	directFaces[loc.File] = tf
+	directFaces[loc] = tf
 	return tf
 }
 
