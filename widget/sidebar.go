@@ -1,0 +1,306 @@
+package widget
+
+import (
+	"time"
+
+	"github.com/stubbedev/lys-ui/anim"
+	"github.com/stubbedev/lys-ui/render"
+)
+
+// SidebarCollapse is how a Sidebar collapses on a wide window.
+type SidebarCollapse uint8
+
+// The collapse modes, shadcn's collapsible.
+const (
+	// SidebarOffcanvas slides the sidebar away entirely.
+	SidebarOffcanvas SidebarCollapse = iota
+	// SidebarIcon narrows it to a rail of the items' icons.
+	SidebarIcon
+	// SidebarNone keeps it expanded.
+	SidebarNone
+)
+
+const (
+	// sidebarWidth, sidebarRail and sidebarMobile are shadcn's
+	// 16rem, 3rem and the off-canvas 18rem.
+	sidebarWidth  = 256
+	sidebarRail   = 48
+	sidebarMobile = 288
+	// sidebarNarrow is the width below which the sidebar is off-canvas,
+	// shadcn's md breakpoint.
+	sidebarNarrow = 768
+	// sidebarSlide is the expand and collapse.
+	sidebarSlide = 200 * time.Millisecond
+)
+
+// SidebarItem is one entry of a Sidebar group.
+type SidebarItem struct {
+	Label string
+	// Icon leads the row and is what the icon rail shows; nil shows
+	// none.
+	Icon Widget
+	// Badge is a count or a note at the row's end; "" shows none.
+	Badge string
+	// Active marks the item as the current page.
+	Active bool
+	// OnActivate runs when the item is picked.
+	OnActivate func()
+	// Items are a submenu, shown under the item as it is toggled open.
+	Items []SidebarItem
+}
+
+// sidebarRow is an item's row and the parts collapsing hides.
+type sidebarRow struct {
+	button *Button
+	label  *Label
+	badge  *Label
+	sub    *Box
+}
+
+// Sidebar is an application sidebar (shadcn/ui's Sidebar) beside
+// content: a header, groups of items with icons, badges and submenus,
+// and a footer. On a wide window it docks beside the content and
+// Toggle collapses it - off canvas or to an icon rail - with a slide;
+// below shadcn's md width it hides and Toggle opens it as a sheet
+// over the content. Picking an item makes it the active one. Bind
+// ToggleAction to Ctrl+B, shadcn's shortcut, with an accelerator; the
+// Trigger button toggles it too. It styles as the `sidebar` element:
+// the .panel, .group-label labels, button.item rows (:checked while
+// active), .badge labels and .sub submenus.
+type Sidebar struct {
+	composite
+	face     render.Font
+	collapse SidebarCollapse
+	expanded bool
+	narrow   bool
+	width    float64
+	slide    anim.Cancel
+
+	sheet   *Sheet
+	sheetIn *Box
+	dock    *sizedCell
+	panel   *Box
+	header  *Box
+	groups  *Box
+	footer  *Box
+	rows    []*sidebarRow
+	labels  []*Label
+	trigger *Button
+	bps     breakpoints
+}
+
+// NewSidebar returns an expanded sidebar beside content, collapsing off
+// canvas.
+func NewSidebar(face render.Font, content Widget) *Sidebar {
+	s := &Sidebar{face: requireFace("widget.NewSidebar", face), expanded: true, width: sidebarWidth}
+	s.SetElement("sidebar")
+	s.header = NewBox(Column, 8, 0)
+	s.groups = NewBox(Column, 8, 0)
+	s.footer = NewBox(Column, 8, 0)
+	scroll := NewScroll(s.groups)
+	scroll.FillX = true
+	s.panel = NewBox(Column, 8, 8)
+	s.panel.AddClass("panel")
+	s.panel.Append(s.header, false).Append(scroll, true).Append(s.footer, false)
+	s.dock = newSizedCell(s.panel, sidebarWidth)
+	row := NewBox(Row, 0, 0)
+	row.Append(s.dock, false).Append(content, true)
+	s.sheetIn = NewBox(Column, 0, 0)
+	s.sheet = NewSheet(row, s.sheetIn, SheetLeft)
+	s.sheet.SetWidth(sidebarMobile)
+	s.bps.add(Breakpoint{Max: sidebarNarrow - 1, Apply: func() { s.setNarrow(true) }, Unapply: func() { s.setNarrow(false) }})
+	s.initComposite(s, s.sheet)
+	s.boxed = true
+	return s
+}
+
+// SetHeader puts w at the panel's top.
+func (s *Sidebar) SetHeader(w Widget) {
+	s.header.Clear()
+	s.header.Append(w, false)
+}
+
+// SetFooter puts w at the panel's bottom.
+func (s *Sidebar) SetFooter(w Widget) {
+	s.footer.Clear()
+	s.footer.Append(w, false)
+}
+
+// AddGroup appends a group of items under label ("" for none).
+func (s *Sidebar) AddGroup(label string, items ...SidebarItem) {
+	g := NewBox(Column, 2, 0)
+	if label != "" {
+		l := NewLabel(s.face, 12, label, 0)
+		l.AddClass("group-label")
+		g.Append(l, false)
+		s.labels = append(s.labels, l)
+	}
+	for _, it := range items {
+		g.Append(s.item(it), false)
+	}
+	s.groups.Append(g, false)
+	s.applyCollapse()
+}
+
+// item builds an item's row, its submenu under it.
+func (s *Sidebar) item(it SidebarItem) Widget {
+	r := &sidebarRow{label: NewLabel(s.face, 14, it.Label, 0)}
+	line := NewBox(Row, 8, 0)
+	if it.Icon != nil {
+		line.AppendAligned(it.Icon, false, AlignCenter)
+	}
+	line.AppendAligned(r.label, true, AlignCenter)
+	if it.Badge != "" {
+		r.badge = NewLabel(s.face, 12, it.Badge, 0)
+		r.badge.AddClass("badge")
+		line.AppendAligned(r.badge, false, AlignCenter)
+	}
+	r.button = NewButton(line, 0, 0)
+	r.button.AddClass("item")
+	r.button.SetAccessibleName(it.Label)
+	r.button.SetTooltip(it.Label)
+	r.button.SetState(StateChecked, it.Active)
+	s.rows = append(s.rows, r)
+	if len(it.Items) == 0 {
+		r.button.OnClick = func() { s.activate(r, it.OnActivate) }
+		return r.button
+	}
+	r.sub = NewBox(Column, 2, 0)
+	r.sub.AddClass("sub")
+	for _, child := range it.Items {
+		r.sub.Append(s.item(child), false)
+	}
+	r.sub.SetVisible(it.Active)
+	r.button.OnClick = func() { r.sub.SetVisible(!r.sub.Visible()) }
+	col := NewBox(Column, 2, 0)
+	col.Append(r.button, false).Append(r.sub, false)
+	return col
+}
+
+// activate makes r the active item and runs its action.
+func (s *Sidebar) activate(r *sidebarRow, run func()) {
+	for _, o := range s.rows {
+		o.button.SetState(StateChecked, o == r)
+	}
+	if s.narrow {
+		s.sheet.SetOpen(false)
+	}
+	if run != nil {
+		run()
+	}
+}
+
+// SetCollapse picks how a wide sidebar collapses.
+func (s *Sidebar) SetCollapse(c SidebarCollapse) {
+	s.collapse = c
+	s.SetExpanded(s.expanded || c == SidebarNone)
+}
+
+// Expanded reports whether the docked sidebar is expanded.
+func (s *Sidebar) Expanded() bool { return s.expanded }
+
+// SetExpanded expands or collapses the docked sidebar with a slide; a
+// SidebarNone sidebar stays expanded.
+func (s *Sidebar) SetExpanded(on bool) {
+	if s.collapse == SidebarNone {
+		on = true
+	}
+	s.expanded = on
+	target := float64(sidebarWidth)
+	switch {
+	case on:
+	case s.collapse == SidebarIcon:
+		target = sidebarRail
+	default:
+		target = 0
+	}
+	if !on {
+		s.applyCollapse()
+	}
+	if s.slide != nil {
+		s.slide()
+	}
+	from := s.width
+	s.slide = anim.Start(sidebarSlide, func(t float64) {
+		s.width = from + (target-from)*easeOut(t)
+		s.dock.fixedWidth = int(s.width + 0.5)
+		s.dock.SetVisible(s.width > 0 && !s.narrow)
+		s.dock.InvalidateLayout()
+		if t >= 1 {
+			s.slide = nil
+			s.applyCollapse()
+		}
+	})
+}
+
+// railed reports the docked sidebar showing only its icons.
+func (s *Sidebar) railed() bool { return !s.expanded && s.collapse == SidebarIcon && !s.narrow }
+
+// applyCollapse shows the labels, badges and submenus unless the rail
+// shows only icons.
+func (s *Sidebar) applyCollapse() {
+	full := !s.railed()
+	for _, r := range s.rows {
+		r.label.SetVisible(full)
+		if r.badge != nil {
+			r.badge.SetVisible(full)
+		}
+	}
+	for _, l := range s.labels {
+		l.SetVisible(full)
+	}
+	s.InvalidateLayout()
+}
+
+// Toggle collapses or expands the docked sidebar, or below the narrow
+// width opens or closes it over the content.
+func (s *Sidebar) Toggle() {
+	if s.narrow {
+		s.sheet.SetOpen(!s.sheet.Open())
+		return
+	}
+	s.SetExpanded(!s.expanded)
+}
+
+// ToggleAction is Toggle as an action, for an accelerator: shadcn
+// binds Ctrl+B.
+func (s *Sidebar) ToggleAction() Activatable { return NewAction("sidebar.toggle", s.Toggle) }
+
+// Trigger returns the button that toggles the sidebar, for the
+// content's header.
+func (s *Sidebar) Trigger() *Button {
+	if s.trigger == nil {
+		s.trigger = NewButton(NewSymbol(SymbolPanelLeft, 16), 0, 0)
+		s.trigger.AddClass("trigger")
+		s.trigger.SetAccessibleName(Tr("Toggle sidebar"))
+		s.trigger.SetSizeRequest(28, 28)
+		s.trigger.OnClick = s.Toggle
+	}
+	return s.trigger
+}
+
+// setNarrow moves the panel between the dock and the sheet as the
+// width crosses the narrow breakpoint.
+func (s *Sidebar) setNarrow(narrow bool) {
+	s.narrow = narrow
+	s.sheetIn.Clear()
+	if narrow {
+		s.dock.setRoot(NewBox(Column, 0, 0))
+		s.sheetIn.Append(s.panel, true)
+	} else {
+		s.sheet.SetOpen(false)
+		s.dock.setRoot(s.panel)
+	}
+	s.dock.SetVisible(!narrow && s.width > 0)
+	s.applyCollapse()
+}
+
+// Narrow reports the sidebar off canvas below the narrow width.
+func (s *Sidebar) Narrow() bool { return s.narrow }
+
+// Arrange evaluates the narrow breakpoint against the width, then lays
+// the sidebar out.
+func (s *Sidebar) Arrange(r render.Rect) {
+	s.bps.evaluate(r.W)
+	s.composite.Arrange(r)
+}

@@ -50,6 +50,9 @@ type Sheet struct {
 	close *Button
 	head  *Box
 
+	// width is a side sheet's widest; sheetWidth until SetWidth.
+	width int
+
 	open     bool
 	progress float64
 	cancel   anim.Cancel
@@ -64,7 +67,7 @@ type Sheet struct {
 // NewSheet returns a closed sheet sliding body in from side over
 // content.
 func NewSheet(content, body Widget, side SheetSide) *Sheet {
-	s := &Sheet{side: side, body: body, panel: NewBox(Column, 16, 0)}
+	s := &Sheet{side: side, body: body, panel: NewBox(Column, 16, 0), width: sheetWidth}
 	s.SetElement("sheet")
 	s.panel.AddClass("sheet-panel")
 	if side != SheetBottom {
@@ -118,6 +121,13 @@ func (s *Sheet) SetFooter(w Widget) {
 	s.InvalidateLayout()
 }
 
+// SetWidth sets a side sheet's widest, still at most three quarters of
+// the widget.
+func (s *Sheet) SetWidth(w int) {
+	s.width = w
+	s.InvalidateLayout()
+}
+
 // Side returns the edge the sheet slides in from.
 func (s *Sheet) Side() SheetSide { return s.side }
 
@@ -151,14 +161,14 @@ func (s *Sheet) SetOpen(on bool) {
 func (s *Sheet) showing() bool { return s.progress > 0 }
 
 // sheetRect places the panel for the current progress and drag: a
-// side sheet at most sheetWidth (three quarters of the widget) wide
+// side sheet at most its width (three quarters of the widget) wide
 // and full height, a top or bottom one its natural height capped at
 // nine tenths of the widget (a bottom one's handle included).
 func (s *Sheet) sheetRect() render.Rect {
 	r := s.bounds
 	switch s.side {
 	case SheetLeft, SheetRight:
-		w := min(sheetWidth, r.W*3/4)
+		w := min(s.width, r.W*3/4)
 		shown := int(float64(w) * s.progress)
 		if s.side == SheetLeft {
 			return render.Rect{X: r.X - w + shown, Y: r.Y, W: w, H: r.H}

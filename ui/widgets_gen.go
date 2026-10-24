@@ -5943,6 +5943,18 @@ func (b *SheetBuilder) WatchOpen(get func() bool) *SheetBuilder {
 	return b
 }
 
+// Width calls (*widget.Sheet).SetWidth.
+func (b *SheetBuilder) Width(arg int) *SheetBuilder {
+	b.do(func(s *Scope, w *widget.Sheet) { w.SetWidth(arg) })
+	return b
+}
+
+// WatchWidth re-applies SetWidth with get's value after every update.
+func (b *SheetBuilder) WatchWidth(get func() int) *SheetBuilder {
+	b.watch(func(w *widget.Sheet) { w.SetWidth(get()) })
+	return b
+}
+
 // OnClosed sets the widget's OnClosed field.
 func (b *SheetBuilder) OnClosed(fn func()) *SheetBuilder {
 	b.do(func(_ *Scope, w *widget.Sheet) { w.OnClosed = fn })
@@ -5996,6 +6008,68 @@ func (b *ShortcutsViewBuilder) Title(t string) *ShortcutsViewBuilder {
 // WatchTitle re-applies SetTitle with get's value after every update.
 func (b *ShortcutsViewBuilder) WatchTitle(get func() string) *ShortcutsViewBuilder {
 	b.watch(func(w *widget.ShortcutsView) { w.SetTitle(get()) })
+	return b
+}
+
+// SidebarBuilder builds a widget.Sidebar.
+type SidebarBuilder struct {
+	base[*widget.Sidebar, *SidebarBuilder]
+	face render.Font
+	size float64
+}
+
+// Sidebar builds a widget.Sidebar with widget.NewSidebar.
+func Sidebar(content Node) *SidebarBuilder {
+	b := &SidebarBuilder{}
+	b.init(b, func(s *Scope) *widget.Sidebar { return widget.NewSidebar(s.face(b.face), build(s, content)) })
+	return b
+}
+
+// Font overrides the environment's typeface and size for this widget; zero values keep the environment's.
+func (b *SidebarBuilder) Font(face render.Font, sizePx float64) *SidebarBuilder {
+	b.face, b.size = face, sizePx
+	return b
+}
+
+// AddGroup calls (*widget.Sidebar).AddGroup.
+func (b *SidebarBuilder) AddGroup(label string, items ...widget.SidebarItem) *SidebarBuilder {
+	b.do(func(s *Scope, w *widget.Sidebar) { w.AddGroup(label, items...) })
+	return b
+}
+
+// Collapse calls (*widget.Sidebar).SetCollapse.
+func (b *SidebarBuilder) Collapse(c widget.SidebarCollapse) *SidebarBuilder {
+	b.do(func(s *Scope, w *widget.Sidebar) { w.SetCollapse(c) })
+	return b
+}
+
+// WatchCollapse re-applies SetCollapse with get's value after every update.
+func (b *SidebarBuilder) WatchCollapse(get func() widget.SidebarCollapse) *SidebarBuilder {
+	b.watch(func(w *widget.Sidebar) { w.SetCollapse(get()) })
+	return b
+}
+
+// Expanded calls (*widget.Sidebar).SetExpanded.
+func (b *SidebarBuilder) Expanded(on bool) *SidebarBuilder {
+	b.do(func(s *Scope, w *widget.Sidebar) { w.SetExpanded(on) })
+	return b
+}
+
+// WatchExpanded re-applies SetExpanded with get's value after every update.
+func (b *SidebarBuilder) WatchExpanded(get func() bool) *SidebarBuilder {
+	b.watch(func(w *widget.Sidebar) { w.SetExpanded(get()) })
+	return b
+}
+
+// Footer calls (*widget.Sidebar).SetFooter.
+func (b *SidebarBuilder) Footer(child Node) *SidebarBuilder {
+	b.do(func(s *Scope, w *widget.Sidebar) { w.SetFooter(build(s, child)) })
+	return b
+}
+
+// Header calls (*widget.Sidebar).SetHeader.
+func (b *SidebarBuilder) Header(child Node) *SidebarBuilder {
+	b.do(func(s *Scope, w *widget.Sidebar) { w.SetHeader(build(s, child)) })
 	return b
 }
 

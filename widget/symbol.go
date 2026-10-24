@@ -48,6 +48,8 @@ const (
 	SymbolSearch
 	// SymbolCalendar is a calendar page (a date field).
 	SymbolCalendar
+	// SymbolPanelLeft is a window with a left pane (a sidebar toggle).
+	SymbolPanelLeft
 )
 
 // chevronAngle is each chevron kind's rotation from right-pointing.
@@ -139,6 +141,10 @@ func (s *Symbol) Paint(cv *render.Canvas) {
 		cv.Line(cx-r, cy-r/3+r/3, cx+r, cy-r/3+r/3, 1, col)
 		cv.Line(cx-r/2, cy-r, cx-r/2, cy-r+2*r/3, 1, col)
 		cv.Line(cx+r/2, cy-r, cx+r/2, cy-r+2*r/3, 1, col)
+	case SymbolPanelLeft:
+		frame := render.Rect{X: cx - r, Y: cy - r, W: 2 * r, H: 2 * r}
+		cv.RoundedBorder(frame, render.UniformCorners(2), render.UniformInsets(1), col)
+		cv.Line(cx-r/3, cy-r, cx-r/3, cy+r, 1, col)
 	case SymbolMinus:
 		cv.Line(cx-r, cy, cx+r, cy, 1, col)
 	case SymbolEllipsis:

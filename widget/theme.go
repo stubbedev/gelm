@@ -51,6 +51,9 @@ type Theme struct {
 	// code spans. Leave it unset and MutedColor derives it from
 	// Surface.
 	Muted Color
+	// Sidebar fills an application sidebar. Leave it unset and
+	// SidebarColor derives it from Surface.
+	Sidebar Color
 	// Input strokes the borders of text fields and other inputs.
 	// Leave it unset and InputColor derives it from Border.
 	Input Color
@@ -148,6 +151,7 @@ func DarkTheme() *Theme {
 		Card:           render.RGB(0x09, 0x09, 0x0B),
 		Popover:        render.RGB(0x09, 0x09, 0x0B),
 		Muted:          render.RGB(0x27, 0x27, 0x2A),
+		Sidebar:        render.RGB(0x18, 0x18, 0x1B),
 		Input:          render.RGB(0x27, 0x27, 0x2A),
 		Ring:           render.RGB(0xD4, 0xD4, 0xD8),
 		Destructive:    render.RGB(0x7F, 0x1D, 0x1D),
@@ -177,6 +181,7 @@ func LightTheme() *Theme {
 		Card:           render.RGB(0xFF, 0xFF, 0xFF),
 		Popover:        render.RGB(0xFF, 0xFF, 0xFF),
 		Muted:          render.RGB(0xF4, 0xF4, 0xF5),
+		Sidebar:        render.RGB(0xFA, 0xFA, 0xFA),
 		Input:          render.RGB(0xE4, 0xE4, 0xE7),
 		Ring:           render.RGB(0x18, 0x18, 0x1B),
 		Destructive:    render.RGB(0xEF, 0x44, 0x44),
@@ -308,6 +313,9 @@ func (t *Theme) WithPopover(c Color) *Theme { return t.with(func(n *Theme) { n.P
 // WithMuted returns a copy with the quiet-region fill set.
 func (t *Theme) WithMuted(c Color) *Theme { return t.with(func(n *Theme) { n.Muted = c }) }
 
+// WithSidebar returns a copy with the sidebar fill set.
+func (t *Theme) WithSidebar(c Color) *Theme { return t.with(func(n *Theme) { n.Sidebar = c }) }
+
 // WithInput returns a copy with the input border color set.
 func (t *Theme) WithInput(c Color) *Theme { return t.with(func(n *Theme) { n.Input = c }) }
 
@@ -393,6 +401,10 @@ func (t *Theme) PopoverColor() Color { return t.or(t.Popover, t.Surface) }
 // MutedColor returns the quiet-region fill: Muted when set, otherwise
 // Surface.
 func (t *Theme) MutedColor() Color { return t.or(t.Muted, t.Surface) }
+
+// SidebarColor returns the sidebar fill: Sidebar when set, otherwise
+// Surface.
+func (t *Theme) SidebarColor() Color { return t.or(t.Sidebar, t.Surface) }
 
 // InputColor returns the input border color: Input when set,
 // otherwise Border.

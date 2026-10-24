@@ -42,6 +42,7 @@ func run() error {
 	application := app.NewApplication(sess)
 	widget.LoadStylesheet(galleryCSS)
 	var ctrl *component.Controller[galleryMsg, struct{}]
+	gal := &gallery{env: ui.Env{Face: app.FontFallback(face), Size: 14}}
 	var win *app.Window
 	ctrl, win, err = component.Window(application, app.WindowConfig{
 		Title:      "lys-ui shadcn gallery",
@@ -49,13 +50,14 @@ func run() error {
 		Width:      760,
 		Height:     820,
 		Background: widget.Current().Bg,
-	}, &gallery{env: ui.Env{Face: app.FontFallback(face), Size: 14}})
+	}, gal)
 	if err != nil {
 		return err
 	}
 	for keys, action := range map[string]widget.Activatable{
 		"Escape": widget.NewAction("quit", application.Quit),
 		"Ctrl+T": widget.NewAction("palette", func() { ctrl.Send(togglePalette{}) }),
+		"Ctrl+B": widget.NewAction("sidebar", func() { gal.sidebar.Toggle() }),
 		"Ctrl+K": widget.NewAction("command", func() {
 			if err := openCommandDialog(application, win, app.FontFallback(face)); err != nil {
 				log.Printf("lys-ui-shadcn: command dialog: %v", err)
@@ -109,6 +111,29 @@ type gallery struct {
 	env       ui.Env
 	status    string
 	openSheet func()
+	sidebar   *widget.Sidebar
+}
+
+// sidebarDemo is the Sidebar section: a sidebar collapsing to an icon
+// rail beside a page, at a fixed height; Ctrl+B toggles it.
+func (g *gallery) sidebarDemo() ui.Node {
+	icon := func(k widget.SymbolKind) widget.Widget { return widget.NewSymbol(k, 16) }
+	return ui.Sidebar(ui.Column(
+		ui.Label("Dashboard").Classes(css.H4),
+		ui.Label("Toggle the sidebar with Ctrl+B.").Classes(css.Muted),
+	).Spacing(8).Padding(render.UniformInsets(16))).
+		Collapse(widget.SidebarIcon).
+		Header(ui.Label("Acme Inc").Classes(css.H4)).
+		AddGroup("Platform",
+			widget.SidebarItem{Label: "Home", Icon: icon(widget.SymbolMaximize), Active: true},
+			widget.SidebarItem{Label: "Inbox", Icon: icon(widget.SymbolSearch), Badge: "24"},
+			widget.SidebarItem{Label: "Calendar", Icon: icon(widget.SymbolCalendar)},
+			widget.SidebarItem{Label: "Settings", Icon: icon(widget.SymbolCrosshair), Items: []widget.SidebarItem{
+				{Label: "General"}, {Label: "Team"}, {Label: "Billing"},
+			}},
+		).
+		Footer(ui.Label("shadcn").Classes(css.Muted)).
+		Ref(&g.sidebar).Classes("sidebar-demo")
 }
 
 // datePickers is the Date Picker section: a date, a date with a time,
@@ -132,6 +157,7 @@ func (g *gallery) datePickers() ui.Node {
 const galleryCSS = `
 .drop-zone { border: 1px dashed @borders; border-radius: 8px; padding: 48px; }
 .hovercard-content { min-width: 280px; padding: 16px; }
+.sidebar-demo { min-height: 360px; border: 1px solid @borders; border-radius: 8px; }
 `
 
 // form is the Field and Form section: two required entries and a
@@ -236,6 +262,7 @@ func (g *gallery) Init(cx *component.Context[galleryMsg, struct{}]) widget.Widge
 		section("Kbd", ui.Row(ui.KbdGroup("Ctrl", "Shift", "P"), ui.Label("opens the command palette")).Spacing(12)),
 		section("Pagination", ui.Pagination(10, 5)),
 		section("Sheet", ui.Aligned(ui.Button(ui.Label("Open"), 0, 0).Classes(css.Outline).OnClick(func() { g.openSheet() }), widget.AlignStart)),
+		section("Sidebar", g.sidebarDemo()),
 		section("Skeleton", ui.Row(
 			ui.Skeleton(48, 48),
 			ui.Column(ui.Skeleton(240, 14), ui.Skeleton(180, 14)).Spacing(8),
