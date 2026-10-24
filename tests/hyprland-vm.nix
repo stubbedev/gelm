@@ -54,6 +54,9 @@ let
     misc {
         disable_splash_rendering = true
         force_default_wallpaper = 0
+        # The activation test checks a granted xdg-activation token by
+        # the focus it moves; by default Hyprland only marks the window.
+        focus_on_activate = true
     }
     debug {
         disable_logs = false

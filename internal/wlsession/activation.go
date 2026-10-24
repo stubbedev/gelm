@@ -4,11 +4,13 @@
 // or keyboard event); once the compositor issues it, the token may be
 // spent to raise and focus a surface, or handed to a spawned app
 // through XDG_ACTIVATION_TOKEN so the child can focus itself. The
-// manager global is feature-detected: without it the requests are
-// no-ops.
+// manager global is feature-detected: without it a token request
+// reports ErrActivationUnavailable and Activate does nothing.
 package wlsession
 
 import (
+	"errors"
+	"fmt"
 	"slices"
 
 	"github.com/neurlang/wayland/wl"
@@ -75,21 +77,26 @@ func (s *Session) bindActivation(ev wl.RegistryGlobalEvent) {
 	debug.Log("shell", "xdg-activation-v1 bound")
 }
 
+// ErrActivationUnavailable is a token request on a compositor without
+// xdg_activation_v1.
+var ErrActivationUnavailable = errors.New("wlsession: the compositor offers no xdg_activation_v1")
+
 // RequestActivationToken begins a token request anchored to the
 // user-interaction serial of a pointer press or keyboard event (0
 // means unanchored, which compositors may refuse to honor with
-// focus). The issued token goes to done - each request its own, so
-// concurrent requests (a launch, an attention request) never trade
-// tokens - or to OnActivationToken when done is nil; a launcher
-// typically hands it to the app it spawns. No-op without the protocol.
-func (s *Session) RequestActivationToken(surface *wl.Surface, serial uint32, done func(token string)) {
+// focus). done always runs once: with the issued token - each request
+// its own, so concurrent requests (a launch, an attention request)
+// never trade tokens - or with ErrActivationUnavailable without the
+// protocol, or the request's failure.
+func (s *Session) RequestActivationToken(surface *wl.Surface, serial uint32, done func(token string, err error)) {
 	req := s.activation
 	if req == nil {
+		done("", ErrActivationUnavailable)
 		return
 	}
 	tokReq, err := req.GetActivationToken()
 	if err != nil {
-		debug.Log("shell", "activation token: %v", err)
+		done("", fmt.Errorf("wlsession: request an activation token: %w", err))
 		return
 	}
 	tok := &activationToken{sess: s, req: tokReq, done: done}
@@ -104,7 +111,7 @@ func (s *Session) RequestActivationToken(surface *wl.Surface, serial uint32, don
 	if err := tokReq.Commit(); err != nil {
 		s.removeActivationToken(tok)
 		_ = tokReq.Destroy()
-		debug.Log("shell", "activation token commit: %v", err)
+		done("", fmt.Errorf("wlsession: commit an activation token request: %w", err))
 	}
 }
 
@@ -122,7 +129,7 @@ func (s *Session) Activate(surface *wl.Surface, token string) {
 type activationToken struct {
 	sess *Session
 	req  activationTokenAPI
-	done func(token string)
+	done func(token string, err error)
 }
 
 // HandleActivationTokenV1Done implements
@@ -131,12 +138,7 @@ type activationToken struct {
 func (t *activationToken) HandleActivationTokenV1Done(ev wlr.ActivationTokenV1DoneEvent) {
 	t.sess.removeActivationToken(t)
 	_ = t.req.Destroy()
-	switch {
-	case t.done != nil:
-		t.done(ev.Token)
-	case t.sess.OnActivationToken != nil:
-		t.sess.OnActivationToken(ev.Token)
-	}
+	t.done(ev.Token, nil)
 }
 
 // removeActivationToken drops a finished or failed request from the

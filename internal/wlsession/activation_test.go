@@ -83,8 +83,12 @@ func TestActivationIsOptional(t *testing.T) {
 	if s.ActivationAvailable() {
 		t.Error("ActivationAvailable = true without the manager global")
 	}
-	s.RequestActivationToken(&wl.Surface{}, 7, nil) // no-op
-	s.Activate(&wl.Surface{}, "tok")                // no-op
+	var got error
+	s.RequestActivationToken(&wl.Surface{}, 7, func(_ string, err error) { got = err })
+	if !errors.Is(got, ErrActivationUnavailable) {
+		t.Errorf("a token request without the global reported %v, want ErrActivationUnavailable", got)
+	}
+	s.Activate(&wl.Surface{}, "tok") // no-op
 }
 
 // TestActivationTokenFlow drives the consent flow against fakes: the
@@ -97,10 +101,15 @@ func TestActivationTokenFlow(t *testing.T) {
 	s.activation = fake
 
 	var got []string
-	s.OnActivationToken = func(token string) { got = append(got, token) }
+	collect := func(token string, err error) {
+		if err != nil {
+			t.Errorf("token request failed: %v", err)
+		}
+		got = append(got, token)
+	}
 
 	surf := &wl.Surface{}
-	s.RequestActivationToken(surf, 42, nil)
+	s.RequestActivationToken(surf, 42, collect)
 	if len(fake.tokens) != 1 {
 		t.Fatalf("token objects created = %d, want 1", len(fake.tokens))
 	}
@@ -128,7 +137,7 @@ func TestActivationTokenFlow(t *testing.T) {
 
 	// An unanchored request (serial 0) skips set_serial; a nil surface
 	// skips set_surface. Both are optional per protocol.
-	s.RequestActivationToken(nil, 0, nil)
+	s.RequestActivationToken(nil, 0, collect)
 	tok2 := fake.tokens[1]
 	if tok2.serial != 0 || tok2.seat != nil || tok2.surface != nil {
 		t.Errorf("unanchored request sent anchors: serial=%d surface=%v", tok2.serial, tok2.surface)
@@ -139,19 +148,24 @@ func TestActivationTokenFlow(t *testing.T) {
 }
 
 // TestActivationTokenCommitFailure rolls a failed commit back: the
-// token object is destroyed and the request leaves the in-flight list.
+// token object is destroyed, the request leaves the in-flight list,
+// and done hears the failure.
 func TestActivationTokenCommitFailure(t *testing.T) {
 	s := &Session{seat: &wl.Seat{}}
 	good := &fakeActivation{}
 	s.activation = good
-	s.RequestActivationToken(nil, 5, nil)
+	s.RequestActivationToken(nil, 5, func(string, error) {})
 	if len(s.activationTokens) != 1 || good.tokens[0].destroyed != 0 {
 		t.Fatalf("healthy request not in flight: %+v", s.activationTokens)
 	}
 
 	broken := &fakeActivation{commitErr: errors.New("commit failed")}
 	s.activation = broken
-	s.RequestActivationToken(nil, 6, nil)
+	var failed error
+	s.RequestActivationToken(nil, 6, func(_ string, err error) { failed = err })
+	if failed == nil {
+		t.Error("a failed commit was not reported")
+	}
 	if len(broken.tokens) != 1 || broken.tokens[0].destroyed != 1 {
 		t.Fatal("failed commit left the token object alive")
 	}
@@ -184,21 +198,17 @@ func TestActivateSpendsToken(t *testing.T) {
 }
 
 // Each request's token goes to its own done, in whatever order the
-// compositor answers; OnActivationToken hears only requests without
-// one.
+// compositor answers.
 func TestActivationTokenPerRequest(t *testing.T) {
 	s := &Session{seat: &wl.Seat{}}
 	fake := &fakeActivation{}
 	s.activation = fake
-	var global, first, second []string
-	s.OnActivationToken = func(tok string) { global = append(global, tok) }
-	s.RequestActivationToken(nil, 1, func(tok string) { first = append(first, tok) })
-	s.RequestActivationToken(nil, 2, func(tok string) { second = append(second, tok) })
-	s.RequestActivationToken(nil, 3, nil)
+	var first, second []string
+	s.RequestActivationToken(nil, 1, func(tok string, _ error) { first = append(first, tok) })
+	s.RequestActivationToken(nil, 2, func(tok string, _ error) { second = append(second, tok) })
 	fake.tokens[1].doneH.HandleActivationTokenV1Done(wlr.ActivationTokenV1DoneEvent{Token: "b"})
 	fake.tokens[0].doneH.HandleActivationTokenV1Done(wlr.ActivationTokenV1DoneEvent{Token: "a"})
-	fake.tokens[2].doneH.HandleActivationTokenV1Done(wlr.ActivationTokenV1DoneEvent{Token: "c"})
-	if len(first) != 1 || first[0] != "a" || len(second) != 1 || second[0] != "b" || len(global) != 1 || global[0] != "c" {
-		t.Errorf("first %v second %v global %v", first, second, global)
+	if len(first) != 1 || first[0] != "a" || len(second) != 1 || second[0] != "b" {
+		t.Errorf("first %v second %v", first, second)
 	}
 }

@@ -207,10 +207,13 @@ test-env dir=test_dir:
     pkill -9 -f "$dir/sway.cfg" 2>/dev/null
     pkill -f "$dir/bus.conf" 2>/dev/null
     mkdir -p "$dir" && chmod 700 "$dir"
+    # focus_on_window_activation focus: a granted xdg-activation token
+    # moves the focus, which the activation test checks.
     printf '%s\n' 'output * mode 1280x800 scale 1' \
         'default_border none' \
         'default_floating_border none' \
         'input type:keyboard repeat_delay 5000' \
+        'focus_on_window_activation focus' \
         'for_window [app_id="dev.stubbe.lys.ui.hello"] floating enable, move position 0 0, resize set 640 470' \
         'for_window [app_id="dev.stubbe.lys.ui.states"] floating enable, move position 40 40, resize set 420 280' \
         'for_window [app_id="dev.stubbe.lys.ui.multilist"] floating enable, move position 0 0, resize set 300 300' \

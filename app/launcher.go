@@ -67,10 +67,11 @@ func (a *Application) launch(uri string) {
 		a.launchNow(uri, "")
 		return
 	}
-	a.Invoke(func() {
-		a.sess.RequestActivationToken(a.focusSurface(), a.sess.InputSerial(), func(token string) {
-			a.launchNow(uri, token)
-		})
+	a.RequestActivationToken(func(token string, err error) {
+		if err != nil {
+			debug.Log("shell", "launch %s without an activation token: %v", uri, err)
+		}
+		a.launchNow(uri, token)
 	})
 }
 

@@ -3,6 +3,7 @@ package app
 import (
 	"github.com/neurlang/wayland/xdg"
 
+	"github.com/stubbedev/lys-ui/internal/debug"
 	"github.com/stubbedev/lys-ui/internal/wlsession"
 )
 
@@ -69,7 +70,11 @@ func (w *Window) RequestAttention() {
 	surf := w.win.HostSurface()
 	sess := w.app.sess
 	w.app.Invoke(func() {
-		sess.RequestActivationToken(surf, 0, func(token string) {
+		sess.RequestActivationToken(surf, 0, func(token string, err error) {
+			if err != nil {
+				debug.Log("shell", "attention request: %v", err)
+				return
+			}
 			if !w.closed && !w.win.Closed() {
 				sess.Activate(surf, token)
 			}

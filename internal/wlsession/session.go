@@ -283,11 +283,6 @@ type Session struct {
 	OnToplevelRemoved func(*Toplevel)
 	OnToplevelUpdated func(*Toplevel)
 
-	// OnActivationToken fires when a token requested through
-	// RequestActivationToken is issued; the string is what a spawned
-	// app expects in XDG_ACTIVATION_TOKEN.
-	OnActivationToken func(token string)
-
 	// OnOutputIdentity fires when an output's stable xdg-output name
 	// arrives or changes — the point where an `output "DP-1"` config
 	// section can be matched to a hotplugged monitor.
