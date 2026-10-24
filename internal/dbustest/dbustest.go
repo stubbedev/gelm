@@ -36,16 +36,26 @@ const config = `<!DOCTYPE busconfig PUBLIC "-//freedesktop//DTD D-BUS Bus Config
 </busconfig>
 `
 
-// Start launches a private bus on a fresh socket in a test temp dir
-// and returns its address and pid; the daemon dies with the test.
-// Skips when dbus-daemon is not installed.
+// Start launches a private bus on a fresh socket (SocketPath) and
+// returns its address and pid; the daemon dies with the test. Skips
+// when dbus-daemon is not installed.
 func Start(t testing.TB) (string, int) {
 	t.Helper()
-	sock := filepath.Join(t.TempDir(), "bus")
-	if len(sock) > 88 {
-		t.Skipf("socket path %q too long for AF_UNIX", sock)
+	return StartAt(t, SocketPath(t))
+}
+
+// SocketPath is a fresh bus socket path, removed with the test. It
+// lives in a directory at the temp root, not in t.TempDir: under a
+// nested TMPDIR (the dev shell's, CI's) and a long test name, a TempDir
+// path exceeds AF_UNIX's 108-byte sun_path and the bus cannot bind.
+func SocketPath(t testing.TB) string {
+	t.Helper()
+	dir, err := os.MkdirTemp("", "gelm-bus-")
+	if err != nil {
+		t.Fatal(err)
 	}
-	return StartAt(t, sock)
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	return filepath.Join(dir, "bus")
 }
 
 // StartAt launches a private bus bound to sock (a fresh path).

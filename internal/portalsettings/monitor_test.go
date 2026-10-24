@@ -380,10 +380,7 @@ func TestNoBusIsInert(t *testing.T) {
 func TestReconnectAfterBusRestart(t *testing.T) {
 	// Both daemon generations bind the same socket path, so the
 	// monitor's dial seam (a plain address) reaches either one.
-	sock := filepath.Join(t.TempDir(), "bus")
-	if len(sock) > 88 {
-		t.Skipf("socket path %q too long for AF_UNIX", sock)
-	}
+	sock := dbustest.SocketPath(t)
 
 	_, pid1 := startBusAt(t, sock)
 	mock := publishMock(t, "unix:path="+sock)
