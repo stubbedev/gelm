@@ -1094,6 +1094,36 @@ func (b *ButtonContentBuilder) WatchLabel(get func() string) *ButtonContentBuild
 	return b
 }
 
+// ButtonGroupBuilder builds a widget.ButtonGroup.
+type ButtonGroupBuilder struct {
+	base[*widget.ButtonGroup, *ButtonGroupBuilder]
+}
+
+// ButtonGroup builds a widget.ButtonGroup with widget.NewButtonGroup.
+func ButtonGroup(buttons ...Node) *ButtonGroupBuilder {
+	b := &ButtonGroupBuilder{}
+	b.init(b, func(s *Scope) *widget.ButtonGroup { return widget.NewButtonGroup(buildAll(s, buttons)...) })
+	return b
+}
+
+// Append calls (*widget.ButtonGroup).Append.
+func (b *ButtonGroupBuilder) Append(child Node) *ButtonGroupBuilder {
+	b.do(func(s *Scope, w *widget.ButtonGroup) { w.Append(build(s, child)) })
+	return b
+}
+
+// Vertical calls (*widget.ButtonGroup).SetVertical.
+func (b *ButtonGroupBuilder) Vertical(on bool) *ButtonGroupBuilder {
+	b.do(func(s *Scope, w *widget.ButtonGroup) { w.SetVertical(on) })
+	return b
+}
+
+// WatchVertical re-applies SetVertical with get's value after every update.
+func (b *ButtonGroupBuilder) WatchVertical(get func() bool) *ButtonGroupBuilder {
+	b.watch(func(w *widget.ButtonGroup) { w.SetVertical(get()) })
+	return b
+}
+
 // ButtonRowBuilder builds a widget.ButtonRow.
 type ButtonRowBuilder struct {
 	base[*widget.ButtonRow, *ButtonRowBuilder]
@@ -4386,6 +4416,62 @@ func (b *InscriptionBuilder) Text(text string) *InscriptionBuilder {
 // WatchText re-applies SetText with get's value after every update.
 func (b *InscriptionBuilder) WatchText(get func() string) *InscriptionBuilder {
 	b.watch(func(w *widget.Inscription) { w.SetText(get()) })
+	return b
+}
+
+// ItemBuilder builds a widget.Item.
+type ItemBuilder struct {
+	base[*widget.Item, *ItemBuilder]
+	face render.Font
+	size float64
+}
+
+// Item builds a widget.Item with widget.NewItem.
+func Item(title string, description string) *ItemBuilder {
+	b := &ItemBuilder{}
+	b.init(b, func(s *Scope) *widget.Item { return widget.NewItem(s.face(b.face), title, description) })
+	return b
+}
+
+// Font overrides the environment's typeface and size for this widget; zero values keep the environment's.
+func (b *ItemBuilder) Font(face render.Font, sizePx float64) *ItemBuilder {
+	b.face, b.size = face, sizePx
+	return b
+}
+
+// AddAction calls (*widget.Item).AddAction.
+func (b *ItemBuilder) AddAction(child Node) *ItemBuilder {
+	b.do(func(s *Scope, w *widget.Item) { w.AddAction(build(s, child)) })
+	return b
+}
+
+// Media calls (*widget.Item).SetMedia.
+func (b *ItemBuilder) Media(child Node, bare bool) *ItemBuilder {
+	b.do(func(s *Scope, w *widget.Item) { w.SetMedia(build(s, child), bare) })
+	return b
+}
+
+// Small calls (*widget.Item).SetSmall.
+func (b *ItemBuilder) Small(on bool) *ItemBuilder {
+	b.do(func(s *Scope, w *widget.Item) { w.SetSmall(on) })
+	return b
+}
+
+// WatchSmall re-applies SetSmall with get's value after every update.
+func (b *ItemBuilder) WatchSmall(get func() bool) *ItemBuilder {
+	b.watch(func(w *widget.Item) { w.SetSmall(get()) })
+	return b
+}
+
+// Variant calls (*widget.Item).SetVariant.
+func (b *ItemBuilder) Variant(v widget.ItemVariant) *ItemBuilder {
+	b.do(func(s *Scope, w *widget.Item) { w.SetVariant(v) })
+	return b
+}
+
+// WatchVariant re-applies SetVariant with get's value after every update.
+func (b *ItemBuilder) WatchVariant(get func() widget.ItemVariant) *ItemBuilder {
+	b.watch(func(w *widget.Item) { w.SetVariant(get()) })
 	return b
 }
 

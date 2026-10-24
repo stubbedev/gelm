@@ -253,6 +253,11 @@ func (g *gallery) Init(cx *component.Context[galleryMsg, struct{}]) widget.Widge
 			ui.Badge("Destructive").Variant(widget.BadgeDestructive),
 			ui.Badge("Outline").Variant(widget.BadgeOutline),
 		).Spacing(8)),
+		section("Button Group", ui.Aligned(ui.ButtonGroup(
+			ui.Button(ui.Label("Archive"), 0, 0).Classes(css.Outline),
+			ui.Button(ui.Label("Report"), 0, 0).Classes(css.Outline),
+			ui.Button(ui.Label("Snooze"), 0, 0).Classes(css.Outline),
+		), widget.AlignStart)),
 		section("Breadcrumb",
 			ui.Breadcrumb("Home", "Components", "Breadcrumb"),
 			ui.Breadcrumb("Home", "Docs", "Components", "Data", "Breadcrumb").MaxItems(3)),
@@ -302,6 +307,11 @@ func (g *gallery) Init(cx *component.Context[galleryMsg, struct{}]) widget.Widge
 				Prepend(ui.Label("https://")).
 				Append(ui.Button(ui.Label("Copy"), 0, 0).Classes(css.Ghost, css.Small))),
 		section("Input OTP", ui.InputOTP(widget.OTPDigits, 3, 3)),
+		section("Item",
+			ui.Item("Basic Item", "A simple item with title and description.").Variant(widget.ItemOutline).
+				AddAction(ui.Button(ui.Label("Action"), 0, 0).Classes(css.Outline, css.Small)),
+			ui.Item("Your profile has been verified.", "").Variant(widget.ItemMuted).Small(true),
+		),
 		section("Kbd", ui.Row(ui.KbdGroup("Ctrl", "Shift", "P"), ui.Label("opens the command palette")).Spacing(12)),
 		section("Navigation Menu", ui.Aligned(ui.NavigationMenu(
 			widget.NavigationMenuItem{Label: "Getting started", Content: widget.NewNavigationLinks(g.env.Face, 2,
