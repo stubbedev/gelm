@@ -44,7 +44,7 @@ func NewPreferencesGroup(face render.Font, sizePx float64, title string) *Prefer
 	column.Append(g.rows, false)
 	g.initComposite(g, column)
 	g.fillWidth = true
-	g.surfaceRadius = 8
+	g.surfaceRadius = 12
 	return g
 }
 
@@ -65,7 +65,7 @@ func (g *PreferencesGroup) Add(w Widget) {
 // between them.
 func (g *PreferencesGroup) Paint(cv *render.Canvas) {
 	th := Current()
-	g.paintSurface(cv, g.rows.Bounds(), th.Surface)
+	g.paintSurface(cv, g.rows.Bounds(), th.CardColor())
 	PaintChild(cv, g.root)
 	for i, row := range g.rows.Children() {
 		if child, ok := row.(Boundser); ok && i > 0 {

@@ -205,7 +205,7 @@ func (r *ActionRow) Revealed() bool { return r.reveal != nil && r.reveal.Reveale
 // composed row.
 func (r *ActionRow) Paint(cv *render.Canvas) {
 	th := Current()
-	fill := th.Surface
+	var fill Color
 	if r.selected {
 		fill = th.SurfaceHover
 	} else if r.pressed {
