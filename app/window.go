@@ -39,6 +39,7 @@ import (
 	"github.com/stubbedev/lys-ui/third_party/neurlang-wayland/wl"
 	"github.com/stubbedev/lys-ui/third_party/neurlang-wayland/wlclient"
 	"github.com/stubbedev/lys-ui/widget"
+	"github.com/stubbedev/lys-ui/widget/css"
 )
 
 // hostWindow couples a Host with everything the loop needs to drive it.
@@ -169,6 +170,14 @@ type hostWindow struct {
 	// gpu are the GPUArea surfaces under this window, in creation
 	// order; their bounds are the opaque region's holes.
 	gpu []*gpuSurface
+	// blurSent is the blur region last sent, blurSet whether one went
+	// out at all; like the opaque region it is surface state, re-sent
+	// only when the shape changes.
+	blurSent []render.Rect
+	blurSet  bool
+	// blurFallback is whether the style root carries
+	// css.BlurUnavailable, so the class flips only on a change.
+	blurFallback bool
 }
 
 // windowHooks are the app-visible callbacks one window carries.
@@ -182,6 +191,9 @@ type windowHooks struct {
 	onMove   func(x, y float64)
 	onResize func(width, height int)
 	onKey    func(r *widget.Router, keycode uint32, mods wlsession.Mods)
+	// blur asks the compositor to blur behind the window's root, in its
+	// rounded shape (ext_background_effect_v1).
+	blur bool
 	// keyCapture sees each press before any routing; true consumes it.
 	keyCapture func(Accel) bool
 	onClosed   func()
@@ -202,7 +214,7 @@ func newHostWindow(sess *wlsession.Session, host Host, initialScale int, root wi
 	}
 	w := &hostWindow{
 		host: host, sess: sess, cfg: hooks,
-		surf:    wireSurface{wl: host.HostSurface(), comp: sess.Compositor()},
+		surf:    wireSurface{wl: host.HostSurface(), comp: sess.Compositor(), sess: sess},
 		frac120: uint32(initialScale * 120),
 		scale:   initialScale,
 		router:  &widget.Router{Root: root},
@@ -532,6 +544,13 @@ type surfaceHandle interface {
 	// Frame arms the compositor callback that fires ready once the
 	// frame may be followed by another.
 	Frame(ready *bool) error
+	// BlurAvailable reports whether the compositor blurs behind
+	// surfaces now (its offer can come and go).
+	BlurAvailable() bool
+	// SetBlurRegion asks the compositor to blur behind rects
+	// (surface-local, logical pixels); nil removes the effect.
+	// Double-buffered: it applies at the next commit.
+	SetBlurRegion(rects []render.Rect) error
 	// SetOpaqueRegion promises the w x h rect (surface-local, logical
 	// pixels) less holes holds opaque content, so the compositor can skip blending behind
 	// the surface. Double-buffered state like the scale: it applies at
@@ -543,6 +562,16 @@ type surfaceHandle interface {
 type wireSurface struct {
 	wl   *wl.Surface
 	comp *wl.Compositor
+	sess *wlsession.Session
+}
+
+// BlurAvailable implements surfaceHandle.
+func (s wireSurface) BlurAvailable() bool { return s.sess.BlurAvailable() }
+
+// SetBlurRegion implements surfaceHandle through the session's
+// ext_background_effect_v1.
+func (s wireSurface) SetBlurRegion(rects []render.Rect) error {
+	return s.sess.SetBlurRegion(s.wl, rects)
 }
 
 // Attach implements surfaceHandle.
@@ -644,6 +673,56 @@ func (w *hostWindow) syncOpaque(bw, bh int) {
 	debug.Log("frame", "opaque region %dx%d less %d holes", bw, bh, len(holes))
 }
 
+// syncBlur publishes the compositor blur region: the style root's
+// border box in its rounded shape (render.RoundedRectRegion), while the
+// window asks for blur and the compositor offers it; nothing
+// otherwise. It goes out only when the shape changes. While blur is
+// asked for but not in effect the root carries css.BlurUnavailable,
+// so its style can turn opaque rather than show the unblurred desktop.
+// It runs before the damage drain, so a class flip repaints this frame.
+func (w *hostWindow) syncBlur() {
+	if !w.cfg.blur && !w.blurSet && !w.blurFallback {
+		return
+	}
+	root := w.styleRoot
+	if root == nil {
+		root = w.router.Root
+	}
+	var shape []render.Rect
+	active := w.cfg.blur && w.surf.BlurAvailable()
+	if active {
+		if bs, ok := root.(widget.Boundser); ok {
+			shape = render.RoundedRectRegion(bs.Bounds(), widget.CornerRadii(root))
+		}
+	}
+	if fallback := w.cfg.blur && !active; fallback != w.blurFallback {
+		if c, ok := root.(interface {
+			AddClass(...string)
+			RemoveClass(...string)
+		}); ok {
+			if fallback {
+				c.AddClass(css.BlurUnavailable)
+			} else {
+				c.RemoveClass(css.BlurUnavailable)
+			}
+		}
+		w.blurFallback = fallback
+	}
+	if slices.Equal(shape, w.blurSent) && (w.blurSet || shape == nil) {
+		return
+	}
+	if err := w.surf.SetBlurRegion(shape); err != nil {
+		debug.Log("frame", "blur region: %v", err)
+		return
+	}
+	w.blurSent, w.blurSet = slices.Clone(shape), true
+	debug.Log("frame", "blur region: %d rects", len(shape))
+}
+
+// blurActive reports whether the compositor blurs behind the window:
+// a region is out and non-empty.
+func (w *hostWindow) blurActive() bool { return w.blurSet && len(w.blurSent) > 0 }
+
 // draw paints one frame: resize check, acquire, cached measure, arrange,
 // damage collection, region-clipped paint, commit, and frame-callback
 // arming. It reports whether the loop may continue; drawErr carries the
@@ -687,6 +766,7 @@ func (w *hostWindow) draw() bool {
 	// the size and the GPUArea holes this layout placed, and goes out
 	// when either changed, before the commit that applies it.
 	w.syncOpaque(bw, bh)
+	w.syncBlur()
 
 	// Drain invalidations into the pending region. The pending list
 	// survives busy retries (the flags are already drained) and is what

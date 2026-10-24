@@ -1,12 +1,16 @@
 // Command lys-ui-glass shows the theme's glass surfaces over busy,
 // moving content: a sidebar, a floating card and a bottom bar carry the
 // .glass class over a striped backdrop whose bands keep sliding, so
-// the backdrop blur re-samples every frame. t toggles light and dark,
+// the backdrop blur re-samples every frame. w opens a translucent
+// window that asks the compositor to blur the desktop behind it
+// (ext_background_effect_v1; opaque where no compositor blur is in
+// effect; -blur-window opens it at startup), t toggles light and dark,
 // Escape closes.
 package main
 
 import (
 	"errors"
+	"flag"
 	"fmt"
 	"log"
 	"os"
@@ -21,7 +25,9 @@ import (
 )
 
 func main() {
-	err := run()
+	blurWindow := flag.Bool("blur-window", false, "open the compositor-blurred window at startup")
+	flag.Parse()
+	err := run(*blurWindow)
 	switch {
 	case err == nil, errors.Is(err, app.ErrClosed):
 	case errors.Is(err, app.ErrDisconnected):
@@ -35,7 +41,7 @@ func main() {
 // advances, so the glass above has something moving to blur.
 const stripes = `.stripes { background-image: repeating-linear-gradient(%ddeg, #e05561 0px, #e05561 18px, #3fb68b 18px, #3fb68b 36px, #4f7cff 36px, #4f7cff 54px, #f0c040 54px, #f0c040 72px); }`
 
-func run() error {
+func run(blurWindow bool) error {
 	sess, err := app.Connect()
 	if err != nil {
 		return err
@@ -91,6 +97,10 @@ func run() error {
 			switch application.KeySym(code) {
 			case xkb.KeyEscape:
 				application.Quit()
+			case xkb.Keysym('w'):
+				if err := openBlurred(application, face); err != nil {
+					log.Printf("blurred window: %v", err)
+				}
 			case xkb.Keysym('t'):
 				if widget.Current().IsDark() {
 					widget.SetTheme(widget.LightTheme())
@@ -103,5 +113,41 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	if blurWindow {
+		if err := openBlurred(application, face); err != nil {
+			return err
+		}
+	}
 	return application.Run()
+}
+
+// openBlurred opens a translucent .glass window that asks the
+// compositor to blur the desktop behind it, and says whether it does.
+func openBlurred(application *app.Application, face render.Font) error {
+	root := widget.NewBox(widget.Column, 8, 24)
+	root.AddClass(css.Glass)
+	status := widget.NewLabel(face, 14, "", 0)
+	root.Append(widget.NewLabel(face, 18, "Compositor blur", 0), false).Append(status, false)
+	stop := func() {}
+	w, err := application.NewWindow(app.WindowConfig{
+		Title:          "lys-ui glass - compositor blur",
+		AppID:          "dev.stubbe.lys.ui.glass",
+		Width:          420,
+		Height:         220,
+		Root:           root,
+		Background:     render.RGBA(0, 0, 0, 0),
+		BackgroundBlur: true,
+		OnClosed:       func() { stop() },
+	})
+	if err != nil {
+		return err
+	}
+	stop = application.Every(500*time.Millisecond, func() {
+		if w.BackgroundBlurActive() {
+			status.SetText("the compositor blurs the desktop behind this window")
+		} else {
+			status.SetText("no compositor blur here: the window stays opaque")
+		}
+	})
+	return nil
 }

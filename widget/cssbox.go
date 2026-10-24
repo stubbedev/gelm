@@ -174,6 +174,16 @@ func FocusRingRect(w Widget) render.Rect {
 	return render.UniformInsets(FocusRingWidth).Grow(b)
 }
 
+// CornerRadii is w's border-box corner rounding as its stylesheet sets
+// it: the shape a focus ring or a compositor blur region follows.
+// Unstyled corners are square.
+func CornerRadii(w Widget) render.Corners {
+	if n := nodeOf(w); n != nil {
+		return radiusOr(n.style(w), 0)
+	}
+	return render.Corners{}
+}
+
 // PaintFocusRing draws the keyboard focus ring around w: FocusRingWidth
 // wide outside its border box, following its corner radii, in the
 // theme's ring color at focusRingAlpha.
@@ -182,10 +192,7 @@ func PaintFocusRing(cv *render.Canvas, w Widget) {
 	if r.Empty() {
 		return
 	}
-	var radii render.Corners
-	if n := nodeOf(w); n != nil {
-		radii = radiusOr(n.style(w), 0)
-	}
+	radii := CornerRadii(w)
 	outer := render.Corners{
 		TopLeft: radii.TopLeft + FocusRingWidth, TopRight: radii.TopRight + FocusRingWidth,
 		BottomRight: radii.BottomRight + FocusRingWidth, BottomLeft: radii.BottomLeft + FocusRingWidth,

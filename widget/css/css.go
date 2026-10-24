@@ -38,6 +38,10 @@ const (
 	// Glass is clear glass: a translucent surface over a blurred,
 	// saturated backdrop.
 	Glass = "glass"
+	// BlurUnavailable marks a window's root that asked the compositor
+	// to blur behind it while no blur is in effect, so its style can
+	// turn opaque instead of showing the unblurred desktop.
+	BlurUnavailable = "blur-unavailable"
 	// Heading is bold body text.
 	Heading = "heading"
 	// Keycap draws a label as a key on a keyboard (a shortcut's keys).

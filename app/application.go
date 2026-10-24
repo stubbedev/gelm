@@ -353,6 +353,12 @@ type WindowConfig struct {
 	// player, a game) so the compositor may tune for it; ignored where
 	// the compositor lacks wp_content_type_v1.
 	ContentType ContentType
+	// BackgroundBlur asks the compositor to blur what is behind the
+	// window, in Root's rounded shape, through ext_background_effect_v1
+	// - pair it with a translucent Background and a translucent root
+	// (the .glass class). Where no blur is in effect the root carries
+	// the blur-unavailable class, which turns .glass opaque.
+	BackgroundBlur bool
 	// Parent, when set, makes the window transient for it from the
 	// first commit (SetTransientFor): a toolbox above its owner.
 	Parent *Window
@@ -424,8 +430,9 @@ type LayerConfig struct {
 	// Opaque forces the opaque region even though Background is
 	// translucent; see app.Config.Opaque.
 	Opaque bool
-	// ContentType mirrors WindowConfig.
-	ContentType ContentType
+	// ContentType and BackgroundBlur mirror WindowConfig.
+	ContentType    ContentType
+	BackgroundBlur bool
 	// OnPress, OnPointerMove, OnResize, OnKey, KeyCapture mirror
 	// WindowConfig.
 	OnPress       func(button uint32, over widget.Widget)
@@ -487,6 +494,7 @@ func (a *Application) openWindow(w *Window, cfg WindowConfig) (*hostWindow, erro
 		onResize:   cfg.OnResize,
 		onKey:      cfg.OnKey,
 		keyCapture: cfg.KeyCapture,
+		blur:       cfg.BackgroundBlur,
 	}, cfg.OnClosed, w.kind)
 	hw.win = w
 	if cfg.Parent != nil {
@@ -553,6 +561,7 @@ func (a *Application) openLayer(l *LayerWindow, cfg LayerConfig) (*hostWindow, e
 		onResize:   cfg.OnResize,
 		onKey:      cfg.OnKey,
 		keyCapture: cfg.KeyCapture,
+		blur:       cfg.BackgroundBlur,
 	}, cfg.OnClosed, surfx.KindOverlay)
 	hw.layer = l
 	// A rotated output's transform must be published before the first

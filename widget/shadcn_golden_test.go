@@ -102,3 +102,19 @@ func TestGoldenGlass(t *testing.T) {
 		})
 	}
 }
+
+// A .glass window root whose compositor blur is not in effect turns
+// opaque: the card color instead of the translucent glass (#196).
+func TestGlassBlurUnavailableIsOpaque(t *testing.T) {
+	SetTheme(DarkTheme())
+	defer SetTheme(nil)
+	glass := NewBox(Column, 0, 0)
+	glass.AddClass(css.Glass)
+	if v := glass.style(glass); v.Background == Current().CardColor() {
+		t.Fatal("plain .glass is already opaque; the test proves nothing")
+	}
+	glass.AddClass(css.BlurUnavailable)
+	if v := glass.style(glass); v.Background != Current().CardColor() {
+		t.Errorf("fallback background %08x, want the opaque card color %08x", uint32(v.Background), uint32(Current().CardColor()))
+	}
+}

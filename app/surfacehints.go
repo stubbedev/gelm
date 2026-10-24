@@ -48,6 +48,23 @@ func (w *Window) SetOpacity(alpha float64) error {
 	return err
 }
 
+// SetBackgroundBlur turns the compositor blur behind the window on or
+// off (WindowConfig.BackgroundBlur); it applies with the next frame.
+func (w *Window) SetBackgroundBlur(on bool) {
+	w.cfg.BackgroundBlur = on
+	if hw := w.app.hostWindowOf(w); hw != nil {
+		hw.cfg.blur = on
+		hw.dirty = true
+	}
+}
+
+// BackgroundBlurActive reports whether the compositor blurs behind the
+// window now: asked for, offered, and its region sent.
+func (w *Window) BackgroundBlurActive() bool {
+	hw := w.app.hostWindowOf(w)
+	return hw != nil && hw.blurActive()
+}
+
 // Capabilities reports the compositor's window-management offer.
 func (w *Window) Capabilities() WMCapabilities { return w.win.Capabilities() }
 
@@ -75,6 +92,31 @@ func (l *LayerWindow) SetOpacity(alpha float64) error {
 	l.requestFrame()
 	return err
 }
+
+// SetBackgroundBlur turns the compositor blur behind the layer surface
+// on or off (LayerConfig.BackgroundBlur); it applies with the next
+// frame.
+func (l *LayerWindow) SetBackgroundBlur(on bool) {
+	l.cfg.BackgroundBlur = on
+	if hw := l.app.hostWindowOf(l); hw != nil {
+		hw.cfg.blur = on
+		hw.dirty = true
+	}
+}
+
+// BackgroundBlurActive reports whether the compositor blurs behind the
+// layer surface now.
+func (l *LayerWindow) BackgroundBlurActive() bool {
+	hw := l.app.hostWindowOf(l)
+	return hw != nil && hw.blurActive()
+}
+
+// BackgroundBlurAvailable reports whether the compositor offers
+// background blur (ext_background_effect_v1 with its blur capability):
+// what an app checks to pick a translucent or an opaque style.
+// Hyprland has no client protocol for it; its users' window and layer
+// rules decide instead.
+func (a *Application) BackgroundBlurAvailable() bool { return a.sess.BlurAvailable() }
 
 // requestFrame marks the layer surface for a frame.
 func (l *LayerWindow) requestFrame() {

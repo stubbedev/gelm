@@ -39,6 +39,17 @@ type fakeSurface struct {
 	opaque []render.Rect
 	// holes records each SetOpaqueRegion's cut-outs, call by call.
 	holes [][]render.Rect
+	// blurOffered is what BlurAvailable reports; blur records each
+	// SetBlurRegion call's rects (nil: the effect removed).
+	blurOffered bool
+	blur        [][]render.Rect
+}
+
+func (f *fakeSurface) BlurAvailable() bool { return f.blurOffered }
+
+func (f *fakeSurface) SetBlurRegion(rects []render.Rect) error {
+	f.blur = append(f.blur, rects)
+	return nil
 }
 
 func (f *fakeSurface) Attach(*buffer.Buffer) error { f.attaches++; return nil }

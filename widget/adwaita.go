@@ -126,6 +126,7 @@ var classRules = [][2]string{
 	{css.Pill, "border-radius: 9999px; padding: 10px 32px;"},
 	{css.Circular, "border-radius: 9999px;"},
 	{css.Glass, "background-color: alpha(@card_bg_color, 0.55); backdrop-filter: blur(16px) saturate(1.5); border: 1px solid alpha(@window_fg_color, 0.12); border-radius: 12px; box-shadow: 0px 8px 24px alpha(black, 0.18);"},
+	{css.Glass + "." + css.BlurUnavailable, "background-color: @card_bg_color;"},
 	{css.Card, "background-color: @card_bg_color; color: @card_fg_color; border: 1px solid @borders; border-radius: 12px; box-shadow: 0px 1px 2px alpha(black, 0.05);"},
 	{css.BoxedList, "background-color: @card_bg_color; border-radius: 12px;"},
 	{css.OSD, "background-color: #000000b3; color: #ffffff;"},
