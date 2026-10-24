@@ -23,7 +23,7 @@ func casSheet(f *confFixture, css string, priority int) {
 // casFace reports whether family resolves to a face at weight 400.
 func casFace(family string) func(*confFixture) any {
 	return func(*confFixture) any {
-		_, ok := resolveFace(family, 400)
+		_, ok := resolveFace(family, 400, nil)
 		return ok
 	}
 }

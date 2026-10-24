@@ -160,10 +160,10 @@ func TestFontFaceRoundTrip(t *testing.T) {
 		t.Fatalf("load: %v", err)
 	}
 	t.Cleanup(s.Remove)
-	if face, ok := resolveFace("App Font", 400); !ok || face == nil {
+	if face, ok := resolveFace("App Font", 400, nil); !ok || face == nil {
 		t.Fatal("the @font-face family resolves after load")
 	}
-	if _, ok := resolveFace("No Such Family", 400); ok {
+	if _, ok := resolveFace("No Such Family", 400, nil); ok {
 		t.Error("an unknown family still declines")
 	}
 

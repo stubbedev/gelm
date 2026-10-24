@@ -113,8 +113,11 @@ func TestGoldenCSSFontWeight(t *testing.T) {
 	lbl := NewLabel(face, 20, "אבג home", render.RGB(0xff, 0xff, 0xff))
 	loadCSS(t, `label { font-weight: bold; }`)
 	NewGolden(t, lbl, "css-label-font-weight")
-	if len(*resolverCalls) == 0 || (*resolverCalls)[0] != "/700" {
-		t.Errorf("resolver calls = %v, want /700", *resolverCalls)
+	// No font-family in the cascade: the weight applies to the label's
+	// own family, never to an empty one the resolver would answer with
+	// its default face.
+	if want := face.Family() + "/700"; len(*resolverCalls) == 0 || (*resolverCalls)[0] != want {
+		t.Errorf("resolver calls = %v, want %s", *resolverCalls, want)
 	}
 }
 

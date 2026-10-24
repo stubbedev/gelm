@@ -271,7 +271,7 @@ func (l *Label) effStyleIn(v *style.Values) (render.Font, float64) {
 		if v.Has(style.PropFontFamily) {
 			family = v.FontFamily
 		}
-		if f, ok := resolveFace(family, weight); ok {
+		if f, ok := resolveFace(family, weight, l.face); ok {
 			face, weight = f, 0 // the resolver served the weight
 		}
 	}
@@ -770,7 +770,7 @@ func (l *Label) drawFirstLetter(cv *render.Canvas, fl *style.Values, tp textPain
 		if fl.Has(style.PropFontWeight) {
 			weight = fl.FontWeight
 		}
-		if f, ok := resolveFace(family, weight); ok {
+		if f, ok := resolveFace(family, weight, tp.face); ok {
 			fFace = f
 		}
 	}

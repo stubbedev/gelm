@@ -660,8 +660,14 @@ func SetFaceResolver(f func(family string, weight int) (render.Font, bool)) {
 
 // resolveFace consults the @font-face registry first, then the
 // installed resolver; ok is false when the registry has no match and
-// no resolver is installed or it declines the family.
-func resolveFace(family string, weight int) (render.Font, bool) {
+// no resolver is installed or it declines the family. An empty family
+// (a font-weight with no font-family in the cascade) is base's own:
+// the weight applies to the face the widget already shapes with, never
+// to the resolver's idea of no family.
+func resolveFace(family string, weight int, base render.Font) (render.Font, bool) {
+	if family == "" {
+		family = fontFamilyOf(base)
+	}
 	if f := fontFaceOf(family, weight); f != nil {
 		return f, true
 	}
@@ -669,6 +675,20 @@ func resolveFace(family string, weight int) (render.Font, bool) {
 		return (*f)(family, weight)
 	}
 	return nil, false
+}
+
+// fontFamilyOf is the family f shapes with: a typeface's own, a
+// fallback chain's primary's; "" for anything else.
+func fontFamilyOf(f render.Font) string {
+	switch f := f.(type) {
+	case *render.Typeface:
+		return f.Family()
+	case *render.Chain:
+		if p := f.Primary(); p != nil {
+			return p.Family()
+		}
+	}
+	return ""
 }
 
 // fontFaceEntry is one loaded @font-face: the family it serves, its
