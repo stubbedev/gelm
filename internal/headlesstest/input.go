@@ -200,7 +200,23 @@ func (v *VirtualInput) ScrollAt(x, y int, dy float64) error {
 	if err := v.MoveTo(x, y); err != nil {
 		return err
 	}
-	if err := v.dev.Axis(0, dy); err != nil {
+	if err := v.dev.Axis(vinput.SourceWheel, vinput.AxisVertical, dy); err != nil {
+		return err
+	}
+	v.settle()
+	return nil
+}
+
+// FingerScrollAt scrolls by dy at (x, y) as a touchpad does: finger
+// frames carrying dy, then the frame that lifts the fingers.
+func (v *VirtualInput) FingerScrollAt(x, y int, dy float64) error {
+	if err := v.MoveTo(x, y); err != nil {
+		return err
+	}
+	if err := v.dev.Axis(vinput.SourceFinger, vinput.AxisVertical, dy); err != nil {
+		return err
+	}
+	if err := v.dev.AxisStop(vinput.SourceFinger, vinput.AxisVertical); err != nil {
 		return err
 	}
 	v.settle()

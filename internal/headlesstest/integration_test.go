@@ -339,6 +339,37 @@ func TestHeadlessClicksOnShowcaseControls(t *testing.T) {
 	}
 }
 
+// TestHeadlessFingerScroll sends a touchpad scroll through the virtual
+// pointer - the finger source with the motion, then the stop - and
+// asserts the client saw a precise scroll and its end.
+func TestHeadlessFingerScroll(t *testing.T) {
+	requireEnv(t)
+	_, w, centers := startShowcase(t)
+	in := newInput(t)
+	at, ok := centers["scroll"]
+	if !ok {
+		t.Fatal("no traced center for the list")
+	}
+	for attempt := range 3 {
+		if err := in.MoveOnto(at[0], at[1]); err != nil {
+			t.Fatalf("move onto the list: %v", err)
+		}
+		if err := in.FingerScrollAt(at[0], at[1], 30); err != nil {
+			t.Fatalf("finger scroll: %v", err)
+		}
+		if _, err := w.Wait("input", "route precise scroll", attemptTimeout); err != nil {
+			if attempt == 2 {
+				t.Fatalf("a finger scroll never reached the client as a precise scroll: %v", err)
+			}
+			continue
+		}
+		if _, err := w.Wait("input", "route scroll end", attemptTimeout); err != nil {
+			t.Fatalf("the finger lift never reached the client as a scroll end: %v", err)
+		}
+		return
+	}
+}
+
 // TestHeadlessPopupGrabOpenAndDismiss covers the context menu: open on
 // right-click, dismiss by outside click (the popup grab), dismiss by
 // Escape, and keyboard activation through the grab.

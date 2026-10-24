@@ -857,6 +857,7 @@ func (in *surfaceInput) HandlePointerScrollPixels(dx, dy float64) {
 	if in.dropInput() {
 		return
 	}
+	debug.Log("input", "route precise scroll (%.1f,%.1f)", dx, dy)
 	in.router.AxisPixels(dx, dy)
 	in.request()
 }
@@ -867,6 +868,7 @@ func (in *surfaceInput) HandlePointerScrollEnd() {
 	if in.dropInput() {
 		return
 	}
+	debug.Log("input", "route scroll end")
 	in.router.AxisEnd()
 	in.request()
 }
