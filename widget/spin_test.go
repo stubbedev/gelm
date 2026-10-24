@@ -139,3 +139,18 @@ func TestSpinButtonStepAndDigitsChange(t *testing.T) {
 		t.Errorf("fired %v, want only the two steps", *fired)
 	}
 }
+
+// A spin button is wide enough for its widest value beside its
+// steppers, and follows its range and digits.
+func TestSpinButtonFitsItsRange(t *testing.T) {
+	face := goldenFace(t)
+	s := NewSpinButton(face, 14, 0, 0, 23, 1, 0)
+	if min, max := s.WidthChars(); min != 2 || max != 2 {
+		t.Errorf("0-23 sizes for %d-%d chars, want 2", min, max)
+	}
+	s.SetRange(-1000, 5)
+	s.SetDigits(2)
+	if min, _ := s.WidthChars(); min != len("-1000.00") {
+		t.Errorf("-1000 at two decimals sizes for %d chars, want %d", min, len("-1000.00"))
+	}
+}

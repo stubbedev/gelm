@@ -39,6 +39,7 @@ func NewSpinButton(face render.Font, sizePx float64, color render.Color, min, ma
 	s.SetElement("spinbutton")
 	s.value = s.clamp(min)
 	s.SetText(s.format(s.value))
+	s.fitRange()
 	s.OnActivate = func(string) { s.commit() }
 	s.setSlots(nil, nil, newSpinSteppers(sizePx), s.stepperClick)
 	s.SetOnFocusChanged(func(focused bool) {
@@ -50,6 +51,14 @@ func NewSpinButton(face render.Font, sizePx float64, color render.Color, min, ma
 }
 
 func max0(n int) int { return max(n, 0) }
+
+// fitRange sizes the field to its widest value, the formatted minimum
+// or maximum, as GtkSpinButton does: the value always shows beside the
+// steppers.
+func (s *SpinButton) fitRange() {
+	n := max(len([]rune(s.format(s.min))), len([]rune(s.format(s.max))))
+	s.SetWidthChars(n, n)
+}
 
 // Value reports the committed value.
 func (s *SpinButton) Value() float64 { return s.value }
@@ -68,6 +77,7 @@ func (s *SpinButton) SetValue(v float64) {
 // SetValue).
 func (s *SpinButton) SetRange(min, max float64) {
 	s.min, s.max = min, max
+	s.fitRange()
 	s.SetValue(s.value)
 }
 
@@ -174,5 +184,6 @@ func (s *SpinButton) SetStep(step float64) {
 // (silently, like SetValue).
 func (s *SpinButton) SetDigits(digits int) {
 	s.digits = max0(digits)
+	s.fitRange()
 	s.SetValue(s.value)
 }
