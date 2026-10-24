@@ -36,10 +36,12 @@ func TestPlacementForARect(t *testing.T) {
 		adjust          uint32
 		offsetX, offset int32
 	}{
-		{GravityBottom, xdg.PositionerAnchorBottomLeft, xdg.PositionerGravityBottomRight, flipY, -g, -g},
-		{GravityTop, xdg.PositionerAnchorTopLeft, xdg.PositionerGravityTopRight, flipY, -g, g},
-		{GravityRight, xdg.PositionerAnchorTopRight, xdg.PositionerGravityBottomRight, flipX, -g, -g},
-		{GravityLeft, xdg.PositionerAnchorTopLeft, xdg.PositionerGravityBottomLeft, flipX, g, -g},
+		// Centered on the anchor across the opening axis, as GtkPopover
+		// places itself; the gutter offset only on the opening axis.
+		{GravityBottom, xdg.PositionerAnchorBottom, xdg.PositionerGravityBottom, flipY, 0, -g},
+		{GravityTop, xdg.PositionerAnchorTop, xdg.PositionerGravityTop, flipY, 0, g},
+		{GravityRight, xdg.PositionerAnchorRight, xdg.PositionerGravityRight, flipX, -g, 0},
+		{GravityLeft, xdg.PositionerAnchorLeft, xdg.PositionerGravityLeft, flipX, g, 0},
 	} {
 		p := placementFor(Config{AnchorRect: rect, Gravity: tc.gravity, Gutter: g, X: 999, Y: 999})
 		want := placement{rect: rect, anchor: tc.anchor, gravity: tc.grow, adjust: tc.adjust, offsetX: tc.offsetX, offsetY: tc.offset}

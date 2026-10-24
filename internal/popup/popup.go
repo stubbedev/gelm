@@ -101,8 +101,9 @@ type Config struct {
 	X, Y int
 	// AnchorRect, when non-empty, anchors the popup to a widget's rect
 	// (parent surface coordinates) instead of the X, Y point: it opens on
-	// the Gravity side, edge-aligned, and the compositor flips it to the
-	// opposite side or slides it along when it would leave the output.
+	// the Gravity side, centered on the rect across it, and the
+	// compositor flips it to the opposite side or slides it along when
+	// it would leave the output.
 	// Popovers anchor this way; menus and tooltips use the point.
 	AnchorRect render.Rect
 	// Width, Height is the popup's size in surface pixels.
