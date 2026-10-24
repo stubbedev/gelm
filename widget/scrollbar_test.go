@@ -75,8 +75,9 @@ func TestScrollbar(t *testing.T) {
 
 // TestGoldenScrollbar pins the standalone bar beside its scroll.
 func TestGoldenScrollbar(t *testing.T) {
-	th := DarkTheme()
-	s, _, row := scrolledColumn()
-	s.SetOffset(0, 150)
-	NewGolden(t, row, "scrollbar", goldenTheme(th), goldenFrame(108, 100))
+	for _, shot := range bothPalettes("scrollbar") {
+		s, _, row := scrolledColumn()
+		s.SetOffset(0, 150)
+		NewGolden(t, row, shot.name, goldenTheme(shot.th), goldenFrame(108, 100))
+	}
 }

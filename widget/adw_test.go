@@ -70,7 +70,8 @@ func TestButtonContent(t *testing.T) {
 	}
 }
 
-// TestAvatar pins the initials and the stable per-name color.
+// TestAvatar pins the initials and the fallback fill the avatar rule
+// restyles.
 func TestAvatar(t *testing.T) {
 	face := adaptiveFace(t)
 	cases := map[string]string{
@@ -85,9 +86,14 @@ func TestAvatar(t *testing.T) {
 			t.Errorf("Initials(%q) = %q, want %q", name, got, want)
 		}
 	}
-	a, b := NewAvatar(face, 48, "Ada Lovelace"), NewAvatar(face, 48, "Ada Lovelace")
-	if a.Color() != b.Color() {
-		t.Error("one name, two colors")
+	a := NewAvatar(face, 48, "Ada Lovelace")
+	center := func() Color { return pxAt(paintPixels(t, a, 48, 48), 48, 24, 4) }
+	if got := center(); got != Current().MutedColor() {
+		t.Errorf("fallback fill %v, want the muted fill", got)
+	}
+	loadCSS(t, `avatar { background-color: #102030; }`)
+	if got := center(); got != render.RGB(0x10, 0x20, 0x30) {
+		t.Errorf("styled fallback fill %v, want the avatar rule", got)
 	}
 }
 
@@ -256,6 +262,7 @@ func TestGoldenAdw(t *testing.T) {
 	img.SetImage(pic)
 	row.Append(img, false)
 	NewGolden(t, row, "avatars", goldenTheme(th))
+	NewGolden(t, NewAvatar(face, 48, "Ada Lovelace"), "avatar-light", goldenTheme(LightTheme()))
 
 	NewGolden(t, NewStatusPage(face, "", "No results", "Try a different search term or clear the filters."), "statuspage", goldenTheme(th), goldenFrame(320, 220))
 

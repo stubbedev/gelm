@@ -52,6 +52,18 @@ type goldenShot struct {
 	afterArrange func()
 }
 
+// paletteShot is one palette's shot of a golden: its name and theme.
+type paletteShot struct {
+	name string
+	th   *Theme
+}
+
+// bothPalettes is name's shots in the two palettes: name in the dark
+// one, name-light in the light one.
+func bothPalettes(name string) [2]paletteShot {
+	return [2]paletteShot{{name, DarkTheme()}, {name + "-light", LightTheme()}}
+}
+
 // goldenOption mutates one shot's configuration.
 type goldenOption func(*goldenShot)
 
@@ -306,20 +318,22 @@ func TestGoldenCheckbox(t *testing.T) {
 
 func TestGoldenScrollBars(t *testing.T) {
 	face := goldenFace(t)
-	th := DarkTheme()
-	content := NewBox(Column, 6, 12)
-	for line := range strings.SplitSeq(
-		"Scrolling content taller and wider than its viewport draws the auto-hiding bars",
-		" ") {
-		content.Append(NewLabel(face, 14, line, th.Text), false)
+	for _, shot := range bothPalettes("scroll-bars") {
+		th := shot.th
+		content := NewBox(Column, 6, 12)
+		for line := range strings.SplitSeq(
+			"Scrolling content taller and wider than its viewport draws the auto-hiding bars",
+			" ") {
+			content.Append(NewLabel(face, 14, line, th.Text), false)
+		}
+		content.Append(NewLabel(face, 14, "a-very-long-unbreakable-token-that-overflows-the-viewport", th.Text), false)
+		sc := NewScroll(content)
+		sc.ShowBars = true
+		NewGolden(t, sc, shot.name, goldenTheme(th), goldenFrame(180, 120), goldenAfterArrange(func() {
+			sc.SetHovered(true) // hold the bars visible: the dwell would fade them mid-shot
+			sc.SetOffset(0, 24)
+		}))
 	}
-	content.Append(NewLabel(face, 14, "a-very-long-unbreakable-token-that-overflows-the-viewport", th.Text), false)
-	sc := NewScroll(content)
-	sc.ShowBars = true
-	NewGolden(t, sc, "scroll-bars", goldenFrame(180, 120), goldenAfterArrange(func() {
-		sc.SetHovered(true) // hold the bars visible: the dwell would fade them mid-shot
-		sc.SetOffset(0, 24)
-	}))
 }
 
 func TestGoldenMenuHover(t *testing.T) {

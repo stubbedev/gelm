@@ -1,13 +1,13 @@
 package widget
 
 import (
-	"hash/fnv"
 	"image"
 	"strings"
 	"time"
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/stubbedev/lys-ui/internal/style"
 	"github.com/stubbedev/lys-ui/render"
 )
 
@@ -291,9 +291,10 @@ func (b *Banner) SetRevealed(on bool) { b.reveal.SetRevealed(on) }
 // Revealed reports whether the banner is showing.
 func (b *Banner) Revealed() bool { return b.reveal.Revealed() }
 
-// Avatar is the round portrait (adw Avatar): an image cropped to a
-// circle, or the name's initials on a color picked from the name, so
-// one person keeps one color everywhere.
+// Avatar is the round portrait (shadcn/ui's Avatar): an image cropped
+// to a circle, or the fallback of the name's initials on the muted
+// fill. It styles as the `avatar` element: background-color is the
+// fallback's fill and color its initials.
 type Avatar struct {
 	node
 	face render.Font
@@ -302,17 +303,11 @@ type Avatar struct {
 	img  image.Image
 }
 
-// avatarColors is the initials palette, picked by name hash.
-var avatarColors = []Color{
-	render.RGB(0x83, 0xb6, 0xec), render.RGB(0x7a, 0xd9, 0xbe),
-	render.RGB(0xf6, 0xd3, 0x2d), render.RGB(0xff, 0xa3, 0x48),
-	render.RGB(0xf6, 0x61, 0x51), render.RGB(0xdc, 0x8a, 0xdd),
-	render.RGB(0xcd, 0xab, 0x8f), render.RGB(0x9a, 0x99, 0x96),
-}
-
 // NewAvatar returns a size-pixel avatar for name.
 func NewAvatar(face render.Font, size int, name string) *Avatar {
-	return &Avatar{face: requireFace("widget.NewAvatar", face), size: size, name: name}
+	a := &Avatar{face: requireFace("widget.NewAvatar", face), size: size, name: name}
+	a.SetElement("avatar")
+	return a
 }
 
 // SetImage shows img instead of the initials; nil returns to them.
@@ -321,7 +316,7 @@ func (a *Avatar) SetImage(img image.Image) {
 	a.Invalidate()
 }
 
-// SetName changes the name (initials and color follow).
+// SetName changes the name and so the initials.
 func (a *Avatar) SetName(name string) {
 	a.name = name
 	a.Invalidate()
@@ -343,13 +338,6 @@ func (a *Avatar) Initials() string {
 	return out
 }
 
-// Color is the initials background for the current name.
-func (a *Avatar) Color() Color {
-	h := fnv.New32a()
-	_, _ = h.Write([]byte(a.name))
-	return avatarColors[h.Sum32()%uint32(len(avatarColors))]
-}
-
 // Measure wants the avatar's square.
 func (a *Avatar) Measure(con Constraints) Size {
 	return clampSize(Size{W: a.size, H: a.size}, con)
@@ -358,7 +346,7 @@ func (a *Avatar) Measure(con Constraints) Size {
 // Arrange records the rect.
 func (a *Avatar) Arrange(r render.Rect) { a.node.Arrange(r) }
 
-// Paint draws the cropped image or the colored disc with initials.
+// Paint draws the cropped image or the fallback disc with initials.
 func (a *Avatar) Paint(cv *render.Canvas) {
 	d := min(a.bounds.W, a.bounds.H)
 	r := render.Rect{X: a.bounds.X + (a.bounds.W-d)/2, Y: a.bounds.Y + (a.bounds.H-d)/2, W: d, H: d}
@@ -366,8 +354,9 @@ func (a *Avatar) Paint(cv *render.Canvas) {
 		cv.DrawImageCover(a.img, r, render.UniformCorners(d/2))
 		return
 	}
-	cv.RoundedRect(r, d/2, a.Color())
-	a.face.DrawAligned(cv, a.Initials(), r, float64(d)*0.4, render.RGBA(0, 0, 0, 0xb3), render.AlignCenter)
+	v, th := a.style(a), Current()
+	cv.RoundedRect(r, d/2, pickc(0, v, style.PropBackgroundColor, th.MutedColor()))
+	a.face.DrawAligned(cv, a.Initials(), r, float64(d)*0.4, pickc(0, v, style.PropColor, th.Text), render.AlignCenter)
 }
 
 // HitTest resolves inside the bounds.
