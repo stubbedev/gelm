@@ -139,6 +139,11 @@ demo-headless GOELM_DEBUG="input,frame": test-env test-build
         echo "demo died:"; cat "$dir/demo.log"; exit 1
     fi
 
+# Run the glass demo: the theme's glass surfaces over a moving
+# backdrop; t toggles light and dark, Escape quits.
+glass:
+    go run ./cmd/lys-ui-glass
+
 # Run the application-model demo (lys-ui-multi): per-output bars,
 # on-demand windows, close-request veto, Escape quits.
 multi:

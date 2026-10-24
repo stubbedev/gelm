@@ -79,3 +79,26 @@ func TestGoldenUIFont(t *testing.T) {
 	col.Append(NewLabel(mono, 14, "Geist Mono: func main() {}", 0), false)
 	NewGolden(t, col, "ui-font")
 }
+
+// .glass over a busy backdrop, in both palettes: the stripes under the
+// card blur and saturate inside its rounded shape and stay sharp
+// around it (#195).
+func TestGoldenGlass(t *testing.T) {
+	face := goldenFace(t)
+	for _, tc := range []struct {
+		name string
+		th   *Theme
+	}{{"dark", DarkTheme()}, {"light", LightTheme()}} {
+		t.Run(tc.name, func(t *testing.T) {
+			backdrop := NewBox(Column, 0, 0)
+			backdrop.AddClass("stripes")
+			card := NewBox(Column, 4, 16)
+			card.AddClass(css.Glass)
+			card.Append(NewLabel(face, 15, "Clear glass", 0), false).
+				Append(NewLabel(face, 13, "blurred, saturated backdrop", 0), false)
+			stage := NewOverlay().Append(backdrop).AppendAligned(card, AlignCenter, AlignCenter)
+			cssShot(t, `.stripes { background-image: repeating-linear-gradient(45deg, #e05561 0px, #e05561 10px, #3fb68b 10px, #3fb68b 20px, #4f7cff 20px, #4f7cff 30px); }`,
+				stage, "glass-"+tc.name, goldenTheme(tc.th), goldenFrame(260, 140))
+		})
+	}
+}

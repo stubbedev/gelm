@@ -35,6 +35,9 @@ const (
 	Error = "error"
 	// Flat removes a button's resting background.
 	Flat = "flat"
+	// Glass is clear glass: a translucent surface over a blurred,
+	// saturated backdrop.
+	Glass = "glass"
 	// Heading is bold body text.
 	Heading = "heading"
 	// Keycap draws a label as a key on a keyboard (a shortcut's keys).
