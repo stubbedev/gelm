@@ -7,6 +7,7 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"log"
 	"os"
 	"strings"
@@ -158,7 +159,39 @@ const galleryCSS = `
 .drop-zone { border: 1px dashed @borders; border-radius: 8px; padding: 48px; }
 .hovercard-content { min-width: 280px; padding: 16px; }
 .sidebar-demo { min-height: 360px; border: 1px solid @borders; border-radius: 8px; }
+.datatable-demo { min-height: 520px; }
 `
+
+// payment is one row of the data table section.
+type payment struct {
+	status, email string
+	amount        int
+}
+
+// dataTable is the Data Table section: a thousand payments, filtered by
+// email, sorted by amount, selectable, paged.
+func (g *gallery) dataTable() ui.Node {
+	statuses := []string{"success", "processing", "failed", "pending"}
+	rows := make(widget.SliceModel[payment], 1000)
+	for i := range rows {
+		rows[i] = payment{status: statuses[i%len(statuses)], email: fmt.Sprintf("user%d@example.com", i), amount: (i*7919)%1000 + 10}
+	}
+	face := g.env.Face
+	text := func(s string) widget.Widget { return widget.NewLabel(face, 14, s, 0) }
+	cols := []widget.TableColumn[payment]{
+		{Title: "Status", Width: 110, Cell: func(p payment) widget.Widget { return text(p.status) }},
+		{
+			Title: "Email", Width: 220, Expand: true, Cell: func(p payment) widget.Widget { return text(p.email) },
+			Sort: func(a, b payment) int { return strings.Compare(a.email, b.email) },
+		},
+		{
+			Title: "Amount", Width: 100, Cell: func(p payment) widget.Widget { return text(fmt.Sprintf("$%d.00", p.amount)) },
+			Sort: func(a, b payment) int { return a.amount - b.amount },
+		},
+	}
+	return ui.DataTable[payment](rows, cols, func(p payment, q string) bool { return strings.Contains(p.email, q) }).
+		Classes("datatable-demo")
+}
 
 // form is the Field and Form section: two required entries and a
 // switch, validated on blur and on submit.
@@ -239,6 +272,7 @@ func (g *gallery) Init(cx *component.Context[galleryMsg, struct{}]) widget.Widge
 			widget.MenuSeparator(),
 			widget.MenuItem{Label: "Show Bookmarks", Kind: widget.ItemCheck, Checked: true, OnClick: func() {}},
 		).Classes("drop-zone")),
+		section("Data Table", g.dataTable()),
 		section("Date Picker", g.datePickers()),
 		section("Empty", ui.StatusPage("", "No projects yet", "You haven't created any projects yet. Get started by creating your first project.").
 			Icon(ui.Symbol(widget.SymbolMaximize, 24)).

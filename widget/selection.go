@@ -150,6 +150,24 @@ func (s *selection) Select(i int) {
 	}
 }
 
+// SelectRows makes rows the multiple-mode selection (out-of-range
+// rows are dropped) and notifies; outside multiple mode it does
+// nothing.
+func (s *selection) SelectRows(rows ...int) {
+	if s.mode != SelectionMultiple {
+		return
+	}
+	n := s.host.count()
+	set := make(map[int]struct{}, len(rows))
+	for _, r := range rows {
+		if r >= 0 && r < n {
+			set[r] = struct{}{}
+		}
+	}
+	s.applyMulti(set)
+	s.notify()
+}
+
 // SelectAll selects every item. It is the ctrl+a target through
 // Router.SelectAll and does nothing outside multiple mode, where
 // "all" is not a representable selection.

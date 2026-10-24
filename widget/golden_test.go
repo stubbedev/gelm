@@ -24,8 +24,8 @@ import (
 	"time"
 
 	"github.com/stubbedev/lys-ui/anim"
-	"github.com/stubbedev/lys-ui/internal/style"
 	"github.com/stubbedev/lys-ui/internal/golden"
+	"github.com/stubbedev/lys-ui/internal/style"
 	"github.com/stubbedev/lys-ui/render"
 )
 

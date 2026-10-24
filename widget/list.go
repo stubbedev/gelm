@@ -470,7 +470,9 @@ func findCheckButton(w Widget) *CheckButton {
 func (l *List) Paint(cv *render.Canvas) {
 	th := Current()
 	prev := cv.PushClip(l.bounds)
-	cv.FillRect(l.bounds, th.Surface)
+	if bg := pickc(0, l.style(l), style.PropBackgroundColor, th.Surface); bg != 0 {
+		cv.FillRect(l.bounds, bg)
+	}
 
 	first, last := l.visible()
 	for i := first; i < last; i++ {

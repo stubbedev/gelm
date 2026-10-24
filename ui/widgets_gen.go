@@ -1646,6 +1646,18 @@ func (b *ColumnViewBuilder[T]) AddFilter(keep func(T) bool) *ColumnViewBuilder[T
 	return b
 }
 
+// Columns calls (*widget.ColumnView).SetColumns.
+func (b *ColumnViewBuilder[T]) Columns(cols []widget.TableColumn[T]) *ColumnViewBuilder[T] {
+	b.do(func(s *Scope, w *widget.ColumnView[T]) { w.SetColumns(cols) })
+	return b
+}
+
+// WatchColumns re-applies SetColumns with get's value after every update.
+func (b *ColumnViewBuilder[T]) WatchColumns(get func() []widget.TableColumn[T]) *ColumnViewBuilder[T] {
+	b.watch(func(w *widget.ColumnView[T]) { w.SetColumns(get()) })
+	return b
+}
+
 // Filter calls (*widget.ColumnView).SetFilter.
 func (b *ColumnViewBuilder[T]) Filter(keep func(T) bool) *ColumnViewBuilder[T] {
 	b.do(func(s *Scope, w *widget.ColumnView[T]) { w.SetFilter(keep) })
@@ -1667,6 +1679,12 @@ func (b *ColumnViewBuilder[T]) Model(m widget.ColumnModel[T]) *ColumnViewBuilder
 // WatchModel re-applies SetModel with get's value after every update.
 func (b *ColumnViewBuilder[T]) WatchModel(get func() widget.ColumnModel[T]) *ColumnViewBuilder[T] {
 	b.watch(func(w *widget.ColumnView[T]) { w.SetModel(get()) })
+	return b
+}
+
+// Window calls (*widget.ColumnView).SetWindow.
+func (b *ColumnViewBuilder[T]) Window(offset int, limit int) *ColumnViewBuilder[T] {
+	b.do(func(s *Scope, w *widget.ColumnView[T]) { w.SetWindow(offset, limit) })
 	return b
 }
 
@@ -2129,6 +2147,50 @@ func (b *ContextMenuBuilder) Font(face render.Font, sizePx float64) *ContextMenu
 // Items calls (*widget.ContextMenu).SetItems.
 func (b *ContextMenuBuilder) Items(items ...widget.MenuItem) *ContextMenuBuilder {
 	b.do(func(s *Scope, w *widget.ContextMenu) { w.SetItems(items...) })
+	return b
+}
+
+// DataTableBuilder builds a widget.DataTable.
+type DataTableBuilder[T any] struct {
+	base[*widget.DataTable[T], *DataTableBuilder[T]]
+	face render.Font
+	size float64
+}
+
+// DataTable builds a widget.DataTable with widget.NewDataTable.
+func DataTable[T any](model widget.ColumnModel[T], cols []widget.TableColumn[T], match func(row T, query string) bool) *DataTableBuilder[T] {
+	b := &DataTableBuilder[T]{}
+	b.init(b, func(s *Scope) *widget.DataTable[T] { return widget.NewDataTable[T](s.face(b.face), model, cols, match) })
+	return b
+}
+
+// Font overrides the environment's typeface and size for this widget; zero values keep the environment's.
+func (b *DataTableBuilder[T]) Font(face render.Font, sizePx float64) *DataTableBuilder[T] {
+	b.face, b.size = face, sizePx
+	return b
+}
+
+// ColumnVisible calls (*widget.DataTable).SetColumnVisible.
+func (b *DataTableBuilder[T]) ColumnVisible(i int, on bool) *DataTableBuilder[T] {
+	b.do(func(s *Scope, w *widget.DataTable[T]) { w.SetColumnVisible(i, on) })
+	return b
+}
+
+// PageSize calls (*widget.DataTable).SetPageSize.
+func (b *DataTableBuilder[T]) PageSize(n int) *DataTableBuilder[T] {
+	b.do(func(s *Scope, w *widget.DataTable[T]) { w.SetPageSize(n) })
+	return b
+}
+
+// WatchPageSize re-applies SetPageSize with get's value after every update.
+func (b *DataTableBuilder[T]) WatchPageSize(get func() int) *DataTableBuilder[T] {
+	b.watch(func(w *widget.DataTable[T]) { w.SetPageSize(get()) })
+	return b
+}
+
+// OnSelectionChanged sets the widget's OnSelectionChanged field.
+func (b *DataTableBuilder[T]) OnSelectionChanged(fn func(rows []int)) *DataTableBuilder[T] {
+	b.do(func(_ *Scope, w *widget.DataTable[T]) { w.OnSelectionChanged = fn })
 	return b
 }
 

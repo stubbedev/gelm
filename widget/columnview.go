@@ -41,6 +41,16 @@ type ColumnView[T any] struct {
 	// view never mutates data it does not own.
 	OnRowReorder func(from, to int)
 	dragRows     bool
+
+	// winOff and winLen are the window of the sorted, filtered rows the
+	// view shows (SetWindow); winLen 0 shows them all.
+	winOff, winLen int
+	// onChanged hears every recompute: a data table resyncing its
+	// selection and pager after a sort.
+	onChanged func()
+	// recomputing reports a recompute in progress: the list's reset
+	// clears its selection then, which is not the user's doing.
+	recomputing bool
 }
 
 // TableColumn is one typed table column: how a cell renders, how wide
@@ -58,6 +68,9 @@ type TableColumn[T any] struct {
 	// Sort, when non-nil, makes the header clickable and orders rows:
 	// negative puts a first. Equal values keep source order (stable).
 	Sort func(a, b T) int
+	// Head, when set, is the header cell instead of Title's button: a
+	// select-all check.
+	Head Widget
 }
 
 // ColumnModel is the table's data source, ListModel's typed sibling.
@@ -86,10 +99,12 @@ func NewColumnView[T any](face render.Font, sizePx float64, model ColumnModel[T]
 	v.rows = &columnRows[T]{view: v}
 	v.list = NewList(v.rows, int(sizePx)+12)
 	v.header = NewBox(Row, 0, 0)
+	v.header.AddClass("header")
 	column := NewBox(Column, 0, 0)
 	column.Append(v.header, false)
 	column.Append(v.list, true)
 	v.initComposite(v, column)
+	v.boxed = true
 	v.buildHeader()
 	v.recompute()
 	return v
@@ -99,13 +114,51 @@ func NewColumnView[T any](face render.Font, sizePx float64, model ColumnModel[T]
 // scrolling - the same surface a plain List gives.
 func (v *ColumnView[T]) List() *List { return v.list }
 
-// Row returns the data of visible row i (post sort/filter).
+// Row returns the data of visible row i (post sort, filter and
+// window).
 func (v *ColumnView[T]) Row(i int) T {
-	return v.vm.at(i)
+	return v.vm.at(i + v.winOff)
 }
 
-// Rows reports the visible row count.
-func (v *ColumnView[T]) Rows() int { return v.vm.len() }
+// Rows reports the visible row count: the window's share of the
+// matching rows.
+func (v *ColumnView[T]) Rows() int {
+	n := max(0, v.vm.len()-v.winOff)
+	if v.winLen > 0 {
+		n = min(n, v.winLen)
+	}
+	return n
+}
+
+// Matching reports how many rows pass the filters, the window aside.
+func (v *ColumnView[T]) Matching() int { return v.vm.len() }
+
+// SourceIndex maps visible row i to its row in the model, -1 when out
+// of range.
+func (v *ColumnView[T]) SourceIndex(i int) int {
+	if i < 0 || i >= v.Rows() {
+		return -1
+	}
+	return v.vm.source(i + v.winOff)
+}
+
+// SetWindow shows only limit of the sorted, filtered rows from offset
+// on - a page of them; limit 0 shows them all.
+func (v *ColumnView[T]) SetWindow(offset, limit int) {
+	v.winOff, v.winLen = max(0, offset), max(0, limit)
+	v.recompute()
+}
+
+// SetColumns replaces the columns: a column toggled visible or hidden.
+// The sort stays on the column it was on when that column remains.
+func (v *ColumnView[T]) SetColumns(cols []TableColumn[T]) {
+	if v.sortBy >= len(cols) {
+		v.sortBy = -1
+	}
+	v.cols = cols
+	v.buildHeader()
+	v.recompute()
+}
 
 // SetModel replaces the data source and drops the sort/filter
 // permutation back to the source order.
@@ -195,6 +248,13 @@ func (v *ColumnView[T]) buildHeader() {
 	v.header.Clear()
 	th := Current()
 	for i, col := range v.cols {
+		if col.Head != nil {
+			head := NewBox(Row, 0, 0)
+			head.Append(NewSpacer(headerInset, 0), false)
+			head.AppendAligned(col.Head, false, AlignCenter)
+			v.header.AppendAligned(newSizedCell(head, col.Width), col.Expand, AlignFill)
+			continue
+		}
 		title := NewBox(Row, 4, 0)
 		title.AppendAligned(NewLabel(v.face, v.sizePx-1, col.Title, th.TextMuted), false, AlignCenter)
 		if i == v.sortBy {
@@ -239,11 +299,16 @@ func (v *ColumnView[T]) recompute() {
 			return c
 		}
 	}
+	v.recomputing = true
+	defer func() { v.recomputing = false }()
 	v.vm.setSort(cmp)
 	v.vm.rebuild()
 	v.rows.set()
 	v.list.Reset()
 	v.InvalidateLayout()
+	if v.onChanged != nil {
+		v.onChanged()
+	}
 }
 
 // columnRows adapts the view as a ListModel: each visible row builds a
