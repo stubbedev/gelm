@@ -1,7 +1,8 @@
 // Command lys-ui-shadcn is the shadcn/ui gallery: every shadcn
 // component lys-ui implements, one titled section each, declared with
-// the typed ui builders in the shadcn dark and light palettes. t or the
-// header button toggles the palette, Escape closes.
+// the typed ui builders in the shadcn dark and light palettes. Ctrl+K
+// opens the command palette as a dialog, Ctrl+T or the header button
+// toggles the palette, Escape closes.
 package main
 
 import (
@@ -9,8 +10,6 @@ import (
 	"log"
 	"os"
 	"strings"
-
-	"github.com/unxed/xkb-go"
 
 	"github.com/stubbedev/lys-ui/app"
 	"github.com/stubbedev/lys-ui/component"
@@ -42,25 +41,58 @@ func run() error {
 	}
 	application := app.NewApplication(sess)
 	var ctrl *component.Controller[galleryMsg, struct{}]
-	ctrl, _, err = component.Window(application, app.WindowConfig{
+	var win *app.Window
+	ctrl, win, err = component.Window(application, app.WindowConfig{
 		Title:      "lys-ui shadcn gallery",
 		AppID:      "dev.stubbe.lys.ui.shadcn",
 		Width:      760,
 		Height:     820,
 		Background: widget.Current().Bg,
-		OnKey: func(_ *widget.Router, code uint32, _ app.Mods) {
-			switch application.KeySym(code) {
-			case xkb.KeyEscape:
-				application.Quit()
-			case xkb.Keysym('t'):
-				ctrl.Send(togglePalette{})
-			}
-		},
 	}, &gallery{env: ui.Env{Face: app.FontFallback(face), Size: 14}})
 	if err != nil {
 		return err
 	}
+	for keys, action := range map[string]widget.Activatable{
+		"Escape": widget.NewAction("quit", application.Quit),
+		"Ctrl+T": widget.NewAction("palette", func() { ctrl.Send(togglePalette{}) }),
+		"Ctrl+K": widget.NewAction("command", func() {
+			if err := openCommandDialog(application, win, app.FontFallback(face)); err != nil {
+				log.Printf("lys-ui-shadcn: command dialog: %v", err)
+			}
+		}),
+	} {
+		if err := application.AddAccel(keys, action); err != nil {
+			return err
+		}
+	}
 	return application.Run()
+}
+
+// commandGroups are the command palette's items; pick runs after any
+// of them is picked.
+func commandGroups(pick func()) []widget.CommandGroup {
+	item := func(label, shortcut string, keywords ...string) widget.CommandItem {
+		return widget.CommandItem{Label: label, Shortcut: shortcut, Keywords: keywords, OnSelect: pick}
+	}
+	return []widget.CommandGroup{
+		{Heading: "Suggestions", Items: []widget.CommandItem{
+			item("Calendar", ""), item("Search Emoji", "", "smiley"),
+			{Label: "Calculator", Disabled: true},
+		}},
+		{Heading: "Settings", Items: []widget.CommandItem{
+			item("Profile", "Ctrl P"), item("Billing", "Ctrl B"), item("Settings", "Ctrl S", "preferences"),
+		}},
+	}
+}
+
+// openCommandDialog shows the command palette in a dialog over parent
+// that closes when an item is picked.
+func openCommandDialog(a *app.Application, parent *app.Window, face render.Font) error {
+	var d *app.Dialog
+	cmd := widget.NewCommand(face, "Type a command or search...", commandGroups(func() { d.Close() })...)
+	var err error
+	d, err = a.NewDialog(parent, app.DialogConfig{Title: "Command", Width: 460, Height: 340, Content: cmd, Focus: cmd.Entry(), Bare: true})
+	return err
 }
 
 type galleryMsg interface{ galleryMsg() }
@@ -139,6 +171,14 @@ func (g *gallery) Init(cx *component.Context[galleryMsg, struct{}]) widget.Widge
 		section("Breadcrumb",
 			ui.Breadcrumb("Home", "Components", "Breadcrumb"),
 			ui.Breadcrumb("Home", "Docs", "Components", "Data", "Breadcrumb").MaxItems(3)),
+		section("Combobox", ui.Aligned(ui.Combobox("Select framework...",
+			widget.ComboboxOption[string]{Value: "next", Label: "Next.js"},
+			widget.ComboboxOption[string]{Value: "svelte", Label: "SvelteKit"},
+			widget.ComboboxOption[string]{Value: "nuxt", Label: "Nuxt.js"},
+			widget.ComboboxOption[string]{Value: "remix", Label: "Remix"},
+			widget.ComboboxOption[string]{Value: "astro", Label: "Astro"},
+		), widget.AlignStart)),
+		section("Command", ui.Command("Type a command or search...", commandGroups(func() {})...).Classes(css.Card)),
 		section("Empty", ui.StatusPage("", "No projects yet", "You haven't created any projects yet. Get started by creating your first project.").
 			Icon(ui.Symbol(widget.SymbolMaximize, 24)).
 			Child(ui.Button(ui.Label("Create project"), 0, 0).Classes(css.SuggestedAction))),

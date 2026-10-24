@@ -175,6 +175,9 @@ type node struct {
 	styleRoot bool
 	// accName is the accessible name SetAccessibleName set.
 	accName string
+	// noFocusOnClick keeps a press on the widget from moving the focus
+	// (SetFocusOnClick).
+	noFocusOnClick bool
 	// surfaceHost opens the popups of the tree under this node
 	// (SetSurfaceHost): set on a surface's root.
 	surfaceHost SurfaceHost

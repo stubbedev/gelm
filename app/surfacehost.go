@@ -29,8 +29,19 @@ func (p surfaceHost) OpenMenu(anchor widget.Boundser, face render.Font, sizePx f
 	}
 }
 
+// OpenPopover implements widget.SurfaceHost; a popover that cannot
+// open is reported and closes as nothing.
+func (p surfaceHost) OpenPopover(anchor widget.Boundser, content, focus widget.Widget) func() {
+	pop, err := p.a.OpenPopover(p.host, PopoverConfig{Anchor: anchor, Content: content, Focus: focus, Parent: p.parent})
+	if err != nil {
+		p.a.reportPopup(fmt.Errorf("app: open a widget's popover: %w", err))
+		return func() {}
+	}
+	return pop.Dismiss
+}
+
 // SetPopupErrorHandler installs fn to hear popups a widget asked for
-// (widget.OpenMenu) that could not open, so the app can show a toast.
+// (widget.OpenMenu, widget.OpenPopover) that could not open, so the app can show a toast.
 // fn runs on the loop goroutine.
 func (a *Application) SetPopupErrorHandler(fn func(err error)) { a.onPopupError = fn }
 

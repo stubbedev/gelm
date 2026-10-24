@@ -39,6 +39,13 @@ const (
 	SymbolEllipsis
 	// SymbolMinus is a centered horizontal bar (a separator, less).
 	SymbolMinus
+	// SymbolCheck is a check mark (selected, done).
+	SymbolCheck
+	// SymbolChevronsUpDown is an up chevron over a down one (a picker
+	// that opens a list).
+	SymbolChevronsUpDown
+	// SymbolSearch is a magnifying glass.
+	SymbolSearch
 )
 
 // chevronAngle is each chevron kind's rotation from right-pointing.
@@ -114,6 +121,17 @@ func (s *Symbol) Paint(cv *render.Canvas) {
 	case SymbolCrosshair:
 		cv.Line(cx-r, cy, cx+r, cy, 1, col)
 		cv.Line(cx, cy-r, cx, cy+r, 1, col)
+	case SymbolCheck:
+		cv.Line(cx-r, cy, cx-r/3, cy+2*r/3, 1, col)
+		cv.Line(cx-r/3, cy+2*r/3, cx+r, cy-2*r/3, 1, col)
+	case SymbolChevronsUpDown:
+		strokeChevron(cv, cx, cy-r/2-1, r/2, -math.Pi/2, col)
+		strokeChevron(cv, cx, cy+r/2+1, r/2, math.Pi/2, col)
+	case SymbolSearch:
+		d := r * 3 / 2
+		lens := render.Rect{X: cx - r, Y: cy - r, W: d, H: d}
+		cv.RoundedBorder(lens, render.UniformCorners(d/2), render.UniformInsets(1), col)
+		cv.Line(cx-r+d-1, cy-r+d-1, cx+r, cy+r, 1, col)
 	case SymbolMinus:
 		cv.Line(cx-r, cy, cx+r, cy, 1, col)
 	case SymbolEllipsis:

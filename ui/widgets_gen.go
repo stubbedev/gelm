@@ -22,6 +22,7 @@ type nodeProps interface {
 	SetDebugName(name string)
 	SetElement(name string)
 	SetEnabled(enabled bool)
+	SetFocusOnClick(on bool)
 	SetHAlign(a widget.Align)
 	SetHExpand(on bool)
 	SetID(id string)
@@ -123,6 +124,18 @@ func (b *base[W, B]) Enabled(enabled bool) B {
 // WatchEnabled re-applies SetEnabled with get's value after every update.
 func (b *base[W, B]) WatchEnabled(get func() bool) B {
 	b.watch(func(w W) { w.SetEnabled(get()) })
+	return b.self
+}
+
+// FocusOnClick calls SetFocusOnClick on the widget.
+func (b *base[W, B]) FocusOnClick(on bool) B {
+	b.do(func(s *Scope, w W) { w.SetFocusOnClick(on) })
+	return b.self
+}
+
+// WatchFocusOnClick re-applies SetFocusOnClick with get's value after every update.
+func (b *base[W, B]) WatchFocusOnClick(get func() bool) B {
+	b.watch(func(w W) { w.SetFocusOnClick(get()) })
 	return b.self
 }
 
@@ -1974,6 +1987,102 @@ func (b *ComboRowBuilder) PackStart(child Node) *ComboRowBuilder {
 // OnActivate sets the widget's OnActivate field.
 func (b *ComboRowBuilder) OnActivate(fn func()) *ComboRowBuilder {
 	b.do(func(_ *Scope, w *widget.ComboRow) { w.OnActivate = fn })
+	return b
+}
+
+// ComboboxBuilder builds a widget.Combobox.
+type ComboboxBuilder[T comparable] struct {
+	base[*widget.Combobox[T], *ComboboxBuilder[T]]
+	face render.Font
+	size float64
+}
+
+// Combobox builds a widget.Combobox with widget.NewCombobox.
+func Combobox[T comparable](placeholder string, options ...widget.ComboboxOption[T]) *ComboboxBuilder[T] {
+	b := &ComboboxBuilder[T]{}
+	b.init(b, func(s *Scope) *widget.Combobox[T] {
+		return widget.NewCombobox[T](s.face(b.face), placeholder, options...)
+	})
+	return b
+}
+
+// Font overrides the environment's typeface and size for this widget; zero values keep the environment's.
+func (b *ComboboxBuilder[T]) Font(face render.Font, sizePx float64) *ComboboxBuilder[T] {
+	b.face, b.size = face, sizePx
+	return b
+}
+
+// Multiple calls (*widget.Combobox).SetMultiple.
+func (b *ComboboxBuilder[T]) Multiple(on bool) *ComboboxBuilder[T] {
+	b.do(func(s *Scope, w *widget.Combobox[T]) { w.SetMultiple(on) })
+	return b
+}
+
+// WatchMultiple re-applies SetMultiple with get's value after every update.
+func (b *ComboboxBuilder[T]) WatchMultiple(get func() bool) *ComboboxBuilder[T] {
+	b.watch(func(w *widget.Combobox[T]) { w.SetMultiple(get()) })
+	return b
+}
+
+// Selected calls (*widget.Combobox).SetSelected.
+func (b *ComboboxBuilder[T]) Selected(values ...T) *ComboboxBuilder[T] {
+	b.do(func(s *Scope, w *widget.Combobox[T]) { w.SetSelected(values...) })
+	return b
+}
+
+// OnChanged sets the widget's OnChanged field.
+func (b *ComboboxBuilder[T]) OnChanged(fn func(selected []T)) *ComboboxBuilder[T] {
+	b.do(func(_ *Scope, w *widget.Combobox[T]) { w.OnChanged = fn })
+	return b
+}
+
+// CommandBuilder builds a widget.Command.
+type CommandBuilder struct {
+	base[*widget.Command, *CommandBuilder]
+	face render.Font
+	size float64
+}
+
+// Command builds a widget.Command with widget.NewCommand.
+func Command(placeholder string, groups ...widget.CommandGroup) *CommandBuilder {
+	b := &CommandBuilder{}
+	b.init(b, func(s *Scope) *widget.Command { return widget.NewCommand(s.face(b.face), placeholder, groups...) })
+	return b
+}
+
+// Font overrides the environment's typeface and size for this widget; zero values keep the environment's.
+func (b *CommandBuilder) Font(face render.Font, sizePx float64) *CommandBuilder {
+	b.face, b.size = face, sizePx
+	return b
+}
+
+// EmptyText calls (*widget.Command).SetEmptyText.
+func (b *CommandBuilder) EmptyText(text string) *CommandBuilder {
+	b.do(func(s *Scope, w *widget.Command) { w.SetEmptyText(text) })
+	return b
+}
+
+// WatchEmptyText re-applies SetEmptyText with get's value after every update.
+func (b *CommandBuilder) WatchEmptyText(get func() string) *CommandBuilder {
+	b.watch(func(w *widget.Command) { w.SetEmptyText(get()) })
+	return b
+}
+
+// Groups calls (*widget.Command).SetGroups.
+func (b *CommandBuilder) Groups(groups ...widget.CommandGroup) *CommandBuilder {
+	b.do(func(s *Scope, w *widget.Command) { w.SetGroups(groups...) })
+	return b
+}
+
+// Query calls (*widget.Command).SetQuery.
+func (b *CommandBuilder) Query(q string) *CommandBuilder {
+	b.do(func(s *Scope, w *widget.Command) { w.SetQuery(q) })
+	return b
+}
+
+// WatchQuery re-applies SetQuery with get's value after every update.
+func (b *CommandBuilder) WatchQuery(get func() string) *CommandBuilder {
+	b.watch(func(w *widget.Command) { w.SetQuery(get()) })
 	return b
 }
 

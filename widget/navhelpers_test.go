@@ -72,10 +72,20 @@ func TestPaginationRejectsBadPages(t *testing.T) {
 	NewPagination(goldenFace(t), 3, 0)
 }
 
-// fakeSurfaceHost records the menus a tree opens.
-type fakeSurfaceHost struct{ menus [][]MenuItem }
+// fakeSurfaceHost records the menus and popovers a tree opens and how
+// many popovers it closed.
+type fakeSurfaceHost struct {
+	menus    [][]MenuItem
+	popovers []Widget
+	closed   int
+}
 
 func (h *fakeSurfaceHost) Focus(Widget) {}
+
+func (h *fakeSurfaceHost) OpenPopover(_ Boundser, content, _ Widget) func() {
+	h.popovers = append(h.popovers, content)
+	return func() { h.closed++ }
+}
 
 func (h *fakeSurfaceHost) OpenMenu(_ Boundser, _ render.Font, _ float64, items []MenuItem) {
 	h.menus = append(h.menus, items)

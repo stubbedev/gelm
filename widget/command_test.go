@@ -1,0 +1,104 @@
+package widget
+
+import (
+	"slices"
+	"testing"
+
+	"github.com/stubbedev/lys-ui/widget/css"
+)
+
+// testCommandGroups are two headed groups, one item disabled.
+func testCommandGroups(picked *[]string) []CommandGroup {
+	item := func(label, shortcut string, disabled bool, keywords ...string) CommandItem {
+		return CommandItem{
+			Label: label, Shortcut: shortcut, Disabled: disabled, Keywords: keywords,
+			OnSelect: func() { *picked = append(*picked, label) },
+		}
+	}
+	return []CommandGroup{
+		{Heading: "Suggestions", Items: []CommandItem{
+			item("Calendar", "", false), item("Search Emoji", "", false, "smiley"), item("Calculator", "", true),
+		}},
+		{Heading: "Settings", Items: []CommandItem{
+			item("Profile", "Ctrl P", false), item("Billing", "Ctrl B", false), item("Settings", "Ctrl S", false),
+		}},
+	}
+}
+
+func shownLabels(c *Command) []string {
+	var out []string
+	for _, r := range c.shown {
+		out = append(out, r.item.Label)
+	}
+	return out
+}
+
+// The query filters fuzzily by label and keyword, ranks the best match
+// and its group first, and shows the empty state when nothing matches.
+func TestCommandFilters(t *testing.T) {
+	var picked []string
+	c := NewCommand(goldenFace(t), "Type a command...", testCommandGroups(&picked)...)
+	c.SetQuery("se")
+	if got, want := shownLabels(c), []string{"Settings", "Search Emoji"}; !slices.Equal(got, want) {
+		t.Errorf("se shows %v, want %v", got, want)
+	}
+	c.SetQuery("smiley")
+	if got := shownLabels(c); !slices.Equal(got, []string{"Search Emoji"}) {
+		t.Errorf("a keyword shows %v", got)
+	}
+	c.SetQuery("zzz")
+	if len(c.shown) != 0 || !slices.Contains(c.list.Children(), Widget(c.empty)) {
+		t.Error("no match did not show the empty state")
+	}
+	if _, ok := c.Highlighted(); ok {
+		t.Error("an empty list has a highlight")
+	}
+}
+
+// The navigation keys move the highlight past disabled items while the
+// entry keeps the focus, Enter picks, and a click picks without taking
+// the focus from the entry.
+func TestCommandKeyboardAndClick(t *testing.T) {
+	var picked []string
+	c := NewCommand(goldenFace(t), "", testCommandGroups(&picked)...)
+	arrangeTree(t, c, 400, 400)
+	r := &Router{Root: c}
+	r.SetFocus(c.Entry())
+	r.KeyAction(KeyDown, 0)
+	r.KeyAction(KeyDown, 0)
+	if it, _ := c.Highlighted(); it.Label != "Profile" {
+		t.Fatalf("highlight on %q, want Profile past the disabled Calculator", it.Label)
+	}
+	r.KeyAction(KeyEnd, 0)
+	r.KeyAction(KeyEnter, 0)
+	billing := c.shown[4]
+	b := billing.Bounds()
+	at := Point{X: b.X + 4, Y: b.Y + b.H/2}
+	r.Press(BTNLeft, at)
+	r.Release(BTNLeft, at)
+	if !slices.Equal(picked, []string{"Settings", "Billing"}) {
+		t.Errorf("picked %v, want Settings then Billing", picked)
+	}
+	if r.Focused() != Widget(c.Entry()) {
+		t.Errorf("focus on %T after the click, want the search entry", r.Focused())
+	}
+}
+
+// TestGoldenShadcnCommand pins the command with its groups, a
+// shortcut, a disabled item and the highlight, in both palettes.
+func TestGoldenShadcnCommand(t *testing.T) {
+	face := goldenFace(t)
+	for _, tc := range []struct {
+		name string
+		th   *Theme
+	}{{"dark", DarkTheme()}, {"light", LightTheme()}} {
+		t.Run(tc.name, func(t *testing.T) {
+			SetTheme(tc.th)
+			defer SetTheme(nil)
+			var picked []string
+			c := NewCommand(face, "Type a command or search...", testCommandGroups(&picked)...)
+			c.AddClass(css.Card)
+			NewGolden(t, c, "shadcn-command-"+tc.name, goldenTheme(tc.th), goldenFrame(360, 330))
+		})
+	}
+}

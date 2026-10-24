@@ -70,6 +70,9 @@ type DialogConfig struct {
 	// application fully interactive under the dialog; the preset
 	// dialogs set it themselves.
 	Modal bool
+	// Focus, when set, takes the keyboard focus as the dialog opens: a
+	// widget of Content, its first field.
+	Focus widget.Widget
 	// Bare makes Content the whole window: no button row, no card,
 	// Background as the window's clear color. The content carries its
 	// own buttons (styled by the application's stylesheet) and answers
@@ -165,6 +168,9 @@ func (a *Application) NewDialog(parent DialogParent, cfg DialogConfig) (*Dialog,
 		hw.blocked = false
 	}
 	d = &Dialog{app: a, win: w, cfg: cfg}
+	if cfg.Focus != nil {
+		w.SetFocus(cfg.Focus)
+	}
 	a.dialogs = append(a.dialogs, d)
 	if cfg.Modal {
 		a.blockAll(true)

@@ -541,8 +541,10 @@ func (r *Router) Press(button uint32, p Point) {
 	if hit != nil && !IsEnabled(hit) {
 		return
 	}
-	setFocusStyle(r.focus, hit, false)
-	r.focus = hit
+	if n := nodeOf(hit); n == nil || !n.noFocusOnClick {
+		setFocusStyle(r.focus, hit, false)
+		r.focus = hit
+	}
 	r.pressed = hit
 	r.dragging = hit != nil
 	if pr, ok := hit.(PressSetter); ok {
@@ -897,6 +899,11 @@ func (r *Router) KeyAction(a KeyAction, mods Mods) {
 type KeyInterceptor interface {
 	InterceptKey(target Widget, a KeyAction, mods Mods) bool
 }
+
+// SetFocusOnClick decides whether a press on the widget moves the
+// keyboard focus to it (GTK's focus-on-click, on by default): a
+// command palette's rows leave it in the search entry.
+func (n *node) SetFocusOnClick(on bool) { n.noFocusOnClick = !on }
 
 // FocusNavigator is an ancestor that moves focus among its own
 // focusable descendants on navigation keys: the roving focus of an
