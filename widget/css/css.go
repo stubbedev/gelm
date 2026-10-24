@@ -69,6 +69,19 @@ const (
 	Title2 = "title-2"
 	Title3 = "title-3"
 	Title4 = "title-4"
+	// The typography classes, shadcn/ui's: display headings H1 to H4,
+	// Lead (a large muted intro), LargeText, SmallText, Muted
+	// (secondary text), Blockquote and InlineCode, for labels.
+	H1         = "h1"
+	H2         = "h2"
+	H3         = "h3"
+	H4         = "h4"
+	Lead       = "lead"
+	LargeText  = "large-text"
+	SmallText  = "small-text"
+	Muted      = "muted"
+	Blockquote = "blockquote"
+	InlineCode = "inline-code"
 	// Toolbar spaces a row of buttons as a toolbar.
 	Toolbar = "toolbar"
 	// View is the content-area surface.

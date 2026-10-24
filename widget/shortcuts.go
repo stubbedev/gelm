@@ -4,7 +4,6 @@ import (
 	"strings"
 
 	"github.com/stubbedev/lys-ui/render"
-	"github.com/stubbedev/lys-ui/widget/css"
 )
 
 // ShortcutSection is one titled group of a shortcuts overview.
@@ -25,16 +24,9 @@ type ShortcutItem struct {
 // apart.
 func NewShortcutLabel(face render.Font, keys string) *Box {
 	face = requireFace("widget.NewShortcutLabel", face)
-	th := Current()
 	row := NewBox(Row, 10, 0)
 	for step := range strings.FieldsSeq(keys) {
-		caps := NewBox(Row, 3, 0)
-		for k := range strings.SplitSeq(step, "+") {
-			l := NewLabel(face, 12, k, th.Text)
-			l.AddClass(css.Keycap)
-			caps.AppendAligned(l, false, AlignCenter)
-		}
-		row.AppendAligned(caps, false, AlignCenter)
+		row.AppendAligned(NewKbdGroup(face, strings.Split(step, "+")...), false, AlignCenter)
 	}
 	return row
 }

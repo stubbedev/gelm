@@ -138,7 +138,17 @@ var classRules = [][2]string{
 	{css.OSD, "background-color: #000000b3; color: #ffffff;"},
 	{css.View, "background-color: @view_bg_color; color: @view_fg_color;"},
 	{css.Toolbar, "padding: 6px;"},
-	{css.Keycap, "font-size: 12px; padding: 2px 6px; border: 1px solid @borders; border-radius: 6px; background-color: @card_bg_color;"},
+	{css.Keycap, "font-size: 12px; font-weight: 500; padding: 0px 4px; min-height: 20px; min-width: 20px; border-radius: 4px; background-color: @muted_bg_color; color: @muted_fg_color;"},
+	{css.H1, "font-size: 36px; font-weight: 800;"},
+	{css.H2, "font-size: 30px; font-weight: 600; padding-bottom: 8px; border-bottom: 1px solid @borders;"},
+	{css.H3, "font-size: 24px; font-weight: 600;"},
+	{css.H4, "font-size: 20px; font-weight: 600;"},
+	{css.Lead, "font-size: 20px; color: @muted_fg_color;"},
+	{css.LargeText, "font-size: 18px; font-weight: 600;"},
+	{css.SmallText, "font-size: 14px; font-weight: 500;"},
+	{css.Muted, "font-size: 14px; color: @muted_fg_color;"},
+	{css.Blockquote, "font-style: italic; padding-left: 24px; border-left: 2px solid @borders;"},
+	{css.InlineCode, "font-family: \"" + uifont.MonoFamily + "\"; font-size: 14px; font-weight: 600; padding: 2px 5px; border-radius: 4px; background-color: @muted_bg_color;"},
 }
 
 // variants are the button classes that take shadcn/ui's full button
@@ -181,6 +191,12 @@ func controlRules() [][2]string {
 		{"scale slider", "background-color: @window_bg_color; box-shadow: inset 0px 0px 0px 1px @accent_bg_color;"},
 		{"entry, spinbutton, textview", "box-shadow: inset 0px 0px 0px 1px @input_border_color; border-radius: 8px; background-color: transparent;"},
 		{"entry:focus, spinbutton:focus, textview:focus", "box-shadow: inset 0px 0px 0px 1px @ring_color;"},
+		{"badge", "padding: 2px 8px; border-radius: 6px; font-size: 12px; font-weight: 500; background-color: @accent_bg_color; color: @accent_fg_color;"},
+		{"badge." + css.Secondary, "background-color: @view_bg_color; color: @window_fg_color;"},
+		{"badge.destructive", "background-color: @destructive_bg_color; color: @destructive_fg_color;"},
+		{"badge." + css.Outline, "background-color: transparent; color: @window_fg_color; box-shadow: inset 0px 0px 0px 1px @borders;"},
+		{"skeleton", "background-color: @muted_bg_color; border-radius: 6px;"},
+		{"bullets", "margin-left: 8px;"},
 		{"rows", "border: 1px solid @borders;"},
 		{"popover, menu", "background-color: @popover_bg_color; color: @popover_fg_color; border: 1px solid @borders; border-radius: 8px;"},
 	}
@@ -238,6 +254,11 @@ func themeCSS(t *Theme) string {
 	}
 	for _, r := range controlRules() {
 		fmt.Fprintf(&b, "%s { %s }\n", r[0], r[1])
+	}
+	if t.Animations {
+		// The skeleton's pulse; reduced motion regenerates the layer
+		// without it.
+		b.WriteString("@keyframes lys-pulse { 50% { opacity: 0.5; } }\nskeleton { animation: lys-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }\n")
 	}
 	for _, r := range partRules {
 		fmt.Fprintf(&b, "%s { %s }\n", r[0], r[1])

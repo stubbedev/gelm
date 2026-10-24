@@ -186,3 +186,45 @@ func TestGoldenMorphMidEnter(t *testing.T) {
 	m.SetReveal(0.5, true)
 	NewGolden(t, m, "morph-mid-enter", goldenTheme(DarkTheme()))
 }
+
+// The shadcn display pieces in both palettes (#204): the badge
+// variants (one with an icon), a key combination, skeleton blocks, and
+// the typography classes.
+func TestGoldenShadcnDisplay(t *testing.T) {
+	face := goldenFace(t)
+	for _, tc := range []struct {
+		name string
+		th   *Theme
+	}{{"dark", DarkTheme()}, {"light", LightTheme()}} {
+		t.Run(tc.name, func(t *testing.T) {
+			SetTheme(tc.th)
+			defer SetTheme(nil)
+			col := NewBox(Column, 10, 0)
+			badges := NewBox(Row, 6, 0)
+			for _, v := range []BadgeVariant{BadgeDefault, BadgeSecondary, BadgeDestructive, BadgeOutline} {
+				b := NewBadge(face, "Badge")
+				b.SetVariant(v)
+				badges.AppendAligned(b, false, AlignCenter)
+			}
+			withIcon := NewBadge(face, "Remove")
+			withIcon.SetIcon(NewSymbol(SymbolClose, 10))
+			withIcon.SetVariant(BadgeSecondary)
+			badges.AppendAligned(withIcon, false, AlignCenter)
+			col.Append(badges, false)
+			col.Append(NewKbdGroup(face, "Ctrl", "Shift", "P"), false)
+			skel := NewBox(Row, 10, 0)
+			skel.AppendAligned(NewSkeleton(36, 36), false, AlignCenter)
+			lines := NewBox(Column, 6, 0)
+			lines.Append(NewSkeleton(160, 12), false).Append(NewSkeleton(120, 12), false)
+			skel.Append(lines, false)
+			col.Append(skel, false)
+			for _, c := range []string{css.H1, css.H2, css.H3, css.H4, css.Lead, css.LargeText, css.SmallText, css.Muted, css.Blockquote, css.InlineCode} {
+				l := NewLabel(face, 14, "The "+c+" style", 0)
+				l.AddClass(c)
+				col.Append(l, false)
+			}
+			col.Append(NewBulletList(face, 14, "first item", "second item"), false)
+			NewGolden(t, col, "shadcn-display-"+tc.name, goldenTheme(tc.th))
+		})
+	}
+}

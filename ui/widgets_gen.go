@@ -515,6 +515,56 @@ func (b *AvatarBuilder) WatchName(get func() string) *AvatarBuilder {
 	return b
 }
 
+// BadgeBuilder builds a widget.Badge.
+type BadgeBuilder struct {
+	base[*widget.Badge, *BadgeBuilder]
+	face render.Font
+	size float64
+}
+
+// Badge builds a widget.Badge with widget.NewBadge.
+func Badge(text string) *BadgeBuilder {
+	b := &BadgeBuilder{}
+	b.init(b, func(s *Scope) *widget.Badge { return widget.NewBadge(s.face(b.face), text) })
+	return b
+}
+
+// Font overrides the environment's typeface and size for this widget; zero values keep the environment's.
+func (b *BadgeBuilder) Font(face render.Font, sizePx float64) *BadgeBuilder {
+	b.face, b.size = face, sizePx
+	return b
+}
+
+// Icon calls (*widget.Badge).SetIcon.
+func (b *BadgeBuilder) Icon(child Node) *BadgeBuilder {
+	b.do(func(s *Scope, w *widget.Badge) { w.SetIcon(build(s, child)) })
+	return b
+}
+
+// Text calls (*widget.Badge).SetText.
+func (b *BadgeBuilder) Text(text string) *BadgeBuilder {
+	b.do(func(s *Scope, w *widget.Badge) { w.SetText(text) })
+	return b
+}
+
+// WatchText re-applies SetText with get's value after every update.
+func (b *BadgeBuilder) WatchText(get func() string) *BadgeBuilder {
+	b.watch(func(w *widget.Badge) { w.SetText(get()) })
+	return b
+}
+
+// Variant calls (*widget.Badge).SetVariant.
+func (b *BadgeBuilder) Variant(v widget.BadgeVariant) *BadgeBuilder {
+	b.do(func(s *Scope, w *widget.Badge) { w.SetVariant(v) })
+	return b
+}
+
+// WatchVariant re-applies SetVariant with get's value after every update.
+func (b *BadgeBuilder) WatchVariant(get func() widget.BadgeVariant) *BadgeBuilder {
+	b.watch(func(w *widget.Badge) { w.SetVariant(get()) })
+	return b
+}
+
 // BannerBuilder builds a widget.Banner.
 type BannerBuilder struct {
 	base[*widget.Banner, *BannerBuilder]
@@ -611,10 +661,31 @@ func Box(axis widget.Axis, spacing int, padding int) *BoxBuilder {
 	return b
 }
 
+// BulletList builds a widget.Box with widget.NewBulletList.
+func BulletList(items ...string) *BoxBuilder {
+	b := &BoxBuilder{}
+	b.init(b, func(s *Scope) *widget.Box { return widget.NewBulletList(s.face(b.face), s.size(b.size), items...) })
+	return b
+}
+
+// KbdGroup builds a widget.Box with widget.NewKbdGroup.
+func KbdGroup(keys ...string) *BoxBuilder {
+	b := &BoxBuilder{}
+	b.init(b, func(s *Scope) *widget.Box { return widget.NewKbdGroup(s.face(b.face), keys...) })
+	return b
+}
+
 // ShortcutLabel builds a widget.Box with widget.NewShortcutLabel.
 func ShortcutLabel(keys string) *BoxBuilder {
 	b := &BoxBuilder{}
 	b.init(b, func(s *Scope) *widget.Box { return widget.NewShortcutLabel(s.face(b.face), keys) })
+	return b
+}
+
+// Skeleton builds a widget.Box with widget.NewSkeleton.
+func Skeleton(arg int, h int) *BoxBuilder {
+	b := &BoxBuilder{}
+	b.init(b, func(s *Scope) *widget.Box { return widget.NewSkeleton(arg, h) })
 	return b
 }
 
@@ -3466,6 +3537,13 @@ type LabelBuilder struct {
 	face render.Font
 	size float64
 	ink  render.Color
+}
+
+// Kbd builds a widget.Label with widget.NewKbd.
+func Kbd(key string) *LabelBuilder {
+	b := &LabelBuilder{}
+	b.init(b, func(s *Scope) *widget.Label { return widget.NewKbd(s.face(b.face), key) })
+	return b
 }
 
 // Label builds a widget.Label with widget.NewLabel.
