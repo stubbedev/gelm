@@ -156,6 +156,16 @@ var classRules = [][2]string{
 	{css.InlineCode, "font-family: \"" + uifont.MonoFamily + "\"; font-size: 14px; font-weight: 600; padding: 2px 5px; border-radius: 4px; background-color: @muted_bg_color;"},
 }
 
+// tabLists and tabTriggers are the three tab strips' lists and tabs -
+// StackSwitcher and ViewSwitcher (a togglegroup), TabBar, Notebook -
+// styled as shadcn's Tabs: a muted list of muted tabs, the active one
+// raised on the background fill.
+const (
+	tabLists    = "togglegroup, viewswitcher, tabbar, notebook > header > tabs"
+	tabTriggers = "togglegroup button, viewswitcher button, tabbar tab, notebook tab"
+	activeTabs  = "togglegroup button:checked, viewswitcher button:checked, tabbar tab:selected, notebook tab:checked"
+)
+
 // variants are the button classes that take shadcn/ui's full button
 // shape; a plain button keeps the padding and radius its constructor
 // was given, so internal buttons (calendar navigation, column headers,
@@ -299,6 +309,11 @@ func controlRules() [][2]string {
 		{"buttongroup.vertical > box > *:last-child", "border-radius: 0px 0px 8px 8px;"},
 		{"buttongroup.vertical > box > *:not(:first-child)", "border-left-width: 1px; border-top-width: 0px;"},
 		{"buttongroup > box > *:only-child", "border-radius: 8px;"},
+		{tabLists, "background-color: @muted_bg_color; border-radius: 8px; padding: 3px;"},
+		{tabTriggers, "background-color: transparent; border-radius: 6px; min-height: 28px; padding: 0px 12px; font-weight: 500; color: @muted_fg_color;"},
+		{activeTabs, "background-color: @window_bg_color; color: @window_fg_color; box-shadow: 0px 1px 3px alpha(black, 0.1);"},
+		{"tabbar .tab-close-button", "background-color: transparent; border-radius: 4px;"},
+		{"tabbar .tab-close-button:hover", "background-color: @muted_bg_color;"},
 		{"skeleton", "background-color: @muted_bg_color; border-radius: 6px;"},
 		{"bullets", "margin-left: 8px;"},
 		{"rows", "border: 1px solid @borders;"},

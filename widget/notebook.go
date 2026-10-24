@@ -644,7 +644,8 @@ func (n *Notebook) DragMove(p Point) {
 	if _, _, ok := n.drag.travel(p); !ok {
 		return
 	}
-	if i := n.tabAt(Point{X: p.X, Y: n.bounds.Y + 1}); i >= 0 && i != n.dragTab {
+	vp := n.tabViewport()
+	if i := n.tabAt(Point{X: p.X, Y: vp.Y + vp.H/2}); i >= 0 && i != n.dragTab {
 		n.moveTab(n.dragTab, i, true)
 		n.dragTab = i
 	}

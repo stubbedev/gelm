@@ -48,6 +48,7 @@ func TestNotebookReorder(t *testing.T) {
 // overflow, step a tab, selecting reveals, the wheel scrolls over the
 // strip and passes on elsewhere, and ctrl+PageDown cycles.
 func TestNotebookOverflow(t *testing.T) {
+	bareTheme(t)
 	if r := stripNotebook(t, 2).arrowRects(); !r[0].Empty() {
 		t.Error("arrows on a strip that fits")
 	}

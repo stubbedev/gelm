@@ -19,6 +19,15 @@ func loadCSS(t *testing.T, css string) {
 	t.Cleanup(func() { LoadStylesheet("") })
 }
 
+// bareTheme empties the theme layer for one test, so a widget shows
+// the fallback it paints with no stylesheet at all, and restores the
+// theme afterwards.
+func bareTheme(t *testing.T) {
+	t.Helper()
+	themeSheet.Load("")
+	t.Cleanup(func() { syncThemeSheet(Current()) })
+}
+
 // arrangeTree measures and arranges root and drains any startup damage,
 // so tests start from the steady state.
 func arrangeTree(t *testing.T, root Widget, w, h int) {

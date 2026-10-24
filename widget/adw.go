@@ -38,9 +38,9 @@ type ToggleGroup struct {
 func NewToggleGroup(items ...Widget) *ToggleGroup {
 	g := &ToggleGroup{}
 	g.SetElement("togglegroup")
-	g.row = NewBox(Row, 4, 4)
+	g.row = NewBox(Row, 0, 0)
 	g.initComposite(g, g.row)
-	g.surface, g.surfaceRadius = surfaceFill, 999
+	g.boxed = true
 	for _, it := range items {
 		g.Append(it)
 	}
@@ -126,7 +126,7 @@ func NewButtonContent(face render.Font, sizePx float64, iconName, label string) 
 	c := &ButtonContent{face: face, size: sizePx}
 	c.row = NewBox(Row, 6, 0)
 	c.initComposite(c, c.row)
-	c.label = NewLabel(face, sizePx, label, Current().Text)
+	c.label = NewLabel(face, sizePx, label, 0)
 	c.SetIconName(iconName)
 	return c
 }

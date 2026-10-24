@@ -212,6 +212,7 @@ func TestNotebookTabLabelsAndBoxes(t *testing.T) {
 	}
 
 	LoadStylesheet("")
+	bareTheme(t)
 	plain := NewNotebook(face)
 	plain.AppendTab("a", NewSpacer(10, 10))
 	frame(t, plain, 300, 100)
@@ -255,6 +256,7 @@ func TestNotebookTabHoverAndCursor(t *testing.T) {
 // The accent underline is the theme's fallback: a selected tab the
 // stylesheet gives a background paints that background to its edge.
 func TestNotebookUnderlineIsAFallback(t *testing.T) {
+	bareTheme(t)
 	bottom := func() render.Color {
 		n := NewNotebook(testFace(t))
 		n.AppendTab("one", NewSpacer(20, 20))

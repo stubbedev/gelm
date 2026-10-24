@@ -58,6 +58,7 @@ func NewTabBar(face render.Font, sizePx float64, view *TabView) *TabBar {
 	b := &TabBar{view: view, face: requireFace("widget.NewTabBar", face), sizePx: sizePx, row: NewBox(Row, 2, 0)}
 	b.initComposite(b, b.row)
 	b.fillWidth = true
+	b.boxed = true
 	b.SetElement("tabbar")
 	b.cancel = view.Subscribe(b.rebuild)
 	b.rebuild()
